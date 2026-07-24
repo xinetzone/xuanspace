@@ -66,6 +66,8 @@ dev = [
     "pdm",
     "typer>=0.12",
     "rich>=13.0",
+    "packaging>=24.0",
+    "tomli-w>=1.0",
     "xs-cli",
     "xuanspace[docs,test,lint,build]",
 ]
@@ -79,6 +81,8 @@ dev = [
     "pdm",
     "typer>=0.12",
     "rich>=13.0",
+    "packaging>=24.0",
+    "tomli-w>=1.0",
     "xs-cli",
 ]
 docs = [

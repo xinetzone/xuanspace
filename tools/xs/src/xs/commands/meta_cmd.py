@@ -13,7 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import tomli_w
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -121,6 +120,12 @@ def _from_toml_key(key: str) -> str:
 
 
 def _write_toml_meta(toml_path: Path, extra_fields: dict, existing_data: dict | None = None) -> None:
+    try:
+        import tomli_w
+    except ImportError:
+        console.print("[red]错误: tomli_w 未安装，请运行 pip install tomli-w[/red]")
+        raise typer.Exit(1)
+
     if existing_data is None:
         existing_data = {}
         if toml_path.exists():

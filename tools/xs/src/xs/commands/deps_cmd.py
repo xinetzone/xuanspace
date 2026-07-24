@@ -144,7 +144,7 @@ def deps_tree(
             _print_tree(child, prefix + extension, current_depth + 1, visited)
 
     for root in roots:
-        console.print(f"[bold cyan]{root.name}[/bold cyan] [dim]({root.project_type})[/dim]")
+        console.print(f"[bold cyan]{root.name}[/bold cyan] [dim]({root.project_type.value})[/dim]")
         _print_tree(root.name)
         console.print()
 
