@@ -42,7 +42,12 @@
 | 📜 全局核心规则 | [.agents/global-core-rules.md](.agents/global-core-rules.md) | 启动协议、内容分流、版本要求、工作流规范 |
 | 🧭 上下文路由表 | [.agents/context-routing.md](.agents/context-routing.md) | 任务类型→必读规范映射表 |
 | 📄 文档元数据规范 | [.agents/rules/frontmatter.md](.agents/rules/frontmatter.md) | YAML/TOML 内容-元数据二分法 |
-| 📦 项目模板 | [tools/templates/](tools/templates/) | Python库、C++原生扩展、静态HTML项目模板 |
+| 🔍 工作区发现协议 | [.agents/protocols/workspace-discovery.md](.agents/protocols/workspace-discovery.md) | 五步发现流程，从任意位置定位工作区 |
+| 🚀 提示词自举协议 | [.agents/protocols/prompt-bootstrap.md](.agents/protocols/prompt-bootstrap.md) | 一句话装载，零配置接入 |
+| 🤝 协作协议 | [.agents/protocols/README.md](.agents/protocols/README.md) | 会话启动、任务交接、工作区发现 |
+| 💬 提示词库 | [.agents/prompts/README.md](.agents/prompts/README.md) | 角色提示词集合 |
+| 📦 项目模板 | [.agents/templates/README.md](.agents/templates/README.md) | 模板索引（Python/C++/静态项目） |
+| 📋 模板源码 | [tools/templates/](tools/templates/) | 模板文件存放位置 |
 
 ## 目录结构说明
 
