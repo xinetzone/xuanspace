@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xs-cli"
+version = "0.1.0"
+description = "Xuanspace xs CLI 工具"
+requires-python = ">=3.13"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0"
+]
+authors = [
+    {name = "xinetzone"}
+]
+license = {text = "MIT"}
+
+[project.scripts]
+xs = "xs.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pdm.build]
+includes = ["src/xs"]

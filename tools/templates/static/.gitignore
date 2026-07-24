@@ -1,0 +1,70 @@
+# Node.js 依赖
+node_modules/
+jspm_packages/
+bower_components/
+
+# 构建输出
+dist/
+build/
+out/
+.output/
+.parcel-cache/
+.cache/
+.vite/
+.next/
+.nuxt/
+.svelte-kit/
+.astro/
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 编辑器目录和文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# 测试覆盖率
+coverage/
+*.lcov
+.nyc_output/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# 锁文件（可选，根据项目需要保留）
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# TypeScript 缓存
+*.tsbuildinfo
+
+# ESLint 缓存
+.eslintcache
+
+# 其他
+*.pid
+*.seed
+*.pid.lock

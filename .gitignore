@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.pdm-python
+
+# PDM
+__pypackages__/
+
+# CMake / Native builds
+build*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.exe
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sphinx docs
+docs/_build/
+docs/api/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE (allow .vscode/settings.json but ignore everything else)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

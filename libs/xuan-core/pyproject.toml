@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xuan-core"
+version = "0.1.0"
+description = "Xuanspace 核心工具库"
+requires-python = ">=3.13"
+dependencies = []
+authors = [
+    {name = "xinetzone"}
+]
+license = {text = "MIT"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pdm.build]
+includes = ["src/xuan_core"]

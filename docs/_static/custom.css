@@ -1,0 +1,36 @@
+/* Xuanspace 文档自定义样式 */
+
+:root {
+  --pst-color-primary: #2c3e50;
+  --pst-color-secondary: #3498db;
+}
+
+body {
+  font-family: "Noto Sans SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Noto Serif SC", "Microsoft YaHei", Georgia, serif;
+  font-weight: 600;
+}
+
+.admonition-title {
+  font-weight: 600;
+}
+
+div.mermaid {
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+table {
+  width: 100%;
+  margin: 1rem 0;
+}
+
+code.literal {
+  color: #e74c3c;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background-color: #f8f9fa;
+}
