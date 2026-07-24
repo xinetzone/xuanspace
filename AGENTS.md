@@ -1,3 +1,9 @@
+---
+id: "xuanspace-agents"
+version: "0.1.0"
+x-toml-ref: ".meta/toml/AGENTS.toml"
+---
+
 # 玄境（Xuanspace）智能体协作入口
 
 > **🚨 启动协议（PRIORITY ZERO — 所有智能体必须在收到任务后立即执行）**

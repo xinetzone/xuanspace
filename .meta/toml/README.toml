@@ -1,0 +1,9 @@
+title = "Xuanspace（玄境）"
+date = "2026-07-24"
+tags = ["monorepo", "python", "c++", "sphinx", "readme"]
+category = "project-documentation"
+
+[[changelog]]
+date = "2026-07-24"
+type = "feat"
+description = "初始版本，建立项目入口文档"

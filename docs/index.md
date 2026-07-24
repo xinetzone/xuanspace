@@ -9,6 +9,7 @@
 :caption: 开始使用
 :maxdepth: 2
 
+intro
 quickstart
 ```
 
@@ -27,6 +28,7 @@ architecture
 :maxdepth: 1
 
 contributing
+adr/index
 ```
 
 ```{toctree}

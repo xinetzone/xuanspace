@@ -1,0 +1,9 @@
+title = "贡献指南"
+date = "2026-07-24"
+tags = ["contributing", "development", "guidelines"]
+category = "project-documentation"
+
+[[changelog]]
+date = "2026-07-24"
+type = "feat"
+description = "初始版本，建立贡献指南文档"

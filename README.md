@@ -1,3 +1,9 @@
+---
+id: "xuanspace-readme"
+version: "0.1.0"
+x-toml-ref: ".meta/toml/README.toml"
+---
+
 # Xuanspace（玄境）
 
 > 技术为器、思想为道，器以载道

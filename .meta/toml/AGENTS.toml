@@ -1,0 +1,9 @@
+title = "玄境（Xuanspace）智能体协作入口"
+date = "2026-07-24"
+tags = ["agents", "ai", "collaboration", "specification"]
+category = "project-governance"
+
+[[changelog]]
+date = "2026-07-24"
+type = "feat"
+description = "初始版本，建立智能体协作规范体系"

@@ -22,7 +22,7 @@ copyright = "2026, xinetzone"
 release = "0.1.0"
 version = release
 
-language = "zh-CN"
+language = "zh_CN"
 
 
 def _has(mod: str) -> bool:
@@ -57,6 +57,7 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     ".venv",
+    "README.md",
 ]
 
 master_doc = "index"

@@ -1,3 +1,9 @@
+---
+id: "xuanspace-contributing"
+version: "0.1.0"
+x-toml-ref: ".meta/toml/CONTRIBUTING.toml"
+---
+
 # 贡献指南
 
 欢迎为 Xuanspace（玄境）项目贡献代码！无论你是修复 Bug、添加新功能、改进文档，还是优化性能，我们都非常感谢你的参与。
@@ -556,11 +562,70 @@ data_dir = f"{os.path.expanduser('~')}/.xuanspace/data"
 
 ---
 
-## 11. 文档贡献
+## 11. Git LFS 大文件管理
+
+Xuanspace 使用 **Git LFS**（Large File Storage）管理二进制大文件，避免仓库体积膨胀。
+
+### 11.1 LFS 跟踪规则
+
+项目根目录的 `.gitattributes` 预设了以下 LFS 跟踪规则：
+
+| 文件类型 | 后缀 | 典型用途 |
+|---------|------|---------|
+| 图片 | `*.png`, `*.jpg`, `*.jpeg`, `*.gif` | 文档截图、示意图 |
+| 文档 | `*.pdf` | 参考资料、论文 |
+| 预编译包 | `*.whl` | Python wheel 包 |
+| 动态库 | `*.so`, `*.dylib`, `*.dll` | 编译产物 |
+| 模型 | `*.pth`, `*.onnx`, `*.pt`, `*.model` | 机器学习模型、序列化文件 |
+
+### 11.2 环境要求
+
+- **Git LFS 客户端**：提交前必须安装，[安装指引](https://git-lfs.com/)
+- 验证安装：`git lfs version`
+- 克隆仓库时使用 `--recurse-submodules` 会自动拉取 LFS 文件
+
+### 11.3 新增 LFS 跟踪规则
+
+如需跟踪新的文件类型：
+
+```bash
+# 添加跟踪规则（示例：跟踪 .zip 文件）
+git lfs track "*.zip"
+
+# 这将自动更新 .gitattributes
+git add .gitattributes
+git commit -m "chore: 添加 .zip 到 LFS 跟踪"
+```
+
+### 11.4 检查 LFS 状态
+
+使用 `xs lfs` 命令检查 LFS 配置是否正确：
+
+```bash
+# 查看当前 LFS 跟踪模式
+xs lfs patterns
+
+# 检查是否有遗漏的大文件
+xs lfs check
+
+# 使用自定义阈值（默认 5MB）
+xs lfs check --threshold 10
+```
+
+### 11.5 最佳实践
+
+- **提交前检查**：每次提交前运行 `xs lfs check` 确保没有大文件遗漏
+- **5MB 阈值**：超过 5MB 的非代码文件应使用 LFS 跟踪
+- **CI 集成**：CI 流水线中可通过 `xs lfs check --json` 输出 JSON 结果，用于自动化检查
+- **不要提交编译产物**：`build/`、`dist/`、`_build/`、`attic/` 目录已自动排除
+
+---
+
+## 12. 文档贡献
 
 文档使用 **Sphinx + MyST Markdown** 编写，位于 `docs/` 目录。
 
-### 11.1 文档结构
+### 12.1 文档结构
 
 ```
 docs/
@@ -574,7 +639,7 @@ docs/
 
 文档依赖在根 `pyproject.toml` 的 `[project.optional-dependencies].docs` 中配置，安装方式：`pip install -e ".[docs]"` 或 `pdm install`（dev 组已包含 docs）。
 
-### 11.2 MyST Markdown
+### 12.2 MyST Markdown
 
 我们使用 MyST（Markedly Structured Text），这是一种功能强大的 Markdown 风味，支持：
 - 标准 CommonMark 语法
@@ -585,7 +650,7 @@ docs/
 - Mermaid 图表
 - Admonitions（提示、注意、警告等）
 
-### 11.3 构建文档
+### 12.3 构建文档
 
 ```bash
 # 构建 HTML 文档
@@ -601,7 +666,7 @@ sphinx-autobuild docs docs/_build/html
 
 构建完成后，打开 `docs/_build/html/index.html` 即可查看。
 
-### 11.4 文档风格建议
+### 12.4 文档风格建议
 
 - 中文文档使用中文标点
 - 代码示例必须可以直接运行
@@ -611,11 +676,11 @@ sphinx-autobuild docs docs/_build/html
 
 ---
 
-## 12. 问题反馈
+## 13. 问题反馈
 
 我们使用 GitHub Issues 跟踪 Bug 和功能请求。提交 Issue 时，请使用对应的模板：
 
-### 12.1 Bug 报告
+### 13.1 Bug 报告
 
 请使用 Bug Report 模板，包含：
 - **环境信息**：操作系统、Python 版本、Xuanspace 版本（`xs --version`）
@@ -624,7 +689,7 @@ sphinx-autobuild docs docs/_build/html
 - **实际行为**：实际发生了什么，包括完整的错误信息和堆栈跟踪
 - **截图/日志**：如有必要，附上截图或日志
 
-### 12.2 功能请求
+### 13.2 功能请求
 
 请使用 Feature Request 模板，包含：
 - **功能动机**：这个功能解决什么问题，你的使用场景
@@ -632,7 +697,7 @@ sphinx-autobuild docs docs/_build/html
 - **替代方案**：你考虑过的其他方案
 - **附加上下文**：其他相关信息、截图、参考链接等
 
-### 12.3 Issue 处理流程
+### 13.3 Issue 处理流程
 
 1. 提交 Issue 后，维护者会尽快进行 triage（分类）
 2. Bug 会被标记为 `bug`，功能请求标记为 `enhancement`
