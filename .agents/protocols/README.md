@@ -13,8 +13,6 @@ Xuanspace 项目 AI 智能体协作协议集合。
 |---|---|---|
 | 工作区发现 | `workspace-discovery.md` | 五步发现流程，从任意位置定位工作区 |
 | 提示词自举 | `prompt-bootstrap.md` | 一句话装载，零配置接入 |
-| 会话启动 | `session-startup.md` | 新会话启动检查清单 |
-| 任务交接 | `task-handoff.md` | 任务上下文传递规范 |
 
 ## 核心原则
 
