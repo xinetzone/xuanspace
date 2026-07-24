@@ -154,6 +154,59 @@ git pull upstream main
 git submodule update --init --recursive
 ```
 
+### 3.3 嵌套子模块说明
+
+Xuanspace 的 `vendor/` 目录下的子模块（如 `tvm-ffi`）自身可能也包含子模块（嵌套子模块）。例如 `tvm-ffi` 依赖 `3rdparty/dlpack` 和 `3rdparty/libbacktrace`。
+
+**现象**：克隆后 `vendor/<name>/3rdparty/` 目录存在但为空，构建时出现 `CMake Error: submodule not found` 等错误。
+
+**原因**：`git clone --recurse-submodules` 默认只初始化一级子模块，不会递归初始化嵌套子模块的内部子模块。
+
+**解决方案**：
+
+| 场景 | 命令 |
+|------|------|
+| 首次克隆 | `git clone --recurse-submodules https://github.com/xinetzone/xuanspace.git` |
+| 已克隆但子模块为空 | `git submodule update --init --recursive` |
+| 只初始化特定子模块 | `cd vendor/<name> && git submodule update --init --recursive` |
+
+> **关键**：`--recursive` 参数确保递归初始化所有层级的嵌套子模块。不带此参数只会初始化一级子模块，嵌套子模块的内部依赖仍为空。
+
+**验证方法**：执行以下命令确认所有嵌套子模块已正确初始化：
+
+```bash
+# 在项目根目录查看所有子模块状态（含嵌套）
+git submodule status --recursive
+
+# 预期输出示例（所有条目不以 '-' 开头，表示已初始化）：
+#  <hash> vendor/tvm-ffi (tag)
+#  <hash> vendor/tvm-ffi/3rdparty/dlpack (tag)
+#  <hash> vendor/tvm-ffi/3rdparty/libbacktrace (hash)
+```
+
+**CI 配置**：GitHub Actions 的 `actions/checkout` 需设置 `submodules: recursive`：
+
+```yaml
+- name: Checkout code
+  uses: actions/checkout@v4
+  with:
+    submodules: recursive
+```
+
+### 3.4 排查子模块问题
+
+如果克隆后构建/测试失败，首先检查子模块状态：
+
+```bash
+# 检查所有子模块是否已初始化
+git submodule status --recursive
+
+# 如果某行以 '-' 开头，说明该子模块未初始化
+# 示例：-84d107bf416c6bab9ae68ad285876600d230490d vendor/tvm-ffi/3rdparty/dlpack
+# 运行以下命令修复：
+git submodule update --init --recursive
+```
+
 ---
 
 ## 4. 安装开发依赖
