@@ -87,4 +87,4 @@ git add vendor/<library-name>
 
 | 目录名 | 来源 | 版本 | 本地修改 | 说明 |
 |--------|------|------|----------|------|
-| （示例）`weasyprint/` | github.com/Kozea/WeasyPrint | v60.0 | 修复了 Windows 字体路径问题 | PDF 生成依赖 |
+| `tvm-ffi/` | [apache/tvm-ffi](https://github.com/apache/tvm-ffi) | v0.1.12+ | 无 | Apache TVM 的 C++ Foreign Function Interface 库，提供跨语言 FFI 绑定 |

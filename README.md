@@ -99,6 +99,7 @@ x-toml-ref: ".meta/toml/README.toml"
 | xuan-core | 核心工具库 | Python 3.13 | lib | 🟢 开发中 | 0.1.0 | [API 参考](docs/) |
 | xuan-ext-demo | C++ 原生扩展示例（pybind11） | Python/C++ | lib(native) | 🟡 示例 | 0.1.0 | [构建指南](docs/build-system.md) |
 | templates | 项目模板（Python/Native/Static） | Python/C++/HTML | tools | 🟢 可用 | 0.1.0 | [模板说明](tools/templates/) |
+| tvm-ffi | Apache TVM C++ FFI 跨语言绑定库 | C++ | vendor | 🔵 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
 
 ## 架构设计
 
