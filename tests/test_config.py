@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from xs.config import check_python_version, get_python_version
 
 

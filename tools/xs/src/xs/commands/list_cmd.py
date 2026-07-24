@@ -6,8 +6,6 @@ xs list 命令模块
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -42,15 +40,9 @@ def _get_type_display(project_type: ProjectType) -> str:
 
 
 def list_projects(
-    project_type: Optional[ProjectType] = typer.Option(
-        None, "--type", "-t", help="按项目类型过滤"
-    ),
-    directory: Optional[str] = typer.Option(
-        None, "--dir", "-d", help="按目录过滤（apps/libs）"
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", "-j", help="以 JSON 格式输出"
-    ),
+    project_type: ProjectType | None = typer.Option(None, "--type", "-t", help="按项目类型过滤"),
+    directory: str | None = typer.Option(None, "--dir", "-d", help="按目录过滤（apps/libs）"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="以 JSON 格式输出"),
 ) -> None:
     """
     列出工作区中的所有项目
@@ -67,13 +59,15 @@ def list_projects(
         if json_output:
             output = []
             for p in projects:
-                output.append({
-                    "name": p.name,
-                    "type": p.project_type,
-                    "version": p.version,
-                    "path": str(p.path.relative_to(workspace_root)),
-                    "dependencies": p.dependencies,
-                })
+                output.append(
+                    {
+                        "name": p.name,
+                        "type": p.project_type,
+                        "version": p.version,
+                        "path": str(p.path.relative_to(workspace_root)),
+                        "dependencies": p.dependencies,
+                    }
+                )
             console.print(json.dumps(output, indent=2, ensure_ascii=False))
             return
 
@@ -91,7 +85,7 @@ def list_projects(
         table.add_column("VERSION", style="green")
         table.add_column("PATH", style="dim")
 
-        type_counts: dict[str, int] = {}
+        type_counts: dict[ProjectType, int] = {}
         for p in projects:
             type_counts[p.project_type] = type_counts.get(p.project_type, 0) + 1
             rel_path = p.path.relative_to(workspace_root)

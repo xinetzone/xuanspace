@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import sys
 import urllib.request
-from typing import Optional
 
 import typer
 from packaging.specifiers import SpecifierSet
@@ -54,6 +53,7 @@ def _check_python_requires(requires_python: str | None, target: Version = TARGET
 
 def _collect_dependencies() -> list[str]:
     import re as _re
+
     from ..config import find_workspace_root, load_pyproject
     from ..discovery import discover_projects
 
@@ -87,9 +87,7 @@ def _collect_dependencies() -> list[str]:
 def py_compat(
     packages: list[str] = typer.Argument(None, help="要检查的包名（空格分隔），不传则检查当前项目依赖"),
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON 格式输出"),
-    python_version: Optional[str] = typer.Option(
-        None, "--py", help="目标 Python 版本（如 3.13），默认使用当前环境版本"
-    ),
+    python_version: str | None = typer.Option(None, "--py", help="目标 Python 版本（如 3.13），默认使用当前环境版本"),
 ) -> None:
     """检查 Python 包与目标 Python 版本的兼容性"""
     target = Version(python_version) if python_version else TARGET_PYTHON
@@ -101,7 +99,7 @@ def py_compat(
             return
 
     if json_output:
-        results = {}
+        results: dict[str, dict[str, object]] = {}
         for pkg in packages:
             info = _fetch_package_info(pkg)
             if info is None:
@@ -152,11 +150,7 @@ def py_compat(
     console.print()
     if incompatible > 0:
         console.print(
-            f"[yellow]⚠ {incompatible} 个包可能不兼容 Python {target}，"
-            f"{compatible} 个兼容，{unknown} 个未知[/yellow]"
+            f"[yellow]⚠ {incompatible} 个包可能不兼容 Python {target}，{compatible} 个兼容，{unknown} 个未知[/yellow]"
         )
     else:
-        console.print(
-            f"[green]✓ 所有检查的包均兼容 Python {target} "
-            f"({compatible} 兼容, {unknown} 未知)[/green]"
-        )
+        console.print(f"[green]✓ 所有检查的包均兼容 Python {target} ({compatible} 兼容, {unknown} 未知)[/green]")

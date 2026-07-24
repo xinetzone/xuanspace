@@ -92,7 +92,7 @@ jobs:
         run: ruff format --check .
 
       - name: Run mypy type checker
-        run: mypy tools/xs libs/
+        run: mypy tools/xs libs/xuan-core libs/xuan-ext-demo
 
       # --- 测试 ---
       - name: Run tests

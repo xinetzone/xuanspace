@@ -8,7 +8,6 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -85,7 +84,7 @@ def install_dependencies() -> bool:
         console.print("[green]✓ 依赖更新成功[/green]")
         return True
     else:
-        console.print(f"[red]✗ 依赖更新失败[/red]")
+        console.print("[red]✗ 依赖更新失败[/red]")
         if result.stderr:
             console.print(f"[dim]{result.stderr[:500]}[/dim]")
         return False

@@ -11,7 +11,6 @@ from __future__ import annotations
 import tomllib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -75,7 +74,7 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
     if end == -1:
         return {}, content
     fm_text = content[4:end]
-    body = content[end + 5:]
+    body = content[end + 5 :]
     meta: dict = {}
     for line in fm_text.split("\n"):
         line = line.strip()
@@ -182,7 +181,7 @@ def _collect_doc_files(path: Path) -> list[Path]:
 
 
 def meta_init(
-    directory: Optional[Path] = typer.Argument(None, help="工作区目录，默认为当前目录"),
+    directory: Path | None = typer.Argument(None, help="工作区目录，默认为当前目录"),
     force: bool = typer.Option(False, "--force", "-f", help="覆盖已存在的 README"),
 ) -> None:
     """初始化文档元数据目录结构"""
@@ -260,7 +259,7 @@ def meta_validate(
 
 
 def meta_scan(
-    directory: Optional[Path] = typer.Argument(None, help="要扫描的目录，默认为工作区根目录"),
+    directory: Path | None = typer.Argument(None, help="要扫描的目录，默认为工作区根目录"),
 ) -> None:
     """扫描工作区文档元数据状态"""
     from ..config import find_workspace_root
@@ -306,9 +305,7 @@ def meta_scan(
 
     console.print(table)
     console.print()
-    console.print(
-        f"总计: {total} 个文档 | 有frontmatter: {with_fm} | 不合规: {bad_fm} | 有TOML元数据: {has_toml}"
-    )
+    console.print(f"总计: {total} 个文档 | 有frontmatter: {with_fm} | 不合规: {bad_fm} | 有TOML元数据: {has_toml}")
 
 
 def meta_sync(
@@ -330,7 +327,6 @@ def meta_sync(
 
         fm, body = _parse_frontmatter(content)
         toml_path = _get_toml_path(workspace_root, f)
-        toml_data = _read_toml_meta(toml_path)
 
         bad_fields = set(fm.keys()) - ALLOWED_YAML_FIELDS
         need_write = False

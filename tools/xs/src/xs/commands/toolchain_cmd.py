@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import Optional
 
 import typer
 from rich.console import Console

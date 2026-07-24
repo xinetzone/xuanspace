@@ -10,7 +10,6 @@ import subprocess
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -53,7 +52,10 @@ def _run_git_log(since_tag: str | None = None, cwd: Path | None = None) -> list[
     try:
         result = subprocess.run(
             ["git"] + args,
-            capture_output=True, text=True, check=False, cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=cwd,
         )
         if result.returncode == 0:
             return result.stdout.strip().split("\n")
@@ -63,7 +65,7 @@ def _run_git_log(since_tag: str | None = None, cwd: Path | None = None) -> list[
 
 
 def version_show(
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="指定项目"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="指定项目"),
 ) -> None:
     """显示当前版本"""
     workspace_root = find_workspace_root()
@@ -85,12 +87,14 @@ def version_show(
         pass
     console.print()
     for proj in sorted(projects, key=lambda p: p.name):
-        console.print(f"  [cyan]{proj.name}[/cyan]: [green]{proj.version}[/green] [dim]({proj.project_type.value})[/dim]")
+        console.print(
+            f"  [cyan]{proj.name}[/cyan]: [green]{proj.version}[/green] [dim]({proj.project_type.value})[/dim]"
+        )
 
 
 def version_bump(
     part: BumpPart = typer.Argument(..., help="要升级的版本部分: major/minor/patch"),
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="指定项目"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="指定项目"),
     dry_run: bool = typer.Option(False, "--dry-run", help="仅显示将要做的更改，不实际修改"),
 ) -> None:
     """升级版本号"""

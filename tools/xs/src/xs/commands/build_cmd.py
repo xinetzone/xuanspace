@@ -8,7 +8,6 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -31,7 +30,7 @@ def _build_python_project(project_path: Path) -> bool:
         构建是否成功
     """
     try:
-        result = subprocess.run(
+        subprocess.run(
             [sys.executable, "-m", "build", "--wheel"],
             cwd=project_path,
             check=True,
@@ -40,7 +39,7 @@ def _build_python_project(project_path: Path) -> bool:
         )
         return True
     except subprocess.CalledProcessError as e:
-        console.print(f"[red]构建失败:[/red]")
+        console.print("[red]构建失败:[/red]")
         if e.stderr:
             console.print(f"[red]{e.stderr}[/red]")
         return False
@@ -57,7 +56,7 @@ def _build_native_project(project_path: Path) -> bool:
         构建是否成功
     """
     try:
-        result = subprocess.run(
+        subprocess.run(
             [sys.executable, "-m", "pip", "install", "-e", "."],
             cwd=project_path,
             check=True,
@@ -67,7 +66,7 @@ def _build_native_project(project_path: Path) -> bool:
         return True
     except subprocess.CalledProcessError:
         try:
-            result = subprocess.run(
+            subprocess.run(
                 [sys.executable, "-m", "build", "--wheel"],
                 cwd=project_path,
                 check=True,
@@ -76,7 +75,7 @@ def _build_native_project(project_path: Path) -> bool:
             )
             return True
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]构建失败:[/red]")
+            console.print("[red]构建失败:[/red]")
             if e.stderr:
                 console.print(f"[red]{e.stderr}[/red]")
             return False
@@ -84,8 +83,8 @@ def _build_native_project(project_path: Path) -> bool:
 
 def _get_project_for_build(
     workspace_root: Path,
-    project_name: Optional[str],
-) -> Optional[Path]:
+    project_name: str | None,
+) -> Path | None:
     """
     获取要构建的项目路径
 
@@ -169,12 +168,8 @@ def _build_single_project(project_path: Path, project_type: ProjectType) -> bool
 
 
 def build_project(
-    project_name: Optional[str] = typer.Option(
-        None, "--project", "-p", help="要构建的项目名称"
-    ),
-    build_type: Optional[str] = typer.Option(
-        None, "--type", "-t", help="按类型构建（python/native/all）"
-    ),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="要构建的项目名称"),
+    build_type: str | None = typer.Option(None, "--type", "-t", help="按类型构建（python/native/all）"),
 ) -> None:
     """
     构建项目

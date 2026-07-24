@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xs.config import ProjectInfo, ProjectType, find_workspace_root
+from xs.config import ProjectType, find_workspace_root
 from xs.discovery import (
     build_dependency_graph,
     discover_projects,
@@ -75,14 +75,10 @@ def test_find_affected_dependency_propagation():
 
     # 如果存在依赖该库的项目，也应该受影响
     graph = build_dependency_graph(projects)
-    dependents = [
-        name for name, deps in graph.items() if lib.name in deps
-    ]
+    dependents = [name for name, deps in graph.items() if lib.name in deps]
     if dependents:
         for dep_name in dependents:
-            assert dep_name in affected_names, (
-                f"依赖 {lib.name} 的项目 {dep_name} 应该受影响"
-            )
+            assert dep_name in affected_names, f"依赖 {lib.name} 的项目 {dep_name} 应该受影响"
 
 
 def test_find_affected_non_project_file():

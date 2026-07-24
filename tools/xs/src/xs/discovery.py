@@ -47,10 +47,7 @@ def detect_project_type(path: Path) -> ProjectType:
 
             if "scikit-build" in build_backend_lower or "scikit_build" in build_backend_lower:
                 return ProjectType.NATIVE
-            if any(
-                backend in build_backend_lower
-                for backend in ["setuptools", "hatch", "flit", "pdm", "poetry"]
-            ):
+            if any(backend in build_backend_lower for backend in ["setuptools", "hatch", "flit", "pdm", "poetry"]):
                 return ProjectType.PYTHON
         except Exception:
             pass
@@ -112,7 +109,10 @@ def _scan_directory(
         if not item.is_dir():
             continue
 
-        if item.name in ("__pycache__", "node_modules", ".git", "build", "dist", "templates"):
+        if item.name in ("__pycache__", "node_modules", ".git", "build", "dist", "templates", "vendor"):
+            continue
+
+        if (item / ".git").exists():
             continue
 
         pyproject_path = item / "pyproject.toml"
@@ -125,9 +125,7 @@ def _scan_directory(
             dependencies: list[str] = []
 
             if pyproject_path.exists():
-                name, version, dependencies = _extract_project_name_from_pyproject(
-                    pyproject_path, item.name
-                )
+                name, version, dependencies = _extract_project_name_from_pyproject(pyproject_path, item.name)
 
             projects.append(
                 ProjectInfo(

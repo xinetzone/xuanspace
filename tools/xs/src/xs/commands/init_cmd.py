@@ -6,9 +6,7 @@ xs init 命令模块
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -247,16 +245,18 @@ def _create_gitkeep(path: Path) -> None:
 
 
 def init_workspace(
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="工作区名称，默认为当前目录名"),
+    name: str | None = typer.Option(None, "--name", "-n", help="工作区名称，默认为当前目录名"),
     force: bool = typer.Option(False, "--force", "-f", help="覆盖已存在的文件"),
     scaffold: bool = typer.Option(False, "--scaffold", "-s", help="创建全新工作区脚手架（在空目录中使用）"),
 ) -> None:
     """初始化当前目录为 Xuanspace 工作区"""
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]Xuanspace（玄境）工作区初始化[/bold cyan]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Xuanspace（玄境）工作区初始化[/bold cyan]",
+            border_style="cyan",
+        )
+    )
     console.print()
 
     cwd = Path.cwd().resolve()
@@ -268,7 +268,7 @@ def init_workspace(
             root = find_workspace_root(cwd)
             if root == cwd:
                 is_existing = True
-                console.print(f"[green]✓ 当前目录已是 Xuanspace 工作区[/green]")
+                console.print("[green]✓ 当前目录已是 Xuanspace 工作区[/green]")
                 console.print(f"[dim]工作区根目录: {root}[/dim]")
             else:
                 console.print(f"[yellow]⚠ 上级目录 {root} 是工作区根目录[/yellow]")
@@ -308,14 +308,16 @@ def init_workspace(
         _create_file(cwd / "docs" / "quickstart.md", DOCS_QUICKSTART, overwrite=force)
 
         console.print()
-        console.print(Panel.fit(
-            f"[bold green]✓ 工作区 {ws_name} 初始化完成！[/bold green]\n\n"
-            "[bold]下一步:[/bold]\n"
-            "  1. pip install -e \".[dev]\"  安装开发依赖\n"
-            "  2. xs doctor                检查环境\n"
-            "  3. xs new --type python my-lib  创建第一个项目",
-            border_style="green",
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold green]✓ 工作区 {ws_name} 初始化完成！[/bold green]\n\n"
+                "[bold]下一步:[/bold]\n"
+                '  1. pip install -e ".[dev]"  安装开发依赖\n'
+                "  2. xs doctor                检查环境\n"
+                "  3. xs new --type python my-lib  创建第一个项目",
+                border_style="green",
+            )
+        )
         return
 
     if not is_existing:
@@ -323,13 +325,15 @@ def init_workspace(
         console.print("[dim]使用 --scaffold 参数创建全新工作区，或在 Xuanspace 仓库根目录运行[/dim]")
         console.print()
 
-    console.print(Panel.fit(
-        "[bold green]✓ 环境就绪！[/bold green]\n\n"
-        "[bold]快速开始:[/bold]\n"
-        "  xs list         查看所有项目\n"
-        "  xs doctor       环境诊断\n"
-        "  xs new --type python my-lib  创建新项目\n"
-        "  xs build        构建项目\n"
-        "  xs docs build   构建文档",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold green]✓ 环境就绪！[/bold green]\n\n"
+            "[bold]快速开始:[/bold]\n"
+            "  xs list         查看所有项目\n"
+            "  xs doctor       环境诊断\n"
+            "  xs new --type python my-lib  创建新项目\n"
+            "  xs build        构建项目\n"
+            "  xs docs build   构建文档",
+            border_style="green",
+        )
+    )

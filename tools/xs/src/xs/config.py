@@ -63,10 +63,7 @@ def find_workspace_root(start_path: Path | None = None) -> Path:
 
         parent_path = current_path.parent
         if parent_path == current_path:
-            raise RuntimeError(
-                "未找到 Xuanspace 工作区根目录。"
-                "请确保在包含 apps/ 和 libs/ 目录的工作区内运行此命令。"
-            )
+            raise RuntimeError("未找到 Xuanspace 工作区根目录。请确保在包含 apps/ 和 libs/ 目录的工作区内运行此命令。")
         current_path = parent_path
 
 

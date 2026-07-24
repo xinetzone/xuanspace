@@ -5,12 +5,10 @@ xs doctor 命令模块
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -28,10 +26,10 @@ class CheckResult:
 
     name: str
     status: str
-    version: Optional[str] = None
-    message: Optional[str] = None
+    version: str | None = None
+    message: str | None = None
     required: bool = True
-    install_hint: Optional[str] = None
+    install_hint: str | None = None
 
 
 def _run_command(cmd: list[str]) -> tuple[bool, str, str]:
@@ -57,7 +55,7 @@ def _run_command(cmd: list[str]) -> tuple[bool, str, str]:
         return False, "", ""
 
 
-def _get_version_from_output(output: str) -> Optional[str]:
+def _get_version_from_output(output: str) -> str | None:
     """从命令输出中提取版本号"""
     import re
 
@@ -122,21 +120,25 @@ def check_package_manager() -> list[CheckResult]:
         success, stdout, _ = _run_command(cmd)
         if success:
             version = _get_version_from_output(stdout)
-            results.append(CheckResult(
-                name=name,
-                status="ok",
-                version=version,
-                message=f"{name} 已安装",
-                required=(name == "pip"),
-            ))
+            results.append(
+                CheckResult(
+                    name=name,
+                    status="ok",
+                    version=version,
+                    message=f"{name} 已安装",
+                    required=(name == "pip"),
+                )
+            )
         else:
-            results.append(CheckResult(
-                name=name,
-                status="warning" if name != "pip" else "error",
-                message=f"{name} 未找到",
-                required=(name == "pip"),
-                install_hint=f"请安装 {name}: {install_hint}" if install_hint else None,
-            ))
+            results.append(
+                CheckResult(
+                    name=name,
+                    status="warning" if name != "pip" else "error",
+                    message=f"{name} 未找到",
+                    required=(name == "pip"),
+                    install_hint=f"请安装 {name}: {install_hint}" if install_hint else None,
+                )
+            )
 
     return results
 
@@ -243,11 +245,12 @@ def run_doctor(check_mode: bool = False) -> int:
         workspace_root = Path.cwd()
 
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]Xuanspace 环境诊断[/bold cyan]\n"
-        f"工作区: [dim]{workspace_root}[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Xuanspace 环境诊断[/bold cyan]\n工作区: [dim]{workspace_root}[/dim]",
+            border_style="cyan",
+        )
+    )
     console.print()
 
     results: list[CheckResult] = []

@@ -5,19 +5,17 @@ xs CLI 主应用模块
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 from rich.console import Console
 
 from . import __version__
 from .commands.archive_cmd import app as archive_app
-from .commands.lfs_cmd import app as lfs_app
 from .commands.build_cmd import build_project
 from .commands.deps_cmd import app as deps_app
 from .commands.docs_cmd import app as docs_app
 from .commands.doctor_cmd import doctor
 from .commands.init_cmd import init_workspace
+from .commands.lfs_cmd import app as lfs_app
 from .commands.list_cmd import list_projects
 from .commands.meta_cmd import app as meta_app
 from .commands.new_cmd import create_new_project
@@ -25,7 +23,7 @@ from .commands.py_compat_cmd import py_compat
 from .commands.toolchain_cmd import app as toolchain_app
 from .commands.update_cmd import update_cmd
 from .commands.version_cmd import app as version_app
-from .discovery import find_affected_projects, discover_projects
+from .discovery import find_affected_projects
 
 console = Console()
 
@@ -49,7 +47,7 @@ def _version_callback(value: bool) -> None:
     """版本回调函数"""
     if value:
         console.print(f"[bold cyan]xs[/bold cyan] version [bold green]{__version__}[/bold green]")
-        console.print(f"[dim]Xuanspace（玄境）monorepo 工具链[/dim]")
+        console.print("[dim]Xuanspace（玄境）monorepo 工具链[/dim]")
         raise typer.Exit()
 
 
@@ -89,12 +87,14 @@ def affected() -> None:
     from .config import find_workspace_root
 
     root = find_workspace_root()
-    projects = discover_projects(root)
 
     try:
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, check=False, cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=root,
         )
         changed_files = [f.strip() for f in result.stdout.split("\n") if f.strip()]
     except Exception:

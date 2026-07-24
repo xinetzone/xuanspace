@@ -9,7 +9,6 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -30,7 +29,7 @@ def _get_docs_dir(workspace_root: Path) -> Path:
 
 def docs_build(
     builder: str = typer.Option("html", "--builder", "-b", help="构建器类型: html, linkcheck"),
-    output_dir: Optional[str] = typer.Option(None, "--output", "-o", help="输出目录"),
+    output_dir: str | None = typer.Option(None, "--output", "-o", help="输出目录"),
 ) -> None:
     """构建 Sphinx 文档"""
     workspace_root = find_workspace_root()
@@ -57,7 +56,7 @@ def docs_build(
             if index.exists():
                 console.print(f"[dim]首页: {index}[/dim]")
     else:
-        console.print(f"[red]✗ 文档构建失败[/red]")
+        console.print("[red]✗ 文档构建失败[/red]")
         if result.stderr:
             for line in result.stderr.split("\n")[-20:]:
                 if line.strip():
@@ -78,7 +77,10 @@ def docs_serve(
         console.print("[yellow]文档尚未构建，正在先构建...[/yellow]")
         build_result = subprocess.run(
             [sys.executable, "-m", "sphinx", "-b", "html", str(docs_dir), str(build_dir)],
-            capture_output=True, text=True, check=False, cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=workspace_root,
         )
         if build_result.returncode != 0:
             console.print("[red]文档构建失败，请先运行 xs docs build[/red]")
@@ -92,9 +94,8 @@ def docs_serve(
         webbrowser.open(url)
 
     try:
-        import http.server
         import functools
-        import os
+        import http.server
 
         handler = functools.partial(
             http.server.SimpleHTTPRequestHandler,

@@ -8,7 +8,6 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -109,15 +108,9 @@ def copy_template_recursive(
 
 def create_new_project(
     name: str = typer.Argument(..., help="项目名称（kebab-case）"),
-    project_type: ProjectType = typer.Option(
-        ..., "--type", "-t", help="项目类型（python/native/static）"
-    ),
-    is_app: bool = typer.Option(
-        False, "--app", "-a", help="创建为应用（放置在 apps/ 目录）"
-    ),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="强制创建（覆盖已存在的目录）"
-    ),
+    project_type: ProjectType = typer.Option(..., "--type", "-t", help="项目类型（python/native/static）"),
+    is_app: bool = typer.Option(False, "--app", "-a", help="创建为应用（放置在 apps/ 目录）"),
+    force: bool = typer.Option(False, "--force", "-f", help="强制创建（覆盖已存在的目录）"),
 ) -> None:
     """
     从模板创建新项目
@@ -190,12 +183,14 @@ def create_new_project(
             shutil.rmtree(target_dir)
         raise typer.Exit(1)
 
-    console.print(Panel.fit(
-        f"[bold green]✓ 项目 '{name}' 创建成功！[/bold green]\n\n"
-        f"[bold]下一步:[/bold]\n"
-        f"  1. 进入项目目录: [cyan]cd {target_dir.relative_to(workspace_root)}[/cyan]\n"
-        f"  2. 安装依赖: [cyan]pdm install[/cyan]\n"
-        f"  3. 开始开发！\n",
-        title="项目创建完成",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold green]✓ 项目 '{name}' 创建成功！[/bold green]\n\n"
+            f"[bold]下一步:[/bold]\n"
+            f"  1. 进入项目目录: [cyan]cd {target_dir.relative_to(workspace_root)}[/cyan]\n"
+            f"  2. 安装依赖: [cyan]pdm install[/cyan]\n"
+            f"  3. 开始开发！\n",
+            title="项目创建完成",
+            border_style="green",
+        )
+    )

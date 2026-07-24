@@ -11,7 +11,6 @@ import subprocess
 import sys
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 import typer
 from packaging.version import Version
@@ -38,7 +37,7 @@ def _normalize_name(name: str) -> str:
 
 
 def deps_check(
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="检查指定项目"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="检查指定项目"),
 ) -> None:
     """检查依赖一致性，检测版本冲突"""
     from ..config import find_workspace_root
@@ -103,7 +102,7 @@ def deps_check(
 
 
 def deps_tree(
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="显示指定项目的依赖树"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="显示指定项目的依赖树"),
     depth: int = typer.Option(3, "--depth", "-d", help="依赖树最大深度"),
 ) -> None:
     """显示项目依赖树"""
@@ -211,7 +210,7 @@ def _collect_all_dep_files(projects: list) -> list[tuple[str, Path]]:
 
 
 def deps_outdated(
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="检查指定项目"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="检查指定项目"),
 ) -> None:
     """检查过期的依赖包"""
     workspace_root = find_workspace_root()
@@ -289,7 +288,7 @@ def deps_outdated(
 
 def deps_update(
     packages: list[str] = typer.Argument(None, help="要更新的包名（空格分隔），不传则更新所有可更新包"),
-    project_name: Optional[str] = typer.Option(None, "--project", "-p", help="更新指定项目的依赖"),
+    project_name: str | None = typer.Option(None, "--project", "-p", help="更新指定项目的依赖"),
     dry_run: bool = typer.Option(False, "--dry-run", help="仅显示将要做的更改，不实际修改文件"),
     no_install: bool = typer.Option(False, "--no-install", help="仅更新 pyproject.toml，不安装依赖"),
 ) -> None:
@@ -307,14 +306,13 @@ def deps_update(
     dep_files = _collect_all_dep_files(projects)
     target_packages = {_normalize_name(p) for p in packages} if packages else None
 
-    updates: list[tuple[Path, str, str, str]] = []
     cache: dict[str, str | None] = {}
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
         all_deps_set: set[str] = set()
         dep_file_deps: list[tuple[Path, list[str]]] = []
 
-        for proj_name, pyproject_path in dep_files:
+        for _proj_name, pyproject_path in dep_files:
             try:
                 deps, opt_deps = _get_project_deps(pyproject_path)
                 all_deps_list = list(deps)
@@ -330,7 +328,7 @@ def deps_update(
         if target_packages:
             all_deps_set = {p for p in all_deps_set if p in target_packages}
 
-        task = progress.add_task(f"正在查询 PyPI 获取最新版本...", total=len(all_deps_set))
+        task = progress.add_task("正在查询 PyPI 获取最新版本...", total=len(all_deps_set))
         pkg_latest: dict[str, str] = {}
         for norm_name in sorted(all_deps_set):
             latest = _fetch_latest_version(norm_name, cache)
