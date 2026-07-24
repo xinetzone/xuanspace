@@ -9,7 +9,9 @@ description = "Xuanspace xs CLI 工具"
 requires-python = ">=3.13"
 dependencies = [
     "typer>=0.12",
-    "rich>=13.0"
+    "rich>=13.0",
+    "packaging>=24.0",
+    "tomli-w>=1.0"
 ]
 authors = [
     {name = "xinetzone"}
