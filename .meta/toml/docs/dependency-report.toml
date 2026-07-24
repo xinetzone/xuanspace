@@ -1,0 +1,13 @@
+[meta]
+id = "dependency-report"
+title = "Xuanspace（玄境）项目依赖树报告"
+category = "docs"
+tags = ["dependency", "report", "architecture", "submodule", "python"]
+version = "1.0"
+created = "2026-07-24"
+description = "涵盖目录结构、Git 子模块树、Python 包依赖图、依赖矩阵、版本兼容性、开发依赖、CI 流水线的完整依赖树报告"
+
+[[changelog]]
+date = "2026-07-24"
+type = "docs"
+description = "初始版本，涵盖目录结构、Git 子模块树、Python 包依赖图、依赖矩阵、版本兼容性、开发依赖、CI 流水线"
