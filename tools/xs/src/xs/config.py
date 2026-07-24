@@ -8,11 +8,11 @@ from __future__ import annotations
 import sys
 import tomllib
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class ProjectType(str, Enum):
+class ProjectType(StrEnum):
     PYTHON = "python"
     NATIVE = "native"
     STATIC = "static"

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import subprocess
 from datetime import date
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import typer
@@ -20,7 +20,7 @@ from ..discovery import discover_projects, find_project_by_name
 console = Console()
 
 
-class BumpPart(str, Enum):
+class BumpPart(StrEnum):
     MAJOR = "major"
     MINOR = "minor"
     PATCH = "patch"

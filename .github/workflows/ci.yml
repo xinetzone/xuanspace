@@ -18,8 +18,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         pm: [pdm, pip, uv]
-    env:
-      PDM_NO_EDITABLE: "1"
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout code
@@ -43,12 +44,12 @@ jobs:
 
       - name: Install CMake + Ninja (Windows)
         if: runner.os == 'Windows'
-        run: pip install cmake ninja
+        run: python -m pip install cmake ninja
 
       # --- PDM 安装 ---
       - name: Install PDM
         if: matrix.pm == 'pdm'
-        run: pip install pdm
+        run: python -m pip install pdm
 
       # --- uv 安装 ---
       - name: Install uv
@@ -60,11 +61,11 @@ jobs:
       # --- 安装依赖 ---
       - name: Install dependencies (PDM)
         if: matrix.pm == 'pdm'
-        run: pdm install
+        run: python -m pdm install
 
       - name: Install dependencies (pip)
         if: matrix.pm == 'pip'
-        run: pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]"
 
       - name: Install dependencies (uv)
         if: matrix.pm == 'uv'
@@ -72,12 +73,11 @@ jobs:
 
       # --- 安装 xs-cli 工具（本地包，不在 PyPI）---
       - name: Install xs-cli
-        shell: bash
         run: |
           if [ "${{ matrix.pm }}" = "uv" ]; then
             uv pip install --system -e tools/xs/
           else
-            pip install -e tools/xs/
+            python -m pip install -e tools/xs/
           fi
 
       # --- 工具链检查 ---
@@ -86,20 +86,19 @@ jobs:
 
       # --- 代码质量 ---
       - name: Run ruff linter
-        run: ruff check .
+        run: python -m ruff check .
 
       - name: Check code formatting
-        run: ruff format --check .
+        run: python -m ruff format --check .
 
       - name: Run mypy type checker
-        run: mypy tools/xs libs/xuan-core libs/xuan-ext-demo
+        run: python -m mypy tools/xs libs/xuan-core libs/xuan-ext-demo
 
       # --- 测试 ---
       - name: Run tests
-        shell: bash
         run: |
           if [ -d "tests" ]; then
-            pytest
+            python -m pytest
           else
             echo "No tests/ directory found, skipping pytest"
           fi
@@ -134,6 +133,9 @@ jobs:
   quality:
     name: Quality Gates
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -149,10 +151,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
 
       - name: Install project
-        run: pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]"
 
       - name: Install xs-cli
-        run: pip install -e tools/xs/
+        run: python -m pip install -e tools/xs/
 
       # --- 1. 环境诊断 ---
       - name: xs doctor
@@ -180,6 +182,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -202,13 +207,13 @@ jobs:
 
       - name: Install CMake + Ninja (Windows)
         if: runner.os == 'Windows'
-        run: pip install cmake ninja
+        run: python -m pip install cmake ninja
 
       - name: Install project
-        run: pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]"
 
       - name: Install xs-cli
-        run: pip install -e tools/xs/
+        run: python -m pip install -e tools/xs/
 
       # --- Python 模板 ---
       - name: Create Python template project
@@ -217,24 +222,22 @@ jobs:
       - name: Build Python template project
         run: |
           cd test-python-tpl
-          pip install -e .
+          python -m pip install -e .
 
       # --- Native 模板 ---
       - name: Create Native template project
         run: xs new --type native test-native-tpl
 
       - name: Build Native template project
-        shell: bash
         run: |
           cd test-native-tpl
-          pip install -e . -v
+          python -m pip install -e . -v
 
       # --- Static 模板 ---
       - name: Create Static template project
         run: xs new --type static test-static-tpl
 
       - name: Verify Static template project
-        shell: bash
         run: |
           test -f test-static-tpl/index.html && echo "Static template OK"
 
@@ -244,6 +247,9 @@ jobs:
   py-compat:
     name: Python Compatibility Check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -256,10 +262,10 @@ jobs:
           python-version: "3.13"
 
       - name: Install project
-        run: pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]"
 
       - name: Install xs-cli
-        run: pip install -e tools/xs/
+        run: python -m pip install -e tools/xs/
 
       - name: Check Python compatibility
         run: xs py-compat
@@ -272,5 +278,5 @@ jobs:
 
       - name: Verify Python < 3.13 is rejected
         run: |
-          pip install -e ".[dev]" 2>&1 || true
+          python -m pip install -e ".[dev]" 2>&1 || true
           xs --version 2>&1 || echo "Python 3.12 correctly rejected"
