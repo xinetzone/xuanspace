@@ -4,3 +4,6 @@
 [submodule "libs/tvm-book"]
 	path = libs/tvm-book
 	url = https://github.com/xinetzone/tvm-book.git
+[submodule "vendor/caffe"]
+	path = vendor/caffe
+	url = git@github.com:daoflows/caffe.git

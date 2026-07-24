@@ -88,3 +88,4 @@ git add vendor/<library-name>
 | 目录名 | 来源 | 版本 | 本地修改 | 说明 |
 |--------|------|------|----------|------|
 | `tvm-ffi/` | [apache/tvm-ffi](https://github.com/apache/tvm-ffi) | v0.1.12+ | 无 | Apache TVM 的 C++ Foreign Function Interface 库，提供跨语言 FFI 绑定 |
+| `caffe/` | [daoflows/caffe](https://github.com/daoflows/caffe) | main | 有 | BVLC/caffe 的 fork，最小化 caffe protobuf 库，集成 tvm-ffi Python 绑定，提供 caffe-cpp-slim 无依赖核心 |
