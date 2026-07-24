@@ -5,10 +5,14 @@ xs CLI 主应用模块
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
 from . import __version__
+from .commands.archive_cmd import app as archive_app
+from .commands.lfs_cmd import app as lfs_app
 from .commands.build_cmd import build_project
 from .commands.deps_cmd import app as deps_app
 from .commands.docs_cmd import app as docs_app
@@ -21,6 +25,7 @@ from .commands.py_compat_cmd import py_compat
 from .commands.toolchain_cmd import app as toolchain_app
 from .commands.update_cmd import update_cmd
 from .commands.version_cmd import app as version_app
+from .discovery import find_affected_projects, discover_projects
 
 console = Console()
 
@@ -36,6 +41,8 @@ app.add_typer(deps_app, name="deps")
 app.add_typer(docs_app, name="docs")
 app.add_typer(version_app, name="version")
 app.add_typer(meta_app, name="meta")
+app.add_typer(archive_app, name="archive")
+app.add_typer(lfs_app, name="lfs")
 
 
 def _version_callback(value: bool) -> None:
@@ -72,6 +79,36 @@ app.command("build")(build_project)
 app.command("new")(create_new_project)
 app.command("update")(update_cmd)
 app.command("py-compat")(py_compat)
+
+
+@app.command("affected")
+def affected() -> None:
+    """基于 git diff 检测受影响的子项目"""
+    import subprocess
+
+    from .config import find_workspace_root
+
+    root = find_workspace_root()
+    projects = discover_projects(root)
+
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, check=False, cwd=root,
+        )
+        changed_files = [f.strip() for f in result.stdout.split("\n") if f.strip()]
+    except Exception:
+        changed_files = []
+
+    affected_projects = find_affected_projects(root, [root / f for f in changed_files])
+
+    if not affected_projects:
+        console.print("[green]没有发现受影响的子项目[/green]")
+        return
+
+    console.print("[bold]受影响的子项目:[/bold]")
+    for proj in affected_projects:
+        console.print(f"  [cyan]{proj.name}[/cyan] ([dim]{proj.path}[/dim])")
 
 
 if __name__ == "__main__":
