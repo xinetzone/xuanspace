@@ -70,6 +70,16 @@ jobs:
         if: matrix.pm == 'uv'
         run: uv pip install --system -e ".[dev]"
 
+      # --- 安装 xs-cli 工具（本地包，不在 PyPI）---
+      - name: Install xs-cli
+        shell: bash
+        run: |
+          if [ "${{ matrix.pm }}" = "uv" ]; then
+            uv pip install --system -e tools/xs/
+          else
+            pip install -e tools/xs/
+          fi
+
       # --- 工具链检查 ---
       - name: Check toolchain
         run: xs toolchain check
@@ -141,6 +151,9 @@ jobs:
       - name: Install project
         run: pip install -e ".[dev]"
 
+      - name: Install xs-cli
+        run: pip install -e tools/xs/
+
       # --- 1. 环境诊断 ---
       - name: xs doctor
         run: xs doctor
@@ -194,6 +207,9 @@ jobs:
       - name: Install project
         run: pip install -e ".[dev]"
 
+      - name: Install xs-cli
+        run: pip install -e tools/xs/
+
       # --- Python 模板 ---
       - name: Create Python template project
         run: xs new --type python test-python-tpl
@@ -241,6 +257,9 @@ jobs:
 
       - name: Install project
         run: pip install -e ".[dev]"
+
+      - name: Install xs-cli
+        run: pip install -e tools/xs/
 
       - name: Check Python compatibility
         run: xs py-compat
