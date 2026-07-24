@@ -119,6 +119,110 @@ jobs:
         continue-on-error: true
 
   # ============================================
+  # 质量门禁：四项自动化检查（doctor/meta/lfs/docs）
+  # ============================================
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install CMake + Ninja
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      # --- 1. 环境诊断 ---
+      - name: xs doctor
+        run: xs doctor
+
+      # --- 2. 元数据校验 ---
+      - name: xs meta validate
+        run: xs meta validate
+
+      # --- 3. LFS 大文件检查 ---
+      - name: xs lfs check
+        run: xs lfs check
+
+      # --- 4. 文档构建 ---
+      - name: xs docs build
+        run: xs docs build
+
+  # ============================================
+  # 模板验证：三平台（Windows/macOS/Linux）模板创建 + 构建
+  # ============================================
+  template-validation:
+    name: "Template / ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # --- CMake + Ninja 安装 ---
+      - name: Install CMake + Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install CMake + Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Install CMake + Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: pip install cmake ninja
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      # --- Python 模板 ---
+      - name: Create Python template project
+        run: xs new --type python test-python-tpl
+
+      - name: Build Python template project
+        run: |
+          cd test-python-tpl
+          pip install -e .
+
+      # --- Native 模板 ---
+      - name: Create Native template project
+        run: xs new --type native test-native-tpl
+
+      - name: Build Native template project
+        shell: bash
+        run: |
+          cd test-native-tpl
+          pip install -e . -v
+
+      # --- Static 模板 ---
+      - name: Create Static template project
+        run: xs new --type static test-static-tpl
+
+      - name: Verify Static template project
+        shell: bash
+        run: |
+          test -f test-static-tpl/index.html && echo "Static template OK"
+
+  # ============================================
   # Python 版本兼容性检查
   # ============================================
   py-compat:
