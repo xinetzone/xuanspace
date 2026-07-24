@@ -1,3 +1,6 @@
 [submodule "vendor/tvm-ffi"]
 	path = vendor/tvm-ffi
 	url = git@github.com:apache/tvm-ffi.git
+[submodule "libs/tvm-book"]
+	path = libs/tvm-book
+	url = git@github.com:xinetzone/tvm-book.git
