@@ -1,0 +1,84 @@
+# ==============================================================================
+# .dockerignore — vendor/ 构建上下文排除规则
+# 当 build context 为 vendor/ 目录时生效（构建 standalone/pycaffe-jupyter-ssh 等镜像）
+# ==============================================================================
+
+# Git
+**/.git/
+**/.gitignore
+**/.gitattributes
+
+# IDE / 编辑器
+**/.vscode/
+**/.idea/
+**/.trae/
+**/.specify/
+**/.codebuddy/
+*.swp
+*.swo
+*~
+
+# Python 缓存
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+**/*.egg
+**/.eggs/
+**/dist/
+**/build/
+**/*.whl
+
+# CMake 构建产物
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake-build-*/
+**/build-wheel/
+**/build-output/
+
+# Docker
+docker/**/build/
+docker/**/dist/
+
+# 文档
+*.md
+!README.md
+!docker/**/*.md
+!caffe/docker/**/*.md
+
+# 媒体/数据文件
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+**/*.bmp
+**/*.tiff
+**/*.h5
+**/*.hdf5
+**/*.caffemodel
+**/*.solverstate
+**/*.binaryproto
+**/*.npy
+**/*.npz
+**/*.tar
+**/*.tar.gz
+**/*.tgz
+**/*.zip
+
+# 日志
+**/*.log
+
+# 临时文件
+**/tmp/
+**/temp/
+**/*.tmp
+
+# 3rdparty 中不需要的内容（tvm-ffi 3rdparty 不需要 dlpack 文档等）
+tvm-ffi/3rdparty/dlpack/docs/
+tvm-ffi/3rdparty/libbacktrace/
+
+# caffex (完整版 BVLC Caffe，slim 构建不需要)
+caffe/caffex/
+
+# 本地 conda 环境
+caffe/docker/local/conda/build/
