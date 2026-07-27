@@ -7,7 +7,7 @@ name = "xuanspace"
 version = "0.1.0"
 description = "Xuanspace（玄境）- Python monorepo 项目"
 readme = "README.md"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 requires-python = ">=3.14"
 authors = [
     {name = "xinetzone"}
@@ -27,7 +27,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
