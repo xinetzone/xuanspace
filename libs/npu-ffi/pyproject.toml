@@ -1,0 +1,60 @@
+[build-system]
+requires = ["scikit-build-core>=0.10.0", "ninja>=1.11", "apache-tvm-ffi"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "npu-ffi"
+version = "0.1.0"
+description = "VTA FFI bindings for NPU accelerator based on tvm-ffi"
+license = { file = "LICENSE" }
+requires-python = ">=3.13"
+dependencies = [
+  "protobuf>=7.0.0",
+  "apache-tvm-ffi",
+]
+
+[tool.scikit-build]
+cmake.version = "CMakeLists.txt"
+cmake.build-type = "Release"
+wheel.packages = ["python/npu_ffi"]
+wheel.install-dir = "npu_ffi"
+ninja.version = ">=1.11"
+ninja.make-fallback = false
+build-dir = "build"
+cmake.args = [
+  "-DNPU_FFI_VTA_USE_STUB=ON",
+]
+
+editable.rebuild = false
+editable.verbose = true
+build.verbose = true
+logging.level = "INFO"
+
+sdist.include = [
+  "/CMakeLists.txt",
+  "/pyproject.toml",
+  "/environment.yml",
+  "/conda.recipe/**/*",
+  "/src/**/*.cc",
+  "/src/**/*.h",
+  "/src/**/*.cpp",
+  "/src/**/CMakeLists.txt",
+  "/include/**/*",
+  "/proto/**/*",
+  "/scripts/**/*",
+  "/python/npu_ffi/**/*.py",
+  "/python/npu_ffi/py.typed",
+  "/LICENSE",
+  "/tests/**/*",
+]
+
+sdist.exclude = [
+  "**/.git",
+  "**/__pycache__",
+  "**/*.pyc",
+  "build",
+  "dist",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]

@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package npu_ffi.vta;
+
+// VTA硬件配置参数（所有对数域参数，实际值=2^log_value）
+//
+// VTA (Versatile Tensor Accelerator) 是一款可编程的深度学习加速器，
+// 其硬件参数通过log2域配置以支持二次幂的硬件友好尺寸。
+message VTAConfig {
+  // 目标设备类型标识（如 "pynq", "ultra96", "sim"）
+  string target = 1;
+  // 硬件版本字符串（如 "v1.0.0", "v3.0.0"）
+  string hw_version = 2;
+
+  // ──────────── 总线与接口 ────────────
+
+  // 总线宽度（log2字节）：默认值=3 → 8字节（64-bit AXI总线）
+  // 典型值：3=64bit, 4=128bit, 5=256bit, 6=512bit
+  uint32 log_bus_width = 10;
+
+  // ──────────── 数据类型宽度 ────────────
+
+  // 输入激活类型位宽（log2 bits）：默认值=3 → 8位（int8/uint8）
+  // 典型值：3=int8, 2=int4, 4=int16
+  uint32 log_inp_width = 11;
+
+  // 权重类型位宽（log2 bits）：默认值=3 → 8位（int8/uint8）
+  uint32 log_wgt_width = 12;
+
+  // 累加器位宽（log2 bits）：默认值=5 → 32位（int32）
+  // 累加器需要足够宽以防止GEMM溢出：B*C*inp_bits + log2(B*C)
+  uint32 log_acc_width = 13;
+
+  // 输出类型位宽（log2 bits）：默认值=3 → 8位（int8/uint8）
+  uint32 log_out_width = 14;
+
+  // ──────────── 计算块大小（GEMM维度） ────────────
+
+  // Batch维度（log2）：默认值=0 → 1
+  // 每周期处理的图像/向量数量
+  uint32 log_batch = 20;
+
+  // 内部块维度 B（log2）：默认值=4 → 16
+  // 每周期处理的输入通道块大小（blockIn）
+  uint32 log_block_in = 21;
+
+  // 输出块维度 C（log2）：默认值=4 → 16
+  // 每周期处理的输出通道块大小（blockOut）
+  uint32 log_block_out = 22;
+
+  // ──────────── 片上SRAM缓冲区大小 ────────────
+
+  // UOP（微操作）缓冲区大小（log2 entries）：默认值=11 → 2048条微操作
+  // 每条UOP存储一个微操作指令
+  uint32 log_uop_buff_size = 30;
+
+  // 输入缓冲区大小（log2 bytes）：默认值=15 → 32768字节（32KB）
+  uint32 log_inp_buff_size = 31;
+
+  // 权重缓冲区大小（log2 bytes）：默认值=15 → 32768字节（32KB）
+  uint32 log_wgt_buff_size = 32;
+
+  // 累加缓冲区大小（log2 bytes）：默认值=13 → 8192字节（8KB × 4B = 32KB）
+  // 注：累加缓冲区按acc_width存储，实际字节数 = 2^log_acc_buff_size * (2^log_acc_width)/8
+  uint32 log_acc_buff_size = 33;
+
+  // ──────────── 指令格式 ────────────
+
+  // 指令宽度（log2 bits）：默认值=7 → 128位
+  // VTA使用128位VLIW指令格式
+  uint32 ins_width = 40;
+
+  // UOP宽度（log2 bits）：默认值=5 → 32位
+  // 每条微操作32位编码
+  uint32 uop_width = 41;
+}
+
+// 默认配置工厂 - 预设的多种VTA硬件配置
+message DefaultConfigs {
+  // 标准VTA配置：int8 GEMM，B=C=16，适合嵌入式FPGA（Pynq-Z1/Z2）
+  // 默认值：log_bus_width=3, log_block_in=4, log_block_out=4, log_batch=0,
+  //         log_inp_width=3, log_wgt_width=3, log_acc_width=5, log_out_width=3,
+  //         log_uop_buff_size=11, log_inp_buff_size=15,
+  //         log_wgt_buff_size=15, log_acc_buff_size=13,
+  //         ins_width=7, uop_width=5
+  VTAConfig vta = 1;
+
+  // VTA v3配置：更宽的总线和更大的缓冲区，适合更高性能FPGA
+  // 配置：log_bus_width=4(128bit), B=C=16, 64KB输入/权重缓冲区
+  VTAConfig vta_v3 = 2;
+
+  // VTA v4配置：更大的块尺寸(B=C=32)和更大缓冲区，适合高性能SoC
+  // 配置：log_bus_width=5(256bit), log_block_in=5, log_block_out=5, 128KB缓冲区
+  VTAConfig vta_v4 = 3;
+}

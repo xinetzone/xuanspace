@@ -1,0 +1,52 @@
+{% set name = "npu-ffi" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - cmake>=3.26
+    - ninja>=1.11
+    - scikit-build-core>=0.10.0
+  host:
+    - python>=3.13
+    - pip
+    - protobuf>=7.0.0
+  run:
+    - python>=3.13
+    - protobuf>=7.0.0
+
+test:
+  imports:
+    - npu_ffi
+    - npu_ffi.vta
+  commands:
+    - python -c "from npu_ffi.vta import get_default_config; print(get_default_config())"
+  requires:
+    - pip
+    - pytest>=8.0
+  source_files:
+    - tests/python/
+
+about:
+  home: https://github.com/xinetzone/npu-ffi
+  license: Apache-2.0
+  license_file: LICENSE
+  summary: VTA FFI bindings for NPU accelerator based on tvm-ffi
+  description: |
+    npu-ffi provides type-safe FFI bindings for VTA (Versatile Tensor Accelerator)
+    runtime using tvm-ffi, supporting both stub mode (development without hardware)
+    and real hardware mode.
+
+extra:
+  recipe-maintainers:
+    - xinetzone

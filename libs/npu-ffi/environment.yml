@@ -1,0 +1,33 @@
+# =============================================================================
+# Conda 开发环境配置 for npu-ffi
+# =============================================================================
+#
+# 国内用户镜像配置说明（可选）：
+# 1. 添加北外镜像源（推荐）：
+#    conda config --add channels https://mirrors.bfsu.edu.cn/anaconda/pkgs/main
+#    conda config --add channels https://mirrors.bfsu.edu.cn/anaconda/pkgs/r
+#    conda config --add channels https://mirrors.bfsu.edu.cn/anaconda/pkgs/msys2
+#    conda config --add channels https://mirrors.bfsu.edu.cn/anaconda/cloud/conda-forge
+#    conda config --set show_channel_urls yes
+#
+# 2. pip 镜像配置（~/.pip/pip.conf 或 %APPDATA%\pip\pip.ini）：
+#    [global]
+#    index-url = https://mirrors.bfsu.edu.cn/pypi/web/simple
+#    trusted-host = mirrors.bfsu.edu.cn
+#
+# =============================================================================
+
+name: npu-ffi-dev
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - cmake>=3.26
+  - ninja>=1.11
+  - cxx-compiler
+  - pip
+  - pip:
+    - scikit-build-core>=0.10.0
+    - protobuf>=7.0.0
+    - pytest>=8.0
