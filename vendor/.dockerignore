@@ -75,7 +75,8 @@ docker/**/dist/
 
 # 3rdparty 中不需要的内容（tvm-ffi 3rdparty 不需要 dlpack 文档等）
 tvm-ffi/3rdparty/dlpack/docs/
-tvm-ffi/3rdparty/libbacktrace/
+tvm-ffi/3rdparty/libbacktrace/.git/
+tvm-ffi/3rdparty/dlpack/.git/
 
 # caffex (完整版 BVLC Caffe，slim 构建不需要)
 caffe/caffex/
