@@ -5,7 +5,9 @@ FFI prefix consistency checker for tvm-ffi based projects.
 Scans C++ source files and Python _ffi_api.py files to verify that:
 1. All C++ registered prefixes have corresponding Python initialization
 2. All Python initialized prefixes have corresponding C++ registrations
-3. All registered functions are accessible via Python getattr (optional)
+3. All registered functions are accessible via module attributes (optional)
+
+Supports multiple FFI prefixes sharing a single _ffi_api.py file.
 """
 from __future__ import annotations
 
@@ -140,16 +142,17 @@ def extract_cpp_functions(src_dir: Path, verbose: bool = False) -> Dict[str, Lis
     return prefix_to_funcs
 
 
-def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> Dict[str, Path]:
+def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> Dict[str, Tuple[Path, str]]:
     """
     Extract prefixes from _FFI_INIT_FUNC("prefix", __name__) calls in Python files.
 
-    Returns a dict mapping prefix -> file path.
+    Returns a dict mapping prefix -> (file_path, python_module_path).
+    The python_module_path is derived from the file's location relative to python/ dir.
     """
-    prefix_to_file: Dict[str, Path] = {}
+    prefix_to_info: Dict[str, Tuple[Path, str]] = {}
 
     if not python_dir.exists():
-        return prefix_to_file
+        return prefix_to_info
 
     init_pattern = re.compile(r'_FFI_INIT_FUNC\(\s*"([^"]+)"\s*,\s*__name__\s*\)')
 
@@ -161,33 +164,39 @@ def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> Dict[str
                 print(color(f"  Warning: Could not read {ffi_file}: {e}", Colors.YELLOW))
             continue
 
+        rel_path = ffi_file.relative_to(python_dir)
+        parts = list(rel_path.parts)
+        parts[-1] = parts[-1].replace(".py", "")
+        module_path = ".".join(parts)
+
         for match in init_pattern.finditer(content):
             prefix = match.group(1)
-            prefix_to_file[prefix] = ffi_file
+            prefix_to_info[prefix] = (ffi_file, module_path)
             if verbose:
-                print(f"  Found Python prefix: {prefix} in {ffi_file.name}")
+                print(f"  Found Python prefix: {prefix} in {ffi_file.name} -> module {module_path}")
 
-    return prefix_to_file
+    return prefix_to_info
 
 
 def verify_python_imports(
     project_root: Path,
     prefixes: Set[str],
     cpp_funcs: Dict[str, List[str]],
+    prefix_to_info: Dict[str, Tuple[Path, str]],
     verbose: bool = False
 ) -> Tuple[bool, List[str]]:
     """
-    Dynamically import modules and verify all functions are accessible via getattr.
+    Dynamically import _ffi_api modules and verify all functions are accessible.
+
+    Groups prefixes by their containing _ffi_api.py module, imports each module once,
+    and checks that all registered FFI functions exist as attributes on the module
+    (since _FFI_INIT_FUNC injects functions directly into the module namespace).
 
     Returns (all_passed, list_of_errors).
     """
     errors: List[str] = []
     build_dir = project_root / "build"
-    lib_dirs = [
-        build_dir / "lib",
-        build_dir / "src" / "vta" / "Release",
-        build_dir / "src" / "vta",
-    ]
+    lib_dirs = find_possible_lib_dirs(build_dir)
 
     python_path_added = False
     original_path = sys.path.copy()
@@ -214,39 +223,52 @@ def verify_python_imports(
     try:
         import importlib
 
-        package_name = None
-        for item in (project_root / "python").iterdir():
-            if item.is_dir() and (item / "__init__.py").exists():
-                package_name = item.name
-                break
+        ffi_module_to_prefixes: Dict[str, List[str]] = {}
+        for prefix in prefixes:
+            if prefix in prefix_to_info:
+                _, mod_path = prefix_to_info[prefix]
+                if mod_path not in ffi_module_to_prefixes:
+                    ffi_module_to_prefixes[mod_path] = []
+                ffi_module_to_prefixes[mod_path].append(prefix)
 
-        if package_name is None:
-            errors.append("Could not find Python package in python/ directory")
-            return False, errors
-
-        if verbose:
-            print(f"  Found Python package: {package_name}")
-
-        for prefix in sorted(prefixes):
+        for ffi_mod_path, mod_prefixes in sorted(ffi_module_to_prefixes.items()):
             try:
-                module = importlib.import_module(f"{package_name}.{prefix}")
+                module = importlib.import_module(ffi_mod_path)
                 if verbose:
-                    print(f"  Imported {package_name}.{prefix}")
+                    print(f"  Imported {ffi_mod_path}")
 
-                if prefix in cpp_funcs:
-                    for func_name in cpp_funcs[prefix]:
-                        attr_name = func_name.split(".", 1)[1] if "." in func_name else func_name
-                        if not hasattr(module, attr_name):
-                            errors.append(
-                                f"Function '{func_name}' not accessible as "
-                                f"{package_name}.{prefix}.{attr_name}"
-                            )
-                        elif verbose:
-                            print(f"    Verified: {attr_name}")
+                for prefix in mod_prefixes:
+                    if prefix in cpp_funcs:
+                        for func_name in cpp_funcs[prefix]:
+                            attr_name = func_name.split(".", 1)[1] if "." in func_name else func_name
+                            if not hasattr(module, attr_name):
+                                errors.append(
+                                    f"Function '{func_name}' not registered on "
+                                    f"module {ffi_mod_path}"
+                                )
+                            elif verbose:
+                                print(f"    Verified: {attr_name}")
+
+                wrapper_pkg = ffi_mod_path.rsplit("._ffi_api", 1)[0]
+                for prefix in mod_prefixes:
+                    wrapper_mod_name = f"{wrapper_pkg}.{prefix}"
+                    try:
+                        wrapper_mod = importlib.import_module(wrapper_mod_name)
+                        if verbose:
+                            print(f"  Imported wrapper: {wrapper_mod_name}")
+                        for func_name in cpp_funcs.get(prefix, []):
+                            attr_name = func_name.split(".", 1)[1] if "." in func_name else func_name
+                            if not hasattr(wrapper_mod, attr_name):
+                                if verbose:
+                                    print(f"    [INFO] Wrapper {wrapper_mod_name}.{attr_name} "
+                                          f"not directly exposed (may be wrapped with Python logic)")
+                    except ImportError:
+                        if verbose:
+                            print(f"  [INFO] No wrapper module: {wrapper_mod_name}")
             except ImportError as e:
-                errors.append(f"Could not import {package_name}.{prefix}: {e}")
+                errors.append(f"Could not import {ffi_mod_path}: {e}")
             except Exception as e:
-                errors.append(f"Error checking {package_name}.{prefix}: {e}")
+                errors.append(f"Error checking {ffi_mod_path}: {e}")
 
     finally:
         if python_path_added:
@@ -318,12 +340,13 @@ def main():
 
     # Step 2: Extract Python initializations
     print(color("==> Scanning Python _ffi_api.py files...", step_color))
-    python_prefix_files = extract_python_prefixes(python_dir, args.verbose)
-    python_prefixes = set(python_prefix_files.keys())
+    python_prefix_info = extract_python_prefixes(python_dir, args.verbose)
+    python_prefixes = set(python_prefix_info.keys())
     print(color(f"    Found {len(python_prefixes)} initialized prefix(es)", pass_color))
     if args.verbose:
         for prefix in sorted(python_prefixes):
-            print(f"    - {prefix} ({python_prefix_files[prefix].name})")
+            fpath, modpath = python_prefix_info[prefix]
+            print(f"    - {prefix} ({fpath.name} -> {modpath})")
     print("")
 
     # Step 3: Check prefix consistency
@@ -353,7 +376,8 @@ def main():
             warnings.append(f"Python prefixes without C++ registrations: {missing_in_cpp}")
             print(color(f"    [WARN] {msg}", warn_color))
         for prefix in sorted(missing_in_cpp):
-            print(f"      - {prefix} ({python_prefix_files[prefix].name})")
+            fpath, _ = python_prefix_info[prefix]
+            print(f"      - {prefix} ({fpath.name})")
     else:
         print(color(f"    [PASS] All Python prefixes have C++ registrations", pass_color))
 
@@ -371,10 +395,11 @@ def main():
         print(color("==> Verifying dynamic imports...", step_color))
         try:
             imports_ok, import_errors = verify_python_imports(
-                project_root, matching_prefixes, cpp_prefix_funcs, args.verbose
+                project_root, matching_prefixes, cpp_prefix_funcs,
+                python_prefix_info, args.verbose
             )
             if imports_ok:
-                print(color(f"    [PASS] All functions accessible via Python getattr", pass_color))
+                print(color(f"    [PASS] All functions registered and accessible", pass_color))
             else:
                 all_passed = False
                 print(color(f"    [FAIL] {len(import_errors)} import/access error(s)", fail_color))
