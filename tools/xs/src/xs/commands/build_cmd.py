@@ -3,7 +3,6 @@ xs build 命令模块
 构建工作区中的项目
 """
 
-from __future__ import annotations
 
 import subprocess
 import sys

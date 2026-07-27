@@ -1,5 +1,4 @@
 """demo_ffi - DEMO FFI bindings based on tvm-ffi."""
-from __future__ import annotations
 
 from . import demo
 

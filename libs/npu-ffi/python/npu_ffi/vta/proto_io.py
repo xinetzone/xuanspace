@@ -12,7 +12,6 @@ Usage:
     save_config(config, "vta_config.bin")
     loaded = load_config("vta_config.bin")
 """
-from __future__ import annotations
 
 import os
 from pathlib import Path

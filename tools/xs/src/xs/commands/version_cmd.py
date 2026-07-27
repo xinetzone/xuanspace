@@ -3,7 +3,6 @@ xs version 命令模块
 版本管理：bump、changelog 生成
 """
 
-from __future__ import annotations
 
 import re
 import subprocess

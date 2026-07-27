@@ -3,7 +3,6 @@ xs init 命令模块
 初始化 Xuanspace 工作区
 """
 
-from __future__ import annotations
 
 import subprocess
 from pathlib import Path

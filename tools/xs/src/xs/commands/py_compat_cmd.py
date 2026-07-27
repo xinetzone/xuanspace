@@ -3,7 +3,6 @@ xs py-compat 命令模块
 检查 Python 包与目标 Python 版本的兼容性
 """
 
-from __future__ import annotations
 
 import json
 import sys
@@ -87,7 +86,7 @@ def _collect_dependencies() -> list[str]:
 def py_compat(
     packages: list[str] = typer.Argument(None, help="要检查的包名（空格分隔），不传则检查当前项目依赖"),
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON 格式输出"),
-    python_version: str | None = typer.Option(None, "--py", help="目标 Python 版本（如 3.13），默认使用当前环境版本"),
+    python_version: str | None = typer.Option(None, "--py", help="目标 Python 版本（如 3.14），默认使用当前环境版本"),
 ) -> None:
     """检查 Python 包与目标 Python 版本的兼容性"""
     target = Version(python_version) if python_version else TARGET_PYTHON

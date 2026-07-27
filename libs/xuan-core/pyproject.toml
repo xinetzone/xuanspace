@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "xuan-core"
 version = "0.1.0"
 description = "Xuanspace 核心工具库"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = []
 authors = [
     {name = "xinetzone"}

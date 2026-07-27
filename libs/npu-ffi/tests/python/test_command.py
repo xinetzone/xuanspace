@@ -1,5 +1,4 @@
 """Tests for VTA CommandContext and command handle management."""
-from __future__ import annotations
 
 import pytest
 

@@ -1,4 +1,3 @@
-from __future__ import annotations
 from pathlib import Path
 from tvm_ffi import init_ffi_api as _FFI_INIT_FUNC
 from tvm_ffi.libinfo import load_lib_module as _FFI_LOAD_LIB

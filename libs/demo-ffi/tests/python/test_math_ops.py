@@ -1,5 +1,4 @@
 """Unit tests for the math_ops C++ accelerated module."""
-from __future__ import annotations
 
 import math
 

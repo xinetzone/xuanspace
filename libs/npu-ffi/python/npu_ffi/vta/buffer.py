@@ -1,5 +1,4 @@
 """Buffer class for VTA memory management."""
-from __future__ import annotations
 from typing import Optional
 from . import _ffi_api
 

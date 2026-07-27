@@ -3,7 +3,6 @@ xs deps 命令模块
 依赖检查、更新和管理
 """
 
-from __future__ import annotations
 
 import json
 import re

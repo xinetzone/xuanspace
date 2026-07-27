@@ -3,7 +3,6 @@ xs list 命令模块
 列出工作区中的所有项目
 """
 
-from __future__ import annotations
 
 import json
 

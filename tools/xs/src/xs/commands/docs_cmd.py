@@ -3,7 +3,6 @@ xs docs 命令模块
 文档构建和预览
 """
 
-from __future__ import annotations
 
 import subprocess
 import sys

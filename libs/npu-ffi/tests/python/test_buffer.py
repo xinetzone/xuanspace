@@ -1,5 +1,4 @@
 """Tests for VTA Buffer wrapper class."""
-from __future__ import annotations
 
 import gc
 import pytest

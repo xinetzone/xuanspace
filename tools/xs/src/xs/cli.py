@@ -3,7 +3,6 @@ xs CLI 主应用模块
 使用 typer 组装所有子命令
 """
 
-from __future__ import annotations
 
 import typer
 from rich.console import Console

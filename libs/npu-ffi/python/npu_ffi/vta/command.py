@@ -1,5 +1,4 @@
 """Command handle and context management for VTA."""
-from __future__ import annotations
 from typing import Optional
 from . import _ffi_api
 

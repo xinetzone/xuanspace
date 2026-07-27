@@ -1,5 +1,4 @@
 """Pytest configuration and shared fixtures for demo_ffi tests."""
-from __future__ import annotations
 
 import os
 import sys

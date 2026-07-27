@@ -1,6 +1,5 @@
 """Tests for xs CLI config module."""
 
-from __future__ import annotations
 
 from xs.config import check_python_version, get_python_version
 

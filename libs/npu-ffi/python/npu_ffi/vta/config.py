@@ -5,7 +5,6 @@ without requiring protobuf at runtime. For protobuf serialization, see proto_io.
 
 All size parameters are in log2 domain: actual_value = 2 ** log_value
 """
-from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field

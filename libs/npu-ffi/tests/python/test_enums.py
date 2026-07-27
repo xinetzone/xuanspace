@@ -1,5 +1,4 @@
 """Tests for VTA enum values - verify consistency with C++ definitions."""
-from __future__ import annotations
 
 import pytest
 

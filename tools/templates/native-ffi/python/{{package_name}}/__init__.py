@@ -1,5 +1,4 @@
 """{{package_name}} - {{module_name|upper}} FFI bindings based on tvm-ffi."""
-from __future__ import annotations
 
 from . import {{module_name}}
 

@@ -8,7 +8,6 @@
   {{package_name|upper}} -> 大写包名,用于CMake选项 (如 DEMO_FFI)
   {{name}}               -> 项目显示名 (kebab-case, 如 demo-ffi)
 """
-from __future__ import annotations
 
 import shutil
 import sys

@@ -3,7 +3,6 @@ xs doctor 命令模块
 检查开发环境配置和工具可用性
 """
 
-from __future__ import annotations
 
 import subprocess
 import sys
@@ -68,7 +67,7 @@ def _get_version_from_output(output: str) -> str | None:
 def check_python() -> CheckResult:
     """检查 Python 版本"""
     version = get_python_version()
-    if check_python_version((3, 13)):
+    if check_python_version((3, 14)):
         return CheckResult(
             name="Python",
             status="ok",
@@ -80,8 +79,8 @@ def check_python() -> CheckResult:
             name="Python",
             status="error",
             version=version,
-            message=f"Python 版本过低，需要 >= 3.13，当前为 {version}",
-            install_hint="请安装 Python 3.13 或更高版本: https://www.python.org/downloads/",
+            message=f"Python 版本过低，需要 >= 3.14，当前为 {version}",
+            install_hint="请安装 Python 3.14 或更高版本: https://www.python.org/downloads/",
         )
 
 

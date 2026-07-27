@@ -3,7 +3,6 @@
 提供工作区根目录发现、pyproject.toml 解析等功能
 """
 
-from __future__ import annotations
 
 import sys
 import tomllib
@@ -135,17 +134,17 @@ def get_python_version() -> str:
     获取当前 Python 版本
 
     Returns:
-        Python 版本字符串（如 "3.13.0"）
+        Python 版本字符串（如 "3.14.0"）
     """
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
-def check_python_version(min_version: tuple[int, int] = (3, 13)) -> bool:
+def check_python_version(min_version: tuple[int, int] = (3, 14)) -> bool:
     """
     检查当前 Python 版本是否满足最低要求
 
     Args:
-        min_version: 最低版本元组，默认为 (3, 13)
+        min_version: 最低版本元组，默认为 (3, 14)
 
     Returns:
         如果版本满足要求返回 True，否则返回 False

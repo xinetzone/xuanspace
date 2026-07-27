@@ -7,7 +7,6 @@ Usage:
 This script regenerates python/npu_ffi/vta/vta_config_pb2.py from proto/vta_config.proto.
 Requires grpcio-tools package (pip install grpcio-tools).
 """
-from __future__ import annotations
 
 import os
 import shutil

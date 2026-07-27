@@ -1,5 +1,4 @@
 """Basic tests for DEMO FFI API bindings."""
-from __future__ import annotations
 
 from demo_ffi import demo
 

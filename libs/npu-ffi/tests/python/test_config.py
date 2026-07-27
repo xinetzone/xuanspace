@@ -1,5 +1,4 @@
 """Tests for VTA hardware configuration module."""
-from __future__ import annotations
 
 import os
 import tempfile

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Xuanspace（玄境）- Python monorepo 项目"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 authors = [
     {name = "xinetzone"}
 ]
@@ -30,7 +30,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules"
@@ -162,7 +162,7 @@ addopts = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 exclude = [
     "vendor",
     "libs/tvm-book",
@@ -184,7 +184,7 @@ select = [
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = false
 ignore_missing_imports = true
 warn_return_any = false
@@ -201,7 +201,7 @@ exclude = [
 
 [tool.black]
 line-length = 120
-target-version = ["py313"]
+target-version = ["py314"]
 
 [tool.isort]
 profile = "black"

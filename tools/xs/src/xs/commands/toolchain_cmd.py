@@ -3,7 +3,6 @@ xs toolchain 命令模块
 工具链管理：检查和安装开发工具
 """
 
-from __future__ import annotations
 
 import subprocess
 import sys

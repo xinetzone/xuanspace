@@ -3,7 +3,6 @@ xs archive 命令模块
 将子项目归档到 attic/ 目录
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 

@@ -3,7 +3,6 @@
 负责扫描工作区中的项目、检测项目类型、构建依赖图等功能
 """
 
-from __future__ import annotations
 
 import re
 from pathlib import Path

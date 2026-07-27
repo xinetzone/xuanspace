@@ -6,7 +6,6 @@ YAML frontmatter 只允许：id, x-toml-ref, source, version
 其他元数据存储在 .meta/toml/ 下对应路径的 TOML 文件中
 """
 
-from __future__ import annotations
 
 import tomllib
 from datetime import datetime

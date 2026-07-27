@@ -7,7 +7,6 @@ Scans C++ source files and Python _ffi_api.py files to verify that:
 2. All Python initialized prefixes have corresponding C++ registrations
 3. All registered functions are accessible via Python getattr (optional)
 """
-from __future__ import annotations
 
 import argparse
 import os

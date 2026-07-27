@@ -3,7 +3,6 @@ xs update 命令模块
 更新子模块和依赖
 """
 
-from __future__ import annotations
 
 import subprocess
 import sys

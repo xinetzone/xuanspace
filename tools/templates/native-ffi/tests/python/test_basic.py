@@ -1,5 +1,4 @@
 """Basic tests for {{module_name|upper}} FFI API bindings."""
-from __future__ import annotations
 
 from {{package_name}} import {{module_name}}
 

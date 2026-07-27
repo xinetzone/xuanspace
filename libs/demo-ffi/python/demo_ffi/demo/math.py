@@ -1,5 +1,4 @@
 """Math operations module with C++ accelerated implementations via FFI."""
-from __future__ import annotations
 
 from typing import List, Tuple
 

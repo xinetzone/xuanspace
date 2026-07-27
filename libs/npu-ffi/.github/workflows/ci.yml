@@ -13,13 +13,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            python-version: "3.13"
+            python-version: "3.14"
             compiler: msvc
           - os: ubuntu-latest
-            python-version: "3.13"
+            python-version: "3.14"
             compiler: gcc
           - os: macos-latest
-            python-version: "3.13"
+            python-version: "3.14"
             compiler: clang
 
     runs-on: ${{ matrix.os }}

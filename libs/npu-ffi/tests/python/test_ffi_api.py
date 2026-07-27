@@ -1,5 +1,4 @@
 """Tests for low-level VTA FFI API bindings."""
-from __future__ import annotations
 
 import gc
 import pytest

@@ -9,7 +9,6 @@ Scans C++ source files and Python _ffi_api.py files to verify that:
 
 Supports multiple FFI prefixes sharing a single _ffi_api.py file.
 """
-from __future__ import annotations
 
 import argparse
 import os

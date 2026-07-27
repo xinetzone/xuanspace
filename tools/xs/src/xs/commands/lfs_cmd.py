@@ -3,7 +3,6 @@ xs lfs 命令模块
 Git LFS 大文件检查与管理
 """
 
-from __future__ import annotations
 
 import subprocess
 from pathlib import Path

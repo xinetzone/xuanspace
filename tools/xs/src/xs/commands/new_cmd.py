@@ -3,7 +3,6 @@ xs new 命令模块
 从模板创建新项目
 """
 
-from __future__ import annotations
 
 import re
 import shutil
