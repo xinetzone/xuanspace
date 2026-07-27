@@ -138,8 +138,8 @@ trusted-host = mirrors.bfsu.edu.cn
 
 ### Python 版本
 
-- 项目要求 Python >= 3.13
-- `conda_build_config.yaml` 锁定构建版本为 3.13
+- 项目要求 Python >= 3.14
+- `conda_build_config.yaml` 锁定构建版本为 3.14
 
 ### 构建系统
 

@@ -17,7 +17,7 @@ Type-safe FFI bindings for VTA NPU accelerator based on tvm-ffi
 
 ## 前置要求
 
-- Python 3.13+
+- Python 3.14+
 - CMake &gt;= 3.26
 - Ninja &gt;= 1.11
 - C++17 兼容编译器（MSVC 2022/GCC 9+/Clang 12+）
