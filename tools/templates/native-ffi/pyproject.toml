@@ -1,0 +1,57 @@
+[build-system]
+requires = ["scikit-build-core>=0.10.0", "ninja>=1.11", "apache-tvm-ffi"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "{{name}}"
+version = "0.1.0"
+description = "{{module_name|upper}} FFI bindings based on tvm-ffi"
+license = { file = "LICENSE" }
+requires-python = ">=3.13"
+dependencies = [
+  "apache-tvm-ffi",
+]
+
+[tool.scikit-build]
+cmake.version = "CMakeLists.txt"
+cmake.build-type = "Release"
+wheel.packages = ["python/{{package_name}}"]
+wheel.install-dir = "{{package_name}}"
+ninja.version = ">=1.11"
+ninja.make-fallback = false
+build-dir = "build"
+cmake.args = [
+  "-D{{package_name|upper}}_USE_STUB=ON",
+]
+
+editable.rebuild = false
+editable.verbose = true
+build.verbose = true
+logging.level = "INFO"
+
+sdist.include = [
+  "/CMakeLists.txt",
+  "/CMakePresets.json",
+  "/pyproject.toml",
+  "/src/**/*.cc",
+  "/src/**/*.h",
+  "/src/**/*.cpp",
+  "/src/**/CMakeLists.txt",
+  "/include/**/*",
+  "/scripts/**/*",
+  "/python/{{package_name}}/**/*.py",
+  "/python/{{package_name}}/py.typed",
+  "/LICENSE",
+  "/tests/**/*",
+]
+
+sdist.exclude = [
+  "**/.git",
+  "**/__pycache__",
+  "**/*.pyc",
+  "build",
+  "dist",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
