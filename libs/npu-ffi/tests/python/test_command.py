@@ -1,9 +1,10 @@
 """Tests for VTA CommandContext and command handle management."""
 
+import gc
 import pytest
 
 from npu_ffi import vta
-from npu_ffi.vta import Buffer, CommandContext, command_handle
+from npu_ffi.vta import Buffer, CommandContext, command_handle, get_command_handle
 
 
 class TestCommandContextBasic:
@@ -19,6 +20,13 @@ class TestCommandContextBasic:
         assert isinstance(cmd, int)
         assert cmd != 0
 
+    def test_get_command_handle_alias(self):
+        cmd1 = command_handle()
+        cmd2 = get_command_handle()
+        assert isinstance(cmd2, int)
+        assert cmd2 != 0
+        assert cmd2 >= cmd1
+
     def test_handle_property_when_entered(self):
         ctx = CommandContext()
         with ctx as cmd:
@@ -29,6 +37,40 @@ class TestCommandContextBasic:
         ctx = CommandContext()
         with pytest.raises(RuntimeError, match="not entered"):
             _ = ctx.handle
+
+    def test_command_context_repr_inactive(self):
+        ctx = CommandContext()
+        repr_str = repr(ctx)
+        assert "CommandContext" in repr_str
+        assert "inactive" in repr_str
+        assert "cmd=None" in repr_str
+
+    def test_command_context_repr_active(self):
+        ctx = CommandContext()
+        with ctx as cmd:
+            repr_str = repr(ctx)
+            assert "active" in repr_str
+            assert "wait_cycles=0" in repr_str
+
+    def test_explicit_synchronize(self):
+        ctx = CommandContext()
+        with ctx as cmd:
+            assert ctx.handle == cmd
+            ctx.synchronize()
+        assert ctx._cmd is None
+
+    def test_double_synchronize_safe(self):
+        ctx = CommandContext()
+        with ctx as cmd:
+            ctx.synchronize()
+            ctx.synchronize()
+        assert ctx._cmd is None
+
+    def test_synchronize_before_exit(self):
+        ctx = CommandContext()
+        with ctx as cmd:
+            ctx.synchronize()
+            assert ctx._cmd is None
 
 
 class TestCommandContextWorkflow:

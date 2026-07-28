@@ -22,6 +22,11 @@ class TestBufferCreation:
         assert buf.data != 0
         assert buf.size == 64
 
+    def test_buffer_create_zero_size(self):
+        buf = Buffer(0)
+        assert buf.size == 0
+        assert len(buf) == 0
+
     def test_buffer_data_property_returns_int(self):
         buf = Buffer(256)
         assert isinstance(buf.data, int)
@@ -41,6 +46,15 @@ class TestBufferCreation:
         buf = Buffer(512, data=raw_ptr, owns=True)
         assert buf.data == raw_ptr
         assert buf.owns_data is True
+
+    def test_buffer_from_foreign_pointer(self):
+        raw_ptr = vta.buffer_alloc(256)
+        assert raw_ptr != 0
+        buf = Buffer.from_foreign_pointer(raw_ptr, 256)
+        assert buf.data == raw_ptr
+        assert buf.size == 256
+        assert buf.owns_data is False
+        vta.buffer_free(raw_ptr)
 
 
 class TestBufferRAII:
@@ -82,6 +96,63 @@ class TestBufferRAII:
         assert buf1.data == 0
 
 
+class TestBufferRepr:
+    """Tests for Buffer __repr__ method."""
+
+    def test_buffer_repr(self):
+        buf = Buffer(1024)
+        repr_str = repr(buf)
+        assert "Buffer" in repr_str
+        assert "size=1024" in repr_str
+        assert "owns=True" in repr_str
+        assert "data=0x" in repr_str
+
+    def test_buffer_repr_nonowning(self):
+        raw_ptr = vta.buffer_alloc(256)
+        buf = Buffer.from_foreign_pointer(raw_ptr, 256)
+        repr_str = repr(buf)
+        assert "owns=False" in repr_str
+        vta.buffer_free(raw_ptr)
+
+    def test_buffer_repr_after_reset(self):
+        buf = Buffer(512)
+        buf.reset()
+        repr_str = repr(buf)
+        assert "data=0x0" in repr_str
+        assert "owns=False" in repr_str
+
+
+class TestBufferReset:
+    """Tests for explicit buffer reset method."""
+
+    def test_buffer_reset(self):
+        buf = Buffer(1024)
+        assert buf.data != 0
+        assert buf.owns_data is True
+        buf.reset()
+        assert buf.data == 0
+        assert buf.owns_data is False
+
+    def test_buffer_reset_idempotent(self):
+        buf = Buffer(512)
+        buf.reset()
+        buf.reset()
+        assert buf.data == 0
+
+    def test_buffer_reset_then_del(self):
+        buf = Buffer(256)
+        buf.reset()
+        del buf
+        gc.collect()
+
+    def test_buffer_context_manager_with_reset(self):
+        with Buffer(512) as buf:
+            assert buf.data != 0
+            buf.reset()
+            assert buf.data == 0
+        assert buf.data == 0
+
+
 class TestBufferCpuPtr:
     """Tests for buffer CPU pointer access."""
 
@@ -116,9 +187,30 @@ class TestBufferLifecycle:
         buf.__del__()
         gc.collect()
 
+    def test_buffer_double_free_via_reset_and_del(self):
+        buf = Buffer(256)
+        buf.reset()
+        del buf
+        gc.collect()
+
+    def test_buffer_double_free_via_context_and_del(self):
+        buf = Buffer(256)
+        with buf:
+            pass
+        del buf
+        gc.collect()
+
     def test_buffer_non_owning_not_freed(self):
         raw_ptr = vta.buffer_alloc(256)
         buf = Buffer(256, data=raw_ptr, owns=False)
         del buf
         gc.collect()
+        vta.buffer_free(raw_ptr)
+
+    def test_buffer_non_owning_reset_noop(self):
+        raw_ptr = vta.buffer_alloc(256)
+        buf = Buffer.from_foreign_pointer(raw_ptr, 256)
+        assert buf.data == raw_ptr
+        buf.reset()
+        assert buf.data == 0
         vta.buffer_free(raw_ptr)
