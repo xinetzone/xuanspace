@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "npu_ffi/vta/command_context.h"
+#include "npu_ffi/vta/runtime.h"
 
 namespace npu_ffi {
 namespace vta {
