@@ -103,11 +103,11 @@ void set_debug_mode(int64_t cmd, int debug_flag) {
   npu_ffi_vta_set_debug_mode(reinterpret_cast<void*>(static_cast<intptr_t>(cmd)), debug_flag);
 }
 
-void load_buffer_2d(int64_t cmd, int64_t src_dram_addr, int src_elem_offset,
-                    int x_size, int y_size, int x_stride,
-                    int x_pad_before, int y_pad_before,
-                    int x_pad_after, int y_pad_after,
-                    int dst_sram_index, int dst_memory_type) {
+void load_buffer_2d(int64_t cmd, int64_t src_dram_addr, int64_t src_elem_offset,
+                    int64_t x_size, int64_t y_size, int64_t x_stride,
+                    int64_t x_pad_before, int64_t y_pad_before,
+                    int64_t x_pad_after, int64_t y_pad_after,
+                    int64_t dst_sram_index, int64_t dst_memory_type) {
   npu_ffi_vta_load_buffer_2d(
       reinterpret_cast<void*>(static_cast<intptr_t>(cmd)),
       reinterpret_cast<void*>(static_cast<intptr_t>(src_dram_addr)),
@@ -123,9 +123,9 @@ void load_buffer_2d(int64_t cmd, int64_t src_dram_addr, int src_elem_offset,
       static_cast<uint32_t>(dst_memory_type));
 }
 
-void store_buffer_2d(int64_t cmd, int src_sram_index, int src_memory_type,
-                     int64_t dst_dram_addr, int dst_elem_offset,
-                     int x_size, int y_size, int x_stride) {
+void store_buffer_2d(int64_t cmd, int64_t src_sram_index, int64_t src_memory_type,
+                     int64_t dst_dram_addr, int64_t dst_elem_offset,
+                     int64_t x_size, int64_t y_size, int64_t x_stride) {
   npu_ffi_vta_store_buffer_2d(
       reinterpret_cast<void*>(static_cast<intptr_t>(cmd)),
       static_cast<uint32_t>(src_sram_index),
@@ -137,9 +137,9 @@ void store_buffer_2d(int64_t cmd, int src_sram_index, int src_memory_type,
       static_cast<uint32_t>(x_stride));
 }
 
-void uop_push(int mode, int reset_out, int dst_index,
-              int src_index, int wgt_index,
-              int opcode, int use_imm, int imm_val) {
+void uop_push(int64_t mode, int64_t reset_out, int64_t dst_index,
+              int64_t src_index, int64_t wgt_index,
+              int64_t opcode, int64_t use_imm, int imm_val) {
   npu_ffi_vta_uop_push(
       static_cast<uint32_t>(mode),
       static_cast<uint32_t>(reset_out),
@@ -151,7 +151,7 @@ void uop_push(int mode, int reset_out, int dst_index,
       static_cast<int32_t>(imm_val));
 }
 
-void uop_loop_begin(int extent, int dst_factor, int src_factor, int wgt_factor) {
+void uop_loop_begin(int64_t extent, int64_t dst_factor, int64_t src_factor, int64_t wgt_factor) {
   npu_ffi_vta_uop_loop_begin(
       static_cast<uint32_t>(extent),
       static_cast<uint32_t>(dst_factor),
@@ -163,12 +163,20 @@ void uop_loop_end() {
   npu_ffi_vta_uop_loop_end();
 }
 
-int push_gemm_op() {
-  return 0;
+int push_gemm_op(int64_t uop_handle, int64_t finit, int64_t signature, int nbytes) {
+  return npu_ffi_vta_push_gemm_op(
+      reinterpret_cast<void**>(static_cast<intptr_t>(uop_handle)),
+      reinterpret_cast<int (*)(void*)>(static_cast<intptr_t>(finit)),
+      reinterpret_cast<void*>(static_cast<intptr_t>(signature)),
+      nbytes);
 }
 
-int push_alu_op() {
-  return 0;
+int push_alu_op(int64_t uop_handle, int64_t finit, int64_t signature, int nbytes) {
+  return npu_ffi_vta_push_alu_op(
+      reinterpret_cast<void**>(static_cast<intptr_t>(uop_handle)),
+      reinterpret_cast<int (*)(void*)>(static_cast<intptr_t>(finit)),
+      reinterpret_cast<void*>(static_cast<intptr_t>(signature)),
+      nbytes);
 }
 
 int dep_push(int64_t cmd, int from_qid, int to_qid) {
@@ -179,13 +187,13 @@ int dep_pop(int64_t cmd, int from_qid, int to_qid) {
   return npu_ffi_vta_dep_pop(reinterpret_cast<void*>(static_cast<intptr_t>(cmd)), from_qid, to_qid);
 }
 
-void synchronize(int64_t cmd, int wait_cycles) {
+void synchronize(int64_t cmd, int64_t wait_cycles) {
   npu_ffi_vta_synchronize(reinterpret_cast<void*>(static_cast<intptr_t>(cmd)),
                           static_cast<uint32_t>(wait_cycles));
 }
 
-void write_barrier(int64_t cmd, int64_t buffer, int elem_bits,
-                   int start, int extent) {
+void write_barrier(int64_t cmd, int64_t buffer, int64_t elem_bits,
+                   int64_t start, int64_t extent) {
   npu_ffi_vta_write_barrier(
       reinterpret_cast<void*>(static_cast<intptr_t>(cmd)),
       reinterpret_cast<void*>(static_cast<intptr_t>(buffer)),
@@ -194,8 +202,8 @@ void write_barrier(int64_t cmd, int64_t buffer, int elem_bits,
       static_cast<uint32_t>(extent));
 }
 
-void read_barrier(int64_t cmd, int64_t buffer, int elem_bits,
-                  int start, int extent) {
+void read_barrier(int64_t cmd, int64_t buffer, int64_t elem_bits,
+                  int64_t start, int64_t extent) {
   npu_ffi_vta_read_barrier(
       reinterpret_cast<void*>(static_cast<intptr_t>(cmd)),
       reinterpret_cast<void*>(static_cast<intptr_t>(buffer)),
@@ -204,10 +212,14 @@ void read_barrier(int64_t cmd, int64_t buffer, int elem_bits,
       static_cast<uint32_t>(extent));
 }
 
-void prepare_call_func(int64_t cmd, const tvm::ffi::String& name) {
-  npu_ffi_vta_prepare_call_func(reinterpret_cast<void*>(static_cast<intptr_t>(cmd)), name.c_str());
+void prepare_call_func(int64_t cmd, const char* name) {
+  npu_ffi_vta_prepare_call_func(reinterpret_cast<void*>(static_cast<intptr_t>(cmd)), name);
 }
 
+// IMPORTANT: FFI name prefix consistency check!
+// All function names registered here as "vta.xxx" MUST match the prefix
+// used in python/npu_ffi/vta/_ffi_api.py via _FFI_INIT_FUNC.
+// Run `python scripts/check_ffi_prefix.py --verbose` after modifying this file.
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
   refl::GlobalDef()
