@@ -17,13 +17,12 @@
  * under the License.
  */
 
+#pragma once
+
 /*!
  * \file npu_ffi/vta/buffer.h
  * \brief Type-safe VTA buffer wrapper with RAII semantics.
  */
-
-#ifndef NPU_FFI_VTA_BUFFER_H_
-#define NPU_FFI_VTA_BUFFER_H_
 
 #include <cstddef>
 
@@ -81,8 +80,22 @@ class Buffer {
   Buffer& operator=(Buffer&& other) noexcept;
 
   /*!
+   * \brief Get the underlying raw data pointer (STL-style alias).
+   * \return Mutable raw buffer pointer.
+   */
+  void* data() { return data_; }
+
+  /*!
+   * \brief Get the underlying raw data pointer (const version, STL-style).
+   * \return Const raw buffer pointer.
+   */
+  const void* data() const { return data_; }
+
+  /*!
    * \brief Get the underlying raw data pointer.
    * \return Raw buffer pointer.
+   * \deprecated Use data() instead for STL-style consistency.
+   *             Kept for backward compatibility.
    */
   void* get() const { return data_; }
 
@@ -124,5 +137,3 @@ class Buffer {
 
 }  // namespace vta
 }  // namespace npu_ffi
-
-#endif  // NPU_FFI_VTA_BUFFER_H_

@@ -17,13 +17,12 @@
  * under the License.
  */
 
+#pragma once
+
 /*!
  * \file npu_ffi/vta/types.h
  * \brief VTA type-safe enumerations and constants.
  */
-
-#ifndef NPU_FFI_VTA_TYPES_H_
-#define NPU_FFI_VTA_TYPES_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -168,5 +167,3 @@ constexpr size_t kAllocAlignment = 64;
 
 }  // namespace vta
 }  // namespace npu_ffi
-
-#endif  // NPU_FFI_VTA_TYPES_H_

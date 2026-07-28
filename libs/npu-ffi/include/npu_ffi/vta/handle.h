@@ -17,13 +17,12 @@
  * under the License.
  */
 
+#pragma once
+
 /*!
  * \file npu_ffi/vta/handle.h
  * \brief Type-safe wrapper for VTA command handle.
  */
-
-#ifndef NPU_FFI_VTA_HANDLE_H_
-#define NPU_FFI_VTA_HANDLE_H_
 
 #include <cstddef>
 
@@ -49,8 +48,12 @@ class CommandHandle {
 
   /*!
    * \brief Construct from nullptr.
+   *
+   * Not marked explicit to allow natural nullptr comparison and assignment
+   * (e.g., `if (cmd == nullptr)`, `cmd = nullptr`).
+   * Arbitrary pointer conversions are still blocked by the explicit void* constructor.
    */
-  CommandHandle(std::nullptr_t) : handle_(nullptr) {}  // NOLINT(*)
+  CommandHandle(std::nullptr_t) : handle_(nullptr) {}
 
   /*!
    * \brief Explicit constructor from raw void* handle.
@@ -69,6 +72,15 @@ class CommandHandle {
 
   /*! \brief Move assignment operator. */
   CommandHandle& operator=(CommandHandle&&) = default;
+
+  /*!
+   * \brief Assign nullptr to reset the handle.
+   * \return Reference to this.
+   */
+  CommandHandle& operator=(std::nullptr_t) {
+    handle_ = nullptr;
+    return *this;
+  }
 
   /*!
    * \brief Get the underlying raw void* handle for C API calls.
@@ -96,6 +108,18 @@ class CommandHandle {
    */
   bool operator!=(const CommandHandle& other) const { return handle_ != other.handle_; }
 
+  /*!
+   * \brief Equality comparison with nullptr.
+   * \return True if handle is null.
+   */
+  bool operator==(std::nullptr_t) const { return handle_ == nullptr; }
+
+  /*!
+   * \brief Inequality comparison with nullptr.
+   * \return True if handle is non-null.
+   */
+  bool operator!=(std::nullptr_t) const { return handle_ != nullptr; }
+
  private:
   /*! \brief Raw C API handle. */
   void* handle_;
@@ -103,5 +127,3 @@ class CommandHandle {
 
 }  // namespace vta
 }  // namespace npu_ffi
-
-#endif  // NPU_FFI_VTA_HANDLE_H_

@@ -17,17 +17,18 @@
  * under the License.
  */
 
+#pragma once
+
 /*!
  * \file npu_ffi/vta/runtime.h
  * \brief Type-safe C++ wrapper for VTA runtime API.
  */
 
-#ifndef NPU_FFI_VTA_RUNTIME_H_
-#define NPU_FFI_VTA_RUNTIME_H_
-
+#include <cstddef>
 #include <cstdint>
 
 #include "npu_ffi/vta/buffer.h"
+#include "npu_ffi/vta/command_context.h"
 #include "npu_ffi/vta/handle.h"
 #include "npu_ffi/vta/types.h"
 
@@ -188,5 +189,3 @@ void buffer_copy(const Buffer& from, size_t from_offset, Buffer& to, size_t to_o
 
 }  // namespace vta
 }  // namespace npu_ffi
-
-#endif  // NPU_FFI_VTA_RUNTIME_H_
