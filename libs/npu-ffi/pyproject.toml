@@ -7,7 +7,7 @@ name = "npu-ffi"
 version = "0.1.0"
 description = "VTA FFI bindings for NPU accelerator based on tvm-ffi"
 license = { file = "LICENSE" }
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
   "protobuf>=7.0.0",
   "apache-tvm-ffi",
@@ -32,11 +32,11 @@ logging.level = "INFO"
 
 sdist.include = [
   "/CMakeLists.txt",
+  "/CMakePresets.json",
   "/pyproject.toml",
   "/environment.yml",
   "/conda.recipe/**/*",
   "/src/**/*.cc",
-  "/src/**/*.h",
   "/src/**/*.cpp",
   "/src/**/CMakeLists.txt",
   "/include/**/*",
