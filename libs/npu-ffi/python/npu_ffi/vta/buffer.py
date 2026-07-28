@@ -1,4 +1,5 @@
 """Buffer class for VTA memory management."""
+
 from typing import Optional
 from . import _ffi_api
 

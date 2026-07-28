@@ -1,4 +1,5 @@
 """npu_ffi.vta - VTA runtime Python API."""
+
 import enum
 from typing import Any
 

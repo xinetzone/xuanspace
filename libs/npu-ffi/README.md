@@ -6,6 +6,28 @@ Type-safe FFI bindings for VTA NPU accelerator based on tvm-ffi
 <!-- TODO: Add CI, PyPI, Conda badges here -->
 <!-- badges: end -->
 
+## ⚠️ 重要安装提示
+
+**安装前请务必阅读以下注意事项，否则会遇到各种导入/链接错误：**
+
+1. **必须使用 `--no-build-isolation`**：安装 tvm-ffi 和 npu-ffi 时都必须加上此参数，确保构建时使用已安装的 editable 模式 tvm-ffi，而不是在隔离环境中重新下载依赖导致版本不匹配。
+
+2. **Windows 必须设置 `KMP_DUPLICATE_LIB_OK=TRUE`**：Windows 数据科学栈中 OpenMP 多副本共存是常态，未设置此环境变量会导致程序崩溃。
+
+   ```powershell
+   # Windows PowerShell (永久设置，仅需执行一次)
+   [Environment]::SetEnvironmentVariable("KMP_DUPLICATE_LIB_OK", "TRUE", "User")
+   # 当前会话生效
+   $env:KMP_DUPLICATE_LIB_OK="TRUE"
+   ```
+
+   ```bash
+   # Linux/macOS (临时生效)
+   export KMP_DUPLICATE_LIB_OK=TRUE
+   ```
+
+3. **安装顺序**：必须先安装 tvm-ffi，再安装 npu-ffi，且两者都使用 `--no-build-isolation`。
+
 ## 特性
 
 - 基于 tvm-ffi 的类型安全 FFI 绑定
@@ -18,12 +40,16 @@ Type-safe FFI bindings for VTA NPU accelerator based on tvm-ffi
 ## 前置要求
 
 - Python 3.14+
-- CMake &gt;= 3.26
-- Ninja &gt;= 1.11
+- CMake >= 3.26
+- Ninja >= 1.11
 - C++17 兼容编译器（MSVC 2022/GCC 9+/Clang 12+）
 - Conda（可选，推荐）
 
 ## 安装指南
+
+> 📖 **详细开发环境配置指南**：参见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，包含 py314 环境配置、常见问题排查、国内镜像配置等完整内容。
+>
+> ❓ **常见问题解答**：参见 [docs/FAQ.md](docs/FAQ.md)，涵盖安装、DLL 加载、FFI、测试等 15+ 个常见问题的解决方案。
 
 ### 开发模式安装（推荐）
 
@@ -59,17 +85,63 @@ chmod +x scripts/dev.sh
 
 ### Conda 环境快速设置
 
-项目提供了自动化脚本用于快速配置 Conda 开发环境：
+#### 方式一：使用现有 py314 环境（推荐）
 
-```bash
-# Windows PowerShell
+如果已有 Python 3.14 的 conda 环境（如 `py314`），按以下步骤配置：
+
+```powershell
+# 1. 激活 py314 环境
+conda activate py314
+
+# 2. 验证 Python 版本（应显示 3.14.x）
+python --version
+
+# 3. 设置 Windows OpenMP 环境变量（永久设置，仅需执行一次）
+[Environment]::SetEnvironmentVariable("KMP_DUPLICATE_LIB_OK", "TRUE", "User")
+$env:KMP_DUPLICATE_LIB_OK="TRUE"
+
+# 4. 确认 tvm-ffi 已安装在 py314 环境中（editable 模式）
+#    路径相对于 npu-ffi 目录，先切换到 xuanspace 根目录
+cd ..\..
+pip install --no-build-isolation -e vendor/tvm-ffi
+
+# 5. 安装 npu-ffi（editable 模式）
+cd libs/npu-ffi
+pip install --no-build-isolation -e .
+
+# 6. 运行安装验证
+python scripts/verify_install.py
+
+# 7. 运行测试（全部应通过）
+pytest tests/python -v
+```
+
+> **关键要点**：
+> - 必须按 tvm-ffi → npu-ffi 的顺序安装
+> - 两个包都必须使用 `--no-build-isolation` 参数
+> - Windows 必须设置 `KMP_DUPLICATE_LIB_OK=TRUE` 环境变量
+> - 如果 py314 中已有 PyPI 版本的 tvm-ffi，editable 安装会自动替换它
+
+#### 方式二：使用自动化脚本创建新环境
+
+项目提供了自动化脚本，一键创建独立的 conda 开发环境（名为 `npu-ffi-dev`）：
+
+```powershell
+# Windows PowerShell（在项目根目录执行）
 .\scripts\setup_conda_dev.ps1
 
+# 激活环境
+conda activate npu-ffi-dev
+```
+
+```bash
 # Linux/macOS
 chmod +x scripts/setup_conda_dev.sh
 ./scripts/setup_conda_dev.sh
 conda activate npu-ffi-dev
 ```
+
+脚本会自动完成：创建 Python 3.14 环境 → 安装编译工具链（cmake/ninja/编译器）→ editable 安装 tvm-ffi 和 npu-ffi → 设置环境变量 → 运行验证。
 
 ### 环境变量（Windows）
 
@@ -216,6 +288,25 @@ cmake -B build -DNPU_FFI_VTA_USE_STUB=OFF -DVTA_DIR=/path/to/vta
 ```bash
 cmake -B build -DNPU_FFI_FROM_SOURCE=ON
 ```
+
+## 安装验证
+
+安装完成后，运行验证脚本确认环境配置正确：
+
+```bash
+python scripts/verify_install.py
+```
+
+该脚本会检查以下内容：
+- Python 版本是否满足要求 (>= 3.14)
+- KMP_DUPLICATE_LIB_OK 环境变量（Windows）
+- tvm-ffi 和 npu-ffi 包是否正确安装
+- tvm_ffi 模块是否可导入
+- npu_ffi.vta FFI 模块是否可导入
+- Buffer 分配/释放功能是否正常
+- CommandContext 上下文管理器是否正常
+
+如果所有检查通过，会显示 🎉 成功消息；如果有失败项，脚本会给出具体的故障排除建议。
 
 ## 运行测试
 

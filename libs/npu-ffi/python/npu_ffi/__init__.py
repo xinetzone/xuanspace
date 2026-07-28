@@ -1,4 +1,5 @@
 """npu_ffi - VTA FFI bindings for NPU accelerator."""
+
 from . import vta
 
 __version__ = "0.1.0"
