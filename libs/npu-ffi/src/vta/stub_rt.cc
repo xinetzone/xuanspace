@@ -15,27 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "npu_ffi/vta/runtime.h"
-
 #include <tvm/ffi/memory.h>
 
+#include <cstdio>
 #include <cstring>
-#include <new>
 #include <unordered_map>
 #include <atomic>
 #include <mutex>
 
-namespace npu_ffi {
-namespace vta {
-namespace stub {
+#include "npu_ffi/vta/types.h"
 
 namespace {
 
 thread_local void* current_cmd_handle = nullptr;
 thread_local unsigned current_debug_flags = 0;
-static std::unordered_map<void*, size_t> buffer_tracker;
-static std::mutex buffer_tracker_mutex;
-static std::atomic<uint64_t> next_handle_id{1};
+std::unordered_map<void*, size_t> buffer_tracker;
+std::mutex buffer_tracker_mutex;
+std::atomic<uint64_t> next_handle_id{1};
 
 }  // namespace
 
@@ -44,7 +40,7 @@ extern "C" {
 void* npu_ffi_vta_buffer_alloc(size_t size) {
   void* ptr = nullptr;
   try {
-    ptr = tvm::ffi::details::AlignedAlloc(size, kAllocAlignment);
+    ptr = tvm::ffi::details::AlignedAlloc(size, npu_ffi::vta::kAllocAlignment);
   } catch (const std::bad_alloc&) {
     return nullptr;
   }
@@ -90,10 +86,10 @@ void* npu_ffi_vta_tls_command_handle() {
 
 void npu_ffi_vta_runtime_shutdown() {
   std::lock_guard<std::mutex> lock(buffer_tracker_mutex);
-#ifndef NDEBUG
   if (!buffer_tracker.empty()) {
+    fprintf(stderr, "Warning: npu_ffi VTA stub runtime detected %zu leaked buffer(s) at shutdown\n",
+            buffer_tracker.size());
   }
-#endif
   buffer_tracker.clear();
 }
 
@@ -222,124 +218,3 @@ void npu_ffi_vta_prepare_call_func(void* cmd, const char* name) {
 }
 
 }  // extern "C"
-
-}  // namespace stub
-
-Buffer::Buffer(size_t size)
-    : data_(stub::npu_ffi_vta_buffer_alloc(size)), size_(size), owns_(true) {}
-
-Buffer::Buffer(void* data, size_t size, bool owns)
-    : data_(data), size_(size), owns_(owns) {}
-
-Buffer::~Buffer() { reset(); }
-
-Buffer::Buffer(Buffer&& other) noexcept
-    : data_(other.data_), size_(other.size_), owns_(other.owns_) {
-  other.data_ = nullptr;
-  other.size_ = 0;
-  other.owns_ = false;
-}
-
-Buffer& Buffer::operator=(Buffer&& other) noexcept {
-  reset();
-  data_ = other.data_;
-  size_ = other.size_;
-  owns_ = other.owns_;
-  other.data_ = nullptr;
-  other.size_ = 0;
-  other.owns_ = false;
-  return *this;
-}
-
-void* Buffer::cpu_ptr(CommandHandle cmd) const {
-  return stub::npu_ffi_vta_buffer_cpu_ptr(cmd.get(), data_);
-}
-
-void Buffer::reset() {
-  if (owns_ && data_) {
-    stub::npu_ffi_vta_buffer_free(data_);
-  }
-  data_ = nullptr;
-  size_ = 0;
-  owns_ = false;
-}
-
-CommandHandle tls_command_handle() {
-  return CommandHandle(stub::npu_ffi_vta_tls_command_handle());
-}
-
-void runtime_shutdown() { stub::npu_ffi_vta_runtime_shutdown(); }
-
-void set_debug_mode(CommandHandle cmd, DebugFlag flags) {
-  stub::npu_ffi_vta_set_debug_mode(
-      cmd.get(), static_cast<int>(static_cast<std::underlying_type_t<DebugFlag>>(flags)));
-}
-
-void synchronize(CommandHandle cmd, uint32_t wait_cycles) {
-  stub::npu_ffi_vta_synchronize(cmd.get(), wait_cycles);
-}
-
-void load_buffer_2d(CommandHandle cmd, const Buffer& src, uint32_t src_elem_offset,
-                    uint32_t x_size, uint32_t y_size, uint32_t x_stride,
-                    uint32_t x_pad_before, uint32_t y_pad_before,
-                    uint32_t x_pad_after, uint32_t y_pad_after,
-                    uint32_t dst_sram_index, MemoryType dst_memory_type) {
-  stub::npu_ffi_vta_load_buffer_2d(
-      cmd.get(), src.get(), src_elem_offset, x_size, y_size, x_stride,
-      x_pad_before, y_pad_before, x_pad_after, y_pad_after, dst_sram_index,
-      static_cast<uint32_t>(dst_memory_type));
-}
-
-void store_buffer_2d(CommandHandle cmd, uint32_t src_sram_index,
-                     MemoryType src_memory_type, Buffer& dst,
-                     uint32_t dst_elem_offset, uint32_t x_size, uint32_t y_size,
-                     uint32_t x_stride) {
-  stub::npu_ffi_vta_store_buffer_2d(cmd.get(), src_sram_index,
-                                     static_cast<uint32_t>(src_memory_type),
-                                     dst.get(), dst_elem_offset, x_size, y_size,
-                                     x_stride);
-}
-
-void uop_push(uint32_t mode, uint32_t reset_out, uint32_t dst_index,
-              uint32_t src_index, uint32_t wgt_index, ALUOpcode opcode,
-              bool use_imm, int32_t imm_val) {
-  stub::npu_ffi_vta_uop_push(mode, reset_out, dst_index, src_index, wgt_index,
-                              static_cast<uint32_t>(opcode),
-                              use_imm ? 1U : 0U, imm_val);
-}
-
-void uop_loop_begin(uint32_t extent, uint32_t dst_factor, uint32_t src_factor,
-                    uint32_t wgt_factor) {
-  stub::npu_ffi_vta_uop_loop_begin(extent, dst_factor, src_factor, wgt_factor);
-}
-
-void uop_loop_end() { stub::npu_ffi_vta_uop_loop_end(); }
-
-int dep_push(CommandHandle cmd, int from_qid, int to_qid) {
-  return stub::npu_ffi_vta_dep_push(cmd.get(), from_qid, to_qid);
-}
-
-int dep_pop(CommandHandle cmd, int from_qid, int to_qid) {
-  return stub::npu_ffi_vta_dep_pop(cmd.get(), from_qid, to_qid);
-}
-
-void write_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits,
-                   uint32_t start, uint32_t extent) {
-  stub::npu_ffi_vta_write_barrier(cmd.get(), buffer.get(), elem_bits, start,
-                                   extent);
-}
-
-void read_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits,
-                  uint32_t start, uint32_t extent) {
-  stub::npu_ffi_vta_read_barrier(cmd.get(), buffer.get(), elem_bits, start,
-                                  extent);
-}
-
-void buffer_copy(const Buffer& from, size_t from_offset, Buffer& to,
-                 size_t to_offset, size_t size, MemcpyKind kind) {
-  stub::npu_ffi_vta_buffer_copy(from.get(), from_offset, to.get(), to_offset,
-                                 size, static_cast<int>(kind));
-}
-
-}  // namespace vta
-}  // namespace npu_ffi

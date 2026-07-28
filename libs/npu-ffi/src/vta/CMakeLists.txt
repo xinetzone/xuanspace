@@ -1,5 +1,7 @@
 set(VTA_SOURCES
+  command_context.cc
   ffi_registry.cc
+  runtime_common.cc
 )
 
 if(NPU_FFI_VTA_USE_STUB)
@@ -11,6 +13,8 @@ else()
 endif()
 
 add_library(npu_ffi_vta SHARED ${VTA_SOURCES})
+
+target_compile_definitions(npu_ffi_vta PRIVATE NPU_FFI_EXPORTS)
 
 target_include_directories(npu_ffi_vta PUBLIC ${NPU_FFI_INCLUDE_DIR})
 
