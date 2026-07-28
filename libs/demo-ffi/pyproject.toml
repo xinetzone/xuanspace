@@ -7,7 +7,7 @@ name = "demo-ffi"
 version = "0.1.0"
 description = "DEMO FFI bindings based on tvm-ffi"
 license = { file = "LICENSE" }
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
   "apache-tvm-ffi",
 ]
