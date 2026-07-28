@@ -16,6 +16,13 @@ add_library(npu_ffi_vta SHARED ${VTA_SOURCES})
 
 target_compile_definitions(npu_ffi_vta PRIVATE NPU_FFI_EXPORTS)
 
+if(NPU_FFI_ENABLE_LOG)
+  message(STATUS "npu-ffi: debug logging ENABLED")
+  target_compile_definitions(npu_ffi_vta PRIVATE NPU_FFI_ENABLE_LOG)
+else()
+  message(STATUS "npu-ffi: debug logging disabled (set NPU_FFI_ENABLE_LOG=ON to enable)")
+endif()
+
 target_include_directories(npu_ffi_vta PUBLIC ${NPU_FFI_INCLUDE_DIR})
 
 if(NOT NPU_FFI_VTA_USE_STUB)

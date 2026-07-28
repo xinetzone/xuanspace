@@ -17,8 +17,11 @@
 
 #include "npu_ffi/vta/runtime.h"
 
+#include <cstdio>
 #include <new>
 #include <type_traits>
+
+#include "npu_ffi/logging.h"
 
 extern "C" {
 
@@ -65,12 +68,17 @@ Buffer::Buffer(size_t size)
       size_(size),
       owns_(true) {
   if (size > 0 && data_ == nullptr) {
+    NPU_FFI_LOG_ERROR("Buffer allocation failed: requested %zu bytes, got nullptr", size);
     throw std::bad_alloc();
   }
+  NPU_FFI_LOG_DEBUG("Buffer allocated: ptr=%p, size=%zu", data_, size_);
 }
 
 Buffer::Buffer(void* data, size_t size, bool owns)
-    : data_(data), size_(size), owns_(owns) {}
+    : data_(data), size_(size), owns_(owns) {
+  NPU_FFI_LOG_DEBUG("Buffer wrapping: ptr=%p, size=%zu, owns=%d",
+                    data_, size_, owns_ ? 1 : 0);
+}
 
 Buffer::~Buffer() { reset(); }
 
@@ -103,6 +111,7 @@ void* Buffer::cpu_ptr(CommandHandle cmd) const {
 
 void Buffer::reset() {
   if (owns_ && data_ != nullptr) {
+    NPU_FFI_LOG_DEBUG("Buffer freeing: ptr=%p, size=%zu", data_, size_);
     npu_ffi_vta_buffer_free(data_);
   }
   data_ = nullptr;

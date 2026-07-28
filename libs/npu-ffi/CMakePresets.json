@@ -34,6 +34,15 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
+    },
+    {
+      "name": "debug-log",
+      "displayName": "Debug Build with Logging",
+      "description": "Debug build with stub runtime and lifecycle logging enabled",
+      "inherits": "debug",
+      "cacheVariables": {
+        "NPU_FFI_ENABLE_LOG": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -48,6 +57,10 @@
     {
       "name": "debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "debug-log",
+      "configurePreset": "debug-log"
     }
   ],
   "testPresets": [

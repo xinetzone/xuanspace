@@ -123,4 +123,5 @@
   #define NPU_FFI_API NPU_FFI_DLL_IMPORT
 #endif
 
+#include "npu_ffi/logging.h"
 #include "npu_ffi/vta/runtime.h"

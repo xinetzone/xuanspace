@@ -17,21 +17,35 @@
 
 #include "npu_ffi/vta/runtime.h"
 
+#include <cinttypes>
+#include <cstdint>
+
+#include "npu_ffi/logging.h"
+
 namespace npu_ffi {
 namespace vta {
 
 CommandContext::CommandContext(uint32_t wait_cycles)
-    : cmd_(tls_command_handle()), wait_cycles_(wait_cycles), active_(true) {}
+    : cmd_(tls_command_handle()), wait_cycles_(wait_cycles), active_(true) {
+  NPU_FFI_LOG_DEBUG("CommandContext created: cmd=%p, wait_cycles=%" PRIu32,
+                    cmd_.get(), wait_cycles_);
+}
 
 CommandContext::~CommandContext() {
   if (active_) {
+    NPU_FFI_LOG_DEBUG("CommandContext destructor triggering auto-sync: cmd=%p", cmd_.get());
     synchronize();
+  } else {
+    NPU_FFI_LOG_DEBUG("CommandContext destructor (already synced): cmd=%p", cmd_.get());
   }
 }
 
 void CommandContext::synchronize() {
   if (active_) {
+    NPU_FFI_LOG_DEBUG("CommandContext::synchronize: cmd=%p, wait_cycles=%" PRIu32,
+                      cmd_.get(), wait_cycles_);
     ::npu_ffi::vta::synchronize(cmd_, wait_cycles_);
+    NPU_FFI_LOG_DEBUG("CommandContext::synchronize complete: cmd=%p", cmd_.get());
     active_ = false;
   }
 }

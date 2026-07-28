@@ -6,6 +6,7 @@ option(NPU_FFI_FROM_SOURCE "Build tvm_ffi from source" OFF)
 option(NPU_FFI_ENABLE_PROTOBUF "Enable Protobuf for config serialization" OFF)
 option(NPU_FFI_BUILD_TESTS "Build tests" ON)
 option(NPU_FFI_BUILD_EXAMPLES "Build examples" ON)
+option(NPU_FFI_ENABLE_LOG "Enable debug logging for lifecycle events (alloc/free/sync)" OFF)
 set(NPU_FFI_VTA_DIR "" CACHE PATH "Path to VTA installation directory (containing include/ and lib/)")
 
 enable_testing()
