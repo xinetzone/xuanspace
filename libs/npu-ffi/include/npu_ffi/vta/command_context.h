@@ -37,7 +37,7 @@ namespace vta {
  * \param cmd Command handle.
  * \param wait_cycles Maximum poll cycles to wait (0 = wait indefinitely).
  */
-void synchronize(CommandHandle cmd, uint32_t wait_cycles);
+NPU_FFI_API void synchronize(CommandHandle cmd, uint32_t wait_cycles);
 
 /*!
  * \brief RAII wrapper for VTA command execution context.
@@ -58,7 +58,7 @@ void synchronize(CommandHandle cmd, uint32_t wait_cycles);
  *   }  // automatically synchronizes when ctx goes out of scope
  * \endcode
  */
-class CommandContext {
+class NPU_FFI_API CommandContext {
  public:
   /*!
    * \brief Construct a command context and acquire the thread-local command handle.

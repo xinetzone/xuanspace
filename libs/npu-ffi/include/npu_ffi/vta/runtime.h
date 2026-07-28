@@ -39,26 +39,26 @@ namespace vta {
  * \brief Get thread-local command handle.
  * \return Thread-local command handle.
  */
-CommandHandle tls_command_handle();
+NPU_FFI_API CommandHandle tls_command_handle();
 
 /*!
  * \brief Shutdown VTA runtime and cleanup resources.
  */
-void runtime_shutdown();
+NPU_FFI_API void runtime_shutdown();
 
 /*!
  * \brief Set debug mode on command handle.
  * \param cmd Command handle.
  * \param flags Debug flags (can be combined with operator|).
  */
-void set_debug_mode(CommandHandle cmd, DebugFlag flags);
+NPU_FFI_API void set_debug_mode(CommandHandle cmd, DebugFlag flags);
 
 /*!
  * \brief Synchronize command handle - commit instructions and wait for completion.
  * \param cmd Command handle.
  * \param wait_cycles Maximum poll cycles to wait (0 = wait indefinitely).
  */
-void synchronize(CommandHandle cmd, uint32_t wait_cycles = 0);
+NPU_FFI_API void synchronize(CommandHandle cmd, uint32_t wait_cycles = 0);
 
 /*!
  * \brief Perform 2D data load from DRAM buffer to SRAM.
@@ -78,7 +78,7 @@ void synchronize(CommandHandle cmd, uint32_t wait_cycles = 0);
  * \param dst_sram_index Destination SRAM index.
  * \param dst_memory_type Destination memory type.
  */
-void load_buffer_2d(CommandHandle cmd, const Buffer& src, uint32_t src_elem_offset,
+NPU_FFI_API void load_buffer_2d(CommandHandle cmd, const Buffer& src, uint32_t src_elem_offset,
                     uint32_t x_size, uint32_t y_size, uint32_t x_stride,
                     uint32_t x_pad_before, uint32_t y_pad_before,
                     uint32_t x_pad_after, uint32_t y_pad_after,
@@ -98,7 +98,7 @@ void load_buffer_2d(CommandHandle cmd, const Buffer& src, uint32_t src_elem_offs
  * \param y_size Number of rows.
  * \param x_stride X axis stride.
  */
-void store_buffer_2d(CommandHandle cmd, uint32_t src_sram_index, MemoryType src_memory_type,
+NPU_FFI_API void store_buffer_2d(CommandHandle cmd, uint32_t src_sram_index, MemoryType src_memory_type,
                      Buffer& dst, uint32_t dst_elem_offset,
                      uint32_t x_size, uint32_t y_size, uint32_t x_stride);
 
@@ -117,7 +117,7 @@ void store_buffer_2d(CommandHandle cmd, uint32_t src_sram_index, MemoryType src_
  * \param use_imm If true, use immediate value in ALU mode.
  * \param imm_val Immediate value for ALU mode.
  */
-void uop_push(uint32_t mode, uint32_t reset_out, uint32_t dst_index, uint32_t src_index,
+NPU_FFI_API void uop_push(uint32_t mode, uint32_t reset_out, uint32_t dst_index, uint32_t src_index,
               uint32_t wgt_index, ALUOpcode opcode, bool use_imm, int32_t imm_val);
 
 /*!
@@ -127,13 +127,13 @@ void uop_push(uint32_t mode, uint32_t reset_out, uint32_t dst_index, uint32_t sr
  * \param src_factor Input factor.
  * \param wgt_factor Weight factor.
  */
-void uop_loop_begin(uint32_t extent, uint32_t dst_factor = 0, uint32_t src_factor = 0,
+NPU_FFI_API void uop_loop_begin(uint32_t extent, uint32_t dst_factor = 0, uint32_t src_factor = 0,
                     uint32_t wgt_factor = 0);
 
 /*!
  * \brief Mark end of a micro-op loop.
  */
-void uop_loop_end();
+NPU_FFI_API void uop_loop_end();
 
 /*!
  * \brief Push dependence token.
@@ -142,7 +142,7 @@ void uop_loop_end();
  * \param to_qid Destination queue ID.
  * \return 0 on success.
  */
-int dep_push(CommandHandle cmd, int from_qid, int to_qid);
+NPU_FFI_API int dep_push(CommandHandle cmd, int from_qid, int to_qid);
 
 /*!
  * \brief Pop dependence signal.
@@ -151,7 +151,7 @@ int dep_push(CommandHandle cmd, int from_qid, int to_qid);
  * \param to_qid Destination queue ID.
  * \return 0 on success.
  */
-int dep_pop(CommandHandle cmd, int from_qid, int to_qid);
+NPU_FFI_API int dep_pop(CommandHandle cmd, int from_qid, int to_qid);
 
 /*!
  * \brief Perform write barrier to make memory region visible to CPU.
@@ -161,7 +161,7 @@ int dep_pop(CommandHandle cmd, int from_qid, int to_qid);
  * \param start Start of the region (in elements).
  * \param extent End of the region (in elements).
  */
-void write_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32_t start,
+NPU_FFI_API void write_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32_t start,
                    uint32_t extent);
 
 /*!
@@ -172,7 +172,7 @@ void write_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32
  * \param start Start of the region (in elements).
  * \param extent End of the region (in elements).
  */
-void read_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32_t start,
+NPU_FFI_API void read_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32_t start,
                   uint32_t extent);
 
 /*!
@@ -184,7 +184,7 @@ void read_barrier(CommandHandle cmd, Buffer& buffer, uint32_t elem_bits, uint32_
  * \param size Number of bytes to copy.
  * \param kind Copy direction (H2D/D2H/D2D).
  */
-void buffer_copy(const Buffer& from, size_t from_offset, Buffer& to, size_t to_offset,
+NPU_FFI_API void buffer_copy(const Buffer& from, size_t from_offset, Buffer& to, size_t to_offset,
                  size_t size, MemcpyKind kind);
 
 }  // namespace vta

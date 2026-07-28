@@ -4,6 +4,7 @@
 # - test_buffer:      Lifecycle management (RAII, move semantics, CommandContext)
 # - test_memory_ops:  Memory operations (copy, load/store, barriers, cpu_ptr)
 # - test_compute_ops: Compute operations (GEMM/ALU uop pushes, opcodes)
+# - test_gemm_e2e:    End-to-end GEMM integration tests (full pipeline: load-compute-store-sync)
 # - test_control_flow: Control flow (loops, dependencies, sync, debug flags)
 #
 # When adding tests for new NPU instructions, create a test_<category>.cc
@@ -23,6 +24,10 @@ add_test(NAME test_memory_ops COMMAND test_memory_ops)
 add_executable(test_compute_ops test_compute_ops.cc)
 target_link_libraries(test_compute_ops PRIVATE npu_ffi_vta)
 add_test(NAME test_compute_ops COMMAND test_compute_ops)
+
+add_executable(test_gemm_e2e test_gemm_e2e.cc)
+target_link_libraries(test_gemm_e2e PRIVATE npu_ffi_vta)
+add_test(NAME test_gemm_e2e COMMAND test_gemm_e2e)
 
 add_executable(test_control_flow test_control_flow.cc)
 target_link_libraries(test_control_flow PRIVATE npu_ffi_vta)

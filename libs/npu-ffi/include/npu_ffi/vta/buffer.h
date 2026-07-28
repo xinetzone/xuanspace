@@ -38,7 +38,7 @@ namespace vta {
  * It supports both owning (allocates and frees memory) and non-owning
  * (wraps an existing pointer) modes. Copy is disabled, move is supported.
  */
-class Buffer {
+class NPU_FFI_API Buffer {
  public:
   /*!
    * \brief Allocate a new VTA buffer of given size.

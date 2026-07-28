@@ -28,6 +28,14 @@
 #include <cstdint>
 #include <type_traits>
 
+#ifdef _WIN32
+// Windows SDK defines OUT as a SAL annotation macro, which collides with
+// MemoryType::OUT. Undefine it after includes to avoid this collision.
+#ifdef OUT
+#undef OUT
+#endif
+#endif
+
 namespace npu_ffi {
 namespace vta {
 

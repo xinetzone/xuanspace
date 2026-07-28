@@ -14,6 +14,8 @@ endif()
 
 add_library(npu_ffi_vta SHARED ${VTA_SOURCES})
 
+set_target_properties(npu_ffi_vta PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 target_compile_definitions(npu_ffi_vta PRIVATE NPU_FFI_EXPORTS)
 
 if(NPU_FFI_ENABLE_LOG)
