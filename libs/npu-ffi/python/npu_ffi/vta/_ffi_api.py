@@ -7,7 +7,7 @@ from tvm_ffi import init_ffi_api as _FFI_INIT_FUNC
 from tvm_ffi.libinfo import load_lib_module as _FFI_LOAD_LIB
 
 _MIN_TVM_FFI_VERSION = (0, 0, 0)
-_EXPECTED_TVM_FFI_VERSION = "0.1.0"
+_EXPECTED_TVM_FFI_VERSION = "0.0.1"
 
 _HERE = Path(__file__).resolve().parent
 _PROJECT_ROOT = _HERE.parent.parent.parent
