@@ -28,9 +28,9 @@
 #include <cstdint>
 #include <type_traits>
 
-#ifdef _WIN32
-// Windows SDK defines OUT as a SAL annotation macro, which collides with
-// MemoryType::OUT. Undefine it after includes to avoid this collision.
+#include "npu_ffi/common.h"
+
+#if NPU_FFI_PLATFORM_WINDOWS
 #ifdef OUT
 #undef OUT
 #endif
@@ -168,10 +168,9 @@ enum class ALUOpcode : uint32_t {
   SHL = 6
 };
 
-/*!
- * \brief Buffer allocation alignment requirement in bytes.
- */
-constexpr size_t kAllocAlignment = 64;
+// kAllocAlignment is defined in npu_ffi/common.h as ::npu_ffi::kAllocAlignment.
+// Bring it into the vta namespace for backward compatibility.
+using ::npu_ffi::kAllocAlignment;
 
 }  // namespace vta
 }  // namespace npu_ffi

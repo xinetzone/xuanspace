@@ -22,7 +22,15 @@
 /*!
  * \file npu_ffi/npu_ffi.h
  * \brief Main header file for NPU FFI - include this to get all VTA APIs.
+ *
+ * This header pulls in the common platform utilities, logging system,
+ * and the VTA runtime API. For reusable components (logging, platform
+ * detection, DLL export macros), include npu_ffi/common.h directly.
  */
+
+#include "npu_ffi/common.h"
+#include "npu_ffi/logging.h"
+#include "npu_ffi/vta/runtime.h"
 
 /*!
  * \brief NPU FFI version major number.
@@ -56,72 +64,3 @@
   NPU_FFI_STR(NPU_FFI_VERSION_MAJOR) "." \
   NPU_FFI_STR(NPU_FFI_VERSION_MINOR) "." \
   NPU_FFI_STR(NPU_FFI_VERSION_PATCH)
-
-/*!
- * \brief Platform detection macros.
- */
-#if defined(_WIN32) || defined(_WIN64)
-  #define NPU_FFI_PLATFORM_WINDOWS 1
-  #define NPU_FFI_PLATFORM_POSIX 0
-#elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
-  #define NPU_FFI_PLATFORM_WINDOWS 0
-  #define NPU_FFI_PLATFORM_POSIX 1
-#else
-  #define NPU_FFI_PLATFORM_WINDOWS 0
-  #define NPU_FFI_PLATFORM_POSIX 0
-#endif
-
-/*!
- * \brief Compiler detection macros.
- */
-#if defined(_MSC_VER)
-  #define NPU_FFI_COMPILER_MSVC 1
-  #define NPU_FFI_COMPILER_GCC 0
-  #define NPU_FFI_COMPILER_CLANG 0
-#elif defined(__clang__)
-  #define NPU_FFI_COMPILER_MSVC 0
-  #define NPU_FFI_COMPILER_GCC 0
-  #define NPU_FFI_COMPILER_CLANG 1
-#elif defined(__GNUC__)
-  #define NPU_FFI_COMPILER_MSVC 0
-  #define NPU_FFI_COMPILER_GCC 1
-  #define NPU_FFI_COMPILER_CLANG 0
-#else
-  #define NPU_FFI_COMPILER_MSVC 0
-  #define NPU_FFI_COMPILER_GCC 0
-  #define NPU_FFI_COMPILER_CLANG 0
-#endif
-
-/*!
- * \brief DLL export/import macros for shared library linkage.
- *
- * Use NPU_FFI_DLL_EXPORT when building the library,
- * NPU_FFI_DLL_IMPORT when using the library.
- * The unified NPU_FFI_API macro is automatically defined based on
- * NPU_FFI_EXPORTS (set by CMake when building the shared library).
- */
-#if NPU_FFI_PLATFORM_WINDOWS
-  #define NPU_FFI_DLL_EXPORT __declspec(dllexport)
-  #define NPU_FFI_DLL_IMPORT __declspec(dllimport)
-#elif NPU_FFI_COMPILER_GCC || NPU_FFI_COMPILER_CLANG
-  #define NPU_FFI_DLL_EXPORT __attribute__((visibility("default")))
-  #define NPU_FFI_DLL_IMPORT __attribute__((visibility("default")))
-#else
-  #define NPU_FFI_DLL_EXPORT
-  #define NPU_FFI_DLL_IMPORT
-#endif
-
-/*!
- * \brief Unified API export/import macro.
- *
- * Defined as NPU_FFI_DLL_EXPORT when NPU_FFI_EXPORTS is set
- * (during library build), NPU_FFI_DLL_IMPORT otherwise.
- */
-#if defined(NPU_FFI_EXPORTS)
-  #define NPU_FFI_API NPU_FFI_DLL_EXPORT
-#else
-  #define NPU_FFI_API NPU_FFI_DLL_IMPORT
-#endif
-
-#include "npu_ffi/logging.h"
-#include "npu_ffi/vta/runtime.h"

@@ -26,19 +26,7 @@
 
 #include <cstddef>
 
-#ifndef NPU_FFI_API
-  #if defined(_WIN32) || defined(_WIN64)
-    #ifdef NPU_FFI_EXPORTS
-      #define NPU_FFI_API __declspec(dllexport)
-    #else
-      #define NPU_FFI_API __declspec(dllimport)
-    #endif
-  #elif defined(__GNUC__) || defined(__clang__)
-    #define NPU_FFI_API __attribute__((visibility("default")))
-  #else
-    #define NPU_FFI_API
-  #endif
-#endif
+#include "npu_ffi/common.h"
 
 namespace npu_ffi {
 namespace vta {
