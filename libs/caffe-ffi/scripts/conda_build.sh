@@ -1,8 +1,13 @@
 #!/bin/bash
 # caffe-ffi Conda 环境 Linux/macOS 构建脚本
-# 使用方法：conda activate caffe-ffi && bash conda_build.sh
+# 使用方法：conda activate caffe-ffi && bash scripts/conda_build.sh
 
 set -euo pipefail
+
+# ── 切换到项目根目录（脚本所在目录的父目录）──
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 
 echo "========================================"
 echo " caffe-ffi Conda Build (Linux/macOS)"

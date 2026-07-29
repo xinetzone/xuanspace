@@ -1,8 +1,11 @@
 @echo off
 REM caffe-ffi Conda 环境 Windows 构建脚本
-REM 使用方法：conda activate caffe-ffi 后运行本脚本
+REM 使用方法：conda activate caffe-ffi 后运行 scripts\conda_build.bat
 
 setlocal enabledelayedexpansion
+
+REM ── 切换到项目根目录（脚本所在目录的父目录）──
+pushd "%~dp0.."
 
 echo ========================================
 echo  caffe-ffi Conda Build (Windows)
@@ -12,6 +15,7 @@ REM ── 检查 conda 环境 ──
 where conda >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] conda 未找到，请先安装 Miniconda/Anaconda
+    popd
     exit /b 1
 )
 
@@ -20,6 +24,7 @@ if "%CONDA_DEFAULT_ENV%"=="" (
     call conda activate caffe-ffi
     if %ERRORLEVEL% neq 0 (
         echo [ERROR] 无法激活 caffe-ffi 环境，请先运行: conda env create -f environment.yml
+        popd
         exit /b 1
     )
 )
@@ -44,6 +49,7 @@ cmake -B build -G Ninja ^
     -DOPENBLAS_HOME="%CONDA_PREFIX%/Library"
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] CMake configure failed
+    popd
     exit /b 1
 )
 
@@ -53,6 +59,7 @@ echo [STEP 2/3] Building (Ninja)...
 cmake --build build --config Release
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Build failed
+    popd
     exit /b 1
 )
 
@@ -62,6 +69,7 @@ echo [STEP 3/3] Installing Python package (editable)...
 pip install -e . --no-build-isolation
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] pip install failed
+    popd
     exit /b 1
 )
 
@@ -76,4 +84,5 @@ echo  Build complete!
 echo  DLL location: build\Release\_caffe_ffi.dll
 echo ========================================
 
+popd
 endlocal
