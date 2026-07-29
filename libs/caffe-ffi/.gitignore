@@ -12,7 +12,7 @@ __pycache__/
 *.pyd
 *.whl
 
-# C/C++ extensions
+# C/C++ extensions (built outputs only, source in build/)
 *.so
 *.o
 *.obj
@@ -33,15 +33,17 @@ __pycache__/
 env/
 venv/
 
-# CMake
-CMakeCache.txt
-CMakeFiles/
+# CMake (generated files only, cmake/ modules are tracked)
+/CMakeCache.txt
+/CMakeFiles/
 cmake-build-*/
-*.cmake
-Makefile
+/Makefile
+/cmake_install.cmake
+/CTestTestfile.cmake
 
 # Temporary
-.temp/
+.temp/*
+!.temp/.gitkeep
 temp/
 *.log
 *.bak
@@ -49,3 +51,7 @@ stdout.txt
 stderr.txt
 build_log.txt
 _test_*.py
+
+# OS files
+.DS_Store
+Thumbs.db

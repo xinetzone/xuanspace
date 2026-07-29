@@ -208,6 +208,9 @@ disable_logging()
 
 ```
 caffe-ffi/
+├── AGENTS.md                # AI 智能体路由入口
+├── .agents/                 # 项目级智能体规范
+├── .temp/                   # 临时文件目录（不提交内容）
 ├── CMakeLists.txt           # 根 CMake 配置
 ├── CMakePresets.json        # CMake 预设配置
 ├── pyproject.toml           # Python 构建配置
@@ -241,16 +244,21 @@ caffe-ffi/
 │   └── caffe.proto
 ├── cmake/                   # CMake 模块
 ├── tests/python/            # Python 单元测试
+├── tests/cpp/               # C++ 单元测试
 ├── conda.recipe/            # Conda 构建配方
-├── scripts/                 # 辅助脚本
-│   ├── dev.sh               # Linux/WSL/macOS 开发脚本
-│   ├── dev.ps1              # Windows 开发脚本
+├── scripts/                 # 开发/构建脚本
+│   ├── dev.sh               # Linux/WSL/macOS 一键开发脚本
+│   ├── dev.ps1              # Windows 一键开发脚本
+│   ├── conda_build.sh       # Linux/WSL Conda 环境构建脚本
+│   ├── conda_build.bat      # Windows Conda 环境构建脚本
 │   ├── check_ffi_prefix.py  # FFI 前缀一致性检查
 │   ├── verify_install.py    # 安装验证脚本
 │   └── gen_proto.py         # Protobuf 代码生成
 ├── docs/                    # 文档
 └── examples/                # 示例代码
 ```
+
+> **临时文件约定**：调试脚本、临时测试、构建日志等临时文件请统一放在 `.temp/` 目录下，不要散落在项目根目录或其他位置。`.temp/` 目录下除 `.gitkeep` 外的文件不会被 Git 追踪。
 
 ## 开发命令
 
@@ -282,6 +290,16 @@ caffe-ffi/
 
 # 查看帮助
 ./scripts/dev.sh -h
+```
+
+### Conda 环境一键构建
+
+```bash
+# Linux/WSL：在已激活的 conda 环境中执行
+bash scripts/conda_build.sh       # 配置 + 构建 + 安装 + 测试
+
+# Windows：在已激活的 conda 环境中执行
+scripts\conda_build.bat           # 配置 + 构建 + 安装 + 测试
 ```
 
 ### Windows (dev.ps1)
