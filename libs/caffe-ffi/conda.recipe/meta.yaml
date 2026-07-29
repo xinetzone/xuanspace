@@ -10,6 +10,11 @@ source:
 
 build:
   number: 0
+  skip: true  # [py<314]
+  missing_dso_whitelist:
+    - "*/libtvm_ffi*.so*"    # tvm-ffi shared library (from apache-tvm-ffi)
+    - "*/libopenblas*.so*"   # OpenBLAS runtime
+    - "*/libprotobuf*.so*"   # Protobuf runtime
 
 requirements:
   build:
@@ -20,20 +25,25 @@ requirements:
   host:
     - python>=3.14
     - pip
+    - setuptools-scm
+    - libprotobuf>=7.0.0
     - protobuf>=7.0.0
     - numpy>=2.3
     - libopenblas
+    - apache-tvm-ffi
   run:
     - python>=3.14
     - protobuf>=7.0.0
     - numpy>=2.3
     - apache-tvm-ffi
+    - libopenblas
 
 test:
   imports:
     - caffe_ffi
   commands:
-    - python -c "import caffe_ffi; print('caffe_ffi imported successfully')"
+    - python -c "import caffe_ffi; print('caffe-ffi version:', caffe_ffi.__version__); print('Native available:', caffe_ffi._ffi_api.is_available())"
+    - python -c "from caffe_ffi import Blob; b = Blob([100]); b.fill(1.0); print('Blob test OK, size:', b.count())"
   requires:
     - pip
     - pytest>=8.0
@@ -48,7 +58,8 @@ about:
   description: |
     caffe-ffi provides Caffe deep learning framework bindings using the
     tvm-ffi native object system, enabling zero-copy interop between
-    Python and C++ with modern C++17 features.
+    Python and C++ with modern C++17 features. Supports BLAS acceleration
+    via OpenBLAS and Python 3.14+.
 
 extra:
   recipe-maintainers:
