@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Generate Python protobuf bindings from caffe.proto.
+
+Usage:
+    python scripts/gen_proto.py
+
+This script regenerates python/caffe_ffi/caffe/proto/caffe_pb2.py from proto/caffe/proto/caffe.proto.
+Requires grpcio-tools package (pip install grpcio-tools).
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PROTO_DIR = ROOT / "proto"
+OUTPUT_DIR = ROOT / "python" / "caffe_ffi" / "caffe" / "proto"
+PROTO_FILE = PROTO_DIR / "caffe" / "proto" / "caffe.proto"
+
+
+def main() -> int:
+    if not PROTO_FILE.exists():
+        print(f"Error: proto file not found at {PROTO_FILE}", file=sys.stderr)
+        return 1
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"Generating Python bindings from {PROTO_FILE}...")
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "grpc_tools.protoc",
+        f"-I{PROTO_DIR}",
+        f"--python_out={OUTPUT_DIR}",
+        str(PROTO_FILE.relative_to(PROTO_DIR)),
+    ]
+
+    print(f"Running: {' '.join(str(c) for c in cmd)}")
+
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"protoc failed with exit code {result.returncode}", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        return 1
+
+    generated_file = OUTPUT_DIR / "caffe" / "proto" / "caffe_pb2.py"
+    expected_file = OUTPUT_DIR / "caffe_pb2.py"
+    
+    if generated_file.exists():
+        if expected_file.exists():
+            expected_file.unlink()
+        shutil.move(str(generated_file), str(expected_file))
+        
+        caffe_proto_dir = OUTPUT_DIR / "caffe" / "proto"
+        if caffe_proto_dir.exists():
+            init_file = caffe_proto_dir / "__init__.py"
+            if not init_file.exists():
+                init_file.write_text("")
+        caffe_dir = OUTPUT_DIR / "caffe"
+        if caffe_dir.exists():
+            init_file = caffe_dir / "__init__.py"
+            if not init_file.exists():
+                init_file.write_text("")
+
+    if not expected_file.exists():
+        print(f"Error: expected generated file not found: {expected_file}", file=sys.stderr)
+        return 1
+
+    print(f"Generated: {expected_file}")
+
+    try:
+        sys.path.insert(0, str(ROOT / "python"))
+        from caffe_ffi.caffe.proto import caffe_pb2
+        net_param = caffe_pb2.NetParameter()
+        net_param.name = "test"
+        data = net_param.SerializeToString()
+        net_param2 = caffe_pb2.NetParameter()
+        net_param2.ParseFromString(data)
+        assert net_param2.name == "test"
+        print("Verification: OK - serialization roundtrip successful")
+    except Exception as e:
+        print(f"Warning: verification failed: {e}", file=sys.stderr)
+        return 1
+
+    print("Done!")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

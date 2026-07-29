@@ -1,0 +1,97 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "ninja>=1.11", "cmake>=3.26", "apache-tvm-ffi"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "caffe-ffi"
+version = "0.1.0"
+description = "Caffe FFI bindings using tvm-ffi native object system"
+readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: C++",
+    "Operating System :: OS Independent",
+]
+keywords = ["deep learning", "caffe", "tvm-ffi", "ffi", "neural network"]
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.3",
+    "protobuf>=7.0.0",
+    "apache-tvm-ffi",
+    "pytest>=8.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff",
+    "grpcio-tools",
+]
+
+[project.urls]
+Homepage = "https://github.com/xinetzone/caffe-ffi"
+Repository = "https://github.com/xinetzone/caffe-ffi"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+wheel.py-api = "py3"
+wheel.packages = ["python/caffe_ffi"]
+wheel.install-dir = "caffe_ffi"
+build-dir = "build"
+cmake.version = "CMakeLists.txt"
+cmake.build-type = "Release"
+ninja.make-fallback = false
+build.verbose = true
+
+sdist.include = [
+    "/cmake/**",
+    "/include/**",
+    "/src/**",
+    "/proto/**",
+    "/python/**",
+    "/CMakeLists.txt",
+    "/CMakePresets.json",
+    "/LICENSE",
+    "/README.md",
+]
+
+sdist.exclude = [
+    "**/.git",
+    "**/__pycache__",
+    "**/*.pyc",
+    "build",
+    "dist",
+]
+
+[tool.scikit-build.cmake.define]
+CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
+CAFFE_CPU_ONLY = "ON"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = ["-v"]
+
+[tool.ruff]
+include = ["python/**/*.py", "tests/**/*.py"]
+line-length = 120
+indent-width = 4
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

@@ -1,0 +1,55 @@
+{% set name = "caffe-ffi" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - cmake>=3.26
+    - ninja>=1.11
+    - scikit-build-core>=0.10.0
+  host:
+    - python>=3.14
+    - pip
+    - protobuf>=7.0.0
+    - numpy>=2.3
+    - libopenblas
+  run:
+    - python>=3.14
+    - protobuf>=7.0.0
+    - numpy>=2.3
+    - apache-tvm-ffi
+
+test:
+  imports:
+    - caffe_ffi
+  commands:
+    - python -c "import caffe_ffi; print('caffe_ffi imported successfully')"
+  requires:
+    - pip
+    - pytest>=8.0
+  source_files:
+    - tests/python/
+
+about:
+  home: https://github.com/xinetzone/caffe-ffi
+  license: BSD-2-Clause
+  license_file: LICENSE
+  summary: Caffe FFI bindings using tvm-ffi native object system
+  description: |
+    caffe-ffi provides Caffe deep learning framework bindings using the
+    tvm-ffi native object system, enabling zero-copy interop between
+    Python and C++ with modern C++17 features.
+
+extra:
+  recipe-maintainers:
+    - xinetzone

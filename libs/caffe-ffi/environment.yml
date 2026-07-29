@@ -1,0 +1,34 @@
+name: caffe-ffi-dev
+channels:
+  - conda-forge
+  # 国内用户可取消注释以下镜像源加速下载：
+  # - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+  # - https://mirrors.aliyun.com/anaconda/cloud/conda-forge
+channel_priority: strict
+
+dependencies:
+  # ── Python ──
+  - python>=3.14
+
+  # ── 构建工具 ──
+  - cmake>=3.26
+  - ninja>=1.13
+  - cxx-compiler          # 自动选择平台编译器：MSVC(Windows)/GCC(Linux)/Clang(macOS)
+
+  # ── 核心依赖 ──
+  - libprotobuf>=7.0.0    # C++ protobuf 运行时
+  - protobuf>=7.0.0       # Python protobuf
+  - libopenblas           # BLAS 库（CMake find_package(BLAS) 自动检测）
+
+  # ── 工具 ──
+  - pip
+  - pytest>=8.0
+  - ruff                  # Python linting/formatting
+
+  # ── pip 安装 ──
+  - pip:
+      - scikit-build-core>=0.10
+      - numpy>=2.3
+      # - apache-tvm-ffi>=1.3.0
+      # tvm-ffi 本地开发模式（从源码editable安装，取消注释使用）：
+      - -e ../../vendor/tvm-ffi

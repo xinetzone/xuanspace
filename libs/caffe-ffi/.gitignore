@@ -1,0 +1,51 @@
+# Build directories
+build/
+build-*/
+dist/
+*.egg-info/
+wheelhouse/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.whl
+
+# C/C++ extensions
+*.so
+*.o
+*.obj
+*.dll
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+*.cmake
+Makefile
+
+# Temporary
+.temp/
+temp/
+*.log
+*.bak
+stdout.txt
+stderr.txt
+build_log.txt
+_test_*.py
