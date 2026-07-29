@@ -12,7 +12,6 @@
 - **构建系统**：CMake 3.26+ + scikit-build-core + Ninja
 - **核心依赖**：tvm-ffi (apache-tvm-ffi >= 0.3.0)、Protobuf >= 7、BLAS (OpenBLAS)
 - **测试框架**：pytest (Python)、header-only 自研框架 (C++)
-- **许可证**：BSD-2-Clause
 
 ## 目录结构
 
@@ -58,6 +57,7 @@ caffe-ffi/
 ### 临时文件
 
 所有临时脚本、调试文件、测试输出必须放在 `.temp/` 目录下，不要散落在项目根目录或其他位置。
+
 - `.temp/*.py` 用于临时测试脚本
 - `.temp/*.log` 用于构建日志
 - `.temp/` 下除 `.gitkeep` 外所有文件被 `.gitignore` 忽略
@@ -79,3 +79,4 @@ caffe-ffi/
 - 原子提交规范：`atomic-commit-cmd`
 - CI检查：`ci-check-cmd`
 - 复盘/洞察/萃取：`retrospective-cmd` / `insight-cmd` / `extraction-cmd`
+

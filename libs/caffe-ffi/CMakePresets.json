@@ -32,7 +32,7 @@
       "description": "Debug build with logging enabled",
       "inherits": "debug",
       "cacheVariables": {
-        "CAFFE_FFI_ENABLE_LOG": "ON"
+        "CAFFE_FFI_ENABLE_DEBUG_LOG": "ON"
       }
     }
   ],

@@ -181,7 +181,7 @@ with contextlib.closing(blob.data_tensor) as arr:
 ## 九、如何复现性能数据
 
 ```bash
-cd projects/xuanspace/vendor/caffe/caffe-ffi
+cd projects/xuanspace/libs/caffe-ffi
 
 # 编译（Release 模式）
 cmake -B build -DCMAKE_BUILD_TYPE=Release

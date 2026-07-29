@@ -9,7 +9,6 @@ description = "Caffe FFI bindings using tvm-ffi native object system"
 readme = "README.md"
 license = { file = "LICENSE" }
 classifiers = [
-    "License :: OSI Approved :: BSD License",
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
@@ -60,10 +59,18 @@ sdist.include = [
     "/src/**",
     "/proto/**",
     "/python/**",
+    "/tests/**",
+    "/scripts/**",
+    "/conda.recipe/**",
+    "/examples/**",
+    "/docs/**",
     "/CMakeLists.txt",
     "/CMakePresets.json",
     "/LICENSE",
     "/README.md",
+    "/CHANGELOG.md",
+    "/environment.yml",
+    "/AGENTS.md",
 ]
 
 sdist.exclude = [
@@ -77,6 +84,10 @@ sdist.exclude = [
 [tool.scikit-build.cmake.define]
 CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
 CAFFE_CPU_ONLY = "ON"
+CMAKE_INSTALL_RPATH_USE_LINK_PATH = "ON"
+CMAKE_BUILD_RPATH_USE_ORIGIN = "ON"
+CMAKE_SKIP_BUILD_RPATH = "OFF"
+CMAKE_BUILD_WITH_INSTALL_RPATH = "ON"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

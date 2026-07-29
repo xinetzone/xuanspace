@@ -11,8 +11,11 @@
   - data:       返回 numpy 数组，完整拷贝 C++ 数据，O(N) 时间
 
 运行方式：
-  cd projects/xuanspace/vendor/caffe/caffe-ffi
-  $env:PATH = "build/Release;" + $env:PATH   # PowerShell
+  cd projects/xuanspace/libs/caffe-ffi
+  # pip install -e .  （推荐：editable安装，自动设置RPATH）
+  # 或编译后设置LD_LIBRARY_PATH：
+  #   cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+  #   export LD_LIBRARY_PATH=$PWD/build:$LD_LIBRARY_PATH
   python examples/zero_copy_vs_copy_demo.py
 """
 
