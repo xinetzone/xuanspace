@@ -12,9 +12,9 @@ build:
   number: 0
   skip: true  # [py<314]
   missing_dso_whitelist:
-    - "*/libtvm_ffi*.so*"    # tvm-ffi shared library (from apache-tvm-ffi)
-    - "*/libopenblas*.so*"   # OpenBLAS runtime
-    - "*/libprotobuf*.so*"   # Protobuf runtime
+    - "*/libtvm_ffi*.so*"
+    - "*/libopenblas*.so*"
+    - "*/libprotobuf*.so*"
 
 requirements:
   build:
@@ -22,21 +22,21 @@ requirements:
     - cmake>=3.26
     - ninja>=1.11
     - scikit-build-core>=0.10.0
+    - patchelf
   host:
     - python>=3.14
     - pip
-    - setuptools-scm
     - libprotobuf>=7.0.0
     - protobuf>=7.0.0
     - numpy>=2.3
     - libopenblas
-    - apache-tvm-ffi
+    - cython>=3.2.8
   run:
     - python>=3.14
     - protobuf>=7.0.0
     - numpy>=2.3
-    - apache-tvm-ffi
     - libopenblas
+    - typing-extensions>=4.5
 
 test:
   imports:
