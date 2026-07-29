@@ -9,6 +9,8 @@
  * EXPECT_LE, EXPECT_GT, EXPECT_GE, EXPECT_TRUE, EXPECT_FALSE, EXPECT_THROW.
  */
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -17,16 +19,51 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 namespace caffe_ffi {
 namespace testing {
 
+// ── Type-safe comparison helpers ──
+// These resolve signed/unsigned mismatch warnings by promoting both operands
+// to their common type before comparison, mirroring the usual arithmetic
+// conversions in a well-defined, warning-free manner.
+namespace detail {
+
+template <typename T, typename U>
+constexpr bool CmpEq(const T& a, const U& b) {
+  using C = std::common_type_t<T, U>;
+  return static_cast<C>(a) == static_cast<C>(b);
+}
+
+template <typename T, typename U>
+constexpr bool CmpNe(const T& a, const U& b) {
+  using C = std::common_type_t<T, U>;
+  return static_cast<C>(a) != static_cast<C>(b);
+}
+
+template <typename T, typename U>
+constexpr bool CmpLt(const T& a, const U& b) {
+  using C = std::common_type_t<T, U>;
+  return static_cast<C>(a) < static_cast<C>(b);
+}
+
+template <typename T, typename U>
+constexpr bool CmpLe(const T& a, const U& b) {
+  using C = std::common_type_t<T, U>;
+  return static_cast<C>(a) <= static_cast<C>(b);
+}
+
+}  // namespace detail
+
 struct TestInfo {
   std::string suite_name;
   std::string test_name;
   std::function<void()> func;
+  double elapsed_ms = 0.0;
+  bool passed_flag = false;
 };
 
 struct TestRegistry {
@@ -41,33 +78,86 @@ struct TestRegistry {
 
   void AddTest(const std::string& suite, const std::string& name,
                std::function<void()> func) {
-    tests.push_back({suite, name, std::move(func)});
+    tests.push_back({suite, name, std::move(func), 0.0, false});
   }
 
   int RunAll() {
+    using Clock = std::chrono::high_resolution_clock;
+    auto total_start = Clock::now();
+
     for (auto& t : tests) {
       std::printf("[ RUN      ] %s.%s\n", t.suite_name.c_str(),
                   t.test_name.c_str());
       std::fflush(stdout);
+      auto t_start = Clock::now();
       try {
         t.func();
-        std::printf("[  PASSED  ] %s.%s\n", t.suite_name.c_str(),
-                    t.test_name.c_str());
+        auto t_end = Clock::now();
+        t.elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+        t.passed_flag = true;
+        std::printf("[  PASSED  ] %s.%s (%.2f ms)\n", t.suite_name.c_str(),
+                    t.test_name.c_str(), t.elapsed_ms);
         passed++;
       } catch (const std::exception& e) {
-        std::printf("[  FAILED  ] %s.%s\n", t.suite_name.c_str(),
-                    t.test_name.c_str());
+        auto t_end = Clock::now();
+        t.elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+        t.passed_flag = false;
+        std::printf("[  FAILED  ] %s.%s (%.2f ms)\n", t.suite_name.c_str(),
+                    t.test_name.c_str(), t.elapsed_ms);
         std::printf("             Exception: %s\n", e.what());
         failed++;
       } catch (...) {
-        std::printf("[  FAILED  ] %s.%s\n", t.suite_name.c_str(),
-                    t.test_name.c_str());
+        auto t_end = Clock::now();
+        t.elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+        t.passed_flag = false;
+        std::printf("[  FAILED  ] %s.%s (%.2f ms)\n", t.suite_name.c_str(),
+                    t.test_name.c_str(), t.elapsed_ms);
         std::printf("             Unknown exception\n");
         failed++;
       }
     }
-    std::printf("\n[==========] %d tests ran, %d passed, %d failed\n",
-                static_cast<int>(tests.size()), passed, failed);
+
+    auto total_end = Clock::now();
+    double total_ms = std::chrono::duration<double, std::milli>(total_end - total_start).count();
+
+    std::printf("\n[==========] %d tests ran, %d passed, %d failed (%.2f ms total)\n",
+                static_cast<int>(tests.size()), passed, failed, total_ms);
+
+    // ── Per-suite timing summary ──
+    std::unordered_map<std::string, std::pair<int, double>> suite_stats;
+    for (const auto& t : tests) {
+      auto& s = suite_stats[t.suite_name];
+      s.first++;
+      s.second += t.elapsed_ms;
+    }
+    if (!suite_stats.empty()) {
+      std::printf("[----------] Global test environment tear-down\n");
+      std::printf("[==========] Per-suite summary:\n");
+      std::vector<std::pair<std::string, std::pair<int, double>>> sorted_suites(
+          suite_stats.begin(), suite_stats.end());
+      std::sort(sorted_suites.begin(), sorted_suites.end(),
+                [](const auto& a, const auto& b) { return a.second.second > b.second.second; });
+      for (const auto& s : sorted_suites) {
+        std::printf("[  SUITE   ] %-20s %3d tests, %8.2f ms total, avg %6.2f ms\n",
+                    s.first.c_str(), s.second.first, s.second.second,
+                    s.second.second / s.second.first);
+      }
+    }
+
+    // ── Slowest individual tests ──
+    std::vector<const TestInfo*> sorted_tests;
+    sorted_tests.reserve(tests.size());
+    for (const auto& t : tests) sorted_tests.push_back(&t);
+    std::sort(sorted_tests.begin(), sorted_tests.end(),
+              [](const TestInfo* a, const TestInfo* b) { return a->elapsed_ms > b->elapsed_ms; });
+    size_t top_n = std::min<size_t>(5, sorted_tests.size());
+    std::printf("[----------] Top %zu slowest test(s):\n", top_n);
+    for (size_t i = 0; i < top_n; i++) {
+      const auto* t = sorted_tests[i];
+      std::printf("[  SLOW    ] #%zu %s.%s (%.2f ms)\n",
+                  i + 1, t->suite_name.c_str(), t->test_name.c_str(), t->elapsed_ms);
+    }
+
     return failed > 0 ? 1 : 0;
   }
 };
@@ -113,7 +203,7 @@ inline int RunAllTests() { return TestRegistry::Instance().RunAll(); }
   do {                                                                             \
     auto _a = (a);                                                                 \
     auto _b = (b);                                                                 \
-    if (!(_a == _b)) {                                                             \
+    if (!::caffe_ffi::testing::detail::CmpEq(_a, _b)) {                            \
       CAFFE_FFI_TEST_FAIL("EXPECT_EQ(" #a ", " #b ") failed at " __FILE__ ":"      \
                           << __LINE__ << "\n  Expected: " << _b                    \
                           << "\n  Actual:   " << _a);                              \
@@ -124,7 +214,7 @@ inline int RunAllTests() { return TestRegistry::Instance().RunAll(); }
   do {                                                                             \
     auto _a = (a);                                                                 \
     auto _b = (b);                                                                 \
-    if (!(_a != _b)) {                                                             \
+    if (!::caffe_ffi::testing::detail::CmpNe(_a, _b)) {                            \
       CAFFE_FFI_TEST_FAIL("EXPECT_NE(" #a ", " #b ") failed at " __FILE__ ":"      \
                           << __LINE__ << "\n  Both equal: " << _a);                \
     }                                                                              \
@@ -134,7 +224,7 @@ inline int RunAllTests() { return TestRegistry::Instance().RunAll(); }
   do {                                                                             \
     auto _a = (a);                                                                 \
     auto _b = (b);                                                                 \
-    if (!(_a < _b)) {                                                              \
+    if (!::caffe_ffi::testing::detail::CmpLt(_a, _b)) {                            \
       CAFFE_FFI_TEST_FAIL("EXPECT_LT(" #a " < " #b ") failed at " __FILE__ ":"     \
                           << __LINE__ << "\n  " << _a << " < " << _b               \
                           << " is false");                                         \
@@ -145,7 +235,7 @@ inline int RunAllTests() { return TestRegistry::Instance().RunAll(); }
   do {                                                                             \
     auto _a = (a);                                                                 \
     auto _b = (b);                                                                 \
-    if (!(_a <= _b)) {                                                             \
+    if (!::caffe_ffi::testing::detail::CmpLe(_a, _b)) {                            \
       CAFFE_FFI_TEST_FAIL("EXPECT_LE(" #a " <= " #b ") failed at " __FILE__ ":"    \
                           << __LINE__ << "\n  " << _a << " <= " << _b              \
                           << " is false");                                         \
