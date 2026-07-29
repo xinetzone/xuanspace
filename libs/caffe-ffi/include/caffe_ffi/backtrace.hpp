@@ -1,6 +1,7 @@
 #ifndef CAFFE_FFI_BACKTRACE_HPP_
 #define CAFFE_FFI_BACKTRACE_HPP_
 
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <string>
@@ -27,6 +28,13 @@ static constexpr int kSkipFrames = 2;
 inline std::string GetBacktrace(int skip_frames = kSkipFrames, int max_frames = kMaxFrames) {
   if (max_frames <= 0) max_frames = kMaxFrames;
   if (skip_frames < 0) skip_frames = 0;
+
+  // Safety: allow disabling backtrace via environment variable (useful for Python
+  // unittest environments where backtrace_symbols() may crash on Python frames)
+  const char* disable_env = std::getenv("CAFFE_FFI_DISABLE_BACKTRACE");
+  if (disable_env && std::strcmp(disable_env, "1") == 0) {
+    return "  (backtrace disabled via CAFFE_FFI_DISABLE_BACKTRACE=1)\n";
+  }
 
   std::ostringstream oss;
 
