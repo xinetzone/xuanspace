@@ -43,6 +43,7 @@ def _find_lib_path() -> Optional[Path]:
         base_dir / "build-wheel",
         base_dir / "build" / "Release",
         base_dir / "build" / "lib",
+        base_dir / "build" / "python" / "caffe_ffi",
         base_dir / "build",
         Path(__file__).parent,
         base_dir,

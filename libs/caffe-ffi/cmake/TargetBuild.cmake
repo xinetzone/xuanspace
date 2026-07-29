@@ -48,4 +48,11 @@ if(MSVC)
   set_target_properties(_caffe_ffi PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS TRUE
   )
+else()
+  # Export all symbols on Linux/macOS (matches MSVC WINDOWS_EXPORT_ALL_SYMBOLS behavior)
+  set_target_properties(_caffe_ffi PROPERTIES
+    C_VISIBILITY_PRESET default
+    CXX_VISIBILITY_PRESET default
+    VISIBILITY_INLINES_HIDDEN FALSE
+  )
 endif()

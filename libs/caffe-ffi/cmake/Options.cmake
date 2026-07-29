@@ -7,6 +7,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(CAFFE_CPU_ONLY "Build Caffe-FFI with CPU only support" ON)
 option(CAFFE_FFI_ENABLE_DEBUG_LOG "Enable detailed debug logging for memory/container operations" ON)
 option(CAFFE_FFI_ENABLE_BACKTRACE "Enable stack backtrace support for memory leak diagnosis" ON)
+option(CAFFE_FFI_BUILD_TESTS "Build C++ unit tests" ON)
 
 if(POLICY CMP0144)
   cmake_policy(SET CMP0144 NEW)

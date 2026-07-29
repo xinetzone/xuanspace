@@ -177,7 +177,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("blobs_array", &Layer::blobs_array, "Get parameter blobs (weights/biases) as Array");
 
   refl::ObjectDef<Net>()
-      .def("name", &Net::name, "Get network name")
+      .def("name", [](const Net* self) -> std::string { return std::string(self->name()); }, "Get network name")
       .def("Forward", &Net::Forward, "Run forward pass (returns Map of output name -> Blob)")
       .def("ForwardFromTo", &Net::ForwardFromTo, "Run forward pass from start to end layer (returns total loss)")
       .def("CopyTrainedLayersFrom", static_cast<void (Net::*)(const std::string&)>(&Net::CopyTrainedLayersFrom), "Load trained weights from .caffemodel file")
