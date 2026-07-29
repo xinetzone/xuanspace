@@ -86,8 +86,14 @@ class Blob(_Object):
             ctor = _get_fn("NewBlob")
             self.__init_handle_by_constructor__(ctor)
             if shape is not None:
+                _logger.info("Blob created via native constructor, reshaping to %s", list(shape))
                 _native_method(self, 'Reshape')(list(shape))
+            else:
+                _logger.info("Blob created via native constructor (empty shape)")
+        elif _NATIVE_MODE and handle is not None:
+            _logger.info("Blob created from existing handle")
         elif not _NATIVE_MODE:
+            _logger.info("Blob created in Python-only mode, shape=%s", shape)
             self._py_init(shape)
 
     def _py_init(self, shape=None):
@@ -142,6 +148,11 @@ class Blob(_Object):
         return result
 
     def Reshape(self, shape: List[int]) -> None:
+        try:
+            old_shape = tuple(self.shape)
+        except Exception:
+            old_shape = ()
+        _logger.info("Blob.Reshape: %s -> %s", old_shape, list(shape))
         if self._is_native:
             _native_method(self, 'Reshape')(list(shape))
         else:
@@ -188,6 +199,8 @@ class Blob(_Object):
     def data(self, value: np.ndarray) -> None:
         """Set data from numpy array."""
         arr = np.asarray(value, dtype=np.float32)
+        _logger.info("Blob.data setter: shape=%s -> %s, dtype=%s",
+                     self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
         self.data_tensor[:] = arr
@@ -201,12 +214,15 @@ class Blob(_Object):
     def diff(self, value: np.ndarray) -> None:
         """Set diff from numpy array."""
         arr = np.asarray(value, dtype=np.float32)
+        _logger.info("Blob.diff setter: shape=%s -> %s, dtype=%s",
+                     self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
         self.diff_tensor[:] = arr
 
     def Update(self) -> None:
         """Update data by subtracting diff (data -= diff)."""
+        _logger.info("Blob.Update: shape=%s, data -= diff", self.shape)
         if self._is_native:
             fn = _get_fn("BlobUpdate")
             fn(self)
@@ -215,12 +231,14 @@ class Blob(_Object):
 
     def zero(self) -> Blob:
         """Set data and diff to all zeros."""
+        _logger.info("Blob.zero: shape=%s", self.shape)
         self.data_tensor.fill(0)
         self.diff_tensor.fill(0)
         return self
 
     def fill(self, value: float) -> Blob:
         """Fill data with a constant value."""
+        _logger.info("Blob.fill: shape=%s, value=%s, diff zeroed", self.shape, value)
         self.data_tensor.fill(np.float32(value))
         self.diff_tensor.fill(0)
         return self
@@ -229,8 +247,11 @@ class Blob(_Object):
         """Copy data from another blob or numpy array."""
         if isinstance(other, Blob):
             other_data = other.data_tensor
+            _logger.info("Blob.copy_from: shape=%s <- Blob(shape=%s)", self.shape, other.shape)
         else:
             other_data = np.asarray(other, dtype=np.float32)
+            _logger.info("Blob.copy_from: shape=%s <- ndarray(shape=%s, dtype=%s)",
+                         self.shape, other_data.shape, other_data.dtype)
         if tuple(other_data.shape) != self.shape:
             self.Reshape(list(other_data.shape))
         self.data_tensor[:] = other_data
@@ -239,6 +260,8 @@ class Blob(_Object):
     def from_numpy(self, arr: np.ndarray, set_diff: bool = False) -> Blob:
         """Reshape blob and set data from numpy array."""
         arr = np.asarray(arr, dtype=np.float32)
+        _logger.info("Blob.from_numpy: shape=%s, dtype=%s, set_diff=%s",
+                     arr.shape, arr.dtype, set_diff)
         self.Reshape(list(arr.shape))
         if set_diff:
             self.diff = arr
@@ -265,8 +288,10 @@ class Blob(_Object):
             expected_shape = tuple(self.shape)
             if data.shape != expected_shape:
                 data = data.reshape(expected_shape)
+            _logger.info("Blob.set_data (native): shape=%s, dtype=%s", data.shape, data.dtype)
             _native_method(self, 'set_data')(data)
         else:
+            _logger.info("Blob.set_data (python): shape=%s", self._py_shape)
             self._py_data = np.array(data, dtype=np.float32).reshape(self._py_shape)
 
     def get_diff(self) -> List[float]:
@@ -283,8 +308,10 @@ class Blob(_Object):
             expected_shape = tuple(self.shape)
             if diff.shape != expected_shape:
                 diff = diff.reshape(expected_shape)
+            _logger.info("Blob.set_diff (native): shape=%s, dtype=%s", diff.shape, diff.dtype)
             _native_method(self, 'set_diff')(diff)
         else:
+            _logger.info("Blob.set_diff (python): shape=%s", self._py_shape)
             self._py_diff = np.array(diff, dtype=np.float32).reshape(self._py_shape)
 
     @property

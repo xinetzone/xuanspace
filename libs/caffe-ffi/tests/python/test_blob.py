@@ -93,6 +93,160 @@ class TestBlobFill:
         b.zero()
         assert np.all(b.data == 0.0)
 
+    def test_fill_zeros_diff(self):
+        """fill() must zero the diff tensor."""
+        b = Blob([2, 3])
+        b.diff_tensor[:] = 9.99
+        b.fill(1.0)
+        assert np.all(b.diff_tensor == 0.0)
+
+    def test_fill_returns_self(self):
+        """fill() returns self for chaining."""
+        b = Blob([2, 3])
+        result = b.fill(5.0)
+        assert result is b
+
+    def test_fill_negative_value(self):
+        b = Blob([3])
+        b.fill(-1.5)
+        np.testing.assert_allclose(b.data, [-1.5, -1.5, -1.5], rtol=1e-6)
+
+    def test_fill_zero_value(self):
+        b = Blob([2, 2])
+        b.fill(0.0)
+        assert np.all(b.data == 0.0)
+
+    def test_fill_large_value(self):
+        b = Blob([1])
+        b.fill(1e6)
+        assert abs(b.data[0] - 1e6) / 1e6 < 1e-5
+
+    def test_fill_data_tensor_reflects_value(self):
+        """fill writes through to data_tensor (zero-copy view)."""
+        b = Blob([2, 3])
+        b.fill(7.77)
+        dt = b.data_tensor
+        assert np.all(dt == np.float32(7.77))
+
+    def test_fill_then_overwrite(self):
+        b = Blob([3])
+        b.fill(1.0)
+        b.fill(2.0)
+        assert np.all(b.data == 2.0)
+
+    def test_fill_int_coerced_to_float32(self):
+        b = Blob([2])
+        b.fill(42)
+        assert b.data_tensor.dtype == np.float32
+        assert np.all(b.data == 42.0)
+
+
+class TestBlobFromNumpyComprehensive:
+    """Comprehensive tests for Blob.from_numpy() covering data conversion correctness."""
+
+    def test_from_numpy_1d(self):
+        arr = np.arange(10, dtype=np.float32)
+        b = Blob()
+        b.from_numpy(arr)
+        assert b.shape == (10,)
+        np.testing.assert_array_equal(b.to_numpy(), arr)
+
+    def test_from_numpy_2d(self):
+        arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        b = Blob()
+        b.from_numpy(arr)
+        assert b.shape == (2, 3)
+        np.testing.assert_array_equal(b.to_numpy(), arr)
+
+    def test_from_numpy_4d(self):
+        arr = np.random.randn(2, 3, 4, 5).astype(np.float32)
+        b = Blob()
+        b.from_numpy(arr)
+        assert b.shape == (2, 3, 4, 5)
+        np.testing.assert_allclose(b.to_numpy(), arr, rtol=1e-6)
+
+    def test_from_numpy_int_converts_to_float32(self):
+        """Integer numpy arrays must be converted to float32."""
+        arr = np.array([1, 2, 3], dtype=np.int32)
+        b = Blob()
+        b.from_numpy(arr)
+        assert b.data_tensor.dtype == np.float32
+        np.testing.assert_array_equal(b.to_numpy(), [1.0, 2.0, 3.0])
+
+    def test_from_numpy_float64_converts_to_float32(self):
+        """float64 arrays must be downcast to float32."""
+        arr = np.array([1.5, 2.5, 3.5], dtype=np.float64)
+        b = Blob()
+        b.from_numpy(arr)
+        assert b.data_tensor.dtype == np.float32
+        np.testing.assert_allclose(b.to_numpy(), [1.5, 2.5, 3.5], rtol=1e-6)
+
+    def test_from_numpy_list_input(self):
+        """from_numpy should accept Python lists and convert them."""
+        b = Blob()
+        b.from_numpy([1.0, 2.0, 3.0])
+        assert b.shape == (3,)
+        np.testing.assert_allclose(b.to_numpy(), [1.0, 2.0, 3.0], rtol=1e-6)
+
+    def test_from_numpy_set_diff_true(self):
+        """set_diff=True sets diff tensor instead of data tensor."""
+        arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        b = Blob()
+        b.from_numpy(arr, set_diff=True)
+        assert b.shape == (3,)
+        np.testing.assert_array_equal(b.diff, arr)
+        assert np.all(b.data_tensor == 0.0), "data should remain zero when set_diff=True"
+
+    def test_from_numpy_set_diff_false_default(self):
+        """Default (set_diff=False) sets data tensor."""
+        arr = np.array([10.0, 20.0], dtype=np.float32)
+        b = Blob()
+        b.from_numpy(arr)
+        np.testing.assert_array_equal(b.data, arr)
+        assert np.all(b.diff_tensor == 0.0), "diff should be zero for default from_numpy"
+
+    def test_from_numpy_reshapes_existing_blob(self):
+        """from_numpy must reshape the blob to match the input array."""
+        b = Blob([5, 5])
+        new_arr = np.zeros((2, 3), dtype=np.float32)
+        b.from_numpy(new_arr)
+        assert b.shape == (2, 3)
+
+    def test_from_numpy_returns_self(self):
+        """from_numpy returns self for chaining."""
+        b = Blob()
+        result = b.from_numpy(np.array([1.0], dtype=np.float32))
+        assert result is b
+
+    def test_from_numpy_chain_fill(self):
+        """from_numpy followed by fill should work as chain."""
+        b = Blob()
+        b.from_numpy(np.array([1.0, 2.0], dtype=np.float32)).fill(0.0)
+        assert np.all(b.data == 0.0)
+        assert b.shape == (2,)
+
+    def test_from_numpy_preserves_values_after_reshape(self):
+        """Data written via from_numpy should be readable back correctly."""
+        arr = np.random.randn(4, 5).astype(np.float32)
+        b = Blob()
+        b.from_numpy(arr)
+        result = b.to_numpy()
+        np.testing.assert_allclose(result, arr, rtol=1e-6)
+
+    def test_from_numpy_scalar_shape(self):
+        """from_numpy with a single-element array."""
+        b = Blob()
+        b.from_numpy(np.array([42.0], dtype=np.float32))
+        assert b.shape == (1,)
+        assert abs(b.to_numpy()[0] - 42.0) < 1e-6
+
+    def test_data_setter_dtype_conversion(self):
+        """Setting data with non-float32 dtype should convert."""
+        b = Blob([3])
+        b.data = np.array([1, 2, 3], dtype=np.int64)
+        assert b.data_tensor.dtype == np.float32
+        np.testing.assert_array_equal(b.data, [1.0, 2.0, 3.0])
+
 
 class TestBlobCopy:
     def test_copy_from(self):

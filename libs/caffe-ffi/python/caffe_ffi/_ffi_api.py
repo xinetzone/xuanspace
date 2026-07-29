@@ -8,6 +8,13 @@ from typing import Any, Dict, Optional
 
 _init_logger = logging.getLogger("caffe_ffi.ffi_init")
 
+# Disable C++ backtrace capture by default to avoid crashes in Python test
+# frameworks (pytest/unittest) where backtrace_symbols() may crash on Python
+# stack frames. Users can opt in by setting CAFFE_FFI_DISABLE_BACKTRACE=0
+# before importing caffe_ffi.
+if os.environ.get("CAFFE_FFI_DISABLE_BACKTRACE") is None:
+    os.environ["CAFFE_FFI_DISABLE_BACKTRACE"] = "1"
+
 
 def _find_lib_path() -> Optional[Path]:
     base_dir = Path(__file__).resolve().parent.parent.parent
@@ -32,6 +39,7 @@ def _find_lib_path() -> Optional[Path]:
         ]
     
     search_dirs = [
+        Path(__file__).parent,
         base_dir / "build-ninja" / "Release",
         base_dir / "build-ninja" / "lib",
         base_dir / "build-ninja",
@@ -45,23 +53,17 @@ def _find_lib_path() -> Optional[Path]:
         base_dir / "build" / "lib",
         base_dir / "build" / "python" / "caffe_ffi",
         base_dir / "build",
-        Path(__file__).parent,
         base_dir,
     ]
     
-    found = []
     for search_dir in search_dirs:
         if search_dir.exists():
             for lib_name in lib_names:
                 lib_path = search_dir / lib_name
                 if lib_path.exists():
-                    found.append(lib_path)
+                    return lib_path
     
-    if not found:
-        return None
-    
-    # Return the most recently modified DLL (handles multiple build dirs)
-    return max(found, key=lambda p: p.stat().st_mtime)
+    return None
 
 
 _lib_path = _find_lib_path()
@@ -79,6 +81,7 @@ def _try_init_tvm_ffi():
         
         if _lib_path is not None:
             lib_dir = _lib_path.parent
+            _init_logger.info("Loading native library from: %s", _lib_path)
             if sys.platform == "win32":
                 try:
                     os.add_dll_directory(str(lib_dir))

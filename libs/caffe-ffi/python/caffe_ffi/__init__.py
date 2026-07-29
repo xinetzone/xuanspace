@@ -34,6 +34,15 @@ def version() -> str:
     return __version__
 
 
+def is_available() -> bool:
+    """Check whether the native C++ extension is loaded and available.
+
+    Returns True if the C++ backend is loaded; False if running in
+    Python-only fallback mode.
+    """
+    return _ffi_api.is_available()
+
+
 LOG_LEVEL_TRACE = 0
 LOG_LEVEL_DEBUG = 1
 LOG_LEVEL_INFO = 2
@@ -142,7 +151,7 @@ def enable_debug_logging(level: int = LOG_LEVEL_DEBUG) -> None:
         handler = logging.StreamHandler()
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno)d): %(message)s",
             datefmt="%H:%M:%S",
         )
         handler.setFormatter(formatter)
@@ -160,10 +169,15 @@ def disable_debug_logging() -> None:
 __all__ = [
     "__version__",
     "version",
+    "is_available",
     "Blob",
     "Layer",
     "Net",
     "caffe_pb2",
+    "blob",
+    "layer",
+    "net",
+    "io",
     "read_net",
     "read_net_from_prototxt",
     "read_net_from_binary",
