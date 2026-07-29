@@ -3,7 +3,9 @@
 Caffe FFI bindings using tvm-ffi native object system
 
 <!-- badges: start -->
+
 <!-- TODO: Add CI, PyPI, Conda badges here -->
+
 <!-- badges: end -->
 
 ## 项目简介
@@ -27,7 +29,7 @@ caffe-ffi 是基于 tvm-ffi 原生对象系统的 Caffe 深度学习框架绑定
 - **Python**: 3.14+
 - **CMake**: >= 3.26
 - **Ninja**: >= 1.11
-- **编译器**: C++17 兼容（GCC 9+, Clang 12+, MSVC 2022）
+- **编译器**: C++17 兼容（GCC 9+, Clang 12+, MSVC 2026）
 - **BLAS**: OpenBLAS 或其他 BLAS 实现
 - **可选**: Conda（推荐用于环境管理）
 
@@ -112,17 +114,57 @@ conda activate caffe-ffi-dev
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 
-### 使用 Docker（可选）
+### 使用 Docker（推荐，基于 jupyter-ssh-base）
 
-如果希望使用容器化开发环境：
+项目提供完整的 Docker 开发环境，基于 `apps/caffe-ffi-jupyter`，内置 SSH + Jupyter 双服务，支持 Python 3.14+。
+
+#### 快速部署（WSL 环境）
 
 ```bash
-# 构建 Docker 镜像
-docker build -t caffe-ffi-dev -f Dockerfile.dev .
+# 在 WSL 中进入 apps/caffe-ffi-jupyter 目录
+cd apps/caffe-ffi-jupyter
 
-# 运行容器（挂载项目目录）
-docker run -it --rm -v $(pwd):/workspace caffe-ffi-dev
+# 一键部署（构建镜像 + 启动容器 + 验证）
+bash scripts/wsl-deploy.sh
 ```
+
+或在 Windows PowerShell 中：
+
+```powershell
+# 自动检测 WSL 并调用 wsl-deploy.sh
+.\scripts\deploy.ps1
+```
+
+#### Docker 环境特性
+
+- **基础镜像**: `jupyter-ssh-base`（保留 SSH + Jupyter 双服务）
+- **Python 版本**: 3.14+（Miniconda 环境，名为 `caffe-ffi`）
+- **SSH 访问**: 容器暴露 22 端口，支持密钥/密码登录
+- **Jupyter**: 容器暴露 8888 端口，已注册 "Python 3.14 (caffe-ffi)" 内核
+- **自动挂载**: 项目源码以 editable 模式挂载，代码修改即时生效
+
+#### 运行 C++/Python 单元测试
+
+容器内置完整测试脚本，可直接运行：
+
+```bash
+# 进入容器（SSH 或 docker exec）
+docker exec -it caffe-ffi-jupyter bash
+
+# 运行 C++ 和 Python 单元测试（含耗时统计）
+test-cpp-tests.sh
+```
+
+#### 手动构建参考
+
+如果需要自定义镜像构建：
+
+```bash
+cd apps/caffe-ffi-jupyter
+bash scripts/build.sh
+```
+
+> **注意**: 旧版 `Dockerfile.dev` 已废弃，请使用 `apps/caffe-ffi-jupyter/` 目录下的完整 Docker 环境。
 
 ### WSL 编译步骤
 
@@ -380,3 +422,4 @@ BSD-2-Clause 许可证。详见 [LICENSE](LICENSE) 文件。
 
 - [tvm-ffi](https://github.com/tlc-pack/tvm-ffi) - Type-safe foreign function interface for TVM
 - [Caffe](http://caffe.berkeleyvision.org/) - Original Caffe deep learning framework
+
