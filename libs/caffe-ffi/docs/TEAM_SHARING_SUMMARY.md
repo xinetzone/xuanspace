@@ -213,6 +213,6 @@ python -m pytest tests/python/ -v
 ---
 
 > 📎 **相关文档**：
-> - 完整技术报告：[OPTIMIZATION_REPORT.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md)
-> - 性能基准脚本：[benchmark_performance.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/benchmark_performance.py)
-> - 三层日志模式说明：[log.hpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/log.hpp)
+> - 完整技术报告：[OPTIMIZATION_REPORT.md](../../../vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md)
+> - 性能基准脚本：[benchmark_performance.py](../../../vendor/caffe/caffe-ffi/examples/benchmark_performance.py)
+> - 三层日志模式说明：[log.hpp](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/log.hpp)

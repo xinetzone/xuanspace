@@ -1,7 +1,7 @@
 # TVM FFI 零拷贝架构跨模块改造清单
 
 > **生成日期**: 2026-07-29
-> **参考实现**: [caffe-ffi](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi)（已完成零拷贝架构优化）
+> **参考实现**: [caffe-ffi](../../../vendor/caffe/caffe-ffi)（已完成零拷贝架构优化）
 > **方法论**: 基于 caffe-ffi v0.1.0 优化实践的可复用模式沉淀
 
 ---
@@ -45,8 +45,8 @@
 | **Python API 重构** | 中 | 消除手动 handle 管理、`_mod.xxx()` 调用 | caffe-ffi `@register_object` 类方法 |
 
 **关键文件**：
-- C++: [_caffe.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-slim/src/caffe/_caffe.cpp) — FFI 注册层，需重构为双类模式
-- Python: [__init__.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-slim/python/caffe/__init__.py) — Net 类封装，需改为 @register_object
+- C++: [_caffe.cpp](../../../vendor/caffe/caffe-slim/src/caffe/_caffe.cpp) — FFI 注册层，需重构为双类模式
+- Python: [__init__.py](../../../vendor/caffe/caffe-slim/python/caffe/__init__.py) — Net 类封装，需改为 @register_object
 
 **具体改造步骤**：
 1. 创建 `include/caffe_ffi/net.hpp`、`blob.hpp`、`layer.hpp`（或复用 caffe-slim 已有头文件加 FFI 包装）
@@ -83,10 +83,10 @@
 | **错误处理增强** | 低 | buffer_alloc 失败抛异常、nullptr 检查 | caffe-ffi ICHECK guards |
 
 **关键文件**：
-- C++: [ffi_registry.cc](file:///d:/spaces/SpecWeave/projects/xuanspace/libs/npu-ffi/src/vta/ffi_registry.cc) — 当前全是 int64 句柄转发
-- C++: [buffer.h](file:///d:/spaces/SpecWeave/projects/xuanspace/libs/npu-ffi/include/npu_ffi/vta/buffer.h) — RAII Buffer 类，需继承 Object
-- Python: [buffer.py](file:///d:/spaces/SpecWeave/projects/xuanspace/libs/npu-ffi/python/npu_ffi/vta/buffer.py) — 手动指针管理类
-- Python: [_ffi_api.py](file:///d:/spaces/SpecWeave/projects/xuanspace/libs/npu-ffi/python/npu_ffi/vta/_ffi_api.py) — FFI 初始化
+- C++: [ffi_registry.cc](../../npu-ffi/src/vta/ffi_registry.cc) — 当前全是 int64 句柄转发
+- C++: [buffer.h](../../npu-ffi/include/npu_ffi/vta/buffer.h) — RAII Buffer 类，需继承 Object
+- Python: [buffer.py](../../npu-ffi/python/npu_ffi/vta/buffer.py) — 手动指针管理类
+- Python: [_ffi_api.py](../../npu-ffi/python/npu_ffi/vta/_ffi_api.py) — FFI 初始化
 
 **具体改造步骤**：
 1. `Buffer` 类改为 `BufferObj : public Object` + `Buffer : public ObjectRef` 双类模式
@@ -258,8 +258,8 @@ C++ 层:   RAII Logger + 编译期门控 + 组件标签
 
 ## 六、参考资源
 
-- **caffe-ffi 优化报告**: [OPTIMIZATION_REPORT.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md)
-- **团队分享总结**: [TEAM_SHARING_SUMMARY.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/TEAM_SHARING_SUMMARY.md)
-- **零拷贝演示代码**: [zero_copy_vs_copy_demo.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/zero_copy_vs_copy_demo.py)
+- **caffe-ffi 优化报告**: [OPTIMIZATION_REPORT.md](../../../vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md)
+- **团队分享总结**: [TEAM_SHARING_SUMMARY.md](../../../vendor/caffe/caffe-ffi/docs/TEAM_SHARING_SUMMARY.md)
+- **零拷贝演示代码**: [zero_copy_vs_copy_demo.py](../../../vendor/caffe/caffe-ffi/examples/zero_copy_vs_copy_demo.py)
 - **TVM FFI 官方文档**: `vendor/tvm-ffi/docs/`
 - **TVM FFI Tensor 概念**: `vendor/tvm-ffi/docs/concepts/tensor.rst`

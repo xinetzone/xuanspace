@@ -522,7 +522,7 @@ def _native_method(obj, name: str):
 3. **模式11：Header-only轻量测试框架模式**——约100行代码实现核心TEST/EXPECT_*宏
 4. **模式12：反射基类继承查找模式**——Python端遍历MRO查找基类反射方法
 
-详细模式定义见 [P1_OPTIMIZATION_REPORT_20260729.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/P1_OPTIMIZATION_REPORT_20260729.md) 第八章。
+详细模式定义见 [P1_OPTIMIZATION_REPORT_20260729.md](../../../vendor/caffe/caffe-ffi/docs/P1_OPTIMIZATION_REPORT_20260729.md) 第八章。
 
 ### 9.4 反模式警示
 
@@ -653,15 +653,15 @@ NetTest (18 tests):
 
 | 类别 | 文件 | 说明 |
 |------|------|------|
-| 核心修复 | [src/caffe_ffi/layer_factory.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/layer_factory.cpp) | DLL单例实现（关键Bug修复） |
-| 核心修复 | [src/caffe_ffi/net.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/net.cpp#L1-L50) | Protobuf DLL内解析 |
-| 反射注册 | [src/caffe_ffi/_caffe_ffi.cc](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/_caffe_ffi.cc) | 52个方法完整注册 |
-| Python绑定 | [python/caffe_ffi/_core.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/python/caffe_ffi/_core.py#L51-L66) | MRO反射查找修复 |
-| 测试框架 | [tests/cpp/test_harness.hpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/tests/cpp/test_harness.hpp) | Header-only轻量测试框架 |
-| C++测试 | [tests/cpp/test_blob.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/tests/cpp/test_blob.cpp) | Blob 22个测试用例 |
-| C++测试 | [tests/cpp/test_net.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/tests/cpp/test_net.cpp) | Net 18个测试用例 |
-| 优化报告 | [docs/P1_OPTIMIZATION_REPORT_20260729.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/P1_OPTIMIZATION_REPORT_20260729.md) | 技术细节+模式萃取 |
-| 本文档 | [docs/TASK_EXECUTION_SUMMARY_20260729.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/TASK_EXECUTION_SUMMARY_20260729.md) | 任务执行完整复盘 |
+| 核心修复 | [src/caffe_ffi/layer_factory.cpp](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/layer_factory.cpp) | DLL单例实现（关键Bug修复） |
+| 核心修复 | [src/caffe_ffi/net.cpp](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/net.cpp#L1-L50) | Protobuf DLL内解析 |
+| 反射注册 | [src/caffe_ffi/_caffe_ffi.cc](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/_caffe_ffi.cc) | 52个方法完整注册 |
+| Python绑定 | [python/caffe_ffi/_core.py](../../../vendor/caffe/caffe-ffi/python/caffe_ffi/_core.py#L51-L66) | MRO反射查找修复 |
+| 测试框架 | [tests/cpp/test_harness.hpp](../../../vendor/caffe/caffe-ffi/tests/cpp/test_harness.hpp) | Header-only轻量测试框架 |
+| C++测试 | [tests/cpp/test_blob.cpp](../../../vendor/caffe/caffe-ffi/tests/cpp/test_blob.cpp) | Blob 22个测试用例 |
+| C++测试 | [tests/cpp/test_net.cpp](../../../vendor/caffe/caffe-ffi/tests/cpp/test_net.cpp) | Net 18个测试用例 |
+| 优化报告 | [docs/P1_OPTIMIZATION_REPORT_20260729.md](../../../vendor/caffe/caffe-ffi/docs/P1_OPTIMIZATION_REPORT_20260729.md) | 技术细节+模式萃取 |
+| 本文档 | [docs/TASK_EXECUTION_SUMMARY_20260729.md](../../../vendor/caffe/caffe-ffi/docs/TASK_EXECUTION_SUMMARY_20260729.md) | 任务执行完整复盘 |
 
 ---
 

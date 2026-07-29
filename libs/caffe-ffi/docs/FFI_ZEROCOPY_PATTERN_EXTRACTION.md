@@ -21,9 +21,9 @@
 
 | 序号 | 工作项 | 产出物 | 状态 |
 |---:|---|---|---|
-| 1 | OPTIMIZATION_REPORT.md 中文化 | [OPTIMIZATION_REPORT.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md) | ✅ 完成 |
+| 1 | OPTIMIZATION_REPORT.md 中文化 | [OPTIMIZATION_REPORT.md](../../../vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md) | ✅ 完成 |
 | 2 | zero_copy_vs_copy_demo.py 验证 | 修复后运行成功，最大加速 3749× | ✅ 完成 |
-| 3 | caffe-slim 零拷贝改造代码草案 | [caffe_slim_zerocopy_refactor_draft.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/caffe_slim_zerocopy_refactor_draft.md) | ✅ 完成 |
+| 3 | caffe-slim 零拷贝改造代码草案 | [caffe_slim_zerocopy_refactor_draft.md](../../../vendor/caffe/caffe-ffi/docs/caffe_slim_zerocopy_refactor_draft.md) | ✅ 完成 |
 | 4 | 详细日志埋点设计 | 8类日志标签 + 内存追踪表 + 全局计数器 | ✅ 完成 |
 | 5 | Demo Bug 修复 | `is_native_mode()` → `_ffi_api.is_available()` | ✅ 完成 |
 
@@ -360,7 +360,7 @@ XxxObj : Object          Xxx : ObjectRef
 
 | 产出物 | 路径 | 说明 |
 |---|---|---|
-| 中文优化报告 | [OPTIMIZATION_REPORT.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md) | 完整中文翻译，保留所有性能数据 |
-| caffe-slim 零拷贝改造草案 | [caffe_slim_zerocopy_refactor_draft.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/caffe_slim_zerocopy_refactor_draft.md) | 完整 C++/Python 代码 + 日志设计 |
+| 中文优化报告 | [OPTIMIZATION_REPORT.md](../../../vendor/caffe/caffe-ffi/docs/OPTIMIZATION_REPORT.md) | 完整中文翻译，保留所有性能数据 |
+| caffe-slim 零拷贝改造草案 | [caffe_slim_zerocopy_refactor_draft.md](../../../vendor/caffe/caffe-ffi/docs/caffe_slim_zerocopy_refactor_draft.md) | 完整 C++/Python 代码 + 日志设计 |
 | Demo 验证 | 终端输出 | 最大加速 3749×，零拷贝延迟恒定 4µs |
 | 模式萃取（本文件） | 当前文档 | 4个可复用模式 + 迁移检查清单 |

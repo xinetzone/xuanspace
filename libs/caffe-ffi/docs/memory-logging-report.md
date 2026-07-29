@@ -14,15 +14,15 @@
 
 | 文件 | 变更类型 | 说明 |
 |------|---------|------|
-| [common.hpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp) | 修改 | 添加 `DTypeCodeToString()` 辅助函数；修复 `AllocData` 中 dtype 乱码输出 |
-| [blob.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp) | 修改 | 修复 `data_tensor()`/`diff_tensor()` 中 dtype 乱码输出；析构函数增加 `total_freed` 和 `global_allocated_bytes` 日志 |
-| [blob.hpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/blob.hpp) | 无变更 | 通过 common.hpp 间接获得 `DTypeCodeToString` |
-| [_caffe_ffi.cc](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/_caffe_ffi.cc) | 无变更 | FFI 桥接层日志已在前序提交中添加 |
-| [blob.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/python/caffe_ffi/blob.py) | 无变更 | Python 层日志已在前序提交中添加 |
-| [__init__.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py) | 无变更 | 日志级别控制函数已在前序提交中添加 |
-| [config.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/config.py) | 新增 | 三层日志统一配置工具模块（setup_debug/setup_quiet/setup_memory_trace/memory_snapshot/check_memory_baseline） |
-| [test_memory_logging.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/test_memory_logging.py) | 新增 | 9 场景内存日志验证脚本 |
-| [test_memory_leak.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/test_memory_leak.py) | 新增 | 8 场景内存泄漏专项测试脚本（16项检查） |
+| [common.hpp](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp) | 修改 | 添加 `DTypeCodeToString()` 辅助函数；修复 `AllocData` 中 dtype 乱码输出 |
+| [blob.cpp](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp) | 修改 | 修复 `data_tensor()`/`diff_tensor()` 中 dtype 乱码输出；析构函数增加 `total_freed` 和 `global_allocated_bytes` 日志 |
+| [blob.hpp](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/blob.hpp) | 无变更 | 通过 common.hpp 间接获得 `DTypeCodeToString` |
+| [_caffe_ffi.cc](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/_caffe_ffi.cc) | 无变更 | FFI 桥接层日志已在前序提交中添加 |
+| [blob.py](../../../vendor/caffe/caffe-ffi/python/caffe_ffi/blob.py) | 无变更 | Python 层日志已在前序提交中添加 |
+| [__init__.py](../../../vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py) | 无变更 | 日志级别控制函数已在前序提交中添加 |
+| [config.py](../../../vendor/caffe/caffe-ffi/examples/config.py) | 新增 | 三层日志统一配置工具模块（setup_debug/setup_quiet/setup_memory_trace/memory_snapshot/check_memory_baseline） |
+| [test_memory_logging.py](../../../vendor/caffe/caffe-ffi/examples/test_memory_logging.py) | 新增 | 9 场景内存日志验证脚本 |
+| [test_memory_leak.py](../../../vendor/caffe/caffe-ffi/examples/test_memory_leak.py) | 新增 | 8 场景内存泄漏专项测试脚本（16项检查） |
 
 ## 三、Bug 修复细节：dtype 日志乱码
 
@@ -49,7 +49,7 @@ typedef struct {
 
 **两步修复**：
 
-1. **添加 `DTypeCodeToString()` 函数**（[common.hpp:26-33](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp#L26-L33)）：将 `DLDataTypeCode` 枚举值映射为可读字符串（`float`/`int`/`uint`/`unknown`）。
+1. **添加 `DTypeCodeToString()` 函数**（[common.hpp:26-33](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp#L26-L33)）：将 `DLDataTypeCode` 枚举值映射为可读字符串（`float`/`int`/`uint`/`unknown`）。
 
 2. **强制整数转换**：所有涉及 `uint8_t` 字段的日志输出，使用 `static_cast<int>()` 包裹，确保 `<<` 运算符选择整数重载而非字符重载：
 
@@ -63,9 +63,9 @@ typedef struct {
 
 ### 3.3 修复范围
 
-- [common.hpp:40-41](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp#L40-L41) — `AllocData` 日志
-- [blob.cpp:82-84](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp#L82-L84) — `data_tensor()` 日志
-- [blob.cpp:95-97](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp#L95-L97) — `diff_tensor()` 日志
+- [common.hpp:40-41](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp#L40-L41) — `AllocData` 日志
+- [blob.cpp:82-84](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp#L82-L84) — `data_tensor()` 日志
+- [blob.cpp:95-97](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp#L95-L97) — `diff_tensor()` 日志
 
 ### 3.4 修复前后对比
 
@@ -115,7 +115,7 @@ typedef struct {
 | WARN | `Level::WARN` (3) | `LOG_LEVEL_WARN` | 异常但可恢复 |
 | ERROR | `Level::ERROR` (4) | `LOG_LEVEL_ERROR` | 致命错误 |
 
-默认级别均为 WARN（C++ 端定义于 [log.hpp:21](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/log.hpp#L21) 的静态变量 `static Level level = Level::WARN`；Python 端定义于 [__init__.py:25](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py#L25) 的 `_logger.setLevel(logging.WARNING)`）。Release 构建下默认不输出 DEBUG 日志。
+默认级别均为 WARN（C++ 端定义于 [log.hpp:21](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/log.hpp#L21) 的静态变量 `static Level level = Level::WARN`；Python 端定义于 [__init__.py:25](../../../vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py#L25) 的 `_logger.setLevel(logging.WARNING)`）。Release 构建下默认不输出 DEBUG 日志。
 
 ### 4.3 日志分类标签
 

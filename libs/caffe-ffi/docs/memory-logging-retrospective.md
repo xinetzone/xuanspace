@@ -296,10 +296,10 @@ def bad_callback(ref):
 
 ## 附录：关键文件引用
 
-- C++ dtype修复：[common.hpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp)、[blob.cpp](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp)
-- Python内存工具：[__init__.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py)
-- 配置门面：[config.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/config.py)
-- BlobRef+tracked_blob：[blob_wrapper.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/utils/blob_wrapper.py)
-- 内存泄漏测试：[test_memory_leak.py](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/examples/test_memory_leak.py)
-- 验证报告：[memory-logging-report.md](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi/docs/memory-logging-report.md)
+- C++ dtype修复：[common.hpp](../../../vendor/caffe/caffe-ffi/include/caffe_ffi/common.hpp)、[blob.cpp](../../../vendor/caffe/caffe-ffi/src/caffe_ffi/blob.cpp)
+- Python内存工具：[__init__.py](../../../vendor/caffe/caffe-ffi/python/caffe_ffi/__init__.py)
+- 配置门面：[config.py](../../../vendor/caffe/caffe-ffi/examples/config.py)
+- BlobRef+tracked_blob：[blob_wrapper.py](../../../vendor/caffe/caffe-ffi/examples/utils/blob_wrapper.py)
+- 内存泄漏测试：[test_memory_leak.py](../../../vendor/caffe/caffe-ffi/examples/test_memory_leak.py)
+- 验证报告：[memory-logging-report.md](../../../vendor/caffe/caffe-ffi/docs/memory-logging-report.md)
 - 原子提交：`36ba4bd9 fix(caffe-ffi): 修复dtype日志乱码并增强内存生命周期工具链`

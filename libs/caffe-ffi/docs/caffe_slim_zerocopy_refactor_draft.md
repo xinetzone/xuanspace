@@ -1,8 +1,8 @@
 # caffe-slim 零拷贝架构改造代码草案
 
 > **生成日期**: 2026-07-29
-> **目标模块**: [caffe-slim](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-slim)
-> **参考实现**: [caffe-ffi](file:///d:/spaces/SpecWeave/projects/xuanspace/vendor/caffe/caffe-ffi)（已完成零拷贝优化）
+> **目标模块**: [caffe-slim](../../../vendor/caffe/caffe-slim)
+> **参考实现**: [caffe-ffi](../../../vendor/caffe/caffe-ffi)（已完成零拷贝优化）
 > **改造范围**: P0 优先级 — Blob 写入零拷贝 + 三层日志 + 错误增强 + @register_object
 > **状态**: 代码草案（draft），需 review 后合入 caffe-slim
 
