@@ -37,13 +37,126 @@
 
 # C/C++
 *.c text eol=lf
+*.cc text eol=lf
 *.cpp text eol=lf
+*.cxx text eol=lf
 *.h text eol=lf
+*.hh text eol=lf
 *.hpp text eol=lf
+*.hxx text eol=lf
+*.inl text eol=lf
+*.ipp text eol=lf
 *.cmake text eol=lf
 CMakeLists.txt text eol=lf
+*.cmake.in text eol=lf
+
+# Protobuf
+*.proto text eol=lf
+# Protobuf binary wire format / compiled descriptor sets (NOT generated source code)
+*.pb binary
+*.pb.bin binary
+*.desc binary
+# Generated *_pb2.py are Python source files (text, LF) - pre-generated and committed
+# Generated *.pb.cc/*.pb.h are C++ source files (text, LF) - in build/, gitignored
+
+# Binary files (no CRLF conversion, no text diff)
+# Note: LFS-tracked binaries (*.png/*.jpg/*.so/*.dll etc.) are configured above with -text;
+# here we cover non-LFS binaries.
+*.a binary
+*.lib binary
+*.o binary
+*.obj binary
+*.exe binary
+*.pyd binary
+*.pyc binary
+*.pyo binary
+*.class binary
+*.jar binary
+*.war binary
+*.ear binary
+*.7z binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.bz2 binary
+*.xz binary
+*.rar binary
+*.bmp binary
+*.ico binary
+*.tif binary
+*.tiff binary
+*.webp binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.ppt binary
+*.pptx binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.avi binary
+*.mov binary
+*.mkv binary
+*.flv binary
+*.wmv binary
+*.webm binary
+*.egg binary
+*.bin binary
+*.safetensors binary
+*.npy binary
+*.npz binary
+*.pkl binary
+*.pickle binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.wasm binary
+
+# Lock files and logs: text but skip line-ending normalization
+*.lock -text
+package-lock.json -text
+yarn.lock -text
+pnpm-lock.yaml -text
+*.log -text
+
+# Configuration files
+*.cfg text eol=lf
+*.conf text eol=lf
+*.ini text eol=crlf
+*.reg text eol=crlf
+*.editorconfig text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.gitmodules text eol=lf
+.dockerignore text eol=lf
 
 # Web
 *.html text eol=lf
 *.css text eol=lf
 *.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.vue text eol=lf
+*.xml text eol=lf
+*.svg text eol=lf
+
+# Misc text
+*.rst text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.tsv text eol=lf
+LICENSE text eol=lf
+LICENCE text eol=lf
+NOTICE text eol=lf
+CHANGELOG text eol=lf
+CHANGELOG.md text eol=lf
+Makefile text eol=lf
+*.mak text eol=lf
+*.make text eol=lf
