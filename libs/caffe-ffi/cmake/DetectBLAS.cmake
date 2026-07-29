@@ -4,6 +4,15 @@
 # 注意：本文件不命名为 FindBLAS.cmake 是为了避免与 CMake 内置 FindBLAS 模块冲突，
 # 否则 find_package(BLAS) 会递归调用本文件导致无限循环。
 
+# ── Check if BLAS is explicitly disabled ──
+if(DEFINED CAFFE_USE_BLAS AND NOT CAFFE_USE_BLAS)
+  set(BLAS_FOUND OFF)
+  set(BLAS_LIBRARIES "")
+  set(BLAS_INCLUDE_DIRS "")
+  message(STATUS "BLAS explicitly disabled (CAFFE_USE_BLAS=OFF) - building with pure C++ fallback")
+  return()
+endif()
+
 # ── BLAS detection (OpenBLAS via conda or system) ──
 set(BLAS_FOUND OFF)
 set(BLAS_LIBRARIES "")
