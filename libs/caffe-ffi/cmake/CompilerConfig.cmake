@@ -75,7 +75,7 @@ function(caffe_ffi_configure_target target_name)
 
   # Compile options
   if(MSVC)
-    target_compile_options(${target_name} ${ARG_VISIBILITY} /W3)
+    target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /utf-8)
   else()
     target_compile_options(${target_name} ${ARG_VISIBILITY} -Wall -Wextra -Wno-unused-parameter)
   endif()

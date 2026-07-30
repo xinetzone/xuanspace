@@ -12,6 +12,21 @@
 #   caffe_ffi_copy_runtime_dlls(target)              - 聚合函数：复制所有运行时依赖 DLLs
 
 if(MSVC)
+  # Collect conda env Library/bin directories as primary search paths.
+  # These take precedence over Protobuf_DIR-derived paths because CMake may have
+  # found Protobuf in a different conda env than the active Python environment.
+  set(_caffe_ffi_conda_dll_dirs "")
+  if(DEFINED ENV{CONDA_PREFIX})
+    list(APPEND _caffe_ffi_conda_dll_dirs "$ENV{CONDA_PREFIX}/Library/bin")
+  endif()
+  if(Python3_ROOT_DIR)
+    list(APPEND _caffe_ffi_conda_dll_dirs "${Python3_ROOT_DIR}/Library/bin")
+  endif()
+  if(PYTHON_ROOT_DIR)
+    list(APPEND _caffe_ffi_conda_dll_dirs "${PYTHON_ROOT_DIR}/Library/bin")
+  endif()
+  list(REMOVE_DUPLICATES _caffe_ffi_conda_dll_dirs)
+
   # 内部辅助宏：校验目标参数
   macro(_caffe_ffi_validate_copy_target target_name func_name)
     if(NOT target_name)
@@ -99,9 +114,10 @@ if(MSVC)
 
   function(caffe_ffi_copy_protobuf_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_protobuf_dlls")
-    set(_protobuf_dll_dirs "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin")
+    # Search conda env dirs first (most reliable), then Protobuf_DIR-derived paths
+    set(_protobuf_dll_dirs ${_caffe_ffi_conda_dll_dirs} "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin")
     foreach(_dll_dir ${_protobuf_dll_dirs})
-      file(GLOB _protobuf_dlls "${_dll_dir}/libprotobuf*.dll" "${_dll_dir}/libprotoc*.dll")
+      file(GLOB _protobuf_dlls "${_dll_dir}/libprotobuf*.dll" "${_dll_dir}/libprotoc*.dll" "${_dll_dir}/zlib*.dll")
       foreach(_dll ${_protobuf_dlls})
         if(EXISTS "${_dll}")
           add_custom_command(TARGET ${target_name} POST_BUILD
@@ -118,10 +134,8 @@ if(MSVC)
   function(caffe_ffi_copy_abseil_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_abseil_dlls")
     get_filename_component(_absl_dir "${Protobuf_DIR}" DIRECTORY)
-    set(_absl_dll_dirs "${_absl_dir}/bin" "${_absl_dir}/../bin")
-    if(DEFINED ENV{CONDA_PREFIX})
-      list(APPEND _absl_dll_dirs "$ENV{CONDA_PREFIX}/Library/bin")
-    endif()
+    # Search conda env dirs first, then Protobuf_DIR-derived paths
+    set(_absl_dll_dirs ${_caffe_ffi_conda_dll_dirs} "${_absl_dir}/bin" "${_absl_dir}/../bin")
     foreach(_dll_dir ${_absl_dll_dirs})
       file(GLOB _absl_dlls "${_dll_dir}/absl_*.dll" "${_dll_dir}/abseil*.dll")
       foreach(_dll ${_absl_dlls})
@@ -140,9 +154,10 @@ if(MSVC)
   function(caffe_ffi_copy_utf8_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_utf8_dlls")
     get_filename_component(_absl_dir "${Protobuf_DIR}" DIRECTORY)
-    set(_utf8_dirs "${_absl_dir}/bin" "${_absl_dir}/../bin")
+    # Search conda env dirs first, then Protobuf_DIR-derived paths
+    set(_utf8_dirs ${_caffe_ffi_conda_dll_dirs} "${_absl_dir}/bin" "${_absl_dir}/../bin")
     foreach(_dll_dir ${_utf8_dirs})
-      file(GLOB _utf8_dlls "${_dll_dir}/utf8_range*.dll")
+      file(GLOB _utf8_dlls "${_dll_dir}/utf8_range*.dll" "${_dll_dir}/utf8_validity*.dll")
       foreach(_dll ${_utf8_dlls})
         if(EXISTS "${_dll}")
           add_custom_command(TARGET ${target_name} POST_BUILD

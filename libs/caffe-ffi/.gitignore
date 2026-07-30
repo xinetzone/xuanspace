@@ -42,7 +42,7 @@ cmake-build-*/
 /CTestTestfile.cmake
 
 # Temporary
-.temp/*
+.temp/
 !.temp/.gitkeep
 temp/
 *.log
