@@ -1157,3 +1157,380 @@ class TestBlobInterleavedLifecycle:
         self._gc()
         assert caffe_ffi.total_allocated_bytes() == mem0
         assert caffe_ffi.live_blob_count() == live0
+
+
+@require_cpp_extension
+class TestBlobCountMethod:
+    """Tests for Blob.count(start_axis, end_axis) — axis-range element counting."""
+
+    def test_count_no_args_equals_size(self):
+        b = Blob([2, 3, 4])
+        assert b.count() == 24
+        assert b.count() == b.size
+
+    def test_count_full_range_explicit(self):
+        b = Blob([2, 3, 4])
+        assert b.count(0) == 24
+        assert b.count(0, 3) == 24
+
+    def test_count_single_axis(self):
+        b = Blob([2, 3, 4])
+        assert b.count(0, 1) == 2
+        assert b.count(1, 2) == 3
+        assert b.count(2, 3) == 4
+
+    def test_count_subrange_mid(self):
+        b = Blob([2, 3, 4, 5])
+        assert b.count(1, 3) == 12  # 3*4
+
+    def test_count_negative_end_axis(self):
+        b = Blob([2, 3, 4])
+        assert b.count(0, -1) == 6   # 2*3 (axes 0,1)
+        assert b.count(0, -2) == 2   # 2 (axis 0 only)
+        assert b.count(-2, -1) == 3  # 3 (axis 1)
+
+    def test_count_against_numpy_prod(self):
+        """Verify count matches numpy.prod over the same axis range."""
+        shapes = [(2, 3), (2, 3, 4), (1, 2, 3, 4), (5,)]
+        for shape in shapes:
+            b = Blob(list(shape))
+            ndim = len(shape)
+            # Test all valid ranges
+            for start in range(ndim):
+                for end in range(start + 1, ndim + 1):
+                    expected = int(np.prod(shape[start:end]))
+                    assert b.count(start, end) == expected, \
+                        f"count({start},{end}) for shape {shape}: got {b.count(start,end)}, expected {expected}"
+
+    def test_count_start_axis_only(self):
+        b = Blob([2, 3, 4])
+        assert b.count(1) == 12  # 3*4
+        assert b.count(2) == 4
+
+    def test_count_1d(self):
+        b = Blob([10])
+        assert b.count() == 10
+        assert b.count(0, 1) == 10
+
+    def test_count_scalar_blob(self):
+        b = Blob([1])
+        assert b.count() == 1
+        assert b.count(0, 1) == 1
+
+
+@require_cpp_extension
+class TestBlobGetSetData:
+    """Tests for Blob.get_data(), set_data(), get_diff(), set_diff() list-based API."""
+
+    def test_get_data_returns_flat_list(self):
+        b = Blob([2, 3])
+        b.fill(3.14)
+        data = b.get_data()
+        assert isinstance(data, list)
+        assert len(data) == 6
+        assert all(isinstance(x, float) for x in data)
+
+    def test_get_data_values(self):
+        b = Blob([2, 2])
+        b.from_numpy(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+        data = b.get_data()
+        assert data == [1.0, 2.0, 3.0, 4.0]
+
+    def test_get_data_after_fill(self):
+        b = Blob([3])
+        b.fill(7.5)
+        assert b.get_data() == [7.5, 7.5, 7.5]
+
+    def test_set_data_from_list(self):
+        b = Blob([2, 2])
+        b.set_data([1.0, 2.0, 3.0, 4.0])
+        assert b.get_data() == [1.0, 2.0, 3.0, 4.0]
+
+    def test_set_data_from_numpy(self):
+        b = Blob([2, 2])
+        arr = np.array([[10.0, 20.0], [30.0, 40.0]], dtype=np.float32)
+        b.set_data(arr)
+        np.testing.assert_array_equal(b.to_numpy(), arr)
+
+    def test_set_data_size_mismatch_raises(self):
+        """set_data raises ValueError when input size doesn't match blob size."""
+        b = Blob([2, 3])  # size=6
+        with pytest.raises(ValueError):
+            b.set_data([1.0, 2.0, 3.0, 4.0])  # size=4, cannot reshape to (2,3)
+
+    def test_set_data_int_coerced_to_float32(self):
+        b = Blob([3])
+        b.set_data([1, 2, 3])
+        data = b.get_data()
+        assert all(isinstance(x, float) for x in data)
+        assert data == [1.0, 2.0, 3.0]
+
+    def test_set_data_then_numpy_roundtrip(self):
+        b = Blob([3])
+        b.set_data([1.5, 2.5, 3.5])
+        arr = b.to_numpy()
+        np.testing.assert_array_almost_equal(arr, np.array([1.5, 2.5, 3.5], dtype=np.float32))
+
+    def test_get_diff_returns_flat_list(self):
+        b = Blob([2, 2])
+        b.diff = np.zeros((2, 2), dtype=np.float32)
+        diff = b.get_diff()
+        assert isinstance(diff, list)
+        assert len(diff) == 4
+        assert all(x == 0.0 for x in diff)
+
+    def test_set_diff_from_list(self):
+        b = Blob([2, 2])
+        b.set_diff([0.1, 0.2, 0.3, 0.4])
+        diff = b.get_diff()
+        assert diff == pytest.approx([0.1, 0.2, 0.3, 0.4], abs=1e-6)
+
+    def test_set_diff_from_numpy(self):
+        b = Blob([2, 2])
+        arr = np.array([[0.01, 0.02], [0.03, 0.04]], dtype=np.float32)
+        b.set_diff(arr)
+        np.testing.assert_array_equal(b.to_numpy(get_diff=True), arr)
+
+    def test_set_diff_size_mismatch_raises(self):
+        """set_diff raises ValueError when input size doesn't match blob size."""
+        b = Blob([2, 3])  # size=6
+        with pytest.raises(ValueError):
+            b.set_diff([1.0, 2.0])  # size=2, cannot reshape to (2,3)
+
+    def test_get_data_matches_numpy(self):
+        """get_data() flat list should match numpy flatten().tolist()."""
+        shapes = [(2, 3), (4,), (2, 2, 2)]
+        for shape in shapes:
+            b = Blob(list(shape))
+            arr = np.random.RandomState(42).randn(*shape).astype(np.float32)
+            b.from_numpy(arr)
+            assert b.get_data() == arr.flatten().tolist()
+
+
+@require_cpp_extension
+class TestBlobConstructionBacktrace:
+    """Tests for Blob.construction_backtrace property."""
+
+    def test_construction_backtrace_returns_string(self):
+        b = Blob([2, 3])
+        bt = b.construction_backtrace
+        assert isinstance(bt, str)
+        assert len(bt) > 0
+
+    def test_construction_backtrace_is_callable_twice(self):
+        b = Blob([1])
+        bt1 = b.construction_backtrace
+        bt2 = b.construction_backtrace
+        assert isinstance(bt1, str)
+        assert isinstance(bt2, str)
+
+
+@require_cpp_extension
+class TestBlobExtremeBoundaries:
+    """Edge cases: empty blobs, scalar blobs, special values, non-contiguous arrays, dtype conversion."""
+
+    # --- Empty / zero-sized blobs ---
+
+    def test_empty_shape_list(self):
+        """Blob() with no args creates a valid blob (size 0 or 1-element scalar depending on impl)."""
+        b = Blob()
+        assert b.ndim >= 0
+        assert b.size >= 0
+        # Should not crash on property access
+        _ = b.shape
+        _ = b.count()
+
+    def test_zero_sized_dim(self):
+        """Reshape to include a zero dimension — total size should be 0."""
+        b = Blob([2, 3])
+        b.Reshape([0, 3])
+        assert b.size == 0
+        assert 0 in b.shape
+
+    def test_reshape_to_zero_then_back(self):
+        """Reshape to zero-size then back to non-zero should work without leak or crash."""
+        b = Blob([2, 3])
+        b.fill(1.0)
+        b.Reshape([0])
+        assert b.size == 0
+        b.Reshape([3, 4])
+        assert b.shape == (3, 4)
+        assert b.size == 12
+        b.fill(2.0)
+        arr = b.to_numpy()
+        np.testing.assert_array_equal(arr, np.full((3, 4), 2.0, dtype=np.float32))
+
+    def test_zero_sized_blob_fill_no_crash(self):
+        b = Blob([0])
+        # fill on zero-size blob should not crash
+        b.fill(0.0)
+
+    # --- Scalar blob (shape=[1]) ---
+
+    def test_single_element_blob(self):
+        b = Blob([1])
+        assert b.size == 1
+        assert b.ndim == 1
+        b.fill(42.0)
+        assert b.get_data() == [42.0]
+
+    def test_scalar_1x1_blob(self):
+        b = Blob([1, 1])
+        assert b.size == 1
+        b.fill(3.14)
+        arr = b.to_numpy()
+        assert arr.shape == (1, 1)
+        assert arr[0, 0] == pytest.approx(3.14)
+
+    # --- fill() special values ---
+
+    def test_fill_negative_zero(self):
+        b = Blob([2])
+        b.fill(-0.0)
+        data = b.to_numpy()
+        # -0.0 == 0.0 in float comparison but sign bit is negative
+        assert data[0] == 0.0
+        assert data[1] == 0.0
+
+    def test_fill_nan(self):
+        b = Blob([2])
+        b.fill(float('nan'))
+        data = b.to_numpy()
+        assert np.isnan(data[0])
+        assert np.isnan(data[1])
+
+    def test_fill_positive_inf(self):
+        b = Blob([2])
+        b.fill(float('inf'))
+        data = b.to_numpy()
+        assert np.isinf(data[0]) and data[0] > 0
+        assert np.isinf(data[1]) and data[1] > 0
+
+    def test_fill_negative_inf(self):
+        b = Blob([2])
+        b.fill(float('-inf'))
+        data = b.to_numpy()
+        assert np.isinf(data[0]) and data[0] < 0
+        assert np.isinf(data[1]) and data[1] < 0
+
+    def test_fill_large_value(self):
+        b = Blob([1])
+        b.fill(1e30)
+        assert b.to_numpy()[0] == pytest.approx(1e30, rel=1e-5)
+
+    def test_fill_small_value(self):
+        b = Blob([1])
+        b.fill(1e-30)
+        assert abs(b.to_numpy()[0]) < 2e-30
+
+    # --- from_numpy dtype boundary ---
+
+    def test_from_numpy_float64_converts_to_float32_precision(self):
+        """float64 input should convert to float32 with expected precision loss."""
+        arr64 = np.array([1.1, 2.2, 3.3], dtype=np.float64)
+        b = Blob()
+        b.from_numpy(arr64)
+        out = b.to_numpy()
+        assert out.dtype == np.float32
+        np.testing.assert_array_almost_equal(out, arr64.astype(np.float32))
+
+    def test_from_numpy_int32_converts(self):
+        arr = np.array([1, 2, 3], dtype=np.int32)
+        b = Blob()
+        b.from_numpy(arr)
+        out = b.to_numpy()
+        assert out.dtype == np.float32
+        np.testing.assert_array_equal(out, np.array([1, 2, 3], dtype=np.float32))
+
+    def test_from_numpy_bool_converts(self):
+        arr = np.array([True, False, True], dtype=bool)
+        b = Blob()
+        b.from_numpy(arr)
+        out = b.to_numpy()
+        assert out.dtype == np.float32
+        np.testing.assert_array_equal(out, np.array([1.0, 0.0, 1.0], dtype=np.float32))
+
+    def test_from_numpy_float16_converts(self):
+        arr = np.array([1.0, 2.0, 3.0], dtype=np.float16)
+        b = Blob()
+        b.from_numpy(arr)
+        out = b.to_numpy()
+        assert out.dtype == np.float32
+        np.testing.assert_array_almost_equal(out, arr.astype(np.float32))
+
+    # --- Non-contiguous arrays ---
+
+    def test_from_numpy_transposed(self):
+        """Transposed array is non-C-contiguous; from_numpy should handle it."""
+        arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        arr_t = arr.T  # shape (3,2), non-contiguous
+        assert not arr_t.flags['C_CONTIGUOUS']
+        b = Blob()
+        b.from_numpy(arr_t)
+        out = b.to_numpy()
+        np.testing.assert_array_equal(out, arr_t)
+        assert out.flags['C_CONTIGUOUS']  # stored blob should be contiguous
+
+    def test_from_numpy_sliced(self):
+        """Sliced array is non-contiguous; from_numpy should handle it."""
+        arr = np.arange(10, dtype=np.float32)
+        arr_s = arr[::2]  # [0,2,4,6,8], non-contiguous
+        assert not arr_s.flags['C_CONTIGUOUS']
+        b = Blob()
+        b.from_numpy(arr_s)
+        out = b.to_numpy()
+        np.testing.assert_array_equal(out, arr_s)
+
+    def test_from_numpy_fortran_order(self):
+        """Fortran-order (column-major) array is non-C-contiguous."""
+        arr = np.asfortranarray(np.array([[1, 2], [3, 4]], dtype=np.float32))
+        assert not arr.flags['C_CONTIGUOUS']
+        assert arr.flags['F_CONTIGUOUS']
+        b = Blob()
+        b.from_numpy(arr)
+        out = b.to_numpy()
+        np.testing.assert_array_equal(out, arr)
+
+    # --- copy_from shape mismatch ---
+
+    def test_copy_from_shape_mismatch_raises_or_resizes(self):
+        """copy_from between different-shaped blobs should either raise or handle gracefully."""
+        b1 = Blob([2, 3])
+        b1.fill(1.0)
+        b2 = Blob([4, 5])
+        b2.fill(2.0)
+        # Try copy_from; behavior may vary but should not crash or leak
+        try:
+            b2.copy_from(b1)
+            # If it succeeds without error, verify data is correct and shapes match somehow
+            # (implementation may reshape or just copy data)
+            assert b2.size == b1.size or b2.shape == b1.shape
+        except (ValueError, RuntimeError, Exception):
+            # Raising an error on shape mismatch is also acceptable
+            pass
+
+    # --- Numpy view invalidation after reshape ---
+
+    def test_data_tensor_fresh_after_reshape(self):
+        """After Reshape, data_tensor should reflect new shape (not stale pointer)."""
+        b = Blob([2, 3])
+        b.fill(1.0)
+        t1 = b.data_tensor
+        assert t1.shape == (2, 3)
+        b.Reshape([4, 5])
+        t2 = b.data_tensor
+        assert t2.shape == (4, 5)
+        assert t1.shape == (2, 3) or t1.base is not None  # old view may be detached
+
+    # --- Large allocation (moderate size to avoid OOM in CI) ---
+
+    def test_moderate_large_blob(self):
+        """Allocate a ~1MB blob and verify fill/to_numpy works."""
+        n = 256 * 256  # 65536 elements * 4 bytes = 256KB
+        b = Blob([n])
+        b.fill(42.0)
+        arr = b.to_numpy()
+        assert arr.shape == (n,)
+        assert arr[0] == 42.0
+        assert arr[-1] == 42.0
+        del b

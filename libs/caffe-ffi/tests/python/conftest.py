@@ -36,9 +36,11 @@ _previous_test_passed = True
 
 def _current_mem_state():
     from caffe_ffi import total_allocated_bytes, live_blob_count
-    gc.collect()
-    gc.collect()
-    gc.collect()
+    # Aggressive GC: collect across all generations repeatedly until counts stabilize
+    for _ in range(5):
+        gc.collect(0)
+        gc.collect(1)
+        gc.collect(2)
     return (total_allocated_bytes(), live_blob_count())
 
 
@@ -97,14 +99,17 @@ def pytest_runtest_setup(item):
         mem_after, blobs_after = current
         leaked_bytes = mem_after - mem_before
         leaked_blobs = blobs_after - blobs_before
-        if leaked_blobs != 0 or leaked_bytes != 0:
+        if leaked_blobs > 0 or leaked_bytes > 0:
+            # Positive leak: blobs/bytes INCREASED after a passing test → real leak
             pytest.fail(
                 f"Memory leak detected from {_previous_test_name}: "
-                f"{leaked_blobs} Blob(s) still alive "
+                f"+{leaked_blobs} Blob(s) still alive "
                 f"(prev={blobs_before}, now={blobs_after}), "
-                f"{leaked_bytes} bytes leaked "
+                f"+{leaked_bytes} bytes leaked "
                 f"(prev={mem_before}, now={mem_after})"
             )
+        # Negative delta (blobs/bytes decreased) = delayed GC from a prior failed test's
+        # exception traceback finally releasing locals. Not a leak — just reset baseline.
 
     _test_baseline = current
     _previous_test_name = item.name

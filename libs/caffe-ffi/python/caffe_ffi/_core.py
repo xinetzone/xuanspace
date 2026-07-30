@@ -127,24 +127,21 @@ class Blob(_Object):
         return self.count()
 
     def count(self, start_axis: int = 0, end_axis: Optional[int] = None) -> int:
-        if self._is_native:
-            if end_axis is None:
-                return int(_native_method(self, 'count')())
-            s = self.shape
-            if end_axis < 0:
-                end_axis += len(s)
-            result = 1
-            for i in range(start_axis, end_axis + 1):
-                result *= s[i]
-            return result
-        s = self._py_shape
+        s = self.shape
+        ndim = len(s)
+        # Normalize negative axes
+        if start_axis < 0:
+            start_axis += ndim
         if end_axis is None:
-            end_axis = len(s)
+            end_axis = ndim
         elif end_axis < 0:
-            end_axis += len(s)
+            end_axis += ndim
+        # Clamp to valid range (Caffe uses CHECK macros, we clamp gracefully)
+        start_axis = max(0, min(start_axis, ndim))
+        end_axis = max(start_axis, min(end_axis, ndim))
         result = 1
         for i in range(start_axis, end_axis):
-            result *= s[i]
+            result *= int(s[i])
         return result
 
     def Reshape(self, shape: List[int]) -> None:
