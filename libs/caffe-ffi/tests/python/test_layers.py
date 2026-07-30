@@ -415,3 +415,171 @@ class TestReshape:
         x = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
         y = self.reshape_np(x, (2, 12))
         np.testing.assert_array_equal(y.ravel(), x.ravel())
+
+
+# ─── P1: Layer boundary tests ──────────────────────────────────────
+
+class TestLayerStandalone:
+    """Boundary tests for Layer() constructor and standalone Layer objects."""
+
+    def test_standalone_layer_type_empty(self):
+        """Standalone Layer() has empty string type."""
+        layer = Layer()
+        assert layer.type == ""
+
+    def test_standalone_layer_name_empty(self):
+        """Standalone Layer() has empty string name."""
+        layer = Layer()
+        assert layer.name == ""
+
+    def test_standalone_layer_blobs_empty(self):
+        """Standalone Layer() has empty blobs list."""
+        layer = Layer()
+        blobs = layer.blobs
+        assert isinstance(blobs, list)
+        assert len(blobs) == 0
+
+    def test_standalone_layer_repr(self):
+        """Standalone Layer() repr contains 'Layer' and type info."""
+        layer = Layer()
+        r = repr(layer)
+        assert "Layer" in r
+        assert "type=''" in r
+
+    def test_standalone_layer_not_native(self):
+        """Standalone Layer() created in Python-only mode is not native."""
+        layer = Layer()
+        # In Python-only mode, _is_native should be False
+        assert not layer._is_native
+
+    def test_standalone_layer_multiple_calls_safe(self):
+        """Accessing properties multiple times should not crash or mutate."""
+        layer = Layer()
+        for _ in range(10):
+            assert layer.type == ""
+            assert layer.name == ""
+            assert len(layer.blobs) == 0
+
+
+@require_cpp_extension
+class TestLayerFromNet:
+    """Boundary tests for Layer objects obtained from a Net."""
+
+    @pytest.fixture
+    def mlp_layers(self):
+        prototxt = """name: "layer_test"
+layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 2 dim: 3 } } }
+layer { name: "ip1" type: "InnerProduct" bottom: "data" top: "ip1" inner_product_param { num_output: 4 bias_term: true } }
+layer { name: "relu1" type: "ReLU" bottom: "ip1" top: "ip1" }
+layer { name: "ip2" type: "InnerProduct" bottom: "ip1" top: "ip2" inner_product_param { num_output: 2 bias_term: false } }
+layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
+"""
+        net = net_from_param(net_param_from_string(prototxt))
+        return net
+
+    def test_input_layer_has_no_blobs(self, mlp_layers):
+        """Input layer has 0 learnable parameter blobs."""
+        data_layer = mlp_layers.layer_by_name("data")
+        assert len(data_layer.blobs) == 0
+
+    def test_relu_layer_has_no_blobs(self, mlp_layers):
+        """ReLU layer has 0 learnable parameter blobs."""
+        relu = mlp_layers.layer_by_name("relu1")
+        assert len(relu.blobs) == 0
+
+    def test_softmax_layer_has_no_blobs(self, mlp_layers):
+        """Softmax layer has 0 learnable parameter blobs."""
+        prob = mlp_layers.layer_by_name("prob")
+        assert len(prob.blobs) == 0
+
+    def test_inner_product_with_bias_has_two_blobs(self, mlp_layers):
+        """InnerProduct with bias_term=true has 2 blobs (weights + bias)."""
+        ip1 = mlp_layers.layer_by_name("ip1")
+        assert len(ip1.blobs) == 2
+
+    def test_inner_product_no_bias_has_one_blob(self, mlp_layers):
+        """InnerProduct with bias_term=false has 1 blob (weights only)."""
+        ip2 = mlp_layers.layer_by_name("ip2")
+        assert len(ip2.blobs) == 1
+
+    def test_layer_types_match(self, mlp_layers):
+        """All layer types match their prototxt definitions."""
+        expected = {
+            "data": "Input",
+            "ip1": "InnerProduct",
+            "relu1": "ReLU",
+            "ip2": "InnerProduct",
+            "prob": "Softmax",
+        }
+        for name, expected_type in expected.items():
+            layer = mlp_layers.layer_by_name(name)
+            assert layer.type == expected_type, f"{name} type mismatch"
+
+    def test_layer_names_match(self, mlp_layers):
+        """All layer names match their prototxt definitions."""
+        for layer in mlp_layers.layers_array():
+            assert layer.name in ["data", "ip1", "relu1", "ip2", "prob"]
+
+    def test_layer_blobs_are_blob_instances(self, mlp_layers):
+        """All layer blobs are Blob instances with valid shapes."""
+        for layer in mlp_layers.layers_array():
+            for blob in layer.blobs:
+                assert isinstance(blob, Blob)
+                assert blob.ndim >= 1
+                assert blob.size > 0
+
+    def test_layer_repr_contains_name_and_type(self, mlp_layers):
+        """Layer repr includes name and type for named layers."""
+        ip1 = mlp_layers.layer_by_name("ip1")
+        r = repr(ip1)
+        assert "ip1" in r
+        assert "InnerProduct" in r
+        assert "Layer" in r
+
+    def test_weight_blobs_persist_after_forward(self, mlp_layers):
+        """Setting weights then forward should preserve the weight values."""
+        W = np.eye(4, 3, dtype=np.float32)
+        b = np.zeros(4, dtype=np.float32)
+        ip1 = mlp_layers.layer_by_name("ip1")
+        ip1.blobs[0].from_numpy(W)
+        ip1.blobs[1].from_numpy(b)
+
+        inp = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
+        mlp_layers.forward({"data": inp})
+
+        np.testing.assert_array_equal(ip1.blobs[0].to_numpy(), W)
+        np.testing.assert_array_equal(ip1.blobs[1].to_numpy(), b)
+
+    def test_multiple_forwards_do_not_corrupt_weights(self, mlp_layers):
+        """Multiple forward passes should not change weight blobs."""
+        W = np.random.RandomState(42).randn(4, 3).astype(np.float32) * 0.01
+        b = np.zeros(4, dtype=np.float32)
+        ip1 = mlp_layers.layer_by_name("ip1")
+        ip1.blobs[0].from_numpy(W)
+        ip1.blobs[1].from_numpy(b)
+
+        inp = np.random.RandomState(123).randn(2, 3).astype(np.float32)
+        for _ in range(5):
+            mlp_layers.forward({"data": inp})
+
+        np.testing.assert_array_equal(ip1.blobs[0].to_numpy(), W)
+        np.testing.assert_array_equal(ip1.blobs[1].to_numpy(), b)
+
+    def test_layer_blobs_return_new_list_each_time(self, mlp_layers):
+        """layer.blobs returns a new list each call (not a shared reference)."""
+        ip1 = mlp_layers.layer_by_name("ip1")
+        blobs1 = ip1.blobs
+        blobs2 = ip1.blobs
+        assert blobs1 == blobs2
+        # Should be different list objects but contain the same Blob objects
+        assert blobs1 is not blobs2
+
+    def test_input_layer_blobs_mutable_no_crash(self, mlp_layers):
+        """Accessing and manipulating Input layer (0 blobs) should not crash."""
+        data_layer = mlp_layers.layer_by_name("data")
+        blobs = data_layer.blobs
+        assert len(blobs) == 0
+        # Iteration should work fine
+        for blob in blobs:
+            pass  # no blobs to iterate
+
