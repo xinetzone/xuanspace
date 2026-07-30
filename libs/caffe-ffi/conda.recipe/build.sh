@@ -17,6 +17,22 @@ set -eux -o pipefail
 
 export CMAKE_GENERATOR=Ninja
 
+# ── Helper: clean editable finder files (triple-protection strategy) ──
+clean_editable_files() {
+    for _sp in $($PYTHON -c "import site; print(' '.join(site.getsitepackages()))" 2>/dev/null) "${SP_DIR:-}"; do
+        if [ -n "$_sp" ] && [ -d "$_sp" ]; then
+            # Remove all _editable* and __editable__* files (both .pth and .py, any variant)
+            find "$_sp" -maxdepth 1 \( -name "_editable_*" -o -name "__editable__*" \) -type f -delete 2>/dev/null || true
+            # Remove any .pth files that point to source paths (xuanspace/SpecWeave/build/_skbuild)
+            find "$_sp" -maxdepth 1 -name "*.pth" -type f 2>/dev/null | while read -r f; do
+                if grep -q "xuanspace\|SpecWeave\|_skbuild" "$f" 2>/dev/null; then
+                    rm -f "$f"
+                fi
+            done
+        fi
+    done
+}
+
 # ── 0. 源码预处理：CRLF 修复 + in-tree 构建残留清理 ──
 echo "[build.sh] Preprocessing source directory..."
 
@@ -84,6 +100,10 @@ if [ "$TVM_FFI_SOURCE" = "local-pip" ]; then
         exit 1
     }
 
+    # Remove editable finder files from tvm-ffi pip install (triple-protection: stage 1)
+    clean_editable_files
+    echo "[build.sh] Cleaned tvm-ffi editable finder files"
+
     # 恢复或清理 SKBUILD_CMAKE_ARGS
     if [ -n "$_OLD_SKBUILD_CMAKE_ARGS" ]; then
         export SKBUILD_CMAKE_ARGS="$_OLD_SKBUILD_CMAKE_ARGS"
@@ -146,17 +166,18 @@ fi
 #   - 使用空格分隔（不是分号），避免被 CMake 解析为列表分隔符
 #   - 临时清空 conda 的 CMAKE_ARGS（包含 -DCMAKE_INSTALL_PREFIX=$PREFIX 等），
 #     避免干扰 scikit-build-core 的 wheel 构建过程
-# RPATH 使用相对路径：
-#   $ORIGIN               — _caffe_ffi.so 所在目录（SP_DIR/caffe_ffi/）
-#   $ORIGIN/lib           — 同目录下的 lib/ 子目录（预留）
-#   $ORIGIN/../tvm_ffi/lib — 同级 tvm_ffi 包的 lib/ 目录（libtvm_ffi.so 在这里）
-#   $PREFIX/lib           — conda 环境标准库路径（protobuf、openblas 等兜底）
+# RPATH 使用全相对路径（避免 conda-build prefix replacement "Placeholder too short" 错误）：
+#   $ORIGIN                    — _caffe_ffi.so 所在目录（SP_DIR/caffe_ffi/）
+#   $ORIGIN/lib                — 同目录下的 lib/ 子目录（预留私有库）
+#   $ORIGIN/../tvm_ffi/lib     — 同级 tvm_ffi 包的 lib/ 目录（libtvm_ffi.so 在这里）
+#   $ORIGIN/../../..           — 上溯3级到达 PREFIX/lib（conda 标准系统库路径）
+# 注意：禁止使用 ${PREFIX}/lib 绝对路径！必须用 $ORIGIN 相对路径。
 _CAFFE_OLD_CMAKE_ARGS="${CMAKE_ARGS:-}"
 export CMAKE_ARGS=""
 
 export SKBUILD_CMAKE_ARGS="\
 -DCMAKE_PREFIX_PATH=${PREFIX} \
--DCMAKE_INSTALL_RPATH=\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:${PREFIX}/lib \
+-DCMAKE_INSTALL_RPATH=\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:\$ORIGIN/../../.. \
 -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
 -DCMAKE_SKIP_BUILD_RPATH=OFF \
 -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
@@ -188,14 +209,22 @@ find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 $PYTHON -m pip install . --no-deps -vv --no-build-isolation
 
-# Remove editable finder files that pip may have incorrectly installed
+# Remove editable finder files after caffe-ffi pip install (triple-protection: stage 2)
 # (scikit-build-core should not install these for non-editable installs,
 # but --no-build-isolation can cause leftover artifacts from previous builds)
-_SP_DIR=$($PYTHON -c "import site; print(site.getsitepackages()[0])" 2>/dev/null)
-if [ -n "$_SP_DIR" ] && [ -d "$_SP_DIR" ]; then
-  rm -f "$_SP_DIR"/_editable_skbc_*.pth "$_SP_DIR"/_editable_skbc_*.py 2>/dev/null || true
-  rm -f "$_SP_DIR"/__editable__*.pth 2>/dev/null || true
-  echo "[build.sh] Cleaned editable finder files from $_SP_DIR"
+_n_editable=0
+for _sp in $($PYTHON -c "import site; print(' '.join(site.getsitepackages()))" 2>/dev/null) "${SP_DIR:-}"; do
+  if [ -n "$_sp" ] && [ -d "$_sp" ]; then
+    _n=$(find "$_sp" -maxdepth 1 \( -name "_editable_*" -o -name "__editable__*" \) -type f 2>/dev/null | wc -l)
+    _n_editable=$((_n_editable + _n))
+  fi
+done
+if [ "$_n_editable" -gt 0 ]; then
+  echo "[build.sh] Found $_n_editable editable finder files, removing..."
+  clean_editable_files
+  echo "[build.sh] Editable files cleaned"
+else
+  echo "[build.sh] No editable finder files found (good)"
 fi
 
 # 恢复 CMAKE_ARGS
@@ -253,22 +282,36 @@ if command -v nm &>/dev/null; then
     }
 fi
 
-# 4c. 用 patchelf 设置 RPATH（相对路径 + PREFIX/lib 兜底）
+# 4c. 用 patchelf 设置 RPATH（全部使用相对路径，避免 conda prefix placeholder 长度问题）
 if command -v patchelf &>/dev/null; then
     echo "[build.sh] Current RPATH of _caffe_ffi.so:"
     patchelf --print-rpath "$CAFFE_FFI_SO" 2>/dev/null || echo "  (no RPATH set)"
 
-    # 相对路径：
-    #   $ORIGIN                 — caffe_ffi/ 目录
-    #   $ORIGIN/lib             — caffe_ffi/lib/（预留）
-    #   $ORIGIN/../tvm_ffi/lib  — 指向 tvm_ffi 包的 lib/ 目录
-    # 绝对路径兜底：PREFIX/lib（conda 标准库路径，用于 protobuf、openblas 等）
-    NEW_RPATH="\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:${PREFIX}/lib"
+    # 相对路径（避免绝对路径导致 conda-build prefix replacement 时 placeholder 长度不足）：
+    #   $ORIGIN                    — caffe_ffi/ 目录
+    #   $ORIGIN/lib                — caffe_ffi/lib/（预留）
+    #   $ORIGIN/../tvm_ffi/lib     — 指向 tvm_ffi 包的 lib/ 目录
+    #   $ORIGIN/../../..           — 上溯 3 级到达 PREFIX/lib（conda 标准库路径）
+    NEW_RPATH="\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:\$ORIGIN/../../.."
     patchelf --set-rpath "$NEW_RPATH" "$CAFFE_FFI_SO"
     echo "[build.sh] Set RPATH to: $NEW_RPATH"
     echo "[build.sh] New RPATH: $(patchelf --print-rpath "$CAFFE_FFI_SO" 2>/dev/null)"
 else
     echo "[build.sh] WARNING: patchelf not available, skipping RPATH fix"
+fi
+
+# 4c-bis. 同样为 libtvm_ffi.so 设置相对 RPATH（避免 prefix placeholder 问题）
+if command -v patchelf &>/dev/null && [ -n "${TVM_FFI_LIB:-}" ] && [ -f "$TVM_FFI_LIB" ]; then
+    echo "[build.sh] Current RPATH of libtvm_ffi.so:"
+    patchelf --print-rpath "$TVM_FFI_LIB" 2>/dev/null || echo "  (no RPATH set)"
+    # libtvm_ffi.so 在 tvm_ffi/lib/ 下（比 _caffe_ffi.so 深一级）：
+    #   $ORIGIN              — tvm_ffi/lib/
+    #   $ORIGIN/..           — tvm_ffi/（site-packages/tvm_ffi/）
+    #   $ORIGIN/../../../../ — PREFIX/lib/（上溯 4 级：lib→tvm_ffi→site-packages→python3.14→lib）
+    _TVM_RPATH="\$ORIGIN:\$ORIGIN/..:\$ORIGIN/../../../../"
+    patchelf --set-rpath "$_TVM_RPATH" "$TVM_FFI_LIB"
+    echo "[build.sh] Set libtvm_ffi.so RPATH to: $_TVM_RPATH"
+    echo "[build.sh] New libtvm_ffi.so RPATH: $(patchelf --print-rpath "$TVM_FFI_LIB" 2>/dev/null)"
 fi
 
 # 4d. 运行 ldd 验证依赖解析
