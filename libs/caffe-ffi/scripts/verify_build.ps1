@@ -174,7 +174,7 @@ Write-Host ""
 Write-Host "============================================================"
 Write-Host " Step 4: Copy tvm_ffi.dll to build output directory"
 Write-Host "============================================================"
-$TvmFfiDll = Get-ChildItem -Path build -Filter tvm_ffi.dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+$TvmFfiDll = Get-ChildItem -Path build -Filter tvm_ffi.dll -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -ne (Resolve-Path build).Path } | Select-Object -First 1
 if ($TvmFfiDll) {
     Copy-Item -Path $TvmFfiDll.FullName -Destination build\ -Force
     Write-Host "[OK] Copied $($TvmFfiDll.FullName) to build\"
