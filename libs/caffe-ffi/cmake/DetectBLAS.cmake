@@ -20,7 +20,6 @@ set(BLAS_INCLUDE_DIRS "")
 
 # Collect conda-related search hints
 set(_blas_search_paths "")
-set(_blas_include_suffixes "openblas" "")
 
 if(DEFINED ENV{CONDA_PREFIX})
   list(APPEND _blas_search_paths "$ENV{CONDA_PREFIX}")
@@ -33,19 +32,39 @@ if(Python_SITEARCH)
   get_filename_component(_python_prefix "${Python_SITEARCH}/../.." ABSOLUTE)
   list(APPEND _blas_search_paths "${_python_prefix}")
 endif()
+# On Windows conda, protobuf may be found from a different env than CONDA_PREFIX
+# (e.g. py314 env even when CONDA_PREFIX points to base). Add the protobuf prefix
+# as an additional search hint.
+if(Protobuf_INCLUDE_DIR)
+  get_filename_component(_protobuf_env_prefix "${Protobuf_INCLUDE_DIR}/../.." ABSOLUTE)
+  if(NOT "${_protobuf_env_prefix}" IN_LIST _blas_search_paths)
+    list(APPEND _blas_search_paths "${_protobuf_env_prefix}")
+  endif()
+endif()
+
+# Platform-specific path suffixes (Windows conda uses Library/ prefix)
+if(WIN32)
+  set(_blas_include_suffixes include include/openblas Library/include Library/include/openblas)
+  set(_blas_lib_names libopenblas openblas)
+  set(_blas_lib_suffixes lib lib64 Library/lib Library/bin)
+else()
+  set(_blas_include_suffixes include include/openblas)
+  set(_blas_lib_names openblas openblasp openblas.so.0)
+  set(_blas_lib_suffixes lib lib64)
+endif()
 
 # ── Phase 1: Targeted search in conda/prefix paths ──
 find_path(OPENBLAS_INCLUDE_DIR
   NAMES cblas.h openblas_config.h
   HINTS ${_blas_search_paths}
-  PATH_SUFFIXES include include/openblas
+  PATH_SUFFIXES ${_blas_include_suffixes}
   NO_DEFAULT_PATH
 )
 
 find_library(OPENBLAS_LIBRARY
-  NAMES openblas openblasp openblas.so.0  # openblasp=pthreads variant, .so.0=runtime soname
+  NAMES ${_blas_lib_names}
   HINTS ${_blas_search_paths}
-  PATH_SUFFIXES lib lib64
+  PATH_SUFFIXES ${_blas_lib_suffixes}
   NO_DEFAULT_PATH
 )
 
@@ -54,10 +73,10 @@ if(NOT OPENBLAS_INCLUDE_DIR OR NOT OPENBLAS_LIBRARY)
   message(STATUS "OpenBLAS not found in conda prefix paths, trying system default paths...")
   find_path(OPENBLAS_INCLUDE_DIR
     NAMES cblas.h openblas_config.h
-    PATH_SUFFIXES openblas
+    PATH_SUFFIXES ${_blas_include_suffixes}
   )
   find_library(OPENBLAS_LIBRARY
-    NAMES openblas openblasp blas
+    NAMES ${_blas_lib_names}
   )
 endif()
 
@@ -70,9 +89,17 @@ if(OPENBLAS_INCLUDE_DIR AND OPENBLAS_LIBRARY)
 else()
   message(STATUS "BLAS/OpenBLAS not found - building without BLAS acceleration (will use fallback C++ implementations)")
   if(NOT OPENBLAS_INCLUDE_DIR)
-    message(STATUS "  -> cblas.h / openblas_config.h not found (install libopenblas-dev or openblas-devel)")
+    if(WIN32)
+      message(STATUS "  -> cblas.h / openblas_config.h not found (install via: conda install -c conda-forge libopenblas)")
+    else()
+      message(STATUS "  -> cblas.h / openblas_config.h not found (install libopenblas-dev or openblas-devel)")
+    endif()
   endif()
   if(NOT OPENBLAS_LIBRARY)
-    message(STATUS "  -> libopenblas.so not found (install libopenblas)")
+    if(WIN32)
+      message(STATUS "  -> openblas.lib / libopenblas.lib not found (install via: conda install -c conda-forge libopenblas)")
+    else()
+      message(STATUS "  -> libopenblas.so not found (install libopenblas)")
+    endif()
   endif()
 endif()

@@ -74,6 +74,51 @@ conda activate caffe-ffi-dev
 pip install --no-build-isolation -e .
 ```
 
+## Windows 原生 Conda 环境开发指南
+
+Windows 原生环境下推荐使用 conda 管理依赖，无需 WSL。`environment.yml` 已包含所有必要依赖。
+
+### Windows 环境设置
+
+#### 1. 安装 Miniconda
+
+从 [Miniconda 官网](https://docs.anaconda.com/miniconda/) 下载 Windows 安装包并安装。
+
+#### 2. 创建并激活 conda 环境
+
+```powershell
+cd caffe-ffi
+conda env create -f environment.yml
+conda activate caffe-ffi-dev
+```
+
+`environment.yml` 已包含 `libopenblas` 依赖，无需手动安装。CMake 的 `DetectBLAS.cmake` 会自动从 conda 环境前缀中搜索 OpenBLAS 头文件和库文件（`$CONDA_PREFIX/Library/include` 和 `$CONDA_PREFIX/Library/lib`）。
+
+#### 3. 构建与安装
+
+```powershell
+# 使用一键开发脚本（推荐）
+.\scripts\dev.ps1
+
+# 或手动构建
+cmake --preset default
+cmake --build --preset default
+pip install --no-build-isolation -e .
+```
+
+#### 4. 常见问题
+
+**BLAS/OpenBLAS 未找到**：如果 CMake 输出 `BLAS/OpenBLAS not found`，检查：
+- 确认 `conda activate caffe-ffi-dev` 已激活（`CONDA_PREFIX` 环境变量指向正确的 conda 环境）
+- 手动安装：`conda install -c conda-forge libopenblas`
+- 如果使用了非默认 conda 环境名，确保 `CONDA_PREFIX` 指向该环境
+
+**KMP_DUPLICATE_LIB_OK**：Windows 上多个组件可能各自包含 OpenMP 运行时，设置此环境变量避免冲突：
+
+```powershell
+$env:KMP_DUPLICATE_LIB_OK = "TRUE"
+```
+
 ## WSL 环境开发指南
 
 WSL (Windows Subsystem for Linux) 是 Windows 上开发 caffe-ffi 的推荐环境，提供更好的编译性能和兼容性。

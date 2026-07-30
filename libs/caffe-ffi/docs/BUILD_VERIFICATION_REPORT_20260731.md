@@ -195,3 +195,30 @@ set "PATH=%CONDA_ENV%\Lib\site-packages\tvm_ffi\lib;%PATH%"
 - **不会引入链接错误**：新测试文件使用的符号均在已链接库中
 - **不会破坏现有测试**：新测试文件使用独立测试套件 `ObjectPtrMigration`，与现有 `ZeroCopyTest` 等套件无冲突
 - **测试文件自动注册**：`Tests.cmake` 的 `file(GLOB)` 模式自动包含新文件
+
+## 附录：BLAS/OpenBLAS 检测修复（2026-07-31）
+
+### 问题描述
+
+CMake 配置时输出 `BLAS/OpenBLAS not found - building without BLAS acceleration`，即使 OpenBLAS 已通过 conda 安装在 `py314` 环境中。
+
+### 根因分析
+
+1. **库名不匹配**：`DetectBLAS.cmake` Phase 1 搜索 `openblas openblasp openblas.so.0`，其中 `openblas.so.0` 是 Linux 专用名。Windows conda 提供的是 `libopenblas.lib` 和 `openblas.lib`
+2. **搜索路径不完整**：Phase 1 `PATH_SUFFIXES` 仅包含 `lib lib64`，缺少 Windows conda 的 `Library/lib` 和 `Library/bin` 路径
+3. **环境前缀不一致**：`CONDA_PREFIX` 可能指向 base conda 环境（`D:\Users\xinzo\anaconda3`），而 OpenBLAS 安装在 `py314` 环境（`D:\Users\xinzo\anaconda3\envs\py314`）。Protobuf 从 `py314` 找到，但 BLAS 搜索只用 `CONDA_PREFIX` 作为 hint
+
+### 修复内容
+
+修改 `cmake/DetectBLAS.cmake`：
+
+| 修复项 | 修改前 | 修改后 |
+|--------|--------|--------|
+| Windows 库名 | `openblas openblasp openblas.so.0`（统一） | `libopenblas openblas`（Windows）/ `openblas openblasp openblas.so.0`（Linux/macOS） |
+| Windows 搜索路径 | `lib lib64`（统一） | `lib lib64 Library/lib Library/bin`（Windows）/ `lib lib64`（Linux/macOS） |
+| 环境前缀发现 | 仅 `CONDA_PREFIX` + `CMAKE_PREFIX_PATH` + `Python_SITEARCH` | 新增：从 `Protobuf_INCLUDE_DIR` 反推正确的 conda 环境前缀 |
+| 错误提示 | 统一提示 `libopenblas-dev` / `libopenblas.so` | 平台感知：Windows 提示 `conda install -c conda-forge libopenblas`，Linux 提示 `libopenblas-dev` |
+
+### 验证方法
+
+重新运行 CMake 配置，确认输出包含 `Found OpenBLAS: <path>` 而非 `BLAS/OpenBLAS not found`。
