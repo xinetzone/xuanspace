@@ -1,5 +1,7 @@
-# Tests.cmake - C++ 单元测试目标配置
+# Tests.cmake - C++ 单元测试 + Python 回归测试目标配置
 enable_testing()
+
+# ── C++ 单元测试 ──
 
 file(GLOB CAFFE_FFI_CPP_TEST_SRCS
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp/*.cpp"
@@ -26,3 +28,85 @@ if(MSVC)
 endif()
 
 add_test(NAME caffe_ffi_cpp_tests COMMAND caffe_ffi_tests)
+
+# ── Python 测试 ──
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
+
+if(Python3_Interpreter_FOUND)
+  # ── P2-B 回归测试套件 ──
+  # 包含: Split 拓扑正确性 + 性能扩展 + 极端边界 + 内存稳定性
+  set(P2B_REGRESSION_TEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_p2b_regression.py")
+
+  if(EXISTS "${P2B_REGRESSION_TEST}")
+    add_test(
+      NAME caffe_ffi_python_p2b_regression
+      COMMAND ${Python3_EXECUTABLE} -m pytest "${P2B_REGRESSION_TEST}" -v --tb=short
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    set_tests_properties(caffe_ffi_python_p2b_regression PROPERTIES
+      LABELS "python;p2b;regression"
+      TIMEOUT 300
+      ENVIRONMENT "KMP_DUPLICATE_LIB_OK=TRUE"
+    )
+  endif()
+
+  # ── P2-B 性能测试（仅性能埋点，含 SPLIT-PERF 日志输出）──
+  if(EXISTS "${P2B_REGRESSION_TEST}")
+    add_test(
+      NAME caffe_ffi_python_p2b_performance
+      COMMAND ${Python3_EXECUTABLE} -m pytest "${P2B_REGRESSION_TEST}::TestSplitPerformanceScaling" -v -s
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    set_tests_properties(caffe_ffi_python_p2b_performance PROPERTIES
+      LABELS "python;p2b;performance"
+      TIMEOUT 600
+      ENVIRONMENT "KMP_DUPLICATE_LIB_OK=TRUE;CAFFE_FFI_LOG_LEVEL=WARN"
+    )
+  endif()
+
+  # ── 全量 Python 测试 ──
+  file(GLOB CAFFE_FFI_PYTHON_TESTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_*.py"
+  )
+  if(CAFFE_FFI_PYTHON_TESTS)
+    add_test(
+      NAME caffe_ffi_python_all
+      COMMAND ${Python3_EXECUTABLE} -m pytest tests/python/ -v --tb=short
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    set_tests_properties(caffe_ffi_python_all PROPERTIES
+      LABELS "python;all"
+      TIMEOUT 600
+      ENVIRONMENT "KMP_DUPLICATE_LIB_OK=TRUE"
+    )
+  endif()
+
+  # ── 聚合自定义目标 ──
+
+  # p2b-regression: 仅运行 P2-B 回归（C++ + Python P2-B）
+  add_custom_target(p2b-regression
+    COMMAND ${CMAKE_CTEST_COMMAND} -R "caffe_ffi_cpp_tests|caffe_ffi_python_p2b_regression" --output-on-failure
+    DEPENDS caffe_ffi_tests _caffe_ffi
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Running P2-B regression tests (C++ + Python)"
+  )
+
+  # p2b-performance: 仅运行性能埋点测试
+  add_custom_target(p2b-performance
+    COMMAND ${CMAKE_CTEST_COMMAND} -R "caffe_ffi_python_p2b_performance" --output-on-failure -V
+    DEPENDS _caffe_ffi
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Running P2-B performance scaling tests with SPLIT-PERF logging"
+  )
+
+  # check-all: 运行所有测试（C++ + 全量 Python）
+  add_custom_target(check-all
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS caffe_ffi_tests _caffe_ffi
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Running all tests (C++ + Python)"
+  )
+else()
+  message(STATUS "Python3 not found; Python tests will not be registered.")
+endif()
