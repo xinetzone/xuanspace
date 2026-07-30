@@ -11,6 +11,38 @@ set "PATH=%CONDA_ENV%;%CONDA_ENV%\Scripts;%CONDA_ENV%\Library\bin;%CONDA_ENV%\DL
 cd /d "%~dp0.."
 
 echo ============================================================
+echo  Step 0: Environment Diagnostics
+echo ============================================================
+echo CMake in use: 
+where cmake 2>nul | findstr /v "^$"
+echo.
+echo LIB env var (first 200 chars):
+if defined LIB (echo %LIB:~0,200%) else (echo [MISSING] LIB not set)
+echo.
+echo INCLUDE env var (first 200 chars):
+if defined INCLUDE (echo %INCLUDE:~0,200%) else (echo [MISSING] INCLUDE not set)
+echo.
+echo Checking kernel32.lib:
+for %%d in (%LIB:;= %) do (
+    if exist "%%d\kernel32.lib" (
+        echo   [OK] %%d\kernel32.lib
+        set "LIB_OK=1"
+    )
+)
+if not defined LIB_OK (
+    echo   [ERROR] kernel32.lib not found in any LIB path
+    echo   vcvars64.bat may not have set LIB correctly
+    echo   Try running this script from VS Developer Command Prompt
+    exit /b 1
+)
+echo.
+echo Checking cl.exe: 
+where cl.exe 2>nul | findstr /v "^$" || echo [ERROR] cl.exe not found
+echo.
+echo [OK] Environment ready
+
+echo.
+echo ============================================================
 echo  Step 1: Clean CMake cache (force reconfigure)
 echo ============================================================
 del /q build\CMakeCache.txt 2>nul
