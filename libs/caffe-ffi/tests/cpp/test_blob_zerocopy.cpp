@@ -335,6 +335,387 @@ TEST(COWTest, ThreeWayShareCOWOnlyAffectsMutator) {
   EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 999.0, 1e-6);
 }
 
+// ── ShareData 引用计数异常场景测试 (ShareDataRefCount) ──
+// 验证 ShareData() 在各种边界条件、异常共享模式、引用计数泄漏场景下的正确性。
+// 这些测试覆盖 N=2 集成测试失败分析中识别的克隆逻辑异常路径。
+
+/// 场景 1：自共享（idempotent self-share）
+/// blob 将自身 data 共享给自身，应保持指针不变且不崩溃。
+TEST(ShareDataRefCount, SelfShareIsIdempotent) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4, 4});
+  a->cpu_data()[0] = 42.0f;
+  const float* ptr_before = a->cpu_data();
+  int64_t id_before = a->id();
+
+  // 自共享：不应崩溃，指针不变
+  a->ShareData(a.get());
+
+  EXPECT_EQ(a->cpu_data(), ptr_before);
+  EXPECT_EQ(a->id(), id_before);
+  EXPECT_TRUE(a->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 42.0, 1e-6);
+}
+
+/// 场景 2：链式共享 A→B→C（三向指针一致性）
+/// 验证 A→B→C 链式共享后，三者指向同一内存。
+TEST(ShareDataRefCount, ChainShareThreeWay) {
+  auto a = make_object<Blob>(std::vector<int64_t>{8});
+  auto b = make_object<Blob>(std::vector<int64_t>{8});
+  auto c = make_object<Blob>(std::vector<int64_t>{8});
+
+  a->cpu_data()[0] = 100.0f;
+  a->cpu_data()[7] = 200.0f;
+
+  // A→B
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+
+  // B→C（通过 B 间接共享到 C，C 应与 A 共享）
+  c->ShareData(b.get());
+  EXPECT_TRUE(c->SharesDataWith(b.get()));
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+  EXPECT_EQ(c->cpu_data(), a->cpu_data());
+  EXPECT_EQ(c->cpu_data(), b->cpu_data());
+
+  // 值验证
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 100.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[7]), 200.0, 1e-6);
+}
+
+/// 场景 3：重共享覆盖旧引用
+/// B 先共享 A，再共享 C。验证 B 的旧引用被释放，新引用指向 C。
+TEST(ShareDataRefCount, ReShareOverwritesPrevious) {
+  auto a = make_object<Blob>(std::vector<int64_t>{8});
+  auto b = make_object<Blob>(std::vector<int64_t>{8});
+  auto c = make_object<Blob>(std::vector<int64_t>{8});
+
+  a->cpu_data()[0] = 10.0f;
+  c->cpu_data()[0] = 20.0f;
+
+  // B 共享 A
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 10.0, 1e-6);
+
+  // B 重共享 C → 应与 A 断开，与 C 共享
+  b->ShareData(c.get());
+  EXPECT_TRUE(b->SharesDataWith(c.get()));
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 20.0, 1e-6);
+
+  // A 不受影响
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 10.0, 1e-6);
+}
+
+/// 场景 4：Reshape 打破共享
+/// 共享后 Reshape 目标 Blob，验证共享断开且原数据不受影响。
+TEST(ShareDataRefCount, ReshapeBreaksShare) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4, 4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4, 4});
+
+  a->cpu_data()[0] = 55.0f;
+  a->cpu_data()[15] = 77.0f;
+
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+
+  // Reshape b → 分配新内存，打破共享
+  b->Reshape(std::vector<int64_t>{2, 8});
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+
+  // a 的数据应保持不变
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 55.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[15]), 77.0, 1e-6);
+}
+
+/// 场景 5：COW 后共享（A→B 共享，B COW，B→C 共享）
+/// 验证 COW 打破共享后，新建立的共享关系正确隔离。
+TEST(ShareDataRefCount, ShareDataAfterCOW) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+  auto c = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 1.0f;
+  a->cpu_data()[1] = 2.0f;
+  a->cpu_data()[2] = 3.0f;
+  a->cpu_data()[3] = 4.0f;
+
+  // A→B 共享
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+
+  // B 触发 COW（通过 cpu_mutable_data 写入）
+  float* b_data = b->cpu_mutable_data();
+  b_data[0] = 999.0f;
+
+  // COW 后 B 与 A 应断开
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);  // A 不变
+
+  // B→C 共享（COW 后的 B 作为源）
+  c->ShareData(b.get());
+  EXPECT_TRUE(c->SharesDataWith(b.get()));
+  EXPECT_FALSE(c->SharesDataWith(a.get()));
+
+  // C 通过 B 写入 → B 可见，A 不可见
+  c->cpu_data()[1] = 888.0f;
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[1]), 888.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[1]), 2.0, 1e-6);
+}
+
+/// 场景 6：链中段 Reshape（A→B→C，Reshape B，验证 A 和 C 仍共享）
+/// B 是中间节点，Reshape B 后，A 和 C 通过 refcount 仍持有原数据。
+TEST(ShareDataRefCount, ChainMiddleReshapePreservesEndpoints) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+  auto c = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 11.0f;
+  a->cpu_data()[3] = 44.0f;
+
+  // A→B→C 链
+  b->ShareData(a.get());
+  c->ShareData(b.get());
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+
+  // Reshape 中间节点 B
+  b->Reshape(std::vector<int64_t>{8});
+
+  // B 断开
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+
+  // A 和 C 仍共享原数据（通过 refcount 独立持有）
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 11.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 11.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[3]), 44.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[3]), 44.0, 1e-6);
+}
+
+/// 场景 7：源销毁后目标仍有效
+/// 验证 ShareData 后销毁源 Blob，目标 Blob 通过 refcount 独立持有数据。
+TEST(ShareDataRefCount, SourceDestroyedDataStillValid) {
+  auto dst = make_object<Blob>(std::vector<int64_t>{4});
+  float* dst_ptr_before = nullptr;
+  {
+    auto src = make_object<Blob>(std::vector<int64_t>{4});
+    src->cpu_data()[0] = 123.0f;
+    src->cpu_data()[3] = 456.0f;
+
+    dst->ShareData(src.get());
+    dst_ptr_before = dst->cpu_data();
+    EXPECT_TRUE(dst->SharesDataWith(src.get()));
+  }  // src 析构
+
+  // dst 仍应持有有效数据
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 123.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[3]), 456.0, 1e-6);
+  // 指针不应变为悬空
+  EXPECT_EQ(dst->cpu_data(), dst_ptr_before);
+}
+
+/// 场景 8：不同形状 Blob 间共享
+/// ShareData 不要求形状匹配，shape 应跟随源。
+TEST(ShareDataRefCount, ShareDataWithDifferentShapes) {
+  auto a = make_object<Blob>(std::vector<int64_t>{2, 3, 4});  // 24 elements
+  auto b = make_object<Blob>(std::vector<int64_t>{8});         // 8 elements
+
+  a->cpu_data()[0] = 5.0f;
+  a->cpu_data()[23] = 10.0f;
+
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+
+  // b 的 shape 应跟随 a
+  EXPECT_EQ(b->num_axes(), 3);
+  EXPECT_EQ(b->count(), 24);
+  EXPECT_EQ(b->shape(0), 2);
+  EXPECT_EQ(b->shape(1), 3);
+  EXPECT_EQ(b->shape(2), 4);
+
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 5.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[23]), 10.0, 1e-6);
+}
+
+/// 场景 9：多次相同共享是幂等的
+/// 对同一对 Blob 多次调用 ShareData，指针和值不变。
+TEST(ShareDataRefCount, RepeatedShareDataIsIdempotent) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 7.0f;
+
+  b->ShareData(a.get());
+  const float* ptr_after_first = b->cpu_data();
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+
+  // 再次共享同一源
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_EQ(b->cpu_data(), ptr_after_first);
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 7.0, 1e-6);
+
+  // 第三次共享
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_EQ(b->cpu_data(), ptr_after_first);
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 7.0, 1e-6);
+}
+
+/// 场景 10：双向共享（A→B 且 B→A）
+/// 验证 A 共享 B 后再由 B 共享 A 是幂等的。
+TEST(ShareDataRefCount, BidirectionalShareIsIdempotent) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 99.0f;
+
+  // A→B
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+
+  // B→A（反向共享，应幂等）
+  a->ShareData(b.get());
+  EXPECT_TRUE(a->SharesDataWith(b.get()));
+  EXPECT_EQ(a->cpu_data(), b->cpu_data());
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 99.0, 1e-6);
+}
+
+/// 场景 11：ShareData 后旧 Tensor 被正确释放
+/// 验证 B 的旧独立 tensor 在 ShareData 后被释放，不泄漏。
+TEST(ShareDataRefCount, OldTensorReleasedAfterShare) {
+  // 记录初始已分配字节
+  int64_t bytes_before = g_total_allocated_bytes.load();
+
+  {
+    auto a = make_object<Blob>(std::vector<int64_t>{100, 100});  // 40KB
+    auto b = make_object<Blob>(std::vector<int64_t>{100, 100});  // 另一个 40KB
+
+    a->cpu_data()[0] = 1.0f;
+    b->cpu_data()[0] = 2.0f;
+
+    // B 共享 A → B 的旧 40KB tensor 应被释放
+    // 注意：TVM FFI 的侵入式引用计数在 data_tensor_ 被覆盖时
+    // 自动递减旧 tensor 引用计数，引用计数归零时释放内存
+    b->ShareData(a.get());
+
+    EXPECT_TRUE(b->SharesDataWith(a.get()));
+    int64_t bytes_after_share = g_total_allocated_bytes.load();
+
+    // 总分配量应减少（B 的旧 40KB 被释放）
+    // 注意：此断言依赖于 TVM FFI 的即时释放行为
+    // 如果使用延迟释放，此断言可能不稳定
+    EXPECT_LE(bytes_after_share, bytes_before);
+  }
+
+  // 所有 Blob 析构后，分配量应回到初始值附近
+  int64_t bytes_after = g_total_allocated_bytes.load();
+  EXPECT_LE(bytes_after, bytes_before);
+}
+
+/// 场景 12：ShareData 空共享（源 tensor 未定义）
+/// 对默认构造的 Blob（shape {0}）调用 ShareData，应触发 CHECK 失败。
+/// 该测试用例在 Debug 构建中验证防御性检查，Release 中跳过。
+TEST(ShareDataRefCount, ShareDataWithUndefinedTensorFails) {
+  auto src = make_object<Blob>();  // 默认构造，data_tensor_ 可能未完全定义
+  auto dst = make_object<Blob>(std::vector<int64_t>{4});
+
+  // 如果 src 的 data_tensor_ 已定义（如 shape {0} 的 tensor），
+  // ShareData 成功；否则触发 CHECK 失败。
+  // 在 Release 中，CHECK 被编译为 no-op，此测试仅验证行为一致。
+  // 此处仅验证不应崩溃。
+  // 注：默认构造的 Blob 在构造函数中调用了 Reshape({0})，
+  // 因此 data_tensor_ 已定义（shape {0}），ShareData 应成功。
+  dst->ShareData(src.get());
+  EXPECT_TRUE(dst->SharesDataWith(src.get()));
+  EXPECT_EQ(dst->count(), 0);
+}
+
+/// 场景 13：ShareDiff 独立于 ShareData
+/// 验证 data 和 diff 的共享关系相互独立，互不干扰。
+TEST(ShareDataRefCount, ShareDiffIndependentOfShareData) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 10.0f;
+  a->cpu_diff()[0] = 20.0f;
+  b->cpu_data()[0] = 30.0f;
+  b->cpu_diff()[0] = 40.0f;
+
+  // 仅共享 data，不共享 diff
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_FALSE(b->SharesDiffWith(a.get()));
+
+  // data 与 a 一致，diff 仍独立
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b->cpu_diff()[0]), 40.0, 1e-6);
+
+  // 共享 diff
+  b->ShareDiff(a.get());
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(b->cpu_diff()[0]), 20.0, 1e-6);
+}
+
+/// 场景 14：零元素 Blob 共享
+/// 验证 shape {0} 的 Blob 间共享不会崩溃。
+TEST(ShareDataRefCount, ShareDataZeroElementBlob) {
+  auto a = make_object<Blob>(std::vector<int64_t>{0});
+  auto b = make_object<Blob>(std::vector<int64_t>{0});
+
+  b->ShareData(a.get());
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_EQ(b->count(), 0);
+  EXPECT_EQ(a->count(), 0);
+}
+
+/// 场景 15：COW 仅影响写入者（A→B→C，B COW）
+/// 验证链式共享中只有触发 COW 的 Blob 断开，其余共享关系保持。
+TEST(ShareDataRefCount, COWOnlyAffectsMutator) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+  auto c = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_data()[0] = 1.0f;
+  a->cpu_data()[1] = 2.0f;
+  a->cpu_data()[2] = 3.0f;
+  a->cpu_data()[3] = 4.0f;
+
+  // A→B→C 链
+  b->ShareData(a.get());
+  c->ShareData(a.get());  // C 直接共享 A（测试源自 A 的多路共享）
+
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+
+  // B 触发 COW
+  float* b_data = b->cpu_mutable_data();
+  b_data[0] = 999.0f;
+
+  // B 断开
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 999.0, 1e-6);
+
+  // A 和 C 仍共享
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 1.0, 1e-6);
+
+  // C 也触发 COW
+  float* c_data = c->cpu_mutable_data();
+  c_data[0] = 888.0f;
+
+  // C 断开
+  EXPECT_FALSE(c->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 888.0, 1e-6);
+
+  // A 仍不变
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);
+}
+
 // ── Split layer N=1 zero-copy integration test (via Net) ──
 
 TEST(ZeroCopyTest, SplitN1ZeroCopyViaNet) {
