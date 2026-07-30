@@ -18,30 +18,61 @@ set(BLAS_FOUND OFF)
 set(BLAS_LIBRARIES "")
 set(BLAS_INCLUDE_DIRS "")
 
-# Manual search for OpenBLAS (common in conda environments)
+# Collect conda-related search hints
+set(_blas_search_paths "")
+set(_blas_include_suffixes "openblas" "")
+
+if(DEFINED ENV{CONDA_PREFIX})
+  list(APPEND _blas_search_paths "$ENV{CONDA_PREFIX}")
+endif()
+if(CMAKE_PREFIX_PATH)
+  list(APPEND _blas_search_paths ${CMAKE_PREFIX_PATH})
+endif()
+if(Python_SITEARCH)
+  # Some conda envs may have blas in unexpected locations
+  get_filename_component(_python_prefix "${Python_SITEARCH}/../.." ABSOLUTE)
+  list(APPEND _blas_search_paths "${_python_prefix}")
+endif()
+
+# ── Phase 1: Targeted search in conda/prefix paths ──
 find_path(OPENBLAS_INCLUDE_DIR
   NAMES cblas.h openblas_config.h
-  PATHS
-    "${CMAKE_PREFIX_PATH}/include"
-    "$ENV{CONDA_PREFIX}/Library/include"
-    "$ENV{CONDA_PREFIX}/include"
-  PATH_SUFFIXES openblas
+  HINTS ${_blas_search_paths}
+  PATH_SUFFIXES include include/openblas
   NO_DEFAULT_PATH
 )
+
 find_library(OPENBLAS_LIBRARY
-  NAMES openblas openblas.lib
-  PATHS
-    "${CMAKE_PREFIX_PATH}/lib"
-    "$ENV{CONDA_PREFIX}/Library/lib"
-    "$ENV{CONDA_PREFIX}/lib"
+  NAMES openblas openblasp openblas.so.0  # openblasp=pthreads variant, .so.0=runtime soname
+  HINTS ${_blas_search_paths}
+  PATH_SUFFIXES lib lib64
   NO_DEFAULT_PATH
 )
+
+# ── Phase 2: Fallback to system default paths if targeted search fails ──
+if(NOT OPENBLAS_INCLUDE_DIR OR NOT OPENBLAS_LIBRARY)
+  message(STATUS "OpenBLAS not found in conda prefix paths, trying system default paths...")
+  find_path(OPENBLAS_INCLUDE_DIR
+    NAMES cblas.h openblas_config.h
+    PATH_SUFFIXES openblas
+  )
+  find_library(OPENBLAS_LIBRARY
+    NAMES openblas openblasp blas
+  )
+endif()
 
 if(OPENBLAS_INCLUDE_DIR AND OPENBLAS_LIBRARY)
   set(BLAS_FOUND ON)
   set(BLAS_LIBRARIES "${OPENBLAS_LIBRARY}")
   set(BLAS_INCLUDE_DIRS "${OPENBLAS_INCLUDE_DIR}")
-  message(STATUS "Found OpenBLAS: ${OPENBLAS_LIBRARY} (include: ${OPENBLAS_INCLUDE_DIR})")
+  message(STATUS "Found OpenBLAS: ${OPENBLAS_LIBRARY}")
+  message(STATUS "OpenBLAS include: ${OPENBLAS_INCLUDE_DIR}")
 else()
   message(STATUS "BLAS/OpenBLAS not found - building without BLAS acceleration (will use fallback C++ implementations)")
+  if(NOT OPENBLAS_INCLUDE_DIR)
+    message(STATUS "  -> cblas.h / openblas_config.h not found (install libopenblas-dev or openblas-devel)")
+  endif()
+  if(NOT OPENBLAS_LIBRARY)
+    message(STATUS "  -> libopenblas.so not found (install libopenblas)")
+  endif()
 endif()
