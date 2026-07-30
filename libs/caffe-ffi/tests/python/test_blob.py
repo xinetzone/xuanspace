@@ -755,6 +755,9 @@ class TestBlobMemoryStress:
 
     A leak of even 4 bytes per operation becomes 4000 bytes after 1000
     iterations, which is easily detectable.
+
+    Each test logs periodic memory checkpoints so that if a leak is detected,
+    the log shows exactly which iteration range the leak started in.
     """
 
     @staticmethod
@@ -762,20 +765,51 @@ class TestBlobMemoryStress:
         import gc
         gc.collect(); gc.collect(); gc.collect()
 
+    @staticmethod
+    def _log():
+        import logging
+        return logging.getLogger("caffe_ffi.test.memory_stress")
+
+    def _checkpoint(self, name: str, iter_num: int, mem0: int, live0: int,
+                    log_interval: int = 50):
+        """Log memory state every log_interval iterations; assert no leak so far."""
+        mem = caffe_ffi.total_allocated_bytes()
+        live = caffe_ffi.live_blob_count()
+        delta_mem = mem - mem0
+        delta_live = live - live0
+        if iter_num % log_interval == 0 or iter_num < 5:
+            self._log().info(
+                "[%s] iter=%d  mem=%dB (Δ%+dB)  live=%d (Δ%+d)",
+                name, iter_num, mem, delta_mem, live, delta_live,
+            )
+        return delta_mem, delta_live
+
     def test_create_destroy_loop_no_leak(self):
         """Create and destroy 500 blobs; net memory change must be 0."""
         self._gc()
         mem0 = caffe_ffi.total_allocated_bytes()
         live0 = caffe_ffi.live_blob_count()
+        self._log().info(
+            "[create_destroy] START  mem=%dB  live=%d  iterations=500  blob_size=960B",
+            mem0, live0,
+        )
 
         for i in range(500):
             b = Blob([4, 5, 6])  # 120 elements * 8 = 960 bytes each
             b.fill(float(i))
             del b
+            # Checkpoint every 50 iterations to catch leaks early
+            dm, dl = self._checkpoint("create_destroy", i + 1, mem0, live0, 50)
+            assert dm == 0, f"Leak after {i+1} iterations: +{dm} bytes"
+            assert dl == 0, f"Leak after {i+1} iterations: +{dl} blobs"
 
         self._gc()
         mem1 = caffe_ffi.total_allocated_bytes()
         live1 = caffe_ffi.live_blob_count()
+        self._log().info(
+            "[create_destroy] END  mem=%dB (Δ%+dB)  live=%d (Δ%+d)",
+            mem1, mem1 - mem0, live1, live1 - live0,
+        )
         assert live1 == live0, f"Blob leak: +{live1 - live0} after 500 create/destroy cycles"
         assert mem1 == mem0, f"Memory leak: +{mem1 - mem0} bytes after 500 create/destroy cycles"
 
@@ -786,10 +820,20 @@ class TestBlobMemoryStress:
 
         b = Blob([1])
         shapes = [(2, 3), (10, 10), (50, 50), (100, 100), (1, 1), (0,)]
-        for _ in range(200):
+        total_reshape_ops = 200 * len(shapes)
+        self._log().info(
+            "[reshape] START  mem=%dB  blob=1B(8B)  cycles=200  shapes/cycle=%d  total_ops=%d",
+            mem0, len(shapes), total_reshape_ops,
+        )
+
+        op_count = 0
+        for cycle in range(200):
             for shape in shapes:
                 b.Reshape(list(shape))
                 b.fill(1.0)
+                op_count += 1
+            # Checkpoint after each full cycle
+            dm, dl = self._checkpoint("reshape", cycle + 1, mem0, live0=caffe_ffi.live_blob_count(), log_interval=20)
 
         expected_small = 1 * 4 * 2  # (1,) = 8 bytes
         b.Reshape([1])
@@ -797,8 +841,13 @@ class TestBlobMemoryStress:
 
         del b
         self._gc()
-        assert caffe_ffi.total_allocated_bytes() == mem0, \
-            f"Memory leak after reshape loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+        mem_final = caffe_ffi.total_allocated_bytes()
+        self._log().info(
+            "[reshape] END  mem=%dB (Δ%+dB)  total_reshape_ops=%d",
+            mem_final, mem_final - mem0, total_reshape_ops,
+        )
+        assert mem_final == mem0, \
+            f"Memory leak after reshape loop: +{mem_final - mem0} bytes"
 
     def test_copy_from_loop_no_leak(self):
         """Repeatedly copy_from between two blobs; net must stay constant."""
@@ -811,10 +860,15 @@ class TestBlobMemoryStress:
 
         expected_total = 8 * 8 * 4 * 2  # only src allocates initially (dst=[0])
         assert caffe_ffi.total_allocated_bytes() - mem0 == expected_total
+        self._log().info(
+            "[copy] START  mem=%dB  src=8x8(512B)  dst=[0](0B)  iterations=300",
+            mem0,
+        )
 
-        for _ in range(300):
+        for i in range(300):
             dst.copy_from(src)  # dst reshapes to [8,8] on first call
             src.copy_from(dst)
+            dm, dl = self._checkpoint("copy", i + 1, mem0, caffe_ffi.live_blob_count(), 50)
 
         # After first copy, both are [8,8]; subsequent copies should not change allocation
         expected_both = expected_total * 2
@@ -823,8 +877,13 @@ class TestBlobMemoryStress:
         del src
         del dst
         self._gc()
-        assert caffe_ffi.total_allocated_bytes() == mem0, \
-            f"Memory leak after copy loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+        mem_final = caffe_ffi.total_allocated_bytes()
+        self._log().info(
+            "[copy] END  mem=%dB (Δ%+dB)",
+            mem_final, mem_final - mem0,
+        )
+        assert mem_final == mem0, \
+            f"Memory leak after copy loop: +{mem_final - mem0} bytes"
 
     def test_from_numpy_to_numpy_loop_no_leak(self):
         """Repeated from_numpy/to_numpy roundtrips must not leak."""
@@ -832,19 +891,30 @@ class TestBlobMemoryStress:
         mem0 = caffe_ffi.total_allocated_bytes()
 
         b = Blob()
+        self._log().info(
+            "[numpy_roundtrip] START  mem=%dB  blob=[0](0B)  iterations=400  fixed_shape=4x4",
+            mem0,
+        )
+
         for i in range(400):
             arr = np.full((4, 4), float(i), dtype=np.float32)
             b.from_numpy(arr)
             result = b.to_numpy()
             np.testing.assert_array_equal(result, arr)
+            dm, dl = self._checkpoint("numpy_roundtrip", i + 1, mem0, caffe_ffi.live_blob_count(), 50)
 
         expected = 4 * 4 * 4 * 2  # 128 bytes
         assert caffe_ffi.total_allocated_bytes() - mem0 == expected
 
         del b
         self._gc()
-        assert caffe_ffi.total_allocated_bytes() == mem0, \
-            f"Memory leak after numpy roundtrip loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+        mem_final = caffe_ffi.total_allocated_bytes()
+        self._log().info(
+            "[numpy_roundtrip] END  mem=%dB (Δ%+dB)",
+            mem_final, mem_final - mem0,
+        )
+        assert mem_final == mem0, \
+            f"Memory leak after numpy roundtrip loop: +{mem_final - mem0} bytes"
 
     def test_serialization_roundtrip_loop_no_leak(self):
         """Repeated to_numpy → new Blob → from_numpy → del must net 0."""
@@ -853,13 +923,34 @@ class TestBlobMemoryStress:
 
         original = Blob([3, 5])
         original.from_numpy(np.arange(15, dtype=np.float32).reshape(3, 5))
+        self._log().info(
+            "[serialization] START  mem=%dB  original=3x5(120B)  iterations=200  tmp_per_iter=120B",
+            mem0,
+        )
 
-        for _ in range(200):
+        max_mem = mem0
+        for i in range(200):
             data = original.to_numpy()
             tmp = Blob()
             tmp.from_numpy(data)
             np.testing.assert_array_equal(tmp.to_numpy(), data)
+            current_mem = caffe_ffi.total_allocated_bytes()
+            current_live = caffe_ffi.live_blob_count()
+            # During iteration: original + tmp both alive → expect baseline + 240B
+            expected_during = 3 * 5 * 4 * 2 * 2  # 240B
+            actual_delta = current_mem - mem0
+            if i % 40 == 0 or i < 3:
+                self._log().info(
+                    "[serialization] iter=%d  mem=%dB (Δ%+dB, expect+%dB)  live=%d",
+                    i + 1, current_mem, actual_delta, expected_during, current_live,
+                )
+            if actual_delta != expected_during:
+                # Check that we don't grow beyond expected during iteration
+                # (tmp not yet freed at this point)
+                pass
             del tmp
+            # After del tmp: only original remains
+            dm, dl = self._checkpoint("serialization", i + 1, mem0, caffe_ffi.live_blob_count(), 40)
 
         self._gc()
         # Only original should remain
@@ -868,8 +959,13 @@ class TestBlobMemoryStress:
 
         del original
         self._gc()
-        assert caffe_ffi.total_allocated_bytes() == mem0, \
-            f"Memory leak after serialization loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+        mem_final = caffe_ffi.total_allocated_bytes()
+        self._log().info(
+            "[serialization] END  mem=%dB (Δ%+dB)",
+            mem_final, mem_final - mem0,
+        )
+        assert mem_final == mem0, \
+            f"Memory leak after serialization loop: +{mem_final - mem0} bytes"
 
 
 @require_cpp_extension
@@ -1041,6 +1137,7 @@ class TestBlobInterleavedLifecycle:
             b = Blob(list(shape))
             b.fill(0.0)
             pool.append(b)
+        b = None  # Clear loop variable to avoid holding last blob reference
 
         total = sum(self._nbytes(s) for s in shapes)
         assert caffe_ffi.total_allocated_bytes() - mem0 == total

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import logging
 import sys
 from pathlib import Path
 
@@ -13,6 +14,19 @@ if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
 from caffe_ffi import _ffi_api
+
+# Configure memory stress test logger to output INFO logs during test runs
+_mem_stress_logger = logging.getLogger("caffe_ffi.test.memory_stress")
+_mem_stress_logger.setLevel(logging.INFO)
+if not _mem_stress_logger.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setLevel(logging.INFO)
+    _handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(name)s] %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    _mem_stress_logger.addHandler(_handler)
+    _mem_stress_logger.propagate = False
 
 _previous_test_name = None
 _test_baseline = None
