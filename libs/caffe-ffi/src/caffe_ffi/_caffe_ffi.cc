@@ -37,6 +37,7 @@
 #include "caffe_ffi/layers/concat_layer.hpp"
 #include "caffe_ffi/layers/eltwise_layer.hpp"
 #include "caffe_ffi/layers/reshape_layer.hpp"
+#include "caffe_ffi/layers/split_layer.hpp"
 
 #include "caffe/proto/caffe.pb.h"
 
