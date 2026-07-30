@@ -104,6 +104,77 @@ class Blob : public Object {
   /** @brief Get const pointer to CPU diff (gradient) buffer. */
   const float* cpu_diff() const { return static_cast<const float*>(diff_tensor_.data_ptr()); }
 
+  /**
+   * @brief Get mutable pointer to CPU data buffer with Copy-on-Write semantics.
+   *
+   * If the data tensor is shared (use_count > 1, e.g. after ShareData for N>=2
+   * Split fan-out), this call triggers Copy-on-Write: the shared tensor is cloned
+   * into a private copy before returning the mutable pointer. This follows the
+   * PAT-001 "explicit break semantics" pattern — calling cpu_mutable_data()
+   * explicitly signals write intent and breaks sharing.
+   *
+   * Unlike cpu_data(), this method guarantees the returned pointer points to
+   * private (unshared) memory. Use this when you intend to mutate the data.
+   */
+  float* cpu_mutable_data() {
+    if (data_tensor_.defined() && data_tensor_.use_count() > 1) {
+      int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
+      int refcount = data_tensor_.use_count();
+      const void* old_ptr = data_tensor_.data_ptr();
+      Tensor new_tensor = NewCPUTensor(
+          ShapeView(data_tensor_.shape().data(),
+                    static_cast<size_t>(data_tensor_.ndim())));
+      std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
+      data_tensor_ = new_tensor;
+      CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
+                        << " cpu_mutable_data() unshared data"
+                        << " refcount=" << refcount
+                        << " old_ptr=" << old_ptr
+                        << " new_ptr=" << data_tensor_.data_ptr()
+                        << " nbytes=" << nbytes;
+    }
+    return static_cast<float*>(data_tensor_.data_ptr());
+  }
+  /**
+   * @brief Get mutable pointer to CPU diff buffer with Copy-on-Write semantics.
+   *
+   * If the diff tensor is shared (use_count > 1), this call triggers
+   * Copy-on-Write: the shared tensor is cloned into a private copy before
+   * returning the mutable pointer. Use this when you intend to mutate the diff.
+   */
+  float* cpu_mutable_diff() {
+    if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+      int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
+      int refcount = diff_tensor_.use_count();
+      const void* old_ptr = diff_tensor_.data_ptr();
+      Tensor new_tensor = NewCPUTensor(
+          ShapeView(diff_tensor_.shape().data(),
+                    static_cast<size_t>(diff_tensor_.ndim())));
+      std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
+      diff_tensor_ = new_tensor;
+      CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
+                        << " cpu_mutable_diff() unshared diff"
+                        << " refcount=" << refcount
+                        << " old_ptr=" << old_ptr
+                        << " new_ptr=" << diff_tensor_.data_ptr()
+                        << " nbytes=" << nbytes;
+    }
+    return static_cast<float*>(diff_tensor_.data_ptr());
+  }
+
+  /**
+   * @brief Get mutable pointer to GPU data buffer with Copy-on-Write semantics.
+   *
+   * @note GPU support is not yet implemented. This is a placeholder for Phase 2
+   * GPU COW support. Currently delegates to cpu_mutable_data().
+   */
+  float* gpu_mutable_data() { return cpu_mutable_data(); }
+  /**
+   * @brief Get mutable pointer to GPU diff buffer with Copy-on-Write semantics.
+   * @note Placeholder for Phase 2 GPU COW support.
+   */
+  float* gpu_mutable_diff() { return cpu_mutable_diff(); }
+
   /** @brief Get the data tensor (forward activations) for DLPack zero-copy interop. */
   Tensor data_tensor() const;
   /** @brief Get the diff tensor (backward gradients) for DLPack zero-copy interop. */
