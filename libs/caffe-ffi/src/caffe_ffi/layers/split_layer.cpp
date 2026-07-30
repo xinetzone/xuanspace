@@ -31,6 +31,11 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   auto t_reshape_start = std::chrono::high_resolution_clock::now();
   int64_t total_alloc_bytes = 0;
 
+  // Note: For N=1 zero-copy path, we still reshape top[0] to the correct shape
+  // here so downstream layers see valid shapes during their own Reshape().
+  // The zero-copy ShareData() in Forward() will replace the tensor reference,
+  // freeing the Reshape-allocated buffer (one alloc+free overhead but avoids
+  // breaking the layer setup contract).
   for (int i = 0; i < num_top; ++i) {
     auto t_top_start = std::chrono::high_resolution_clock::now();
     int64_t bytes_before = top[i]->count() * static_cast<int64_t>(sizeof(float));
@@ -50,13 +55,20 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   double reshape_ms = std::chrono::duration<double, std::milli>(
       t_reshape_end - t_reshape_start).count();
 
+  // For N=1, Forward will zero-copy share (no memcpy), so actual bytes copied = 0.
+  // For N>=2, Forward will memcpy to each top.
+  int64_t bytes_copied_per_fwd = (num_top > 1)
+      ? (num_top * count * static_cast<int64_t>(sizeof(float)))
+      : 0;
+
   CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
                        << " Reshape: num_top=" << num_top
                        << " count=" << count
                        << " elem_size=" << sizeof(float) << "B"
-                       << " total_copied_per_fwd=" << (num_top * count * static_cast<int64_t>(sizeof(float))) << "B"
+                       << " bytes_copied_per_fwd=" << bytes_copied_per_fwd << "B"
                        << " reshape_time=" << reshape_ms << "ms"
-                       << " net_alloc=" << total_alloc_bytes << "B";
+                       << " net_alloc=" << total_alloc_bytes << "B"
+                       << " zerocopy_n1=" << ((num_top == 1) ? "yes" : "no");
 }
 
 void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
@@ -74,23 +86,27 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " bottom_ptr=" << static_cast<const void*>(bottom_data);
 
   if (num_top == 1) {
-    // N=1: identity passthrough (still copy for consistency/safety; zero-copy Future Work)
+    // Phase 1 N=1 zero-copy shortcut: share data/diff tensors directly (refcount)
+    // instead of allocating + memcpy. Safe because N=1 means no fan-out —
+    // the single top is semantically an identity view of the bottom.
+    // Subsequent Reshape() on top[0] will break the share (allocate private copy).
     auto t0 = std::chrono::high_resolution_clock::now();
-    float* top_data = top[0]->cpu_data();
-    if (top_data != bottom_data) {
-      std::memcpy(top_data, bottom_data, copy_bytes_per_top);
-    }
+    bool was_shared = top[0]->SharesDataWith(bottom[0]);
+    top[0]->ShareData(bottom[0]);
+    top[0]->ShareDiff(bottom[0]);
     auto t1 = std::chrono::high_resolution_clock::now();
-    double copy_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
-    double throughput_gbs = (copy_bytes_per_top / (copy_us / 1e6)) / (1024.0 * 1024.0 * 1024.0);
+    double share_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    bool now_shared = top[0]->SharesDataWith(bottom[0]);
     CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
-                         << " Forward(N=1): count=" << count
-                         << " copied=" << copy_bytes_per_top << "B"
-                         << " memcpy_time=" << copy_us << "us"
-                         << " throughput=" << throughput_gbs << "GB/s"
-                         << " inplace=" << (top_data == bottom_data ? "yes" : "no");
-    CAFFE_FFI_LAYER_LOG << "Split Forward(N=1): top[0] ptr=" << static_cast<void*>(top_data)
-                        << " memcpy completed";
+                         << " Forward(N=1 ZEROCOPY): count=" << count
+                         << " shared_bytes=" << copy_bytes_per_top << "B"
+                         << " share_time=" << share_us << "us"
+                         << " data_ptr_equal=" << (now_shared ? "yes" : "no")
+                         << " was_already_shared=" << (was_shared ? "yes" : "no")
+                         << " memcpy_saved=" << copy_bytes_per_top << "B (zero-copy path)";
+    CAFFE_FFI_LAYER_LOG << "Split Forward(N=1 ZEROCOPY): top[0] now shares bottom data,"
+                        << " data_ptr=" << static_cast<const void*>(top[0]->cpu_data())
+                        << " bottom_ptr=" << static_cast<const void*>(bottom_data);
     return;
   }
 
@@ -129,8 +145,11 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   auto t_total_end = std::chrono::high_resolution_clock::now();
   double total_ms = std::chrono::duration<double, std::milli>(
       t_total_end - t_total_start).count();
-  double avg_copy_us = total_ms * 1000.0 / std::max(1, num_top);
-  double throughput_gbs = (total_copy_bytes / (total_ms / 1000.0)) / (1024.0 * 1024.0 * 1024.0);
+  double avg_copy_us = (alloc_count > 0) ? (total_ms * 1000.0 / alloc_count) : 0.0;
+  double throughput_gbs = (total_ms > 0.0)
+      ? (static_cast<double>(alloc_count) * copy_bytes_per_top / (total_ms / 1000.0))
+          / (1024.0 * 1024.0 * 1024.0)
+      : 0.0;
 
   CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
                        << " Forward(N=" << num_top << "): count=" << count

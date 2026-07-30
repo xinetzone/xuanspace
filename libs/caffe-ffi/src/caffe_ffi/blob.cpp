@@ -140,6 +140,44 @@ Tensor Blob::diff_tensor() const {
   return diff_tensor_;
 }
 
+void Blob::ShareData(const Blob* other) {
+  CAFFE_FFI_CHECK_TYPE(other != nullptr)
+      << "ShareData: source Blob must not be null";
+  CAFFE_FFI_CHECK_TYPE(other->data_tensor_.defined())
+      << "ShareData: source Blob#" << other->id_ << " has undefined data tensor";
+  CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareData from Blob#" << other->id_
+                    << " this=" << this
+                    << " old_data_ptr=" << PtrToString(data_tensor_.data_ptr())
+                    << " new_data_ptr=" << PtrToString(other->data_tensor_.data_ptr())
+                    << " shape=" << ShapeToString(ShapeView(other->data_tensor_.shape().data(),
+                                                             static_cast<size_t>(other->data_tensor_.ndim())))
+                    << " nbytes=" << TensorNBytes(other->data_tensor_)
+                    << " (zero-copy: refcount shared, no memcpy)";
+  data_tensor_ = other->data_tensor_;
+}
+
+void Blob::ShareDiff(const Blob* other) {
+  CAFFE_FFI_CHECK_TYPE(other != nullptr)
+      << "ShareDiff: source Blob must not be null";
+  CAFFE_FFI_CHECK_TYPE(other->diff_tensor_.defined())
+      << "ShareDiff: source Blob#" << other->id_ << " has undefined diff tensor";
+  CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareDiff from Blob#" << other->id_
+                    << " this=" << this
+                    << " old_diff_ptr=" << PtrToString(diff_tensor_.data_ptr())
+                    << " new_diff_ptr=" << PtrToString(other->diff_tensor_.data_ptr())
+                    << " nbytes=" << TensorNBytes(other->diff_tensor_)
+                    << " (zero-copy: refcount shared, no memcpy)";
+  diff_tensor_ = other->diff_tensor_;
+}
+
+bool Blob::SharesDataWith(const Blob* other) const {
+  return other != nullptr && data_tensor_.data_ptr() == other->data_tensor_.data_ptr() && data_tensor_.defined();
+}
+
+bool Blob::SharesDiffWith(const Blob* other) const {
+  return other != nullptr && diff_tensor_.data_ptr() == other->diff_tensor_.data_ptr() && diff_tensor_.defined();
+}
+
 void Blob::Reshape(ShapeView shape) {
   for (size_t i = 0; i < shape.size(); ++i) {
     CAFFE_FFI_CHECK_VALUE_GE(shape[i], 0)

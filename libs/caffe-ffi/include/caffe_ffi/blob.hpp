@@ -109,6 +109,25 @@ class Blob : public Object {
   /** @brief Get the diff tensor (backward gradients) for DLPack zero-copy interop. */
   Tensor diff_tensor() const;
 
+  /**
+   * @brief Zero-copy share data tensor from another Blob (Phase 1 N=1 split shortcut).
+   *
+   * Instead of allocating new memory and memcpy-ing, directly shares the underlying
+   * TVM FFI Tensor via intrusive reference counting. After this call, both Blobs
+   * point to the same data buffer. Safe for N=1 fan-out (identity passthrough).
+   *
+   * For N>=2 fan-out, use CopyFrom() or the traditional memcpy path to avoid
+   * accidental cross-contamination from in-place writes (Phase 2 COW will address this).
+   *
+   * A subsequent Reshape() on this Blob will break the share (allocates new private memory).
+   *
+   * @param other Source Blob whose data tensor will be shared.
+   */
+  void ShareData(const Blob* other);
+  void ShareDiff(const Blob* other);
+  bool SharesDataWith(const Blob* other) const;
+  bool SharesDiffWith(const Blob* other) const;
+
   /** @brief Load blob data from a BlobProto protobuf message. */
   void FromProto(const caffe::BlobProto& proto, bool reshape = true);
   /** @brief Serialize blob data to a BlobProto protobuf message. */

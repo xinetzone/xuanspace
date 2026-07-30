@@ -118,6 +118,7 @@ def _setup_windows_dll_paths():
         prefix / "Library" / "bin",
         prefix / "DLLs",
         prefix / "bin",
+        prefix / "Lib" / "site-packages" / "tvm_ffi" / "lib",
     ]
     
     path_entries = []

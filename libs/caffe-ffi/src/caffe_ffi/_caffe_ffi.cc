@@ -166,6 +166,14 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("set_diff", &Blob::set_diff, "Set diff from Tensor (supports numpy zero-copy via DLPack)")
       .def("data_tensor", &Blob::data_tensor, "Get data tensor (zero-copy DLPack interop)")
       .def("diff_tensor", &Blob::diff_tensor, "Get diff tensor (zero-copy DLPack interop)")
+      .def("ShareData", [](Blob* self, const ObjectPtr<Blob>& other) { self->ShareData(other.get()); },
+           "Zero-copy share data tensor from another Blob (refcount alias, Phase 1 split optimization)")
+      .def("ShareDiff", [](Blob* self, const ObjectPtr<Blob>& other) { self->ShareDiff(other.get()); },
+           "Zero-copy share diff tensor from another Blob (refcount alias)")
+      .def("SharesDataWith", [](const Blob* self, const ObjectPtr<Blob>& other) { return self->SharesDataWith(other.get()); },
+           "Check if this Blob shares the same data buffer as another")
+      .def("SharesDiffWith", [](const Blob* self, const ObjectPtr<Blob>& other) { return self->SharesDiffWith(other.get()); },
+           "Check if this Blob shares the same diff buffer as another")
       .def("Update", &Blob::Update, "Update data: data -= diff (gradient step)")
       .def("name", &Blob::name, "Get Blob name")
       .def("set_name", &Blob::set_name, "Set Blob name")
