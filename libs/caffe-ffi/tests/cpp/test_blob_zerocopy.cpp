@@ -184,6 +184,157 @@ TEST(ZeroCopyTest, ShareDataMultipleTimesIdempotent) {
   EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);
 }
 
+// ── Phase 2 COW: Blob-level unit tests ──
+
+/// 验证 cpu_mutable_data() 在共享后触发 COW：指针不再相等、
+/// 引用计数回到 1、数据内容正确复制
+TEST(COWTest, MutableDataTriggersCOWWhenShared) {
+  std::vector<int64_t> shape = {8};
+  auto src = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  // 写入已知数据
+  for (int64_t i = 0; i < src->count(); ++i) {
+    src->cpu_data()[i] = static_cast<float>(i);
+  }
+
+  dst->ShareData(src.get());
+  EXPECT_TRUE(dst->SharesDataWith(src.get()));
+  EXPECT_EQ(dst->cpu_data(), src->cpu_data());
+
+  // 调用 cpu_mutable_data() → COW 触发
+  float* dst_mut = dst->cpu_mutable_data();
+
+  // 指针不再相等（COW 打破了共享）
+  EXPECT_NE(dst_mut, src->cpu_data());
+  EXPECT_FALSE(dst->SharesDataWith(src.get()));
+
+  // 数据内容正确复制
+  for (int64_t i = 0; i < src->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(dst_mut[i]),
+                static_cast<double>(i), 1e-6);
+  }
+}
+
+/// 验证 cpu_mutable_data() 在未共享时不触发 COW（use_count == 1）
+TEST(COWTest, MutableDataNoCOWWhenNotShared) {
+  std::vector<int64_t> shape = {4};
+  auto b = make_object<Blob>(shape);
+  b->cpu_data()[0] = 42.0f;
+
+  const float* before = b->cpu_data();
+  float* after = b->cpu_mutable_data();
+
+  // 未共享时，指针不变（无 COW）
+  EXPECT_EQ(before, after);
+  EXPECT_NEAR(static_cast<double>(after[0]), 42.0, 1e-6);
+}
+
+/// 验证 cpu_mutable_diff() 在共享后触发 COW
+TEST(COWTest, MutableDiffTriggersCOWWhenShared) {
+  std::vector<int64_t> shape = {6};
+  auto src = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  for (int64_t i = 0; i < src->count(); ++i) {
+    src->cpu_diff()[i] = static_cast<float>(i * 10);
+  }
+
+  dst->ShareDiff(src.get());
+  EXPECT_TRUE(dst->SharesDiffWith(src.get()));
+  EXPECT_EQ(dst->cpu_diff(), src->cpu_diff());
+
+  float* dst_mut_diff = dst->cpu_mutable_diff();
+
+  EXPECT_NE(dst_mut_diff, src->cpu_diff());
+  EXPECT_FALSE(dst->SharesDiffWith(src.get()));
+
+  for (int64_t i = 0; i < src->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(dst_mut_diff[i]),
+                static_cast<double>(i * 10), 1e-6);
+  }
+}
+
+/// 验证 COW 后的数据隔离：修改 dst 不影响 src
+TEST(COWTest, DataIsolationAfterCOW) {
+  std::vector<int64_t> shape = {4};
+  auto src = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  src->cpu_data()[0] = 10.0f;
+  src->cpu_data()[1] = 20.0f;
+  src->cpu_data()[2] = 30.0f;
+  src->cpu_data()[3] = 40.0f;
+
+  dst->ShareData(src.get());
+
+  // 触发 COW 并修改 dst
+  dst->cpu_mutable_data()[0] = 999.0f;
+  dst->cpu_mutable_data()[1] = 888.0f;
+
+  // src 不受影响
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[3]), 40.0, 1e-6);
+
+  // dst 有自己的值
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[1]), 888.0, 1e-6);
+  // 未修改的部分应与 src 一致（COW 完整复制）
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[3]), 40.0, 1e-6);
+}
+
+/// 验证 const cpu_data() 不触发 COW（指针保持共享）
+TEST(COWTest, ConstAccessDoesNotTriggerCOW) {
+  std::vector<int64_t> shape = {4};
+  auto src = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  src->cpu_data()[0] = 77.0f;
+  dst->ShareData(src.get());
+
+  const float* dst_ptr = dst->cpu_data();  // const 重载，不触发 COW
+  EXPECT_EQ(dst_ptr, src->cpu_data());
+  EXPECT_TRUE(dst->SharesDataWith(src.get()));
+
+  // 再通过非 const 访问也不应意外触发（仅读取）
+  const float* dst_ptr2 = static_cast<const Blob*>(dst.get())->cpu_data();
+  EXPECT_EQ(dst_ptr2, src->cpu_data());
+}
+
+/// 验证三次共享后第一个 COW 触发仅影响自身，其他两个仍共享
+TEST(COWTest, ThreeWayShareCOWOnlyAffectsMutator) {
+  std::vector<int64_t> shape = {4};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+  auto c = make_object<Blob>(shape);
+
+  a->cpu_data()[0] = 1.0f;
+  b->ShareData(a.get());
+  c->ShareData(a.get());
+
+  EXPECT_TRUE(b->SharesDataWith(a.get()));
+  EXPECT_TRUE(c->SharesDataWith(a.get()));
+  EXPECT_TRUE(b->SharesDataWith(c.get()));
+
+  // b 触发 COW
+  b->cpu_mutable_data()[0] = 999.0f;
+
+  // b 打破共享
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+  EXPECT_FALSE(b->SharesDataWith(c.get()));
+
+  // a 和 c 仍共享
+  EXPECT_TRUE(a->SharesDataWith(c.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 1.0, 1e-6);
+
+  // b 数据独立
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 999.0, 1e-6);
+}
+
 // ── Split layer N=1 zero-copy integration test (via Net) ──
 
 TEST(ZeroCopyTest, SplitN1ZeroCopyViaNet) {
@@ -259,10 +410,11 @@ layer {
   }
 }
 
-TEST(ZeroCopyTest, SplitN2StillCopiesData) {
-  // N=2: NOT zero-copy in Phase 1 — must still memcpy to independent buffers
+TEST(ZeroCopyTest, SplitN2COWZeroCopyShare) {
+  // N=2: COW Phase 2 — tops share data with bottom after Forward (zero-copy).
+  // The actual copy happens only when cpu_mutable_data() is called on a top.
   std::string prototxt = R"(
-name: "test_split_n2_copy"
+name: "test_split_n2_cow"
 input: "data"
 input_dim: 1
 input_dim: 2
@@ -281,22 +433,74 @@ layer {
 
   auto data_blob = net->blob_by_name("data");
   data_blob->cpu_data()[0] = 111.0f;
+  data_blob->cpu_data()[1] = 222.0f;
 
   net->Forward();
 
   auto out_a = net->blob_by_name("out_a");
   auto out_b = net->blob_by_name("out_b");
 
-  // In Phase 1 N>=2, tops must NOT share data with bottom or each other
-  // (full memcpy to independent buffers, as COW is deferred to Phase 2).
-  EXPECT_FALSE(out_a->SharesDataWith(data_blob.get()));
-  EXPECT_FALSE(out_b->SharesDataWith(data_blob.get()));
+  // Phase 2 COW: tops share data with bottom (zero-copy, same pointer)
+  EXPECT_TRUE(out_a->SharesDataWith(data_blob.get()));
+  EXPECT_TRUE(out_b->SharesDataWith(data_blob.get()));
+  EXPECT_TRUE(out_a->SharesDataWith(out_b.get()));
+  EXPECT_EQ(out_a->cpu_data(), out_b->cpu_data());
+  EXPECT_EQ(out_a->cpu_data(), data_blob->cpu_data());
+
+  // Data values correct
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[0]), 111.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[1]), 222.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[0]), 111.0, 1e-6);
+}
+
+/// 验证 COW 触发：调用 cpu_mutable_data() 后该 top 打破共享，
+/// 其他 top 仍保持共享
+TEST(ZeroCopyTest, SplitN2COWTriggerOnMutableData) {
+  std::string prototxt = R"(
+name: "test_split_n2_cow_trigger"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 3
+input_dim: 4
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "out_a"
+  top: "out_b"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data_blob = net->blob_by_name("data");
+  data_blob->cpu_data()[0] = 50.0f;
+  data_blob->cpu_data()[1] = 60.0f;
+
+  net->Forward();
+
+  auto out_a = net->blob_by_name("out_a");
+  auto out_b = net->blob_by_name("out_b");
+
+  // Before mutation: all share
+  EXPECT_TRUE(out_a->SharesDataWith(out_b.get()));
+
+  // Mutate out_a via cpu_mutable_data() → COW triggers
+  out_a->cpu_mutable_data()[0] = 999.0f;
+
+  // out_a should now have its own copy (COW broke sharing)
   EXPECT_FALSE(out_a->SharesDataWith(out_b.get()));
+  EXPECT_FALSE(out_a->SharesDataWith(data_blob.get()));
   EXPECT_NE(out_a->cpu_data(), out_b->cpu_data());
 
-  // But data values must be correctly copied
-  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[0]), 111.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[0]), 111.0, 1e-6);
+  // out_a's mutation should NOT affect out_b or bottom
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[0]), 50.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(data_blob->cpu_data()[0]), 50.0, 1e-6);
+
+  // out_b still shares with bottom
+  EXPECT_TRUE(out_b->SharesDataWith(data_blob.get()));
 }
 
 TEST(ZeroCopyTest, LiveBlobCountStableAcrossShareData) {

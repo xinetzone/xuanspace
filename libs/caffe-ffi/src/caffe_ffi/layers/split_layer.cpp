@@ -110,56 +110,47 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     return;
   }
 
-  // N >= 2: copy to each top
-  auto t_total_start = std::chrono::high_resolution_clock::now();
-  double max_copy_us = 0;
-  double min_copy_us = 1e18;
-  int alloc_count = 0;
+  // N >= 2: COW zero-copy sharing (Phase 2)
+  // Share data and diff tensors with bottom via intrusive refcount.
+  // All tops initially share the same memory as bottom; the first
+  // cpu_mutable_data() / cpu_mutable_diff() call on any top triggers
+  // COW, cloning the shared tensor into a private copy.
+  auto t_share_start = std::chrono::high_resolution_clock::now();
+  bool all_shared = true;
+  int not_shared_count = 0;
 
   for (int i = 0; i < num_top; ++i) {
-    float* top_data = top[i]->cpu_data();
-    bool inplace = (top_data == bottom_data);
+    bool data_was_shared = top[i]->SharesDataWith(bottom[0]);
+    bool diff_was_shared = top[i]->SharesDiffWith(bottom[0]);
 
-    auto t_copy_start = std::chrono::high_resolution_clock::now();
-    if (!inplace) {
-      std::memcpy(top_data, bottom_data, copy_bytes_per_top);
-    } else {
-      // Shouldn't normally happen for N>=2, but guard against it
-      CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
-                           << " Forward: top[" << i << "] is in-place with bottom, skipping copy";
-    }
-    auto t_copy_end = std::chrono::high_resolution_clock::now();
-    double copy_us = std::chrono::duration<double, std::micro>(
-        t_copy_end - t_copy_start).count();
+    top[i]->ShareData(bottom[0]);
+    top[i]->ShareDiff(bottom[0]);
 
-    max_copy_us = std::max(max_copy_us, copy_us);
-    min_copy_us = std::min(min_copy_us, copy_us);
-    if (!inplace) ++alloc_count;
+    bool data_now_shared = top[i]->SharesDataWith(bottom[0]);
+    bool diff_now_shared = top[i]->SharesDiffWith(bottom[0]);
 
-    CAFFE_FFI_LAYER_LOG << "Split Forward: top[" << i << "] ptr=" << static_cast<void*>(top_data)
-                        << " copied=" << copy_bytes_per_top << "B"
-                        << " time=" << copy_us << "us"
-                        << " inplace=" << (inplace ? "yes" : "no");
+    if (!data_now_shared) { all_shared = false; ++not_shared_count; }
+
+    CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW): top[" << i
+                        << "] data_shared=" << (data_now_shared ? "yes" : "no")
+                        << " diff_shared=" << (diff_now_shared ? "yes" : "no")
+                        << " was_data_shared=" << (data_was_shared ? "yes" : "no")
+                        << " was_diff_shared=" << (diff_was_shared ? "yes" : "no")
+                        << " data_ptr=" << static_cast<const void*>(top[i]->cpu_data())
+                        << " bottom_ptr=" << static_cast<const void*>(bottom_data);
   }
 
-  auto t_total_end = std::chrono::high_resolution_clock::now();
-  double total_ms = std::chrono::duration<double, std::milli>(
-      t_total_end - t_total_start).count();
-  double avg_copy_us = (alloc_count > 0) ? (total_ms * 1000.0 / alloc_count) : 0.0;
-  double throughput_gbs = (total_ms > 0.0)
-      ? (static_cast<double>(alloc_count) * copy_bytes_per_top / (total_ms / 1000.0))
-          / (1024.0 * 1024.0 * 1024.0)
-      : 0.0;
+  auto t_share_end = std::chrono::high_resolution_clock::now();
+  double share_ms = std::chrono::duration<double, std::milli>(
+      t_share_end - t_share_start).count();
 
   CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
-                       << " Forward(N=" << num_top << "): count=" << count
-                       << " total_copied=" << total_copy_bytes << "B"
-                       << " total_memcpy_time=" << total_ms << "ms"
-                       << " avg_per_copy=" << avg_copy_us << "us"
-                       << " min_copy=" << min_copy_us << "us"
-                       << " max_copy=" << max_copy_us << "us"
-                       << " throughput=" << throughput_gbs << "GB/s"
-                       << " num_copies=" << alloc_count;
+                       << " Forward(N=" << num_top << " COW): count=" << count
+                       << " shared_bytes=" << total_copy_bytes << "B"
+                       << " share_time=" << share_ms << "ms"
+                       << " all_shared=" << (all_shared ? "yes" : "no")
+                       << " not_shared=" << not_shared_count
+                       << " memcpy_saved=" << total_copy_bytes << "B (COW zero-copy)";
 }
 
 REGISTER_LAYER_CLASS(Split);

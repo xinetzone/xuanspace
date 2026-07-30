@@ -10,12 +10,18 @@ file(GLOB CAFFE_FFI_LAYER_SRCS
 )
 list(APPEND CAFFE_FFI_CORE_SRCS ${CAFFE_FFI_LAYER_SRCS})
 
+message(STATUS "[caffe_ffi] _caffe_ffi DLL sources: ${CAFFE_FFI_CORE_SRCS}")
+list(LENGTH CAFFE_FFI_CORE_SRCS _core_src_count)
+message(STATUS "[caffe_ffi] _caffe_ffi DLL source count: ${_core_src_count}")
+
 add_library(_caffe_ffi SHARED
   ${CAFFE_FFI_CORE_SRCS}
   ${CAFFE_FFI_PROTO_SRCS}
 )
+message(STATUS "[caffe_ffi] _caffe_ffi target created (SHARED library)")
 
 tvm_ffi_configure_target(_caffe_ffi LINK_SHARED ON LINK_HEADER ON MSVC_FLAGS ON DEBUG_SYMBOL ON)
+message(STATUS "[caffe_ffi] _caffe_ffi: tvm_ffi_configure_target applied (LINK_SHARED+LINK_HEADER+MSVC_FLAGS+DEBUG_SYMBOL)")
 
 set_target_properties(_caffe_ffi PROPERTIES
   PREFIX ""
@@ -41,13 +47,19 @@ endif()
 # 公共编译配置（include/definitions/options/link）
 caffe_ffi_configure_target(_caffe_ffi VISIBILITY PUBLIC)
 
+# 数据符号导出（WINDOWS_EXPORT_ALL_SYMBOLS 只导出函数，不导出全局变量）
+target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_EXPORTS)
+message(STATUS "[caffe_ffi] _caffe_ffi DLL: CAFFE_FFI_EXPORTS enabled (data symbol export)")
+
 # tvm_ffi header 链接（主库特有）
 target_link_libraries(_caffe_ffi PUBLIC tvm_ffi::header)
+message(STATUS "[caffe_ffi] _caffe_ffi links: tvm_ffi::header (PUBLIC)")
 
 if(MSVC)
   set_target_properties(_caffe_ffi PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS TRUE
   )
+  message(STATUS "[caffe_ffi] _caffe_ffi: WINDOWS_EXPORT_ALL_SYMBOLS=TRUE (function symbols)")
 else()
   # Export all symbols on Linux/macOS (matches MSVC WINDOWS_EXPORT_ALL_SYMBOLS behavior)
   set_target_properties(_caffe_ffi PROPERTIES
@@ -55,4 +67,5 @@ else()
     CXX_VISIBILITY_PRESET default
     VISIBILITY_INLINES_HIDDEN FALSE
   )
+  message(STATUS "[caffe_ffi] _caffe_ffi: visibility=default (all symbols exported)")
 endif()

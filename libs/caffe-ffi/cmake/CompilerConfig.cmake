@@ -46,38 +46,50 @@ function(caffe_ffi_configure_target target_name)
     )
   endif()
 
+  message(STATUS "[caffe_ffi] Configuring target: ${target_name} (visibility=${ARG_VISIBILITY})")
+
   # ── Include directories ──
+  message(STATUS "[caffe_ffi]   Include dirs: ${CAFFE_FFI_INCLUDE_DIR}; ${CAFFE_FFI_GEN_PROTO_DIR}; ${Protobuf_INCLUDE_DIRS}")
   target_include_directories(${target_name} ${ARG_VISIBILITY}
     "${CAFFE_FFI_INCLUDE_DIR}"
     "${CAFFE_FFI_GEN_PROTO_DIR}"
     "${Protobuf_INCLUDE_DIRS}"
   )
   if(BLAS_INCLUDE_DIRS)
+    message(STATUS "[caffe_ffi]   BLAS include: ${BLAS_INCLUDE_DIRS}")
     target_include_directories(${target_name} ${ARG_VISIBILITY} "${BLAS_INCLUDE_DIRS}")
   endif()
 
   # Compile definitions
+  set(_compile_defs_log "CAFFE_FFI_VERSION=${PROJECT_VERSION}; TVM_FFI_USE_BUILTIN_TYPETRAITS")
   target_compile_definitions(${target_name} ${ARG_VISIBILITY}
     CAFFE_FFI_VERSION="${PROJECT_VERSION}"
     TVM_FFI_USE_BUILTIN_TYPETRAITS  # 强制使用 vendor tvm-ffi 内置 TypeTraits，防止自定义特化冲突
   )
   if(CAFFE_CPU_ONLY)
     target_compile_definitions(${target_name} ${ARG_VISIBILITY} CPU_ONLY)
+    string(APPEND _compile_defs_log "; CPU_ONLY")
   endif()
   if(CAFFE_FFI_ENABLE_DEBUG_LOG)
     target_compile_definitions(${target_name} ${ARG_VISIBILITY} CAFFE_FFI_ENABLE_DEBUG_LOG)
+    string(APPEND _compile_defs_log "; CAFFE_FFI_ENABLE_DEBUG_LOG")
   endif()
   if(CAFFE_FFI_ENABLE_BACKTRACE)
     target_compile_definitions(${target_name} ${ARG_VISIBILITY} CAFFE_FFI_ENABLE_BACKTRACE)
+    string(APPEND _compile_defs_log "; CAFFE_FFI_ENABLE_BACKTRACE")
   endif()
   if(BLAS_FOUND OR BLAS_LIBRARIES)
     target_compile_definitions(${target_name} ${ARG_VISIBILITY} CAFFE_USE_BLAS HAVE_CBLAS_H)
+    string(APPEND _compile_defs_log "; CAFFE_USE_BLAS; HAVE_CBLAS_H")
   endif()
+  message(STATUS "[caffe_ffi]   Compile definitions: ${_compile_defs_log}")
 
   # Compile options
   if(MSVC)
+    message(STATUS "[caffe_ffi]   Compile options (MSVC): /W3 /WX /utf-8")
     target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /WX /utf-8)
   else()
+    message(STATUS "[caffe_ffi]   Compile options (GCC/Clang): -Wall -Wextra -Werror -fvisibility=hidden -fvisibility-inlines-hidden")
     target_compile_options(${target_name} ${ARG_VISIBILITY}
       -Wall -Wextra -Werror -Wno-unused-parameter
       -fvisibility=hidden              # 默认隐藏所有符号，防止 WEAK 符号泄漏
@@ -86,19 +98,24 @@ function(caffe_ffi_configure_target target_name)
   endif()
 
   # Link libraries
+  set(_link_libs_log "protobuf::libprotobuf; Threads::Threads")
   target_link_libraries(${target_name} ${ARG_VISIBILITY}
     protobuf::libprotobuf
     Threads::Threads
   )
   if(BLAS_LIBRARIES)
     target_link_libraries(${target_name} ${ARG_VISIBILITY} ${BLAS_LIBRARIES})
+    string(APPEND _link_libs_log "; BLAS(${BLAS_LIBRARIES})")
   endif()
   if(MSVC)
     target_link_libraries(${target_name} ${ARG_VISIBILITY} DbgHelp.lib)
+    string(APPEND _link_libs_log "; DbgHelp.lib")
   endif()
+  message(STATUS "[caffe_ffi]   Link libraries: ${_link_libs_log}")
 
   # GNU linker: 排除所有静态库符号，防止 WEAK 符号多副本冲突
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(STATUS "[caffe_ffi]   Linker flags (GNU): -Wl,--exclude-libs,ALL")
     target_link_options(${target_name} ${ARG_VISIBILITY}
       -Wl,--exclude-libs,ALL
     )

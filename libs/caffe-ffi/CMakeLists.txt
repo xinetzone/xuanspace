@@ -1,19 +1,36 @@
 cmake_minimum_required(VERSION 3.26)
 project(caffe_ffi VERSION 0.1.0 LANGUAGES CXX)
 
+message(STATUS "[caffe_ffi] ====== CMake Configure Begin ======")
+message(STATUS "[caffe_ffi] Project: ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "[caffe_ffi] Source dir: ${CMAKE_CURRENT_SOURCE_DIR}")
+message(STATUS "[caffe_ffi] Binary dir: ${CMAKE_CURRENT_BINARY_DIR}")
+message(STATUS "[caffe_ffi] Generator: ${CMAKE_GENERATOR}")
+message(STATUS "[caffe_ffi] Build type: ${CMAKE_BUILD_TYPE}")
+
 # Disable Unity/Jumbo builds (CMake 4.x enables them by default for MSVC; they break
 # template instantiation order for tvm::ffi::Array<ObjectPtr<T>> with SFINAE checks).
 set(CMAKE_UNITY_BUILD OFF CACHE BOOL "Unity build" FORCE)
+message(STATUS "[caffe_ffi] Unity build: OFF")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+message(STATUS "[caffe_ffi] --- Loading Options ---")
 include(Options)
+message(STATUS "[caffe_ffi] --- Loading Dependencies ---")
 include(Dependencies)
+message(STATUS "[caffe_ffi] --- Loading CompilerConfig ---")
 include(CompilerConfig)
+message(STATUS "[caffe_ffi] --- Loading ProtoCompile ---")
 include(ProtoCompile)
+message(STATUS "[caffe_ffi] --- Loading TargetBuild ---")
 include(TargetBuild)
+message(STATUS "[caffe_ffi] --- Loading WindowsDllCopy ---")
 include(WindowsDllCopy)
 if(CAFFE_FFI_BUILD_TESTS)
+  message(STATUS "[caffe_ffi] --- Loading Tests ---")
   include(Tests)
 endif()
+message(STATUS "[caffe_ffi] --- Loading Install ---")
 include(Install)
+message(STATUS "[caffe_ffi] ====== CMake Configure Complete ======")

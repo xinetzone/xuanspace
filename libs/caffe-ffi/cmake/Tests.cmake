@@ -20,10 +20,14 @@ endif()
 file(GLOB CAFFE_FFI_CPP_TEST_SRCS
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/cpp/*.cpp"
 )
+list(LENGTH CAFFE_FFI_CPP_TEST_SRCS _cpp_test_count)
+message(STATUS "[caffe_ffi] C++ test source count: ${_cpp_test_count}")
+message(STATUS "[caffe_ffi] C++ test sources: ${CAFFE_FFI_CPP_TEST_SRCS}")
 
 add_executable(caffe_ffi_tests
   ${CAFFE_FFI_CPP_TEST_SRCS}
 )
+message(STATUS "[caffe_ffi] caffe_ffi_tests target created (executable)")
 
 caffe_ffi_configure_target(caffe_ffi_tests VISIBILITY PRIVATE)
 
@@ -35,10 +39,12 @@ target_link_libraries(caffe_ffi_tests PRIVATE
   _caffe_ffi
   tvm_ffi::shared
 )
+message(STATUS "[caffe_ffi] caffe_ffi_tests links: _caffe_ffi (PRIVATE), tvm_ffi::shared (PRIVATE)")
 
 if(MSVC)
   caffe_ffi_copy_runtime_dlls(caffe_ffi_tests)
   caffe_ffi_copy_target_dll(caffe_ffi_tests _caffe_ffi)
+  message(STATUS "[caffe_ffi] caffe_ffi_tests: runtime DLLs + _caffe_ffi.dll copy configured")
 endif()
 
 add_test(NAME caffe_ffi_cpp_tests COMMAND caffe_ffi_tests)
@@ -48,6 +54,7 @@ add_test(NAME caffe_ffi_cpp_tests COMMAND caffe_ffi_tests)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
 if(Python3_Interpreter_FOUND)
+  message(STATUS "[caffe_ffi] Python3 interpreter: ${Python3_EXECUTABLE}")
   # ── P2-B 回归测试套件 ──
   # 包含: Split 拓扑正确性 + 性能扩展 + 极端边界 + 内存稳定性
   set(P2B_REGRESSION_TEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_p2b_regression.py")
@@ -84,6 +91,8 @@ if(Python3_Interpreter_FOUND)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/python/test_*.py"
   )
   if(CAFFE_FFI_PYTHON_TESTS)
+    list(LENGTH CAFFE_FFI_PYTHON_TESTS _py_test_count)
+    message(STATUS "[caffe_ffi] Python test files: ${_py_test_count}")
     add_test(
       NAME caffe_ffi_python_all
       COMMAND ${Python3_EXECUTABLE} -m pytest tests/python/ -v --tb=short

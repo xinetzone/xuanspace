@@ -12,10 +12,21 @@
 
 #include "caffe_ffi/log.hpp"
 
+// ── DLL 导出宏 ──
+// WINDOWS_EXPORT_ALL_SYMBOLS 只导出函数符号，不导出数据符号（全局变量），
+// 因此需要显式 __declspec(dllexport/dllimport) 来导出数据符号。
+#if defined(_MSC_VER) && defined(CAFFE_FFI_EXPORTS)
+#define CAFFE_FFI_API __declspec(dllexport)
+#elif defined(_MSC_VER) && !defined(CAFFE_FFI_EXPORTS)
+#define CAFFE_FFI_API __declspec(dllimport)
+#else
+#define CAFFE_FFI_API
+#endif
+
 namespace caffe_ffi {
 
 /** Global atomic counter tracking total bytes allocated across all Blobs. */
-extern std::atomic<int64_t> g_total_allocated_bytes;
+extern CAFFE_FFI_API std::atomic<int64_t> g_total_allocated_bytes;
 
 using namespace tvm::ffi;
 
