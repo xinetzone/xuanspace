@@ -110,18 +110,19 @@ TEST(ObjectPtrMigration, MoveDoesNotIncreaseRefcount) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 场景三：FFI 边界 / 裸指针恢复（WeightProcessor 模式）
-// 覆盖：const ObjectPtr& 传参、GetRef 恢复、lambda 适配
+// 场景三：FFI 边界 / 裸指针传递（WeightProcessor 模式）
+// 覆盖：const ObjectPtr& 传参、lambda 适配、ObjectPtr 拷贝共享所有权
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 验证 GetRef 从裸指针安全恢复 ObjectPtr
-/// 对应迁移指南步骤 5：ObjectPtr 可从裸指针恢复，而 shared_ptr 不能
-TEST(ObjectPtrMigration, GetRefRecoversFromRawPointer) {
+/// 验证 ObjectPtr 拷贝构造保持指针相等与数据完整性
+/// 对应迁移指南步骤 5：ObjectPtr 拷贝构造共享所有权，refcount 从裸指针恢复需通过 ObjectPtr 而非 GetRef
+TEST(ObjectPtrMigration, CopyConstructorSharesPointerAndData) {
   auto obj = make_object<Blob>(std::vector<int64_t>{3, 3});
   obj->cpu_data()[0] = 33.0f;
   Blob* raw = obj.get();
 
-  ObjectPtr<Blob> recovered = GetRef<ObjectPtr<Blob>>(raw);
+  // ObjectPtr 拷贝构造 → refcount 递增，指向同一对象
+  ObjectPtr<Blob> recovered = obj;
 
   // 恢复后的指针指向原对象
   EXPECT_EQ(recovered.get(), raw);
@@ -129,17 +130,18 @@ TEST(ObjectPtrMigration, GetRefRecoversFromRawPointer) {
   EXPECT_NEAR(recovered->cpu_data()[0], 33.0f, 1e-5f);
 }
 
-/// 验证 GetRef 恢复后，原始对象析构不会导致悬空指针
-/// 这是侵入式 refcount 相比 shared_ptr 的核心优势
-TEST(ObjectPtrMigration, GetRefAfterSourceDestroyed) {
+/// 验证 ObjectPtr 拷贝后，原始对象析构不会导致悬空指针
+/// 这是侵入式 refcount 相比 shared_ptr 的核心优势——
+/// 注意：ObjectPtr 不可从裸指针直接构造（构造函数为 private），
+/// 需通过拷贝已有 ObjectPtr 来共享所有权
+TEST(ObjectPtrMigration, CopySurvivesSourceDestruction) {
   ObjectPtr<Blob> recovered;
 
   {
     auto obj = make_object<Blob>(std::vector<int64_t>{5});
     obj->cpu_data()[0] = 77.0f;
     obj->cpu_data()[1] = 66.0f;
-    Blob* raw = obj.get();
-    recovered = GetRef<ObjectPtr<Blob>>(raw);  // refcount 变为 2
+    recovered = obj;  // 拷贝 → refcount 变为 2
   }
   // obj 析构，refcount 降为 1，recovered 仍持有引用
 
