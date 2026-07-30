@@ -108,10 +108,10 @@ pip install --no-build-isolation -e .
 
 #### 4. 常见问题
 
-**BLAS/OpenBLAS 未找到**：如果 CMake 输出 `BLAS/OpenBLAS not found`，检查：
-- 确认 `conda activate caffe-ffi-dev` 已激活（`CONDA_PREFIX` 环境变量指向正确的 conda 环境）
-- 手动安装：`conda install -c conda-forge libopenblas`
-- 如果使用了非默认 conda 环境名，确保 `CONDA_PREFIX` 指向该环境
+**BLAS/OpenBLAS 未找到**：`DetectBLAS.cmake` 已针对 Windows conda 做平台适配（`Library/include/openblas` 路径、`libopenblas.lib` 库名）。若仍出现检测失败：
+- 确认已激活正确的 conda 环境：`conda activate caffe-ffi-dev`
+- 手动安装 OpenBLAS：`conda install -c conda-forge libopenblas`
+- 若使用非默认环境名，设置 `CONDA_PREFIX` 或在 CMake 配置时指定 `-DCMAKE_PREFIX_PATH=<env_path>`
 
 **KMP_DUPLICATE_LIB_OK**：Windows 上多个组件可能各自包含 OpenMP 运行时，设置此环境变量避免冲突：
 

@@ -1,224 +1,199 @@
 ---
-title: "CMake 配置与 ObjectPtr 迁移测试构建验证报告"
+title: "CMake 配置与零拷贝测试构建验证报告（实测）"
 date: 2026-07-31
 session: sc-20260731-split-zerocopy
-tags: [cmake, build, test, objectptr, migration]
+tags: [cmake, build, test, zerocopy, objectptr, migration]
+source: .temp/debug.log (2026-07-31 PowerShell 实测)
 ---
 
-# CMake 配置与 ObjectPtr 迁移测试构建验证报告
+# CMake 配置与零拷贝测试构建验证报告（实测）
 
-## 执行环境限制
+## 执行环境
 
-当前终端 PATH 环境变量约 34000 字符，超过 RunCommand 工具编码上限（32000），无法直接执行 Shell 命令。
-已通过代码审查完成前置分析，确认以下变更不会引入编译/链接错误。
+| 项目 | 值 |
+|------|-----|
+| OS | Windows 11 |
+| Shell | PowerShell 5 (py314 conda) |
+| 编译器 | MSVC 19.50.35717.0 (VS 18 Insiders) |
+| CMake | 3.31.2 (conda py314) |
+| 构建系统 | Ninja |
+| Python | 3.14.3 (conda py314) |
+| Protobuf | 33.5.0 |
+| 构建类型 | Release |
 
-## 变更清单
+## 构建结果总览
 
-### 1. cmake/CompilerConfig.cmake
-
-| 行号 | 变更 | 类型 | 影响范围 |
-|------|------|------|---------|
-| L62 | `TVM_FFI_USE_BUILTIN_TYPETRAITS` 编译定义 | 新增宏 | 所有目标（主库+测试） |
-| L79 | `/WX` (MSVC) 警告升级为错误 | 编译选项 | 所有目标 |
-| L82-83 | `-Werror` (GCC/Clang) 警告升级为错误 | 编译选项 | 仅非 MSVC |
-| L83-84 | `-fvisibility=hidden -fvisibility-inlines-hidden` | 符号可见性 | 仅非 MSVC |
-| L101-104 | `-Wl,--exclude-libs,ALL` (GNU ld) | 链接选项 | 仅 GNU |
-
-### 2. cmake/Options.cmake
-
-| 行号 | 变更 | 类型 |
+| 步骤 | 状态 | 耗时 |
 |------|------|------|
-| L12 | `option(CAFFE_FFI_ENABLE_COW ...)` Phase 2 COW 开关 | 新增选项 |
+| Step 0: 环境诊断 | ✅ 通过 | — |
+| Step 1: 清理 CMake 缓存 | ✅ 通过 | — |
+| Step 2: CMake 配置 | ✅ 通过 | 4.5s |
+| Step 3: 构建 (34 目标) | ✅ 通过 | — |
+| Step 4: 拷贝 DLL | ✅ 通过 | — |
+| Step 5: C++ 单元测试 | ✅ 66/66 通过 | 876ms |
 
-### 3. tests/cpp/test_objectptr_migration.cpp（新增）
+## 测试结果详情
 
-| 测试套件 | 用例数 | 覆盖场景 |
-|----------|--------|---------|
-| ObjectPtrMigration | 12 | 拷贝构造、容器所有权、GetRef 恢复、FFI lambda、批量操作、空指针/nullptr、reset |
+### 按测试套件统计
 
-## 前置分析
+| 测试套件 | 用例数 | 通过 | 失败 | 总耗时 | 平均耗时 |
+|----------|--------|------|------|--------|----------|
+| **BlobTest** | 23 | 23 | 0 | 51.08ms | 2.22ms |
+| **ZeroCopyTest** | 14 | 14 | 0 | 1.96ms | 0.14ms |
+| **ObjectPtrMigration** | 12 | 12 | 0 | 0.27ms | 0.02ms |
+| **NetTest** | 17 | 17 | 0 | 822.17ms | 48.36ms |
+| **合计** | **66** | **66** | **0** | **875.93ms** | — |
 
-### 3.1 编译兼容性
+### Top 5 最慢测试
 
-| 检查项 | 判定 | 依据 |
+| 排名 | 测试 | 耗时 | 原因 |
+|------|------|------|------|
+| 1 | `NetTest.LayerByNameNotFoundThrows` | 281.86ms | 异常路径开销 |
+| 2 | `NetTest.BlobByNameNotFoundThrows` | 270.39ms | 异常路径开销 |
+| 3 | `NetTest.UnknownLayerTypeThrows` | 269.02ms | 异常路径开销 |
+| 4 | `BlobTest.NegativeDimensionThrows` | 45.28ms | 异常路径开销 |
+| 5 | `BlobTest.DefaultConstructor` | 4.78ms | 首次分配 |
+
+> 慢测试均为异常路径测试（`.Throws`），异常抛出/捕获本身有显著开销，属正常现象。
+
+## 零拷贝性能日志摘要
+
+### N=1 零拷贝路径（ZeroCopyTest.SplitN1ZeroCopyViaNet）
+
+```
+[SPLIT-PERF] split1 Reshape: num_top=1 count=24 elem_size=4B
+  bytes_copied_per_fwd=0B reshape_time=0.0058ms net_alloc=96B zerocopy_n1=yes
+
+[SPLIT-PERF] split1 Reshape: num_top=1 count=24 elem_size=4B
+  bytes_copied_per_fwd=0B reshape_time=0.0023ms net_alloc=0B zerocopy_n1=yes
+
+[SPLIT-PERF] split1 Forward(N=1 ZEROCOPY): count=24 shared_bytes=96B
+  share_time=3.2us data_ptr_equal=yes was_already_shared=no
+  memcpy_saved=96B (zero-copy path)
+```
+
+### N=1 数据正确性（ZeroCopyTest.SplitN1DataCorrectnessThroughForward）
+
+```
+[SPLIT-PERF] split1 Forward(N=1 ZEROCOPY): count=120 shared_bytes=480B
+  share_time=3.3us data_ptr_equal=yes was_already_shared=no
+  memcpy_saved=480B (zero-copy path)
+```
+
+### N=2 传统 memcpy 路径（ZeroCopyTest.SplitN2StillCopiesData）
+
+```
+[SPLIT-PERF] split1 Forward(N=2): count=24 total_copied=192B
+  total_memcpy_time=0.0004ms avg_per_copy=0.2us
+  min_copy=0.1us max_copy=0.1us throughput=0.447035GB/s num_copies=2
+```
+
+## 关键验证结论
+
+| 验证项 | 结果 | 证据 |
 |--------|------|------|
-| `/WX` 是否导致现有代码编译失败 | 低风险 | 项目已通过 `/W3` 零警告编译，`/WX` 仅将现有零警告状态升级为强制 |
-| `TVM_FFI_USE_BUILTIN_TYPETRAITS` 是否影响编译 | 无影响 | 这是一个编译期宏定义，仅当代码中 `#ifdef` 检查时才生效；当前无代码依赖此宏 |
-| `-fvisibility=hidden` 是否影响 Windows 构建 | 无影响 | 该标志仅在 `if(NOT MSVC)` 分支中，对 MSVC 编译器不可见 |
-| 新测试文件是否兼容现有测试框架 | 兼容 | 使用 `test_harness.hpp`、`caffe_ffi/blob.hpp`、`caffe_ffi/common.hpp`，与现有 `test_blob_zerocopy.cpp` 模式一致 |
+| N=1 零拷贝生效 | ✅ | `data_ptr_equal=yes`, `memcpy_saved=96B/480B` |
+| N=1 bytes_copied_per_fwd=0 | ✅ | `bytes_copied_per_fwd=0B` |
+| N=2 仍走 memcpy | ✅ | `total_copied=192B`, `data_ptr` 不相等 |
+| ShareData 指针共享 | ✅ | 14 个 ZeroCopyTest 全部通过 |
+| ObjectPtr 引用计数 | ✅ | 12 个 ObjectPtrMigration 全部通过 |
+| 构建零警告 | ✅ | `/WX` 下 34 个目标全部编译通过 |
+| DLL 自拷贝修复 | ✅ | 从 `build/python/caffe_ffi/` 正确拷贝到 `build/` |
+| py314 动态发现 | ✅ | 自动定位 `D:\Users\xinzo\anaconda3\envs\py314` |
 
-### 3.2 链接兼容性
+## CMake 配置验证
 
-| 检查项 | 判定 | 依据 |
+| 配置项 | 状态 | 说明 |
 |--------|------|------|
-| 新测试文件是否引入未解析符号 | 无 | 所有使用的符号（`make_object<Blob>`、`ObjectPtr<Blob>`、`GetRef`、`cpu_data()`）均来自 `_caffe_ffi` 或 `tvm_ffi::shared`，已在 `Tests.cmake` 中链接 |
-| `std::vector<ObjectPtr<Blob>>` 是否需要 TypeTraits | 不需要 | `std::vector` 不需要 TVM FFI TypeTraits；只有 `tvm::ffi::Array<T>` 需要 |
-| `GetRef<ObjectPtr<Blob>>` 模板实例化 | 可行 | TVM FFI `GetRef` 是模板函数，将从 `tvm_ffi::shared` 头文件实例化 |
-| `-Wl,--exclude-libs,ALL` 是否影响 Windows | 不适用 | 仅在 `CMAKE_CXX_COMPILER_ID STREQUAL "GNU"` 时生效 |
+| `TVM_FFI_USE_BUILTIN_TYPETRAITS` | ✅ 生效 | 无 TypeTraits 冲突 |
+| `/WX` (MSVC) | ✅ 生效 | 34 目标零警告编译 |
+| `-fvisibility=hidden` (GCC/Clang) | N/A | Windows 构建不适用 |
+| `CAFFE_FFI_ENABLE_COW` | OFF (默认) | Phase 2 预留 |
+| OpenBLAS 检测 | ✅ 已修复 | 见下方附录 |
 
-### 3.3 测试注册
+## 已知问题
 
-| 检查项 | 判定 | 说明 |
+| 问题 | 严重程度 | 状态 |
+|------|----------|------|
+| ZLIB 未检测到 | 低 | 不影响核心功能 |
+
+## 测试覆盖分析
+
+### 已覆盖场景
+
+| 场景 | 测试 | 套件 |
+|------|------|------|
+| ShareData 基本功能 | `ShareDataMakesPointersEqual` | ZeroCopyTest |
+| ShareDiff 基本功能 | `ShareDiffMakesDiffPointersEqual` | ZeroCopyTest |
+| 共享后 Shape 保持 | `ShareDataPreservesShape` | ZeroCopyTest |
+| 共享后双向写入可见 | `ShareDataMutationVisibleToBoth` | ZeroCopyTest |
+| 不同 Blob 不共享 | `SharesDataWithFalseForDifferentBlobs` | ZeroCopyTest |
+| Reshape 打破共享 | `ReshapeBreaksShare` | ZeroCopyTest |
+| 自共享无操作 | `ShareDataFromSelfIsNoop` | ZeroCopyTest |
+| 源长于目标生命周期 | `RefcountingSourceOutlivesDestination` | ZeroCopyTest |
+| 目标长于源生命周期 | `RefcountingDestinationOutlivesSource` | ZeroCopyTest |
+| 多次共享幂等 | `ShareDataMultipleTimesIdempotent` | ZeroCopyTest |
+| Split N=1 端到端 | `SplitN1ZeroCopyViaNet` | ZeroCopyTest |
+| Split N=1 数据正确性 | `SplitN1DataCorrectnessThroughForward` | ZeroCopyTest |
+| Split N=2 memcpy | `SplitN2StillCopiesData` | ZeroCopyTest |
+| 共享不泄漏 Blob | `LiveBlobCountStableAcrossShareData` | ZeroCopyTest |
+| ObjectPtr 拷贝构造 | `CopyIncreasesRefcount` | ObjectPtrMigration |
+| ObjectPtr 容器所有权 | `RegistryHoldsOwnershipAfterSourceOutOfScope` | ObjectPtrMigration |
+| ObjectPtr 多次注册 | `MultipleRegistrationsShareSameObject` | ObjectPtrMigration |
+| ObjectPtr 清空保留 | `RegistryClearPreservesOriginalObject` | ObjectPtrMigration |
+| ObjectPtr 移动语义 | `MoveDoesNotIncreaseRefcount` | ObjectPtrMigration |
+| ObjectPtr 拷贝恢复 | `CopyConstructorSharesPointerAndData` | ObjectPtrMigration |
+| ObjectPtr 源析构安全 | `CopySurvivesSourceDestruction` | ObjectPtrMigration |
+| ObjectPtr const& 传参 | `ConstRefParameterDoesNotModifyOriginal` | ObjectPtrMigration |
+| ObjectPtr 值传递 | `ValuePassingForOwnershipTransfer` | ObjectPtrMigration |
+| ObjectPtr 批量操作 | `VectorOfObjectPtrsBulkOperations` | ObjectPtrMigration |
+| ObjectPtr 空指针 | `NullObjectPtr` | ObjectPtrMigration |
+| ObjectPtr reset | `ResetReleasesOwnership` | ObjectPtrMigration |
+
+### 建议补充的覆盖场景
+
+| 优先级 | 场景 | 理由 |
 |--------|------|------|
-| 新测试文件是否自动注册 | 是 | `Tests.cmake#L6-L8` 使用 `file(GLOB ... tests/cpp/*.cpp)`，自动包含所有 `.cpp` 文件 |
-| 测试是否链接正确库 | 是 | `caffe_ffi_tests` 链接 `_caffe_ffi` + `tvm_ffi::shared`，覆盖所有符号 |
+| **高** | `ShareData` 和 `ShareDiff` 分别来自不同源 | 当前测试 data/diff 均来自同一源；Split 场景下可能 data 来自 bottom、diff 来自不同 Blob |
+| **高** | 共享后 Reshape 源 Blob | 验证 Reshape 源不会破坏已共享的目标数据 |
+| **高** | 连续多次 Forward（N=1） | 验证重复调用不累积 refcount 泄漏 |
+| **中** | COW 触发（`cpu_mutable_data`/`cpu_mutable_diff`） | Phase 2 COW 功能的前置测试，当前仅有代码无测试 |
+| **中** | 空 Blob（count=0）共享 | 边界情况：未分配内存的 Blob 执行 ShareData |
+| **中** | `set_data` 后共享关系 | 验证 `set_data` 是否打破共享关系 |
+| **低** | 多个 Split 层同一 Net | 多 Split 层的 refcount 互不干扰 |
+| **低** | 大数据量性能回归 | 非功能测试，但可作为 CI 性能基线 |
 
-## 手动验证步骤
-
-在 **Visual Studio Developer Command Prompt** 中执行：
-
-```cmd
-cd /d d:\spaces\SpecWeave\projects\xuanspace\libs\caffe-ffi
-.temp\verify_build.cmd
-```
-
-或使用 PowerShell 版本：
-
-```powershell
-cd d:\spaces\SpecWeave\projects\xuanspace\libs\caffe-ffi
-.temp\verify_build.ps1
-```
-
-## 预期构建输出
-
-### Step 2: CMake Configure（预期成功）
-
-```
--- Configuring done
--- Generating done
--- Build files have been written to: .../build
-[OK] CMake configure succeeded
-```
-
-关键验证点：无 TypeTraits 相关警告或错误。
-
-### Step 3: Build（预期成功）
-
-所有编译单元应通过 `/W3 /WX` 零警告编译。新测试文件 `test_objectptr_migration.cpp` 应正常编译链接。
-
-### Step 4: C++ Unit Tests（预期输出）
-
-```
-[==========] Running XX tests from YY test suites.
-[----------] XX tests from ObjectPtrMigration
-[ RUN      ] ObjectPtrMigration.CopyIncreasesRefcount
-[       OK ] ObjectPtrMigration.CopyIncreasesRefcount
-[ RUN      ] ObjectPtrMigration.RegistryHoldsOwnershipAfterSourceOutOfScope
-[       OK ] ObjectPtrMigration.RegistryHoldsOwnershipAfterSourceOutOfScope
-[ RUN      ] ObjectPtrMigration.MultipleRegistrationsShareSameObject
-[       OK ] ObjectPtrMigration.MultipleRegistrationsShareSameObject
-[ RUN      ] ObjectPtrMigration.RegistryClearPreservesOriginalObject
-[       OK ] ObjectPtrMigration.RegistryClearPreservesOriginalObject
-[ RUN      ] ObjectPtrMigration.MoveDoesNotIncreaseRefcount
-[       OK ] ObjectPtrMigration.MoveDoesNotIncreaseRefcount
-[ RUN      ] ObjectPtrMigration.GetRefRecoversFromRawPointer
-[       OK ] ObjectPtrMigration.GetRefRecoversFromRawPointer
-[ RUN      ] ObjectPtrMigration.GetRefAfterSourceDestroyed
-[       OK ] ObjectPtrMigration.GetRefAfterSourceDestroyed
-[ RUN      ] ObjectPtrMigration.ConstRefParameterDoesNotModifyOriginal
-[       OK ] ObjectPtrMigration.ConstRefParameterDoesNotModifyOriginal
-[ RUN      ] ObjectPtrMigration.ValuePassingForOwnershipTransfer
-[       OK ] ObjectPtrMigration.ValuePassingForOwnershipTransfer
-[ RUN      ] ObjectPtrMigration.VectorOfObjectPtrsBulkOperations
-[       OK ] ObjectPtrMigration.VectorOfObjectPtrsBulkOperations
-[ RUN      ] ObjectPtrMigration.NullObjectPtr
-[       OK ] ObjectPtrMigration.NullObjectPtr
-[ RUN      ] ObjectPtrMigration.ResetReleasesOwnership
-[       OK ] ObjectPtrMigration.ResetReleasesOwnership
-[----------] 12 tests from ObjectPtrMigration
-[==========] XX tests from YY test suites ran.
-[  PASSED  ] XX tests.
-```
-
-## 失败场景与修复方案
-
-### 场景 A：`/WX` 触发未知警告
-
-**症状**：`error C2220: the following warning is treated as an error`
-
-**原因**：`/W3` 之前一直在产生警告但被忽略，`/WX` 后升级为错误。
-
-**修复**：
-```cmake
-# 临时方案：仅对主库启用 /WX，测试目标保持宽松
-# 在 CompilerConfig.cmake 中区分 target 类型
-if(target_name STREQUAL "_caffe_ffi")
-  target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /WX /utf-8)
-else()
-  target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /utf-8)
-endif()
-```
-
-### 场景 B：`tvm_ffi::shared` 符号未找到
-
-**症状**：`LNK2019: unresolved external symbol`
-
-**原因**：tvm-ffi 共享库路径未在 PATH 中。
-
-**修复**：确保构建脚本中已添加：
-```cmd
-set "PATH=%CONDA_ENV%\Lib\site-packages\tvm_ffi\lib;%PATH%"
-```
-
-### 场景 C：`GetRef` 模板实例化失败
-
-**症状**：`error: no matching function for call to 'GetRef'`
-
-**原因**：tvm-ffi 版本过旧，不支持 `GetRef<ObjectPtr<T>>`。
-
-**修复**：升级 tvm-ffi 至 v0.1.13rc3+，或使用 `ObjectPtr<Blob>(raw)` 替代（需确认该构造方式在当前版本中可用）。
-
-### 场景 D：`make_object<Blob>` 链接错误
-
-**症状**：`undefined reference to 'make_object<Blob>'`
-
-**原因**：`make_object` 是模板函数，定义在头文件中，应在调用处实例化。如果 `_caffe_ffi` 库中未使用该模板，链接器可能找不到实例化。
-
-**修复**：确认 `tests/cpp/` 中的测试文件使用 `#include <tvm/ffi/container/array.h>`（已包含在 `common.hpp` 中），模板将在测试 TU 中实例化。
-
-## 配置变更影响矩阵
-
-| 变更 | Windows/MSVC | Linux/GCC | macOS/Clang | 风险等级 |
-|------|-------------|-----------|-------------|---------|
-| `TVM_FFI_USE_BUILTIN_TYPETRAITS` | 无影响 | 无影响 | 无影响 | 零 |
-| `/WX` | 警告→错误 | N/A | N/A | 低 |
-| `-Werror` | N/A | 警告→错误 | 警告→错误 | 低 |
-| `-fvisibility=hidden` | N/A | 符号隐藏 | 符号隐藏 | 中（需验证 FFI 导出宏） |
-| `-Wl,--exclude-libs,ALL` | N/A | 静态库符号隔离 | N/A | 低 |
-| `CAFFE_FFI_ENABLE_COW` | 默认 OFF | 默认 OFF | 默认 OFF | 零 |
-| 新测试文件 | 自动包含 | 自动包含 | 自动包含 | 零 |
-
-## 验证结论
-
-基于代码审查，本轮 3 项 CMake 配置变更和 1 个新增测试文件：
-- **不会引入编译错误**：所有新增编译选项与现有代码兼容
-- **不会引入链接错误**：新测试文件使用的符号均在已链接库中
-- **不会破坏现有测试**：新测试文件使用独立测试套件 `ObjectPtrMigration`，与现有 `ZeroCopyTest` 等套件无冲突
-- **测试文件自动注册**：`Tests.cmake` 的 `file(GLOB)` 模式自动包含新文件
+> **关于数据类型**：当前 Blob 的 `cpu_data()`/`cpu_diff()` 固定返回 `float*`，底层 Tensor 的 dtype 固定为 `float32`。`ShareData`/`ShareDiff` 在 Tensor 级别操作，不关心数据类型，因此不存在不同数据类型零拷贝验证的需求。未来若 Blob 支持模板化 dtype（如 `Blob<double>`），需补充对应测试。
 
 ## 附录：BLAS/OpenBLAS 检测修复（2026-07-31）
 
 ### 问题描述
 
-CMake 配置时输出 `BLAS/OpenBLAS not found - building without BLAS acceleration`，即使 OpenBLAS 已通过 conda 安装在 `py314` 环境中。
+CMake 配置时输出 `BLAS/OpenBLAS not found`，即使 OpenBLAS 已通过 `conda install -c conda-forge libopenblas` 安装在 `py314` 环境中。
+
+### 验证结果
+
+```
+Found OpenBLAS: D:/Users/xinzo/anaconda3/envs/py314/Library/lib/libopenblas.lib
+OpenBLAS include: D:/Users/xinzo/anaconda3/envs/py314/Library/include/openblas
+```
 
 ### 根因分析
 
-1. **库名不匹配**：`DetectBLAS.cmake` Phase 1 搜索 `openblas openblasp openblas.so.0`，其中 `openblas.so.0` 是 Linux 专用名。Windows conda 提供的是 `libopenblas.lib` 和 `openblas.lib`
-2. **搜索路径不完整**：Phase 1 `PATH_SUFFIXES` 仅包含 `lib lib64`，缺少 Windows conda 的 `Library/lib` 和 `Library/bin` 路径
-3. **环境前缀不一致**：`CONDA_PREFIX` 可能指向 base conda 环境（`D:\Users\xinzo\anaconda3`），而 OpenBLAS 安装在 `py314` 环境（`D:\Users\xinzo\anaconda3\envs\py314`）。Protobuf 从 `py314` 找到，但 BLAS 搜索只用 `CONDA_PREFIX` 作为 hint
+`cmake/DetectBLAS.cmake` 存在三个跨平台兼容问题：
+
+1. **头文件搜索路径不匹配**：`find_path` 的 `PATH_SUFFIXES` 仅包含 `include include/openblas`，但 Windows conda 将头文件放在 `Library/include/openblas/` 下（如 `Library/include/openblas/cblas.h`）
+2. **库名不匹配**：Phase 1 搜索 `openblas openblasp openblas.so.0`，其中 `.so.0` 是 Linux 专用名。Windows conda 提供的是 `libopenblas.lib` 和 `openblas.lib`
+3. **环境前缀不一致**：`CONDA_PREFIX` 可能指向 base conda 环境，而 OpenBLAS 安装在 `py314` 子环境中
 
 ### 修复内容
 
-修改 `cmake/DetectBLAS.cmake`：
+修改 `cmake/DetectBLAS.cmake`，将平台差异集中到 `if(WIN32)` 分支：
 
-| 修复项 | 修改前 | 修改后 |
-|--------|--------|--------|
-| Windows 库名 | `openblas openblasp openblas.so.0`（统一） | `libopenblas openblas`（Windows）/ `openblas openblasp openblas.so.0`（Linux/macOS） |
-| Windows 搜索路径 | `lib lib64`（统一） | `lib lib64 Library/lib Library/bin`（Windows）/ `lib lib64`（Linux/macOS） |
-| 环境前缀发现 | 仅 `CONDA_PREFIX` + `CMAKE_PREFIX_PATH` + `Python_SITEARCH` | 新增：从 `Protobuf_INCLUDE_DIR` 反推正确的 conda 环境前缀 |
-| 错误提示 | 统一提示 `libopenblas-dev` / `libopenblas.so` | 平台感知：Windows 提示 `conda install -c conda-forge libopenblas`，Linux 提示 `libopenblas-dev` |
-
-### 验证方法
-
-重新运行 CMake 配置，确认输出包含 `Found OpenBLAS: <path>` 而非 `BLAS/OpenBLAS not found`。
+| 修复项 | 修改前（统一） | 修改后（Windows） | 修改后（Linux/macOS） |
+|--------|---------------|-------------------|----------------------|
+| 头文件搜索路径 | `include include/openblas` | `include include/openblas Library/include Library/include/openblas` | `include include/openblas` |
+| 库名 | `openblas openblasp openblas.so.0` | `libopenblas openblas` | `openblas openblasp openblas.so.0` |
+| 库搜索路径 | `lib lib64` | `lib lib64 Library/lib Library/bin` | `lib lib64` |
+| 环境前缀发现 | `CONDA_PREFIX` + `CMAKE_PREFIX_PATH` + `Python_SITEARCH` | 新增：从 `Protobuf_INCLUDE_DIR` 反推正确的 conda 环境前缀 | 同前 |
+| 错误提示 | 统一提示 `libopenblas-dev` / `.so` | `conda install -c conda-forge libopenblas` | `libopenblas-dev` / `libopenblas` |
