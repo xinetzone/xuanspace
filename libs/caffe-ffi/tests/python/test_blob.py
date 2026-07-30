@@ -746,3 +746,317 @@ class TestBlobZeroCopy:
         t1[0, 0] = 5.0
         t2 = b.data_tensor
         assert abs(t2[0, 0] - 5.0) < 0.01
+
+
+@require_cpp_extension
+class TestBlobMemoryStress:
+    """Stress tests that loop many create/destroy/Reshape cycles to catch
+    tiny per-operation leaks that would be invisible in a single lifecycle.
+
+    A leak of even 4 bytes per operation becomes 4000 bytes after 1000
+    iterations, which is easily detectable.
+    """
+
+    @staticmethod
+    def _gc():
+        import gc
+        gc.collect(); gc.collect(); gc.collect()
+
+    def test_create_destroy_loop_no_leak(self):
+        """Create and destroy 500 blobs; net memory change must be 0."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+        live0 = caffe_ffi.live_blob_count()
+
+        for i in range(500):
+            b = Blob([4, 5, 6])  # 120 elements * 8 = 960 bytes each
+            b.fill(float(i))
+            del b
+
+        self._gc()
+        mem1 = caffe_ffi.total_allocated_bytes()
+        live1 = caffe_ffi.live_blob_count()
+        assert live1 == live0, f"Blob leak: +{live1 - live0} after 500 create/destroy cycles"
+        assert mem1 == mem0, f"Memory leak: +{mem1 - mem0} bytes after 500 create/destroy cycles"
+
+    def test_reshape_loop_no_leak(self):
+        """Repeatedly grow and shrink a single blob; net change must be 0."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        b = Blob([1])
+        shapes = [(2, 3), (10, 10), (50, 50), (100, 100), (1, 1), (0,)]
+        for _ in range(200):
+            for shape in shapes:
+                b.Reshape(list(shape))
+                b.fill(1.0)
+
+        expected_small = 1 * 4 * 2  # (1,) = 8 bytes
+        b.Reshape([1])
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected_small
+
+        del b
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after reshape loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+
+    def test_copy_from_loop_no_leak(self):
+        """Repeatedly copy_from between two blobs; net must stay constant."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        src = Blob([8, 8])
+        src.from_numpy(np.random.randn(8, 8).astype(np.float32))
+        dst = Blob()
+
+        expected_total = 8 * 8 * 4 * 2  # only src allocates initially (dst=[0])
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected_total
+
+        for _ in range(300):
+            dst.copy_from(src)  # dst reshapes to [8,8] on first call
+            src.copy_from(dst)
+
+        # After first copy, both are [8,8]; subsequent copies should not change allocation
+        expected_both = expected_total * 2
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected_both
+
+        del src
+        del dst
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after copy loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+
+    def test_from_numpy_to_numpy_loop_no_leak(self):
+        """Repeated from_numpy/to_numpy roundtrips must not leak."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        b = Blob()
+        for i in range(400):
+            arr = np.full((4, 4), float(i), dtype=np.float32)
+            b.from_numpy(arr)
+            result = b.to_numpy()
+            np.testing.assert_array_equal(result, arr)
+
+        expected = 4 * 4 * 4 * 2  # 128 bytes
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected
+
+        del b
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after numpy roundtrip loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+
+    def test_serialization_roundtrip_loop_no_leak(self):
+        """Repeated to_numpy → new Blob → from_numpy → del must net 0."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        original = Blob([3, 5])
+        original.from_numpy(np.arange(15, dtype=np.float32).reshape(3, 5))
+
+        for _ in range(200):
+            data = original.to_numpy()
+            tmp = Blob()
+            tmp.from_numpy(data)
+            np.testing.assert_array_equal(tmp.to_numpy(), data)
+            del tmp
+
+        self._gc()
+        # Only original should remain
+        expected = 3 * 5 * 4 * 2
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected
+
+        del original
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after serialization loop: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+
+
+@require_cpp_extension
+class TestBlobExceptionSafety:
+    """Tests that memory is correctly freed when operations fail mid-way.
+
+    If an exception is thrown during Reshape/from_numpy (e.g., invalid shape),
+    the blob must either remain in its previous valid state or be fully cleaned up;
+    no memory should be leaked.
+    """
+
+    @staticmethod
+    def _gc():
+        import gc
+        gc.collect(); gc.collect(); gc.collect()
+
+    def test_reshape_invalid_shape_no_leak(self):
+        """Reshape with invalid dimensions (e.g., negative) must not leak."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+        live0 = caffe_ffi.live_blob_count()
+
+        b = Blob([4, 4])
+        initial_bytes = 4 * 4 * 4 * 2
+        assert caffe_ffi.total_allocated_bytes() - mem0 == initial_bytes
+
+        # Try various invalid shapes — negative dimensions are invalid
+        invalid_shapes = [[-1], [2, -3], [-1, -2]]
+        for shape in invalid_shapes:
+            try:
+                b.Reshape(shape)
+            except (ValueError, RuntimeError, Exception):
+                pass  # Expected; any exception type is fine as long as no leak
+
+        # Blob should either be back to [4,4] or [0]; memory must be valid
+        # Regardless, no extra bytes should be leaked
+        self._gc()
+        del b
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after invalid Reshape: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+        assert caffe_ffi.live_blob_count() == live0
+
+    def test_empty_lifecycle_no_leak(self):
+        """Blob created and destroyed without ever Reshape-ing to non-zero must net 0."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+        live0 = caffe_ffi.live_blob_count()
+
+        for _ in range(100):
+            b = Blob()  # shape [0], 0 tensor bytes
+            assert b.shape == (0,)
+            del b
+
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0
+        assert caffe_ffi.live_blob_count() == live0
+
+    def test_partial_update_gc_no_leak(self):
+        """Blob with references dropped mid-operation must be fully collected."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        for _ in range(100):
+            b = Blob([10, 10])
+            b.fill(3.14)
+            b.from_numpy(np.ones((5, 5), dtype=np.float32))
+            # Don't del explicitly — let gc handle it when ref drops
+            b = None  # type: ignore
+
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0, \
+            f"Memory leak after reassignment: +{caffe_ffi.total_allocated_bytes() - mem0} bytes"
+
+
+@require_cpp_extension
+class TestBlobInterleavedLifecycle:
+    """Tests with multiple blobs whose lifetimes interleave in complex ways,
+    verifying that counter bookkeeping handles out-of-order destruction correctly.
+    """
+
+    @staticmethod
+    def _gc():
+        import gc
+        gc.collect(); gc.collect(); gc.collect()
+
+    @staticmethod
+    def _nbytes(shape):
+        count = 1
+        for d in shape:
+            count *= d
+        return count * 4 * 2
+
+    def test_out_of_order_destruction(self):
+        """Create blobs A,B,C,D and delete in order B,D,A,C; counters must stay correct."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+        live0 = caffe_ffi.live_blob_count()
+
+        a = Blob([2, 2])  # 32B
+        b = Blob([3, 3])  # 72B
+        c = Blob([4, 4])  # 128B
+        d = Blob([5, 5])  # 200B
+
+        total = self._nbytes([2,2]) + self._nbytes([3,3]) + self._nbytes([4,4]) + self._nbytes([5,5])
+        assert caffe_ffi.total_allocated_bytes() - mem0 == total
+        assert caffe_ffi.live_blob_count() == live0 + 4
+
+        # Delete in non-creation order: B, D, A, C
+        del b  # -72B
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() - mem0 == total - self._nbytes([3,3])
+        assert caffe_ffi.live_blob_count() == live0 + 3
+
+        del d  # -200B
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() - mem0 == total - self._nbytes([3,3]) - self._nbytes([5,5])
+        assert caffe_ffi.live_blob_count() == live0 + 2
+
+        del a  # -32B
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() - mem0 == self._nbytes([4,4])  # only C left
+        assert caffe_ffi.live_blob_count() == live0 + 1
+
+        del c  # -128B
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0
+        assert caffe_ffi.live_blob_count() == live0
+
+    def test_nested_blob_references(self):
+        """Blobs referencing each other via copy_from, then deleting in nested order."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+
+        outer = Blob([6, 6])
+        outer.fill(1.0)
+
+        def inner_scope():
+            inner1 = Blob()
+            inner1.copy_from(outer)
+            inner2 = Blob()
+            inner2.copy_from(outer)
+            inner3 = Blob([3, 3])
+            inner3.from_numpy(outer.to_numpy()[:3, :3])
+            # inner1, inner2, inner3 go out of scope here
+
+        inner_scope()
+        self._gc()
+
+        # Only outer should remain
+        expected_outer = self._nbytes([6, 6])
+        assert caffe_ffi.total_allocated_bytes() - mem0 == expected_outer, \
+            f"Nested scope leaked: +{caffe_ffi.total_allocated_bytes() - mem0 - expected_outer} bytes"
+
+        del outer
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0
+
+    def test_blob_list_append_pop(self):
+        """Simulate a dynamic blob pool: append N blobs, pop half, verify counts."""
+        self._gc()
+        mem0 = caffe_ffi.total_allocated_bytes()
+        live0 = caffe_ffi.live_blob_count()
+
+        pool = []
+        shapes = [(2,2), (3,3), (4,4), (5,5), (6,6), (7,7), (8,8)]
+
+        for shape in shapes:
+            b = Blob(list(shape))
+            b.fill(0.0)
+            pool.append(b)
+
+        total = sum(self._nbytes(s) for s in shapes)
+        assert caffe_ffi.total_allocated_bytes() - mem0 == total
+        assert caffe_ffi.live_blob_count() == live0 + len(shapes)
+
+        # Pop from middle and end, deleting those blobs
+        popped = pool.pop(3)  # remove (5,5)
+        del popped
+        self._gc()
+        remaining_shapes = shapes[:3] + shapes[4:]
+        total_after_pop = sum(self._nbytes(s) for s in remaining_shapes)
+        assert caffe_ffi.total_allocated_bytes() - mem0 == total_after_pop
+        assert caffe_ffi.live_blob_count() == live0 + len(remaining_shapes)
+
+        # Clear pool entirely
+        pool.clear()
+        self._gc()
+        assert caffe_ffi.total_allocated_bytes() == mem0
+        assert caffe_ffi.live_blob_count() == live0
