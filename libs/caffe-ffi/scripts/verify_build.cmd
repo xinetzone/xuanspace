@@ -3,7 +3,6 @@ setlocal enabledelayedexpansion
 
 set "KMP_DUPLICATE_LIB_OK=TRUE"
 set "CONDA_ENV=D:\Users\xinzo\anaconda3\envs\py314"
-set "PYTHON_EXE=%CONDA_ENV%\python.exe"
 
 call "C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 REM 确保 py314 环境在 PATH 最前面（vcvars 可能追加了系统路径）
@@ -22,7 +21,7 @@ echo.
 echo ============================================================
 echo  Step 2: CMake configure
 echo ============================================================
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAFFE_FFI_BUILD_TESTS=ON -DPython_EXECUTABLE="%PYTHON_EXE%"
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCAFFE_FFI_BUILD_TESTS=ON
 if errorlevel 1 (
     echo [ERROR] CMake configure failed
     echo Check: TVM_FFI_USE_BUILTIN_TYPETRAITS is defined in CompilerConfig.cmake
