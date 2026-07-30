@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 import gc
 import logging
 import sys
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -13,6 +15,7 @@ import numpy as np
 
 _project_root = Path(__file__).resolve().parent.parent.parent
 _python_dir = _project_root / "python"
+_temp_dir = _project_root / "tests" / "python" / ".temp"
 if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
@@ -21,6 +24,41 @@ from caffe_ffi import _ffi_api
 # ─── Performance tracing infrastructure ────────────────────────────
 
 _perf_logger = logging.getLogger("caffe_ffi.test.perf")
+_csv_writer = None
+_csv_file = None
+_csv_path = None
+
+
+def _ensure_csv():
+    """Initialize CSV file for performance logging (lazy, on first write)."""
+    global _csv_writer, _csv_file, _csv_path
+    if _csv_writer is not None:
+        return
+    _temp_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _csv_path = _temp_dir / f"perf_log_{ts}.csv"
+    _csv_file = open(_csv_path, "w", newline="", encoding="utf-8")
+    _csv_writer = csv.writer(_csv_file)
+    _csv_writer.writerow([
+        "timestamp", "test_class", "test_name", "operation",
+        "elapsed_ms", "delta_mem", "delta_blobs", "extra_fields"
+    ])
+    _csv_file.flush()
+
+
+def _write_csv_row(test_class: str, test_name: str, operation: str,
+                   elapsed_ms: float, delta_mem: int, delta_blobs: int,
+                   extra: str = ""):
+    """Write one row to the performance CSV file."""
+    _ensure_csv()
+    _csv_writer.writerow([
+        datetime.now().isoformat(timespec="milliseconds"),
+        test_class, test_name, operation,
+        f"{elapsed_ms:.4f}", delta_mem, delta_blobs, extra,
+    ])
+    _csv_file.flush()
+
+
 if not _perf_logger.handlers:
     _perf_handler = logging.StreamHandler(sys.stderr)
     _perf_handler.setLevel(logging.INFO)
@@ -43,12 +81,15 @@ def _mem_bytes_blobs():
     return total_allocated_bytes(), live_blob_count()
 
 
+_current_test_context = {"cls": "", "name": ""}
+
+
 @contextmanager
 def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
     """Context manager that measures wall-clock time and memory delta for a block.
 
     Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
-    'input_size'); these are appended to the exit log line.
+    'input_size'); these are appended to the exit log line and CSV.
 
     Usage:
         with perf_trace("Net(prototxt)") as t:
@@ -66,14 +107,20 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
         mem_after, blobs_after = _mem_bytes_blobs()
         delta_mem = mem_after - mem_before
         delta_blobs = blobs_after - blobs_before
+        extra_parts = [f"{k}={v}" for k, v in info.items()
+                       if k not in ("elapsed_ms", "delta_mem", "delta_blobs")]
+        extra_str = " ".join(extra_parts)
         if verbose:
             mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
             blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
-            extra = " ".join(f"{k}={v}" for k, v in info.items())
             _perf_logger.info(
                 "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s",
-                label, elapsed_ms, mem_str, blob_str, extra,
+                label, elapsed_ms, mem_str, blob_str, extra_str,
             )
+        _write_csv_row(
+            _current_test_context["cls"], _current_test_context["name"],
+            label, elapsed_ms, delta_mem, delta_blobs, extra_str,
+        )
         info["elapsed_ms"] = elapsed_ms
         info["delta_mem"] = delta_mem
         info["delta_blobs"] = delta_blobs
@@ -180,6 +227,15 @@ def pytest_runtest_setup(item):
 
 def pytest_sessionfinish(session, exitstatus):
     """Final check: memory should return to session baseline after all tests."""
+    global _csv_writer, _csv_file, _csv_path
+    # Close CSV file and report path
+    if _csv_file is not None:
+        _csv_file.close()
+        _csv_file = None
+        _csv_writer = None
+        _perf_logger.info("Performance CSV saved to: %s", _csv_path)
+        print(f"\n[PERF-CSV] Performance log saved to: {_csv_path}", file=sys.stderr)
+
     if not _ffi_api.is_available() or _session_baseline is None:
         return
     import warnings
@@ -215,7 +271,11 @@ _P2_TEST_CLASSES = {
     "TestNetTopologies", "TestNetReshapeDynamics", "TestLargeScaleForward",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES
+_P2B_TEST_CLASSES = {
+    "TestSplitTopologies", "TestExtremeBoundaries",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES
 
 
 @pytest.fixture(autouse=True)
@@ -228,9 +288,13 @@ def _test_timing_log(request):
         yield
         return
 
+    _current_test_context["cls"] = cls_name
+    _current_test_context["name"] = test_name
+
     mem_before, blobs_before = _mem_bytes_blobs()
     t0 = time.perf_counter()
     _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d", cls_name, test_name, mem_before, blobs_before)
+    _write_csv_row(cls_name, test_name, "BEGIN", 0.0, 0, 0, f"mem={mem_before} blobs={blobs_before}")
     yield
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     mem_after, blobs_after = _mem_bytes_blobs()
@@ -242,6 +306,11 @@ def _test_timing_log(request):
         "─── END   %s.%s ───  Δtime=%.2fms  Δmem=%s  Δblobs=%s  total=%dB/%d blobs",
         cls_name, test_name, elapsed_ms, mem_str, blob_str, mem_after, blobs_after,
     )
+    _write_csv_row(cls_name, test_name, "END", elapsed_ms, delta_mem, delta_blobs,
+                   f"total_mem={mem_after} total_blobs={blobs_after}")
+
+    _current_test_context["cls"] = ""
+    _current_test_context["name"] = ""
 
 
 @pytest.fixture
