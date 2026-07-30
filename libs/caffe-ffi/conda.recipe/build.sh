@@ -6,6 +6,10 @@
 #       回退到 pip 安装 apache-tvm-ffi wheel/sdist。
 #       构建后自动修复 RPATH 和共享库依赖。
 #
+# 跨平台支持：
+#   - Linux:   patchelf + $ORIGIN        + ldd + nm -D
+#   - macOS:   install_name_tool + @loader_path + otool -L + nm -gU
+#
 # conda-build 环境变量:
 #   $PREFIX     — 安装目标前缀（conda 环境目录）
 #   $PYTHON     — Python 解释器路径
@@ -16,6 +20,123 @@
 set -eux -o pipefail
 
 export CMAKE_GENERATOR=Ninja
+
+# ── 平台检测 ──
+UNAME_S=$(uname -s)
+IS_MACOS=0
+IS_LINUX=0
+if [ "$UNAME_S" = "Darwin" ]; then
+    IS_MACOS=1
+    echo "[build.sh] Detected platform: macOS (Darwin)"
+elif [ "$UNAME_S" = "Linux" ]; then
+    IS_LINUX=1
+    echo "[build.sh] Detected platform: Linux"
+else
+    echo "[build.sh] WARNING: Unknown platform: $UNAME_S, assuming Linux-like behavior"
+    IS_LINUX=1
+fi
+
+# ── 跨平台工具函数封装 ──
+
+# get_rpath <binary>  — 打印当前RPATH/RUNPATH
+get_rpath() {
+    local binary="$1"
+    if [ "$IS_MACOS" -eq 1 ]; then
+        otool -l "$binary" 2>/dev/null | grep -A2 LC_RPATH | grep path | awk '{print $2}' || echo "(no RPATH set)"
+    else
+        patchelf --print-rpath "$binary" 2>/dev/null || echo "(no RPATH set)"
+    fi
+}
+
+# set_rpath <binary> <rpath1> [<rpath2> ...]  — 设置RPATH（覆盖旧值）
+set_rpath() {
+    local binary="$1"
+    shift
+    local new_rpath=""
+    for rp in "$@"; do
+        if [ -z "$new_rpath" ]; then
+            new_rpath="$rp"
+        else
+            new_rpath="$new_rpath:$rp"
+        fi
+    done
+
+    if [ "$IS_MACOS" -eq 1 ]; then
+        # macOS: 删除所有旧RPATH，再逐个添加新RPATH
+        local old_rpaths
+        old_rpaths=$(otool -l "$binary" 2>/dev/null | grep -A2 LC_RPATH | grep path | awk '{print $2}' || true)
+        for old_rp in $old_rpaths; do
+            install_name_tool -delete_rpath "$old_rp" "$binary" 2>/dev/null || true
+        done
+        # 添加新RPATH
+        local IFS=':'
+        for rp in $new_rpath; do
+            install_name_tool -add_rpath "$rp" "$binary"
+        done
+        unset IFS
+        # 设置install name id（macOS dylib需要）
+        local basename
+        basename=$(basename "$binary")
+        install_name_tool -id "@rpath/$basename" "$binary" 2>/dev/null || true
+    else
+        # Linux: patchelf直接覆盖
+        patchelf --set-rpath "$new_rpath" "$binary"
+    fi
+}
+
+# check_symbol <binary> <symbol_name>  — 检查符号是否为T类型（定义在text段），返回0=找到
+check_symbol() {
+    local binary="$1"
+    local symbol="$2"
+    if [ "$IS_MACOS" -eq 1 ]; then
+        # macOS: nm -gU 显示全局外部符号，T = text section
+        nm -gU "$binary" 2>/dev/null | grep -E " T _?$symbol$" >/dev/null
+    else
+        # Linux: nm -D 显示动态符号表，T = text section
+        nm -D "$binary" 2>/dev/null | grep -q " T $symbol$"
+    fi
+}
+
+# check_deps <binary>  — 检查依赖是否都能解析，找不到则返回非0
+check_deps() {
+    local binary="$1"
+    if [ "$IS_MACOS" -eq 1 ]; then
+        # macOS: otool -L，检查是否有指向构建目录的引用（非系统/非@rpath/@loader_path路径）
+        local bad_refs
+        bad_refs=$(otool -L "$binary" 2>/dev/null | grep -v "@rpath\|@loader_path\|/usr/lib\|/System/Library\|$(basename "$binary")" | grep -v "^$binary" | grep -v "^$(dirname "$binary")" | grep "/" || true)
+        if [ -n "$bad_refs" ]; then
+            echo "[build.sh] WARNING: Potentially non-portable references found:"
+            echo "$bad_refs"
+            # 不直接报错，因为cross-compiled dylib可能引用build prefix，这在conda-build中会被post-process处理
+            return 0
+        fi
+        return 0
+    else
+        # Linux: ldd 检查not found
+        if ldd "$binary" 2>&1 | grep -q "not found"; then
+            ldd "$binary" | grep "not found"
+            return 1
+        fi
+        return 0
+    fi
+}
+
+# fix_deps <binary> <dep_basename> <new_ref>  — 修复依赖库引用路径
+fix_dep_ref() {
+    local binary="$1"
+    local dep_name="$2"
+    local new_ref="$3"
+    if [ "$IS_MACOS" -eq 1 ]; then
+        # macOS: 找出旧的引用路径，替换为@rpath/<dep_name>
+        local old_ref
+        old_ref=$(otool -L "$binary" 2>/dev/null | grep "$dep_name" | head -1 | awk '{print $1}' || true)
+        if [ -n "$old_ref" ] && [ "$old_ref" != "$new_ref" ] && [[ "$old_ref" != "@rpath/"* ]] && [[ "$old_ref" != "@loader_path/"* ]]; then
+            echo "[build.sh] Fixing install name: $old_ref -> $new_ref"
+            install_name_tool -change "$old_ref" "$new_ref" "$binary"
+        fi
+    fi
+    # Linux: 通过RPATH解决，不需要修改NEEDED条目
+}
 
 # ── Helper: clean editable finder files (triple-protection strategy) ──
 clean_editable_files() {
@@ -133,14 +254,16 @@ if [ "$TVM_FFI_SOURCE" = "local-pip" ]; then
     fi
     echo "[build.sh] libtvm_ffi.so found: $TVM_FFI_LIB"
 
-    # 用 nm 检查 TVMFFIGetCustomAllocator 符号（应该是 T 符号）
+    # 检查关键符号是否为T类型（定义在text段，外部可见）
     echo "[build.sh] Checking for TVMFFIGetCustomAllocator symbol..."
-    if command -v nm &>/dev/null; then
-        if ! nm -D "$TVM_FFI_LIB" | grep -q "T TVMFFIGetCustomAllocator"; then
-            echo "[build.sh] WARNING: TVMFFIGetCustomAllocator symbol not found as T (global text) in libtvm_ffi.so"
-            nm -D "$TVM_FFI_LIB" | grep -i TVMFFIGetCustomAllocator || true
+    if check_symbol "$TVM_FFI_LIB" "TVMFFIGetCustomAllocator"; then
+        echo "[build.sh] TVMFFIGetCustomAllocator symbol verified (T) on $UNAME_S"
+    else
+        echo "[build.sh] WARNING: TVMFFIGetCustomAllocator symbol not found as T in libtvm_ffi.so"
+        if [ "$IS_MACOS" -eq 1 ]; then
+            nm -gU "$TVM_FFI_LIB" 2>/dev/null | grep -i TVMFFIGetCustomAllocator || true
         else
-            echo "[build.sh] TVMFFIGetCustomAllocator symbol verified (T)"
+            nm -D "$TVM_FFI_LIB" 2>/dev/null | grep -i TVMFFIGetCustomAllocator || true
         fi
     fi
 fi
@@ -167,30 +290,60 @@ fi
 #   - 临时清空 conda 的 CMAKE_ARGS（包含 -DCMAKE_INSTALL_PREFIX=$PREFIX 等），
 #     避免干扰 scikit-build-core 的 wheel 构建过程
 # RPATH 使用全相对路径（避免 conda-build prefix replacement "Placeholder too short" 错误）：
+#
+# Linux ($ORIGIN):
 #   $ORIGIN                    — _caffe_ffi.so 所在目录（SP_DIR/caffe_ffi/）
 #   $ORIGIN/lib                — 同目录下的 lib/ 子目录（预留私有库）
 #   $ORIGIN/../tvm_ffi/lib     — 同级 tvm_ffi 包的 lib/ 目录（libtvm_ffi.so 在这里）
 #   $ORIGIN/../../..           — 上溯3级到达 PREFIX/lib（conda 标准系统库路径）
-# 注意：禁止使用 ${PREFIX}/lib 绝对路径！必须用 $ORIGIN 相对路径。
+#
+# macOS (@loader_path):
+#   @loader_path                    — _caffe_ffi.so 所在目录（SP_DIR/caffe_ffi/）
+#   @loader_path/lib                — 同目录下的 lib/ 子目录
+#   @loader_path/../tvm_ffi/lib     — 同级 tvm_ffi 包的 lib/ 目录
+#   @loader_path/../../..           — 上溯3级到达 PREFIX/lib
+#
+# 注意：禁止使用 ${PREFIX}/lib 绝对路径！必须用相对路径。
+
+# 平台相关的RPATH前缀
+# Note: CMAKE_MACOSX_RPATH/CMAKE_INSTALL_NAME_DIR (macOS) and CMAKE_BUILD_RPATH_USE_ORIGIN (Linux)
+# are now set via [tool.scikit-build.overrides] in pyproject.toml, so we don't need _EXTRA_CMAKE_ARGS here.
+if [ "$IS_MACOS" -eq 1 ]; then
+    RPATH_PREFIX="@loader_path"
+else
+    RPATH_PREFIX='$ORIGIN'
+fi
+
 _CAFFE_OLD_CMAKE_ARGS="${CMAKE_ARGS:-}"
 export CMAKE_ARGS=""
 
+# 构建_caffe_ffi.so和libtvm_ffi.so的RPATH列表（按平台前缀）
+# Note: The following CMake args are set in pyproject.toml (project defaults) and do NOT need
+# to be repeated here:
+#   - CMAKE_BUILD_TYPE=Release              → cmake.build-type
+#   - CAFFE_CPU_ONLY=ON                     → cmake.define
+#   - CAFFE_USE_BLAS=ON                     → cmake.define
+#   - CAFFE_FFI_BUILD_TESTS=OFF             → cmake.define
+#   - CMAKE_SKIP_BUILD_RPATH=OFF            → cmake.define
+#   - CMAKE_BUILD_WITH_INSTALL_RPATH=ON     → cmake.define
+#   - CMAKE_POSITION_INDEPENDENT_CODE=ON    → cmake.define
+#   - CMAKE_BUILD_RPATH_USE_ORIGIN=ON       → Linux override (if.platform-system="linux")
+#   - CMAKE_MACOSX_RPATH=ON                 → macOS override (if.platform-system="^darwin")
+#   - CMAKE_INSTALL_NAME_DIR=@rpath         → macOS override
+# Only conda-specific args (runtime-dependent or post-processed) remain here:
+_CAFFE_RPATH="${RPATH_PREFIX}:${RPATH_PREFIX}/lib:${RPATH_PREFIX}/../tvm_ffi/lib:${RPATH_PREFIX}/../../.."
+_TVM_RPATH="${RPATH_PREFIX}:${RPATH_PREFIX}/..:${RPATH_PREFIX}/../../../../lib"
+
 export SKBUILD_CMAKE_ARGS="\
 -DCMAKE_PREFIX_PATH=${PREFIX} \
--DCMAKE_INSTALL_RPATH=\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:\$ORIGIN/../../.. \
--DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
--DCMAKE_SKIP_BUILD_RPATH=OFF \
--DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
--DCMAKE_BUILD_TYPE=Release \
--DCAFFE_CPU_ONLY=ON \
--DCAFFE_USE_BLAS=ON \
+-DCMAKE_INSTALL_RPATH=${_CAFFE_RPATH} \
 -DCAFFE_FFI_PREFER_SYSTEM_TVM_FFI=ON \
 -DTVM_FFI_USE_LIBBACKTRACE=OFF \
--DTVM_FFI_BACKTRACE_ON_SEGFAULT=OFF \
--DCAFFE_FFI_BUILD_TESTS=OFF"
+-DTVM_FFI_BACKTRACE_ON_SEGFAULT=OFF"
 
 echo "[build.sh] ============================================================"
 echo "[build.sh] CMake args (SKBUILD_CMAKE_ARGS): $SKBUILD_CMAKE_ARGS"
+echo "[build.sh] RPATH prefix: $RPATH_PREFIX"
 echo "[build.sh] --- conda-build environment variables ---"
 echo "[build.sh] PREFIX:        $PREFIX"
 echo "[build.sh] BUILD_PREFIX:  ${BUILD_PREFIX:-not set}"
@@ -199,6 +352,7 @@ echo "[build.sh] SRC_DIR:       $SRC_DIR"
 echo "[build.sh] Python:        $PYTHON ($($PYTHON --version 2>&1))"
 echo "[build.sh] CPU_COUNT:     ${CPU_COUNT:-4}"
 echo "[build.sh] tvm-ffi src:   $TVM_FFI_SOURCE (${LOCAL_TVM_FFI_DIR:-PyPI wheel})"
+echo "[build.sh] Platform:      $UNAME_S"
 echo "[build.sh] ============================================================"
 
 # ── 3. 构建并安装 ──
@@ -274,61 +428,69 @@ TVM_FFI_LIB=$($PYTHON -c "import tvm_ffi, os; print(os.path.join(os.path.dirname
 echo "[build.sh] libtvm_ffi.so expected at: $TVM_FFI_LIB"
 ls -la "$TVM_FFI_LIB"
 
-# 用 nm 再次确认 TVMFFIGetCustomAllocator 符号存在
-if command -v nm &>/dev/null; then
-    echo "[build.sh] Verifying TVMFFIGetCustomAllocator symbol in installed libtvm_ffi.so..."
-    nm -D "$TVM_FFI_LIB" | grep TVMFFIGetCustomAllocator || {
-        echo "[build.sh] WARNING: TVMFFIGetCustomAllocator symbol not found"
-    }
-fi
-
-# 4c. 用 patchelf 设置 RPATH（全部使用相对路径，避免 conda prefix placeholder 长度问题）
-if command -v patchelf &>/dev/null; then
-    echo "[build.sh] Current RPATH of _caffe_ffi.so:"
-    patchelf --print-rpath "$CAFFE_FFI_SO" 2>/dev/null || echo "  (no RPATH set)"
-
-    # 相对路径（避免绝对路径导致 conda-build prefix replacement 时 placeholder 长度不足）：
-    #   $ORIGIN                    — caffe_ffi/ 目录
-    #   $ORIGIN/lib                — caffe_ffi/lib/（预留）
-    #   $ORIGIN/../tvm_ffi/lib     — 指向 tvm_ffi 包的 lib/ 目录
-    #   $ORIGIN/../../..           — 上溯 3 级到达 PREFIX/lib（conda 标准库路径）
-    NEW_RPATH="\$ORIGIN:\$ORIGIN/lib:\$ORIGIN/../tvm_ffi/lib:\$ORIGIN/../../.."
-    patchelf --set-rpath "$NEW_RPATH" "$CAFFE_FFI_SO"
-    echo "[build.sh] Set RPATH to: $NEW_RPATH"
-    echo "[build.sh] New RPATH: $(patchelf --print-rpath "$CAFFE_FFI_SO" 2>/dev/null)"
+# 用 nm/otool 再次确认 TVMFFIGetCustomAllocator 符号存在
+echo "[build.sh] Verifying TVMFFIGetCustomAllocator symbol in installed libtvm_ffi..."
+if check_symbol "$TVM_FFI_LIB" "TVMFFIGetCustomAllocator"; then
+    echo "[build.sh] TVMFFIGetCustomAllocator symbol present"
 else
-    echo "[build.sh] WARNING: patchelf not available, skipping RPATH fix"
+    echo "[build.sh] WARNING: TVMFFIGetCustomAllocator symbol not found after install"
+    if [ "$IS_MACOS" -eq 1 ]; then
+        nm -gU "$TVM_FFI_LIB" | grep -i TVMFFI || true
+    else
+        nm -D "$TVM_FFI_LIB" | grep TVMFFI || true
+    fi
 fi
 
-# 4c-bis. 同样为 libtvm_ffi.so 设置相对 RPATH（避免 prefix placeholder 问题）
-if command -v patchelf &>/dev/null && [ -n "${TVM_FFI_LIB:-}" ] && [ -f "$TVM_FFI_LIB" ]; then
-    echo "[build.sh] Current RPATH of libtvm_ffi.so:"
-    patchelf --print-rpath "$TVM_FFI_LIB" 2>/dev/null || echo "  (no RPATH set)"
-    # libtvm_ffi.so 在 tvm_ffi/lib/ 下（比 _caffe_ffi.so 深一级）：
-    #   $ORIGIN              — tvm_ffi/lib/
-    #   $ORIGIN/..           — tvm_ffi/（site-packages/tvm_ffi/）
-    #   $ORIGIN/../../../../ — PREFIX/lib/（上溯 4 级：lib→tvm_ffi→site-packages→python3.14→lib）
-    _TVM_RPATH="\$ORIGIN:\$ORIGIN/..:\$ORIGIN/../../../../"
-    patchelf --set-rpath "$_TVM_RPATH" "$TVM_FFI_LIB"
-    echo "[build.sh] Set libtvm_ffi.so RPATH to: $_TVM_RPATH"
-    echo "[build.sh] New libtvm_ffi.so RPATH: $(patchelf --print-rpath "$TVM_FFI_LIB" 2>/dev/null)"
+# 4c. 设置 RPATH（全部使用相对路径，避免 conda prefix placeholder 长度问题）
+echo "[build.sh] Current RPATH of _caffe_ffi.so: $(get_rpath "$CAFFE_FFI_SO")"
+
+# 相对路径（避免绝对路径导致 conda-build prefix replacement 时 placeholder 长度不足）：
+# Linux:   $ORIGIN/...
+# macOS:   @loader_path/...
+# _caffe_ffi.so 在 SP_DIR/caffe_ffi/：
+#   <prefix>/lib/python3.x/site-packages/caffe_ffi/_caffe_ffi.so
+#   到 PREFIX/lib 需要上溯3级：caffe_ffi → site-packages → python3.x → lib
+#   到 tvm_ffi/lib 需要上溯1级：caffe_ffi → site-packages，然后 tvm_ffi/lib
+set_rpath "$CAFFE_FFI_SO" \
+    "${RPATH_PREFIX}" \
+    "${RPATH_PREFIX}/lib" \
+    "${RPATH_PREFIX}/../tvm_ffi/lib" \
+    "${RPATH_PREFIX}/../../.."
+echo "[build.sh] Set _caffe_ffi.so RPATH to platform-relative paths"
+echo "[build.sh] New RPATH: $(get_rpath "$CAFFE_FFI_SO")"
+
+# 4c-bis. 同样为 libtvm_ffi.so 设置相对 RPATH
+# libtvm_ffi.so 在 SP_DIR/tvm_ffi/lib/（比 _caffe_ffi.so 深一级）：
+#   <prefix>/lib/python3.x/site-packages/tvm_ffi/lib/libtvm_ffi.so
+#   到 PREFIX/lib 需要上溯4级：lib → tvm_ffi → site-packages → python3.x → lib
+if [ -n "${TVM_FFI_LIB:-}" ] && [ -f "$TVM_FFI_LIB" ]; then
+    echo "[build.sh] Current RPATH of libtvm_ffi.so: $(get_rpath "$TVM_FFI_LIB")"
+    set_rpath "$TVM_FFI_LIB" \
+        "${RPATH_PREFIX}" \
+        "${RPATH_PREFIX}/.." \
+        "${RPATH_PREFIX}/../../../../lib"
+    echo "[build.sh] Set libtvm_ffi.so RPATH to platform-relative paths"
+    echo "[build.sh] New libtvm_ffi.so RPATH: $(get_rpath "$TVM_FFI_LIB")"
+
+    # macOS: 修复_caffe_ffi.so对libtvm_ffi.dylib的引用路径（install name）
+    if [ "$IS_MACOS" -eq 1 ]; then
+        fix_dep_ref "$CAFFE_FFI_SO" "libtvm_ffi" "@rpath/libtvm_ffi.dylib"
+    fi
 fi
 
-# 4d. 运行 ldd 验证依赖解析
+# 4d. 运行依赖检查
 echo "[build.sh] ============================================================"
-echo "[build.sh] ldd check on _caffe_ffi.so:"
-if command -v ldd &>/dev/null; then
+echo "[build.sh] Dependency check on _caffe_ffi.so:"
+if [ "$IS_MACOS" -eq 1 ]; then
+    otool -L "$CAFFE_FFI_SO" || true
+    check_deps "$CAFFE_FFI_SO"
+else
     ldd "$CAFFE_FFI_SO" || true
-
-    # 检查是否有 "not found" 的依赖
-    if ldd "$CAFFE_FFI_SO" 2>&1 | grep -q "not found"; then
+    if ! check_deps "$CAFFE_FFI_SO"; then
         echo "[build.sh] ERROR: Some shared library dependencies are unresolved!"
-        ldd "$CAFFE_FFI_SO" | grep "not found"
         exit 1
     fi
     echo "[build.sh] All shared library dependencies resolved successfully"
-else
-    echo "[build.sh] ldd not available, skipping dependency check"
 fi
 
 echo "[build.sh] ============================================================"

@@ -81,13 +81,33 @@ sdist.exclude = [
     "dist",
 ]
 
+# ── CMake defines: project defaults (apply to all builds) ──
+# Platform-specific settings are in [[tool.scikit-build.overrides]] below.
+# Conda-specific settings (CMAKE_PREFIX_PATH, PREFER_SYSTEM_TVM_FFI, INSTALL_RPATH)
+# remain in conda.recipe/build.sh via SKBUILD_CMAKE_ARGS, as they require
+# runtime variables ($PREFIX) and post-build patchelf/install_name_tool processing.
 [tool.scikit-build.cmake.define]
 CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
 CAFFE_CPU_ONLY = "ON"
+CAFFE_USE_BLAS = "ON"
+CAFFE_FFI_BUILD_TESTS = "OFF"
 CMAKE_INSTALL_RPATH_USE_LINK_PATH = "ON"
-CMAKE_BUILD_RPATH_USE_ORIGIN = "ON"
 CMAKE_SKIP_BUILD_RPATH = "OFF"
 CMAKE_BUILD_WITH_INSTALL_RPATH = "ON"
+CMAKE_POSITION_INDEPENDENT_CODE = "ON"
+
+# ── Linux-specific CMake settings ──
+[[tool.scikit-build.overrides]]
+if.platform-system = "linux"
+[tool.scikit-build.overrides.cmake.define]
+CMAKE_BUILD_RPATH_USE_ORIGIN = "ON"
+
+# ── macOS-specific CMake settings ──
+[[tool.scikit-build.overrides]]
+if.platform-system = "^darwin"
+[tool.scikit-build.overrides.cmake.define]
+CMAKE_MACOSX_RPATH = "ON"
+CMAKE_INSTALL_NAME_DIR = "@rpath"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

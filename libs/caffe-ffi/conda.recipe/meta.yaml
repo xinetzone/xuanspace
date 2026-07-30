@@ -9,13 +9,23 @@ source:
   path: ..
 
 build:
-  number: 6
+  number: 7
   skip: true  # [py<314]
-  detect_binary_files_with_prefix: false   # RPATHs are all $ORIGIN-relative; no prefix replacement needed
+  detect_binary_files_with_prefix: false   # RPATHs are all $ORIGIN/@loader_path-relative; no prefix replacement needed
+  # NOTE: conda-build >=26.5 deprecates missing_dso_whitelist in favor of missing_dso_allowlist
+  # (scheduled removal in 27.3). When upgrading conda-build to 26.5+, add missing_dso_allowlist
+  # with the same entries. Both keys are supported in 26.5.x for forward compatibility.
   missing_dso_whitelist:
+    # Linux shared objects
     - "*/libtvm_ffi*.so*"
     - "*/libopenblas*.so*"
     - "*/libprotobuf*.so*"
+    # macOS dynamic libraries
+    - "*/libtvm_ffi*.dylib"
+    - "*/libopenblas*.dylib"
+    - "*/libprotobuf*.dylib"
+    # @rpath-relative references (macOS)
+    - "@rpath/libtvm_ffi*.dylib"
 
 requirements:
   build:
@@ -23,7 +33,9 @@ requirements:
     - cmake>=3.26
     - ninja>=1.11
     - scikit-build-core>=0.10.0
-    - patchelf
+    - patchelf  # [linux]
+    - cctools   # [osx]   # provides install_name_tool, otool, nm (usually pre-installed, cctools ensures availability)
+    - make      # [osx]
   host:
     - python>=3.14
     - pip
@@ -36,12 +48,15 @@ requirements:
     - cython>=3.2.8
     - typing-extensions>=4.5
     - setuptools-scm
+    - llvm-openmp  # [osx]  # OpenMP support for BLAS on macOS (libomp)
+    - macos-sdk {{ MACOSX_DEPLOYMENT_TARGET|default("10.15") }}  # [osx]
   run:
     - python>=3.14
     - protobuf>=7.0.0
     - numpy>=2.3
     - libopenblas
     - typing-extensions>=4.5
+    - llvm-openmp  # [osx]
 
 test:
   imports:
