@@ -26,6 +26,7 @@ requirements:
   host:
     - python>=3.14
     - pip
+    - scikit-build-core>=0.10.0
     - libprotobuf>=7.0.0
     - protobuf>=7.0.0
     - numpy>=2.3
