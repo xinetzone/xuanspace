@@ -604,15 +604,21 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
 
     def test_forwards_with_increasing_batch_sizes(self, simple_mlp, ptrace):
         """Sequentially increasing batch sizes (1→2→4→8→16) all work."""
+        import time as _time
         batch_sizes = [1, 2, 4, 8, 16]
         results = []
+        fwd_times = []
         with ptrace(f"forward increasing batches {batch_sizes}") as t:
             for bs in batch_sizes:
                 inp = np.random.randn(bs, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out = simple_mlp.forward({"data": inp})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
+                fwd_times.append((bs, round(_dt, 3)))
                 assert out["prob"].shape == (bs, 2)
                 results.append(out["prob"].sum())
             t['n_batches'] = len(batch_sizes)
+            t['fwd_times_ms'] = str(fwd_times)
         # Each batch should produce valid probability distributions
         for i, bs in enumerate(batch_sizes):
             assert np.isclose(results[i], float(bs), rtol=1e-4), \
@@ -620,13 +626,19 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
 
     def test_forwards_with_decreasing_batch_sizes(self, simple_mlp, ptrace):
         """Sequentially decreasing batch sizes (16→8→4→2→1) all work."""
+        import time as _time
         batch_sizes = [16, 8, 4, 2, 1]
+        fwd_times = []
         with ptrace(f"forward decreasing batches {batch_sizes}") as t:
             for bs in batch_sizes:
                 inp = np.random.randn(bs, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out = simple_mlp.forward({"data": inp})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
+                fwd_times.append((bs, round(_dt, 3)))
                 assert out["prob"].shape == (bs, 2)
             t['n_batches'] = len(batch_sizes)
+            t['fwd_times_ms'] = str(fwd_times)
 
     def test_same_input_different_batch_layout(self, ptrace):
         """Same logical samples produce consistent probabilities regardless of batch layout."""
@@ -692,7 +704,7 @@ class TestLargeScaleForward:
     """Large-scale forward tests: repeated iterations, large batches, memory stability."""
 
     @pytest.fixture
-    def small_mlp(self):
+    def small_mlp(self, ptrace):
         """Small MLP for fast repeated testing."""
         proto = """name: "stable_mlp"
 layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 4 dim: 3 } } }
@@ -700,14 +712,19 @@ layer { name: "ip1" type: "InnerProduct" bottom: "data" top: "ip1" inner_product
 layer { name: "relu1" type: "ReLU" bottom: "ip1" top: "ip1" }
 layer { name: "ip2" type: "InnerProduct" bottom: "ip1" top: "ip2" inner_product_param { num_output: 2 bias_term: true } }
 layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
-        net = net_from_param(net_param_from_string(proto))
-        rng = np.random.RandomState(42)
-        for layer in net.layers_array():
-            if layer.type == "InnerProduct" and len(layer.blobs) >= 1:
-                W = layer.blobs[0]
-                W.from_numpy((rng.randn(*W.shape).astype(np.float32)) * 0.1)
-                if len(layer.blobs) >= 2:
-                    layer.blobs[1].from_numpy(np.zeros(layer.blobs[1].shape, dtype=np.float32))
+        with ptrace("build small_mlp (4x3→4→2)") as t:
+            net = net_from_param(net_param_from_string(proto))
+            rng = np.random.RandomState(42)
+            n_ip = 0
+            for layer in net.layers_array():
+                if layer.type == "InnerProduct" and len(layer.blobs) >= 1:
+                    W = layer.blobs[0]
+                    W.from_numpy((rng.randn(*W.shape).astype(np.float32)) * 0.1)
+                    if len(layer.blobs) >= 2:
+                        layer.blobs[1].from_numpy(np.zeros(layer.blobs[1].shape, dtype=np.float32))
+                    n_ip += 1
+            t['layers'] = len(net.layers_array())
+            t['ip_layers'] = n_ip
         return net
 
     def test_100_forwards_no_memory_growth(self, small_mlp, ptrace):
@@ -717,12 +734,21 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         n_iters = 100
         mem_before = total_allocated_bytes()
         blobs_before = live_blob_count()
+        # Sample timing for first, middle, last iterations
+        sample_indices = {0, n_iters // 2, n_iters - 1}
+        forward_times_ms = []
+        import time as _time
         with ptrace(f"forward x{n_iters}") as t:
             for i in range(n_iters):
                 inp = rng.randn(4, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out = small_mlp.forward({"data": inp})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
+                if i in sample_indices:
+                    forward_times_ms.append((i, round(_dt, 3)))
                 assert out["prob"].shape == (4, 2)
             t['iterations'] = n_iters
+            t['sample_times_ms'] = str(forward_times_ms)
         mem_after = total_allocated_bytes()
         blobs_after = live_blob_count()
         delta_blobs = blobs_after - blobs_before
@@ -734,18 +760,26 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
 
     def test_500_forwards_deterministic(self, small_mlp, ptrace):
         """500 forwards with same input always produce same output."""
+        import time as _time
         inp = np.random.RandomState(123).randn(4, 3).astype(np.float32)
         n_iters = 500
+        sample_indices = {0, n_iters // 4, n_iters // 2, 3 * n_iters // 4, n_iters - 1}
+        sample_times = []
         with ptrace(f"forward x{n_iters} determinism check") as t:
             out_first = small_mlp.forward({"data": inp})["prob"].copy()
             max_diff = 0.0
             for i in range(n_iters - 1):
+                _t0 = _time.perf_counter()
                 out = small_mlp.forward({"data": inp})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
                 diff = float(np.max(np.abs(out["prob"] - out_first)))
                 if diff > max_diff:
                     max_diff = diff
+                if i in sample_indices:
+                    sample_times.append((i, round(_dt, 3)))
             t['iterations'] = n_iters
             t['max_diff'] = max_diff
+            t['sample_times_ms'] = str(sample_times)
         assert max_diff == 0.0, f"Non-deterministic after {n_iters} iters: max_diff={max_diff}"
 
     def test_large_batch_256_stable(self, ptrace):
@@ -772,40 +806,64 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
 
     def test_alternating_batch_sizes_stable(self, small_mlp, ptrace):
         """Alternating batch sizes (1↔32) 50 times each is stable."""
+        import time as _time
         rng = np.random.RandomState(77)
         n_pairs = 50
+        batch1_times = []
+        batch32_times = []
         with ptrace(f"alternating batches 1↔32 x{n_pairs}") as t:
             for i in range(n_pairs):
                 # Batch 1
                 inp1 = rng.randn(1, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out1 = small_mlp.forward({"data": inp1})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
                 assert out1["prob"].shape == (1, 2)
                 # Batch 32
                 inp32 = rng.randn(32, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out32 = small_mlp.forward({"data": inp32})
+                _dt32 = (_time.perf_counter() - _t0) * 1000.0
                 assert out32["prob"].shape == (32, 2)
+                if i == 0 or i == n_pairs - 1:
+                    batch1_times.append(round(_dt, 3))
+                    batch32_times.append(round(_dt32, 3))
             t['switches'] = n_pairs
+            t['batch1_sample_ms'] = str(batch1_times)
+            t['batch32_sample_ms'] = str(batch32_times)
         # No assertion beyond no crash and correct shapes
 
     def test_net_destruction_and_recreation(self, ptrace):
         """Creating and destroying many nets in sequence doesn't leak."""
+        import time as _time
         from caffe_ffi import live_blob_count, total_allocated_bytes
         n_nets = 20
         blobs_before = live_blob_count()
         mem_before = total_allocated_bytes()
+        create_times = []
+        forward_times = []
         with ptrace(f"create+destroy {n_nets} nets") as t:
             for i in range(n_nets):
                 proto = f"""name: "tmp_net_{i}"
 layer {{ name: "data" type: "Input" top: "data" input_param {{ shape {{ dim: 2 dim: 3 }} }} }}
 layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "ip" inner_product_param {{ num_output: 2 bias_term: true }} }}
 layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
+                _t0 = _time.perf_counter()
                 net = net_from_param(net_param_from_string(proto))
                 _load_identity_weights(net, rng=np.random.RandomState(i))
+                _dt_create = (_time.perf_counter() - _t0) * 1000.0
                 inp = np.random.randn(2, 3).astype(np.float32)
+                _t0 = _time.perf_counter()
                 out = net.forward({"data": inp})
+                _dt_fwd = (_time.perf_counter() - _t0) * 1000.0
                 assert out["prob"].shape == (2, 2)
+                if i in (0, n_nets - 1):
+                    create_times.append(round(_dt_create, 3))
+                    forward_times.append(round(_dt_fwd, 3))
                 del net
             t['nets'] = n_nets
+            t['create_sample_ms'] = str(create_times)
+            t['fwd_sample_ms'] = str(forward_times)
         import gc
         for _ in range(5):
             gc.collect()
@@ -819,6 +877,7 @@ layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
 
     def test_multi_net_parallel_usage(self, ptrace):
         """Multiple independent Net objects coexist and forward correctly."""
+        import time as _time
         n_nets = 5
         nets = []
         with ptrace(f"create {n_nets} independent nets") as t:
@@ -834,12 +893,17 @@ layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
 
         inp = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         results = []
+        fwd_times = []
         with ptrace(f"forward {n_nets} nets independently") as t:
             for i, net in enumerate(nets):
+                _t0 = _time.perf_counter()
                 out = net.forward({"data": inp})
+                _dt = (_time.perf_counter() - _t0) * 1000.0
                 results.append(out["prob"])
+                fwd_times.append(round(_dt, 3))
                 assert out["prob"].shape == (2, 2)
             t['results'] = len(results)
+            t['fwd_times_ms'] = str(fwd_times)
 
         # All outputs should be valid probability distributions
         for i, prob in enumerate(results):
