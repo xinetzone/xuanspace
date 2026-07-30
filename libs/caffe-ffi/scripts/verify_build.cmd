@@ -2,7 +2,51 @@
 setlocal enabledelayedexpansion
 
 set "KMP_DUPLICATE_LIB_OK=TRUE"
-set "CONDA_ENV=D:\Users\xinzo\anaconda3\envs\py314"
+
+REM ============================================================
+REM  Discover py314 conda environment (no hardcoded paths)
+REM ============================================================
+set "CONDA_ENV="
+
+REM 1) Already activated in this shell?
+if defined CONDA_PREFIX (
+    echo %CONDA_PREFIX% | findstr /i "py314" >nul
+    if not errorlevel 1 set "CONDA_ENV=%CONDA_PREFIX%"
+)
+
+REM 2) Scan common conda install locations
+if not defined CONDA_ENV for %%b in (
+    "%USERPROFILE%\anaconda3"
+    "%USERPROFILE%\miniconda3"
+    "%USERPROFILE%\miniforge3"
+    "C:\ProgramData\anaconda3"
+    "C:\ProgramData\miniconda3"
+) do (
+    if exist "%%~b\envs\py314\python.exe" (
+        set "CONDA_ENV=%%~b\envs\py314"
+    )
+)
+
+REM 3) Last resort: search PATH for python.exe containing "py314"
+if not defined CONDA_ENV for %%c in (python.exe) do (
+    for /f "delims=" %%p in ('where %%c 2^>nul') do (
+        echo %%p | findstr /i "py314" >nul
+        if not errorlevel 1 (
+            for %%d in ("%%p\..") do set "CONDA_ENV=%%~fd"
+            goto :found_env
+        )
+    )
+)
+:found_env
+
+if not defined CONDA_ENV (
+    echo [ERROR] Cannot find py314 conda environment.
+    echo   Tried: CONDA_PREFIX, %%USERPROFILE%%\anaconda3\envs\py314,
+    echo          %%USERPROFILE%%\miniconda3\envs\py314, PATH
+    echo   Please activate py314 first: conda activate py314
+    exit /b 1
+)
+echo [DISCOVER] py314 conda environment: %CONDA_ENV%
 
 call "C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 REM 确保 py314 环境在 PATH 最前面（vcvars 可能追加了系统路径）

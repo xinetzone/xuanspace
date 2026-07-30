@@ -54,7 +54,37 @@ $VcvarsOutput | ForEach-Object {
 }
 
 # Prepend py314 to PATH (for runtime DLL loading)
-$Py314Env = "D:\Users\xinzo\anaconda3\envs\py314"
+# Discover py314 conda environment (no hardcoded paths)
+$Py314Env = $null
+# 1) Already activated?
+if ($env:CONDA_PREFIX -and $env:CONDA_PREFIX -match 'py314') {
+    $Py314Env = $env:CONDA_PREFIX
+}
+# 2) Scan common conda install locations
+if (-not $Py314Env) {
+    $Candidates = @(
+        "$env:USERPROFILE\anaconda3\envs\py314",
+        "$env:USERPROFILE\miniconda3\envs\py314",
+        "$env:USERPROFILE\miniforge3\envs\py314",
+        "C:\ProgramData\anaconda3\envs\py314",
+        "C:\ProgramData\miniconda3\envs\py314"
+    )
+    foreach ($c in $Candidates) {
+        if (Test-Path "$c\python.exe") { $Py314Env = $c; break }
+    }
+}
+# 3) Last resort: search PATH
+if (-not $Py314Env) {
+    $Found = Get-Command python.exe -ErrorAction SilentlyContinue | Where-Object { $_.Source -match 'py314' }
+    if ($Found) { $Py314Env = Split-Path -Parent $Found.Source }
+}
+if (-not $Py314Env) {
+    Write-Host "[ERROR] Cannot find py314 conda environment."
+    Write-Host "  Please activate py314 first: conda activate py314"
+    exit 1
+}
+Write-Host "[DISCOVER] py314 conda environment: $Py314Env"
+
 $Py314Paths = @(
     "$Py314Env",
     "$Py314Env\Scripts",
