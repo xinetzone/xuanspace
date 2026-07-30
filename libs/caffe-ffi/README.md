@@ -24,6 +24,16 @@ caffe-ffi 是基于 tvm-ffi 原生对象系统的 Caffe 深度学习框架绑定
 - Conda 包管理支持
 - Ninja 快速构建
 
+## 版本规划
+
+| 规划版本 | 阶段定位 | 核心目标 | 关键里程碑 |
+|---------|---------|---------|-----------|
+| v0.2.0 (Beta) | 功能扩展期 | 扩展层覆盖与性能优化 | 补齐常用推理层至40+，性能benchmark体系，CI/CD流水线（GitHub Actions），自动测试覆盖Linux/Windows/macOS三平台 |
+| v0.3.0 (RC) | 发布准备期 | 包发布与API稳定化 | PyPI/Conda正式发布，API冻结与稳定性保证，向后兼容策略，完整用户文档与API参考，模型兼容性验证（经典Caffe模型） |
+| v1.0.0 (Stable) | 生产就绪期 | 稳定可用 | API稳定保证（SemVer），生产级性能与内存安全，完整示例与教程，与caffe-slim的互操作桥接层完成 |
+
+> 当前v0.1.0 (Alpha)已完成独立库基础设施建设（CMake模块化、40 C++测试+65 Python测试、Docker开发环境、conda打包配置），详见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 系统要求
 
 - **Python**: 3.14+
