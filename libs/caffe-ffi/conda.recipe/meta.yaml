@@ -9,33 +9,36 @@ source:
   path: ..
 
 build:
-  number: 7
+  number: 8
   skip: true  # [py<314]
-  detect_binary_files_with_prefix: false   # RPATHs are all $ORIGIN/@loader_path-relative; no prefix replacement needed
-  # NOTE: conda-build >=26.5 deprecates missing_dso_whitelist in favor of missing_dso_allowlist
-  # (scheduled removal in 27.3). When upgrading conda-build to 26.5+, add missing_dso_allowlist
-  # with the same entries. Both keys are supported in 26.5.x for forward compatibility.
+  detect_binary_files_with_prefix: false
   missing_dso_whitelist:
-    # Linux shared objects
     - "*/libtvm_ffi*.so*"
     - "*/libopenblas*.so*"
     - "*/libprotobuf*.so*"
-    # macOS dynamic libraries
     - "*/libtvm_ffi*.dylib"
     - "*/libopenblas*.dylib"
     - "*/libprotobuf*.dylib"
-    # @rpath-relative references (macOS)
     - "@rpath/libtvm_ffi*.dylib"
+    - "*/tvm_ffi*.dll"
+    - "*/openblas*.dll"
+    - "*/libprotobuf*.dll"
+    - "*/caffe_ffi*.pyd"
 
 requirements:
   build:
     - {{ compiler('cxx') }}
+    - {{ stdlib('c') }}
     - cmake>=3.26
     - ninja>=1.11
     - scikit-build-core>=0.10.0
     - patchelf  # [linux]
-    - cctools   # [osx]   # provides install_name_tool, otool, nm (usually pre-installed, cctools ensures availability)
+    - cctools   # [osx]
     - make      # [osx]
+    - cross-python_{{ target_platform }}  # [build_platform != target_platform]
+    - python                               # [build_platform != target_platform]
+    - cython>=3.2.8                        # [build_platform != target_platform]
+    - numpy>=2.3                           # [build_platform != target_platform]
   host:
     - python>=3.14
     - pip
@@ -44,11 +47,11 @@ requirements:
     - protobuf>=7.0.0
     - numpy>=2.3
     - libopenblas
-    - openblas   # provides cblas.h, openblas_config.h headers and libopenblas.so symlink for compile-time linking
+    - openblas
     - cython>=3.2.8
     - typing-extensions>=4.5
     - setuptools-scm
-    - llvm-openmp  # [osx]  # OpenMP support for BLAS on macOS (libomp)
+    - llvm-openmp  # [osx]
     - macos-sdk {{ MACOSX_DEPLOYMENT_TARGET|default("10.15") }}  # [osx]
   run:
     - python>=3.14
@@ -60,12 +63,24 @@ requirements:
 
 test:
   imports:
-    - tvm_ffi
-    - caffe_ffi
+    - tvm_ffi                                                              # [build_platform == target_platform]
+    - caffe_ffi                                                            # [build_platform == target_platform]
   commands:
-    - python -c "import tvm_ffi; print('tvm-ffi version:', tvm_ffi.__version__)"
-    - python -c "import caffe_ffi; print('caffe-ffi version:', caffe_ffi.version()); print('Native available:', caffe_ffi.is_available())"
-    - python -c "from caffe_ffi import Blob; b = Blob([100]); b.fill(1.0); print('Blob test OK, size:', b.count())"
+    - python -c "import tvm_ffi; print('tvm-ffi version:', tvm_ffi.__version__)"  # [build_platform == target_platform]
+    - python -c "import caffe_ffi; print('caffe-ffi version:', caffe_ffi.version()); print('Native available:', caffe_ffi.is_available())"  # [build_platform == target_platform]
+    - python -c "from caffe_ffi import Blob; b = Blob([100]); b.fill(1.0); print('Blob test OK, size:', b.count())"  # [build_platform == target_platform]
+    - test -f $SP_DIR/caffe_ffi/_caffe_ffi*.so                              # [linux]
+    - test -f $SP_DIR/caffe_ffi/_caffe_ffi*.dylib                           # [osx]
+    - test -f $SP_DIR/tvm_ffi/lib/libtvm_ffi.so                             # [linux]
+    - test -f $SP_DIR/tvm_ffi/lib/libtvm_ffi.dylib                          # [osx]
+    - if not exist %SP_DIR%\caffe_ffi\_caffe_ffi*.pyd exit 1                # [win and build_platform == target_platform]
+    - test -f $SP_DIR/caffe_ffi/_caffe_ffi*.pyd                             # [win and build_platform != target_platform]
+    - test -f $SP_DIR/tvm_ffi/lib/tvm_ffi.dll                               # [win and build_platform != target_platform]
+    - file $SP_DIR/caffe_ffi/_caffe_ffi*.so 2>/dev/null || true             # [linux and build_platform != target_platform]
+    - file $SP_DIR/caffe_ffi/_caffe_ffi*.dylib 2>/dev/null || true          # [osx and build_platform != target_platform]
+    - file $SP_DIR/tvm_ffi/lib/libtvm_ffi.so 2>/dev/null || true            # [linux and build_platform != target_platform]
+    - file $SP_DIR/tvm_ffi/lib/libtvm_ffi.dylib 2>/dev/null || true         # [osx and build_platform != target_platform]
+    - file $SP_DIR/caffe_ffi/_caffe_ffi*.pyd 2>/dev/null || true            # [win and build_platform != target_platform]
   requires:
     - pip
     - pytest>=8.0

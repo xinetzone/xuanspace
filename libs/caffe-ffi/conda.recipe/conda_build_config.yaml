@@ -1,0 +1,30 @@
+c_compiler:
+  - gcc                        # [linux]
+  - clang                      # [osx]
+  - clang                      # [win]
+
+cxx_compiler:
+  - gxx                        # [linux]
+  - clangxx                    # [osx]
+  - clangxx                    # [win]
+
+c_compiler_version:
+  - 13                         # [linux]
+  - 17                         # [osx]
+  - 17                         # [win]
+
+cxx_compiler_version:
+  - 13                         # [linux]
+  - 17                         # [osx]
+  - 17                         # [win]
+
+MACOSX_DEPLOYMENT_TARGET:
+  - 10.15                      # [osx and x86_64]
+
+python:
+  - 3.14
+
+channel_sources:
+  - conda-forge
+channel_targets:
+  - conda-forge main
