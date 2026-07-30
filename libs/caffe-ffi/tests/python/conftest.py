@@ -3,7 +3,10 @@ from __future__ import annotations
 import gc
 import logging
 import sys
+import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator, Optional
 
 import pytest
 import numpy as np
@@ -14,6 +17,66 @@ if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
 from caffe_ffi import _ffi_api
+
+# ─── Performance tracing infrastructure ────────────────────────────
+
+_perf_logger = logging.getLogger("caffe_ffi.test.perf")
+if not _perf_logger.handlers:
+    _perf_handler = logging.StreamHandler(sys.stderr)
+    _perf_handler.setLevel(logging.INFO)
+    _perf_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [PERF] %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    _perf_logger.addHandler(_perf_handler)
+    _perf_logger.propagate = False
+_perf_logger.setLevel(logging.INFO)
+
+
+def _mem_bytes_blobs():
+    """Return (total_allocated_bytes, live_blob_count) after aggressive GC."""
+    from caffe_ffi import total_allocated_bytes, live_blob_count
+    for _ in range(3):
+        gc.collect(0)
+        gc.collect(1)
+        gc.collect(2)
+    return total_allocated_bytes(), live_blob_count()
+
+
+@contextmanager
+def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
+    """Context manager that measures wall-clock time and memory delta for a block.
+
+    Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
+    'input_size'); these are appended to the exit log line.
+
+    Usage:
+        with perf_trace("Net(prototxt)") as t:
+            net = Net(prototxt)
+            t['layers'] = len(net.layers_array())
+        # Logs: [PERF] Net(prototxt) ... Δtime=12.3ms Δmem=+4096B Δblobs=+5 layers=5
+    """
+    mem_before, blobs_before = _mem_bytes_blobs()
+    t0 = time.perf_counter()
+    info: dict = {}
+    try:
+        yield info
+    finally:
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        mem_after, blobs_after = _mem_bytes_blobs()
+        delta_mem = mem_after - mem_before
+        delta_blobs = blobs_after - blobs_before
+        if verbose:
+            mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
+            blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
+            extra = " ".join(f"{k}={v}" for k, v in info.items())
+            _perf_logger.info(
+                "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s",
+                label, elapsed_ms, mem_str, blob_str, extra,
+            )
+        info["elapsed_ms"] = elapsed_ms
+        info["delta_mem"] = delta_mem
+        info["delta_blobs"] = delta_blobs
 
 # Configure memory stress test logger to output INFO logs during test runs
 _mem_stress_logger = logging.getLogger("caffe_ffi.test.memory_stress")
@@ -132,6 +195,53 @@ def pytest_sessionfinish(session, exitstatus):
             f"(May be caused by failed tests holding traceback references.)",
             stacklevel=2,
         )
+
+
+@pytest.fixture
+def ptrace():
+    """Provide perf_trace context manager as a fixture for P1 detail logging."""
+    return perf_trace
+
+
+# ─── Test-level timing autouse (logs per-test wall time + memory) ──
+
+_P1_TEST_CLASSES = {
+    "TestLayerStandalone", "TestLayerFromNet",
+    "TestNetEmptyConstructor", "TestNetConstructorErrors",
+    "TestNetForwardBoundaries", "TestNetConsistency",
+}
+
+_P2_TEST_CLASSES = {
+    "TestNetTopologies", "TestNetReshapeDynamics", "TestLargeScaleForward",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES
+
+
+@pytest.fixture(autouse=True)
+def _test_timing_log(request):
+    """Autouse fixture: log timing + memory delta for every P1/P2 test case."""
+    test_name = request.node.name
+    cls_name = request.cls.__name__ if request.cls else ""
+    is_perf = cls_name in _PERF_TEST_CLASSES
+    if not is_perf:
+        yield
+        return
+
+    mem_before, blobs_before = _mem_bytes_blobs()
+    t0 = time.perf_counter()
+    _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d", cls_name, test_name, mem_before, blobs_before)
+    yield
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    mem_after, blobs_after = _mem_bytes_blobs()
+    delta_mem = mem_after - mem_before
+    delta_blobs = blobs_after - blobs_before
+    mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
+    blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
+    _perf_logger.info(
+        "─── END   %s.%s ───  Δtime=%.2fms  Δmem=%s  Δblobs=%s  total=%dB/%d blobs",
+        cls_name, test_name, elapsed_ms, mem_str, blob_str, mem_after, blobs_after,
+    )
 
 
 @pytest.fixture
