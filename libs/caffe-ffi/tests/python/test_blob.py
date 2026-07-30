@@ -311,13 +311,22 @@ class TestBlobMemoryCounters:
         return count * 4 * 2
 
     def test_initial_alloc_counter(self):
+        import gc
+        gc.collect(); gc.collect(); gc.collect()
         mem_before = caffe_ffi.total_allocated_bytes()
+        live_before = caffe_ffi.live_blob_count()
         b = Blob([3, 4])
         mem_after = caffe_ffi.total_allocated_bytes()
+        live_after = caffe_ffi.live_blob_count()
         expected = self._expected_nbytes([3, 4])
         assert mem_after - mem_before == expected, \
             f"Expected +{expected}B after Blob([3,4]), got +{mem_after - mem_before}B"
-        assert caffe_ffi.live_blob_count() >= 1
+        assert live_after == live_before + 1, \
+            f"Expected +1 live blob, got +{live_after - live_before}"
+        del b
+        gc.collect(); gc.collect(); gc.collect()
+        assert caffe_ffi.total_allocated_bytes() == mem_before
+        assert caffe_ffi.live_blob_count() == live_before
 
     def test_reshape_counter_delta(self):
         b = Blob([3, 4])

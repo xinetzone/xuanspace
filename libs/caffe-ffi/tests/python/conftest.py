@@ -83,7 +83,7 @@ def pytest_runtest_setup(item):
         mem_after, blobs_after = current
         leaked_bytes = mem_after - mem_before
         leaked_blobs = blobs_after - blobs_before
-        if leaked_blobs != 0 or leaked_bytes > 0:
+        if leaked_blobs != 0 or leaked_bytes != 0:
             pytest.fail(
                 f"Memory leak detected from {_previous_test_name}: "
                 f"{leaked_blobs} Blob(s) still alive "
@@ -106,7 +106,7 @@ def pytest_sessionfinish(session, exitstatus):
     mem_after, blobs_after = current
     leaked_bytes = mem_after - mem_before
     leaked_blobs = blobs_after - blobs_before
-    if leaked_blobs != 0 or leaked_bytes > 0:
+    if leaked_blobs != 0 or leaked_bytes != 0:
         warnings.warn(
             f"Global memory leak after all tests: "
             f"{leaked_blobs} Blob(s) still alive, {leaked_bytes} bytes leaked. "
