@@ -151,6 +151,9 @@ function(detect_openblas)
     message(STATUS "Found OpenBLAS: ${OPENBLAS_LIBRARY}")
     message(STATUS "OpenBLAS include: ${OPENBLAS_INCLUDE_DIR}")
   else()
+    set(BLAS_FOUND OFF PARENT_SCOPE)
+    set(BLAS_LIBRARIES "" PARENT_SCOPE)
+    set(BLAS_INCLUDE_DIRS "" PARENT_SCOPE)
     message(STATUS "BLAS/OpenBLAS not found - building without BLAS acceleration")
     if(NOT OPENBLAS_INCLUDE_DIR)
       _blas_print_install_hint("header")
@@ -159,11 +162,6 @@ function(detect_openblas)
       _blas_print_install_hint("library")
     endif()
   endif()
-
-  # 导出缓存变量供外部检查
-  set(BLAS_FOUND "${BLAS_FOUND}" PARENT_SCOPE)
-  set(BLAS_LIBRARIES "${BLAS_LIBRARIES}" PARENT_SCOPE)
-  set(BLAS_INCLUDE_DIRS "${BLAS_INCLUDE_DIRS}" PARENT_SCOPE)
 endfunction()
 
 # ── 内部辅助函数 ──────────────────────────────────────────

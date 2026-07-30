@@ -103,6 +103,69 @@ caffe_ffi_copy_target_dll(&lt;target&gt; &lt;dependency_target&gt;)
    - 检查 TARGET 是否存在（如果函数操作已定义的目标）
    - 使用 `message(FATAL_ERROR ...)` 给出清晰的错误信息，包含函数名、用法示例
 
+## DetectOpenBLAS 模块复用
+
+`DetectOpenBLAS.cmake` 是一个零依赖、跨平台的可复用模块，可直接复制到任意 CMake 项目中使用。
+
+### 快速集成
+
+```cmake
+# 1. 将 DetectOpenBLAS.cmake 复制到项目的 cmake/ 目录
+# 2. 在 CMakeLists.txt 中引用
+include(cmake/DetectOpenBLAS)
+detect_openblas()
+
+# 3. 链接到目标
+target_link_libraries(my_target PRIVATE ${BLAS_LIBRARIES})
+target_include_directories(my_target PRIVATE ${BLAS_INCLUDE_DIRS})
+```
+
+### 自定义搜索路径
+
+```cmake
+detect_openblas(EXTRA_HINTS "/opt/custom/openblas" "/usr/local/myblas")
+```
+
+### 显式禁用
+
+```cmake
+set(USE_BLAS OFF CACHE BOOL "Disable BLAS")
+detect_openblas()
+```
+
+### 输出变量
+
+| 变量 | 类型 | 说明 |
+|------|------|------|
+| `BLAS_FOUND` | BOOL | 是否找到 OpenBLAS |
+| `BLAS_LIBRARIES` | PATH | 库文件路径 |
+| `BLAS_INCLUDE_DIRS` | PATH | 头文件目录 |
+
+### 检测策略
+
+| 阶段 | 策略 | 说明 |
+|------|------|------|
+| Phase 1 | 精确搜索 | 在 conda/CMAKE_PREFIX_PATH/Python 环境/EXTRA_HINTS 中搜索，使用 NO_DEFAULT_PATH 避免误检 |
+| Phase 2 | 系统回退 | 在系统默认路径中搜索，作为兜底 |
+
+### 支持的安装方式
+
+| 平台 | 安装方式 | 自动检测 |
+|------|---------|---------|
+| Windows | conda install libopenblas | ✅ |
+| Windows | vcpkg install openblas | ✅ (Phase 2) |
+| Linux | apt install libopenblas-dev | ✅ |
+| Linux | conda install libopenblas | ✅ |
+| macOS | brew install openblas | ✅ (Phase 2) |
+| macOS | conda install libopenblas | ✅ |
+| 通用 | 手动编译到 /usr/local | ✅ (Phase 2) |
+
+### 注意事项
+
+- 文件名使用 `DetectOpenBLAS.cmake` 而非 `FindOpenBLAS.cmake`，避免与 CMake 内置模块命名冲突
+- 检测到 BLAS 后不自动链接，由调用方显式链接
+- 未找到时不报 FATAL_ERROR，仅输出 STATUS 消息，由调用方决定是否继续
+
 ## 原子化原则
 
 每个模块遵循以下原则：

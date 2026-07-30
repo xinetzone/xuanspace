@@ -1,5 +1,19 @@
-# Tests.cmake - C++ 单元测试 + Python 回归测试目标配置
+# Tests.cmake - C++ 单元测试 + Python 回归测试 + CMake 模块测试
 enable_testing()
+
+# ── CMake 模块单元测试 ──
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_detect_openblas.cmake")
+  add_test(
+    NAME detect_openblas_module
+    COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_detect_openblas.cmake"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+  set_tests_properties(detect_openblas_module PROPERTIES
+    LABELS "cmake;module;blas"
+    TIMEOUT 30
+  )
+endif()
 
 # ── C++ 单元测试 ──
 
