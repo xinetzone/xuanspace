@@ -59,6 +59,7 @@ function(caffe_ffi_configure_target target_name)
   # Compile definitions
   target_compile_definitions(${target_name} ${ARG_VISIBILITY}
     CAFFE_FFI_VERSION="${PROJECT_VERSION}"
+    TVM_FFI_USE_BUILTIN_TYPETRAITS  # 强制使用 vendor tvm-ffi 内置 TypeTraits，防止自定义特化冲突
   )
   if(CAFFE_CPU_ONLY)
     target_compile_definitions(${target_name} ${ARG_VISIBILITY} CPU_ONLY)
@@ -75,9 +76,13 @@ function(caffe_ffi_configure_target target_name)
 
   # Compile options
   if(MSVC)
-    target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /utf-8)
+    target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /WX /utf-8)
   else()
-    target_compile_options(${target_name} ${ARG_VISIBILITY} -Wall -Wextra -Wno-unused-parameter)
+    target_compile_options(${target_name} ${ARG_VISIBILITY}
+      -Wall -Wextra -Werror -Wno-unused-parameter
+      -fvisibility=hidden              # 默认隐藏所有符号，防止 WEAK 符号泄漏
+      -fvisibility-inlines-hidden      # 隐藏内联/模板实例化产生的 WEAK 符号
+    )
   endif()
 
   # Link libraries
@@ -90,5 +95,12 @@ function(caffe_ffi_configure_target target_name)
   endif()
   if(MSVC)
     target_link_libraries(${target_name} ${ARG_VISIBILITY} DbgHelp.lib)
+  endif()
+
+  # GNU linker: 排除所有静态库符号，防止 WEAK 符号多副本冲突
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(${target_name} ${ARG_VISIBILITY}
+      -Wl,--exclude-libs,ALL
+    )
   endif()
 endfunction()
