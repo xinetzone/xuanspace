@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 $env:KMP_DUPLICATE_LIB_OK = "TRUE"
 
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 
 # ============================================================
