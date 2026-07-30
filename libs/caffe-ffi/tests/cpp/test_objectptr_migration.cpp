@@ -32,7 +32,7 @@ TEST(ObjectPtrMigration, CopyIncreasesRefcount) {
 
   // 通过任一指针写入，另一方可见
   copy->cpu_data()[1] = 99.0f;
-  EXPECT_FLOAT_EQ(obj->cpu_data()[1], 99.0f);
+  EXPECT_NEAR(obj->cpu_data()[1], 99.0f, 1e-5f);
 }
 
 /// 验证容器持有 ObjectPtr 时，原始指针离开作用域后数据仍有效
@@ -50,8 +50,8 @@ TEST(ObjectPtrMigration, RegistryHoldsOwnershipAfterSourceOutOfScope) {
   // obj 离开作用域，refcount 降为 1，registry 仍持有引用
 
   EXPECT_EQ(registry.size(), 1u);
-  EXPECT_FLOAT_EQ(registry.back()->cpu_data()[0], 99.0f);
-  EXPECT_FLOAT_EQ(registry.back()->cpu_data()[1], 88.0f);
+  EXPECT_NEAR(registry.back()->cpu_data()[0], 99.0f, 1e-5f);
+  EXPECT_NEAR(registry.back()->cpu_data()[1], 88.0f, 1e-5f);
 }
 
 /// 验证多次注册（多次 push_back）refcount 正确递增
@@ -67,14 +67,14 @@ TEST(ObjectPtrMigration, MultipleRegistrationsShareSameObject) {
   EXPECT_EQ(registry.size(), 3u);
   for (const auto& entry : registry) {
     EXPECT_EQ(entry.get(), obj.get());
-    EXPECT_FLOAT_EQ(entry->cpu_data()[0], 77.0f);
+    EXPECT_NEAR(entry->cpu_data()[0], 77.0f, 1e-5f);
   }
 
   // 通过任一 entry 写入，所有 entry 和原始 obj 都可见
   registry[1]->cpu_data()[0] = 123.0f;
-  EXPECT_FLOAT_EQ(obj->cpu_data()[0], 123.0f);
-  EXPECT_FLOAT_EQ(registry[0]->cpu_data()[0], 123.0f);
-  EXPECT_FLOAT_EQ(registry[2]->cpu_data()[0], 123.0f);
+  EXPECT_NEAR(obj->cpu_data()[0], 123.0f, 1e-5f);
+  EXPECT_NEAR(registry[0]->cpu_data()[0], 123.0f, 1e-5f);
+  EXPECT_NEAR(registry[2]->cpu_data()[0], 123.0f, 1e-5f);
 }
 
 /// 验证 registry 清空后原始对象仍有效（refcount 递减但未归零）
@@ -85,11 +85,11 @@ TEST(ObjectPtrMigration, RegistryClearPreservesOriginalObject) {
   {
     std::vector<ObjectPtr<Blob>> registry;
     registry.push_back(obj);  // refcount 2
-    EXPECT_FLOAT_EQ(registry.back()->cpu_data()[0], 55.0f);
+    EXPECT_NEAR(registry.back()->cpu_data()[0], 55.0f, 1e-5f);
   }
   // registry 离开作用域，所有 entry 析构，refcount 降为 1
 
-  EXPECT_FLOAT_EQ(obj->cpu_data()[0], 55.0f);
+  EXPECT_NEAR(obj->cpu_data()[0], 55.0f, 1e-5f);
 }
 
 /// 验证移动语义：移动后原始指针为空，refcount 不增加
@@ -106,7 +106,7 @@ TEST(ObjectPtrMigration, MoveDoesNotIncreaseRefcount) {
   EXPECT_EQ(obj.get(), nullptr);
 
   // 数据通过 moved 可访问
-  EXPECT_FLOAT_EQ(moved->cpu_data()[0], 11.0f);
+  EXPECT_NEAR(moved->cpu_data()[0], 11.0f, 1e-5f);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ TEST(ObjectPtrMigration, GetRefRecoversFromRawPointer) {
   // 恢复后的指针指向原对象
   EXPECT_EQ(recovered.get(), raw);
   EXPECT_EQ(recovered->cpu_data(), obj->cpu_data());
-  EXPECT_FLOAT_EQ(recovered->cpu_data()[0], 33.0f);
+  EXPECT_NEAR(recovered->cpu_data()[0], 33.0f, 1e-5f);
 }
 
 /// 验证 GetRef 恢复后，原始对象析构不会导致悬空指针
@@ -143,8 +143,8 @@ TEST(ObjectPtrMigration, GetRefAfterSourceDestroyed) {
   }
   // obj 析构，refcount 降为 1，recovered 仍持有引用
 
-  EXPECT_FLOAT_EQ(recovered->cpu_data()[0], 77.0f);
-  EXPECT_FLOAT_EQ(recovered->cpu_data()[1], 66.0f);
+  EXPECT_NEAR(recovered->cpu_data()[0], 77.0f, 1e-5f);
+  EXPECT_NEAR(recovered->cpu_data()[1], 66.0f, 1e-5f);
 }
 
 /// 验证 const ObjectPtr& 传参模式（模拟 FFI lambda 适配）
@@ -162,11 +162,11 @@ TEST(ObjectPtrMigration, ConstRefParameterDoesNotModifyOriginal) {
   };
 
   float result = read_and_sum(obj);  // 传递 const ObjectPtr&
-  EXPECT_FLOAT_EQ(result, 99.0f);
+  EXPECT_NEAR(result, 99.0f, 1e-5f);
 
   // 调用后原始对象不变
-  EXPECT_FLOAT_EQ(obj->cpu_data()[0], 55.0f);
-  EXPECT_FLOAT_EQ(obj->cpu_data()[1], 44.0f);
+  EXPECT_NEAR(obj->cpu_data()[0], 55.0f, 1e-5f);
+  EXPECT_NEAR(obj->cpu_data()[1], 44.0f, 1e-5f);
 }
 
 /// 验证 ObjectPtr 值传递 + 内部裸指针访问模式
@@ -186,9 +186,9 @@ TEST(ObjectPtrMigration, ValuePassingForOwnershipTransfer) {
   };
 
   float result = process(obj);  // 值传递 → refcount 临时 +1
-  EXPECT_FLOAT_EQ(result, 200.0f);
+  EXPECT_NEAR(result, 200.0f, 1e-5f);
   // 原始对象的值也被修改（因为共享同一对象）
-  EXPECT_FLOAT_EQ(obj->cpu_data()[0], 200.0f);
+  EXPECT_NEAR(obj->cpu_data()[0], 200.0f, 1e-5f);
 }
 
 /// 验证 vector<ObjectPtr<Blob>> 的批量操作
@@ -209,16 +209,16 @@ TEST(ObjectPtrMigration, VectorOfObjectPtrsBulkOperations) {
 
   // 验证所有元素独立
   for (int i = 0; i < 5; ++i) {
-    EXPECT_FLOAT_EQ(vec[i]->cpu_data()[0], static_cast<float>(i * 10));
-    EXPECT_FLOAT_EQ(vec[i]->cpu_data()[1], static_cast<float>(i * 10 + 1));
-    EXPECT_FLOAT_EQ(vec[i]->cpu_data()[2], static_cast<float>(i * 10 + 2));
+    EXPECT_NEAR(vec[i]->cpu_data()[0], static_cast<float>(i * 10), 1e-5f);
+    EXPECT_NEAR(vec[i]->cpu_data()[1], static_cast<float>(i * 10 + 1), 1e-5f);
+    EXPECT_NEAR(vec[i]->cpu_data()[2], static_cast<float>(i * 10 + 2), 1e-5f);
   }
 
   // 验证不同元素数据独立（修改一个不影响其他）
   vec[0]->cpu_data()[0] = 999.0f;
-  EXPECT_FLOAT_EQ(vec[0]->cpu_data()[0], 999.0f);
-  EXPECT_FLOAT_EQ(vec[1]->cpu_data()[0], 10.0f);  // 未受影响
-  EXPECT_FLOAT_EQ(vec[2]->cpu_data()[0], 20.0f);  // 未受影响
+  EXPECT_NEAR(vec[0]->cpu_data()[0], 999.0f, 1e-5f);
+  EXPECT_NEAR(vec[1]->cpu_data()[0], 10.0f, 1e-5f);  // 未受影响
+  EXPECT_NEAR(vec[2]->cpu_data()[0], 20.0f, 1e-5f);  // 未受影响
 }
 
 /// 验证空的 ObjectPtr（nullptr 语义）
@@ -231,7 +231,7 @@ TEST(ObjectPtrMigration, NullObjectPtr) {
   // 赋值后变为非空
   null_obj = make_object<Blob>(std::vector<int64_t>{1});
   EXPECT_NE(null_obj.get(), nullptr);
-  EXPECT_FLOAT_EQ(null_obj->cpu_data()[0], 0.0f);
+  EXPECT_NEAR(null_obj->cpu_data()[0], 0.0f, 1e-5f);
 }
 
 /// 验证 ObjectPtr 的 reset 行为
@@ -245,5 +245,5 @@ TEST(ObjectPtrMigration, ResetReleasesOwnership) {
   copy.reset();  // 释放引用，refcount 降为 1
 
   EXPECT_EQ(copy.get(), nullptr);
-  EXPECT_FLOAT_EQ(obj->cpu_data()[0], 88.0f);  // 原始对象仍有效
+  EXPECT_NEAR(obj->cpu_data()[0], 88.0f, 1e-5f);  // 原始对象仍有效
 }

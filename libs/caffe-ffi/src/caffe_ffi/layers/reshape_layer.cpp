@@ -67,7 +67,7 @@ void ReshapeLayer::Reshape(const std::vector<Blob*>& bottom,
     } else if (dim == -1) {
       CAFFE_FFI_CHECK_VALUE_EQ(inferred_axis, -1)
           << "Reshape shape contains multiple -1 dims";
-      inferred_axis = top_shape.size();
+      inferred_axis = static_cast<int>(top_shape.size());
       top_shape.push_back(0);
     } else {
       CAFFE_FFI_CHECK_VALUE_GT(dim, 0) << "Reshape dim must be positive, -1, or 0";
