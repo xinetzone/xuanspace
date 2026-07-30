@@ -311,3 +311,112 @@ TEST(ZeroCopyTest, LiveBlobCountStableAcrossShareData) {
   }
   EXPECT_EQ(LiveBlobCount(), before);
 }
+
+// ── 高优先级补充场景 ──
+
+/// 场景 1：ShareData 和 ShareDiff 分别来自不同源
+/// 验证 data 和 diff 可以独立地从不同 Blob 共享，
+/// 且各自的共享关系互不干扰
+TEST(ZeroCopyTest, ShareDataAndDiffFromDifferentSources) {
+  std::vector<int64_t> shape = {4, 3};
+  auto src_data = make_object<Blob>(shape);
+  auto src_diff = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  // 写入可区分的值
+  src_data->cpu_data()[0] = 10.0f;
+  src_data->cpu_data()[1] = 20.0f;
+  src_diff->cpu_diff()[0] = 30.0f;
+  src_diff->cpu_diff()[1] = 40.0f;
+
+  dst->ShareData(src_data.get());
+  dst->ShareDiff(src_diff.get());
+
+  // data 与 src_data 共享，diff 与 src_diff 共享
+  EXPECT_TRUE(dst->SharesDataWith(src_data.get()));
+  EXPECT_TRUE(dst->SharesDiffWith(src_diff.get()));
+
+  // 交叉关系：data 不与 src_diff 共享，diff 不与 src_data 共享
+  EXPECT_FALSE(dst->SharesDataWith(src_diff.get()));
+  EXPECT_FALSE(dst->SharesDiffWith(src_data.get()));
+
+  // 值验证
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_diff()[0]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_diff()[1]), 40.0, 1e-6);
+
+  // 通过 dst 写入 data，src_data 可见，src_diff 不受影响
+  dst->cpu_data()[0] = 99.0f;
+  EXPECT_NEAR(static_cast<double>(src_data->cpu_data()[0]), 99.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src_diff->cpu_data()[0]), 0.0, 1e-6);  // src_diff 的 data 未共享
+}
+
+/// 场景 2：共享后 Reshape 源 Blob
+/// 验证 Reshape 源 Blob 不会破坏已共享的目标数据。
+/// 源 Reshape 后分配新内存，目标通过 refcount 仍持有原数据
+TEST(ZeroCopyTest, ReshapeSourceAfterSharePreservesDestination) {
+  std::vector<int64_t> shape = {4, 4};
+  auto src = make_object<Blob>(shape);
+  auto dst = make_object<Blob>(shape);
+
+  src->cpu_data()[0] = 42.0f;
+  src->cpu_data()[5] = 77.0f;
+  dst->ShareData(src.get());
+  EXPECT_TRUE(dst->SharesDataWith(src.get()));
+
+  // Reshape src 到不同形状 → 分配新内存，打破共享
+  src->Reshape(std::vector<int64_t>{8, 8});
+
+  // dst 仍持有原数据（通过 refcount 独立持有）
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 42.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[5]), 77.0, 1e-6);
+
+  // 确认共享已打破
+  EXPECT_FALSE(dst->SharesDataWith(src.get()));
+
+  // src 的新数据独立，不受 dst 影响
+  src->cpu_data()[0] = 100.0f;
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 42.0, 1e-6);
+}
+
+/// 场景 3：连续多次 Forward（N=1）不泄漏 refcount
+/// 验证 N=1 零拷贝路径在重复 Forward 时不会累积
+/// 引用计数泄漏或意外创建新 Blob
+TEST(ZeroCopyTest, RepeatedForwardN1NoRefcountLeak) {
+  std::string prototxt = R"(
+name: "test_repeated_forward"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 3
+input_dim: 4
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "split_out"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto bottom_blob = net->blob_by_name("data");
+  auto top_blob = net->blob_by_name("split_out");
+
+  // 写入初始数据
+  bottom_blob->cpu_data()[0] = 55.0f;
+
+  int64_t live_count_before = LiveBlobCount();
+
+  // Forward 10 次 — 不应创建新 Blob 或泄漏 refcount
+  for (int i = 0; i < 10; ++i) {
+    net->Forward();
+    // 每次 Forward 后，N=1 top 应仍与 bottom 共享数据
+    EXPECT_TRUE(top_blob->SharesDataWith(bottom_blob.get()));
+    // 数据正确性
+    EXPECT_NEAR(static_cast<double>(top_blob->cpu_data()[0]), 55.0, 1e-6);
+  }
+
+  // Blob 数量稳定（无泄漏）
+  EXPECT_EQ(LiveBlobCount(), live_count_before);
+}
