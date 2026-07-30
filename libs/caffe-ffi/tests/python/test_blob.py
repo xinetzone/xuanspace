@@ -427,6 +427,262 @@ class TestBlobMemoryCounters:
         assert caffe_ffi.live_blob_count() == live_before
 
 
+@require_cpp_extension
+class TestBlobLifecycle:
+    """Integration test simulating a complete Blob lifecycle:
+    create → numpy load → modification → gradient update → copy → resize → serialize → release.
+
+    This test exercises every major Blob API in sequence, verifying data
+    integrity at each stage and memory correctness at creation/destruction.
+    It mimics a realistic mini-batch training step: load weights → forward
+    → set gradients → SGD update → copy snapshot → reshape for next batch.
+    """
+
+    @staticmethod
+    def _blob_nbytes(shape):
+        """Expected bytes for a Blob with given shape (float32 data + float32 diff)."""
+        count = 1
+        for d in shape:
+            count *= d
+        return count * 4 * 2
+
+    def test_full_lifecycle_training_step(self):
+        import gc
+
+        def _gc():
+            """Force full garbage collection (3 passes, matching conftest._current_mem_state)."""
+            gc.collect()
+            gc.collect()
+            gc.collect()
+
+        def _mem():
+            return caffe_ffi.total_allocated_bytes()
+
+        def _live():
+            return caffe_ffi.live_blob_count()
+
+        # ── Phase 0: Baseline (must gc first to flush any previous test residue)
+        _gc()
+        mem_baseline = _mem()
+        live_baseline = _live()
+
+        # ── Phase 1: Creation (empty constructor → Reshape[0] → 0 data bytes) ──
+        blob = Blob()
+        assert blob.shape == (0,), "Default Blob should have shape (0,)"
+        assert blob.size == 0
+        assert _live() == live_baseline + 1
+        # Default Blob (shape [0]) allocates 0 data bytes; only C++ object overhead
+        # which is NOT counted in total_allocated_bytes (tracks tensor data only).
+        assert _mem() == mem_baseline, \
+            f"Empty Blob([0]) should allocate 0 tensor bytes, got +{_mem() - mem_baseline}"
+
+        # ── Phase 2: from_numpy loads 4×3 weights (96 bytes data+diff) ─────
+        weights = np.array([
+            [0.1, 0.2, 0.3],
+            [0.4, 0.5, 0.6],
+            [0.7, 0.8, 0.9],
+            [1.0, 1.1, 1.2],
+        ], dtype=np.float32)
+        blob.from_numpy(weights)
+        assert blob.shape == (4, 3)
+        assert blob.size == 12
+        assert blob.ndim == 2
+        assert blob.data_tensor.dtype == np.float32
+        np.testing.assert_array_equal(blob.to_numpy(), weights)
+
+        expected_4x3 = self._blob_nbytes([4, 3])  # 12*4*2 = 96
+        assert _mem() == mem_baseline + expected_4x3, \
+            f"After from_numpy(4x3), expected +{expected_4x3}B, got +{_mem() - mem_baseline}B"
+
+        # ── Phase 3: Forward-pass modifications (same shape → no realloc) ────
+        blob.data_tensor[:] += np.float32(0.01)
+        expected_after_bias = weights + 0.01
+        np.testing.assert_allclose(blob.data_tensor, expected_after_bias, rtol=1e-6)
+
+        blob.fill(0.5)
+        assert np.all(blob.data_tensor == np.float32(0.5))
+        assert np.all(blob.diff_tensor == 0.0), "fill() must zero diff"
+        assert _mem() == mem_baseline + expected_4x3, \
+            "fill() must not change allocation size"
+
+        blob.from_numpy(weights)
+        np.testing.assert_array_equal(blob.to_numpy(), weights)
+        assert _mem() == mem_baseline + expected_4x3, \
+            "from_numpy (same shape) must not change allocation size"
+
+        # ── Phase 4: Set gradients via set_diff=True (same shape → no realloc)
+        grads = np.random.RandomState(42).randn(4, 3).astype(np.float32) * 0.01
+        blob.from_numpy(grads, set_diff=True)
+        np.testing.assert_allclose(blob.diff, grads, rtol=1e-6)
+        np.testing.assert_array_equal(blob.data, weights)
+        assert blob.diff_tensor.shape == (4, 3)
+        assert blob.diff_tensor.dtype == np.float32
+        assert _mem() == mem_baseline + expected_4x3, \
+            "set_diff=True (same shape) must not change allocation size"
+
+        # ── Phase 5: SGD update (data -= lr * diff), same shape ─────────────
+        lr = np.float32(0.1)
+        expected_after_update = weights - lr * grads
+        blob.diff_tensor[:] *= lr
+        blob.Update()
+        np.testing.assert_allclose(
+            blob.to_numpy(), expected_after_update, rtol=1e-5,
+            err_msg="SGD update (data -= lr*grad) produced incorrect values"
+        )
+        np.testing.assert_allclose(blob.diff, lr * grads, rtol=1e-6)
+        assert _mem() == mem_baseline + expected_4x3, \
+            "Update() must not change allocation size"
+
+        # ── Phase 6: Copy snapshot (adds another 4×3 blob = +96 bytes) ──────
+        snapshot = Blob()
+        assert _live() == live_baseline + 2
+        snapshot.copy_from(blob)
+        assert snapshot.shape == blob.shape
+        np.testing.assert_array_equal(snapshot.data, blob.data)
+        # snapshot was shape [0] (0B), copy_from reshapes to [4,3] (+96B)
+        assert _mem() == mem_baseline + expected_4x3 * 2, \
+            f"After copy snapshot, expected +{expected_4x3*2}B, got +{_mem() - mem_baseline}B"
+        assert _live() == live_baseline + 2
+
+        # Verify copy independence (mutating original must not affect snapshot)
+        blob.fill(999.0)
+        assert not np.all(snapshot.data == 999.0), \
+            "copy_from must produce an independent copy"
+        np.testing.assert_allclose(snapshot.data, expected_after_update, rtol=1e-5)
+        assert _mem() == mem_baseline + expected_4x3 * 2, \
+            "fill() after copy must not change allocation size"
+
+        blob.copy_from(snapshot)
+        np.testing.assert_allclose(blob.data, expected_after_update, rtol=1e-5)
+
+        # ── Phase 7a: Resize grow → 5×4 (blob reallocs: 96→160, delta=+64) ─
+        expected_5x4 = self._blob_nbytes([5, 4])  # 20*4*2 = 160
+        blob.Reshape([5, 4])
+        assert blob.shape == (5, 4)
+        assert blob.size == 20
+        mem_after_grow = _mem()
+        assert mem_after_grow == mem_baseline + expected_5x4 + expected_4x3, \
+            f"After Reshape(5,4), expected +{expected_5x4+expected_4x3}B (blob={expected_5x4}+snapshot={expected_4x3}), got +{mem_after_grow - mem_baseline}B"
+
+        new_data = np.arange(20, dtype=np.float32).reshape(5, 4)
+        blob.from_numpy(new_data)
+        np.testing.assert_array_equal(blob.to_numpy(), new_data)
+
+        # ── Phase 7b: Resize shrink → 2×2 (blob reallocs: 160→32, delta=-128)
+        expected_2x2 = self._blob_nbytes([2, 2])  # 4*4*2 = 32
+        blob.Reshape([2, 2])
+        assert blob.shape == (2, 2)
+        mem_after_shrink = _mem()
+        assert mem_after_shrink == mem_baseline + expected_2x2 + expected_4x3, \
+            f"After Reshape(2,2), expected +{expected_2x2+expected_4x3}B, got +{mem_after_shrink - mem_baseline}B"
+
+        small_data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        blob.from_numpy(small_data)
+        np.testing.assert_array_equal(blob.to_numpy(), small_data)
+
+        # ── Phase 7c: Reshape to [0] → frees blob's tensor data (-32 bytes) ─
+        mem_before_zero = _mem()
+        blob.Reshape([0])
+        _gc()
+        mem_after_zero = _mem()
+        assert mem_after_zero == mem_before_zero - expected_2x2, \
+            f"Reshape([0]) should free exactly {expected_2x2}B (2x2 data+diff), " \
+            f"freed {mem_before_zero - mem_after_zero}B"
+
+        # Restore to non-zero for remaining phases (+32 bytes back)
+        blob.from_numpy(small_data)
+        assert _mem() == mem_after_zero + expected_2x2, \
+            "from_numpy after [0] should restore allocation"
+
+        # ── Phase 8: Serialization roundtrip (restored blob allocates +32B,
+        #             then freed → net 0 when properly cleaned up) ───────────
+        mem_before_restore = _mem()
+        live_before_restore = _live()
+
+        exported = blob.to_numpy()
+        assert isinstance(exported, np.ndarray)
+        assert exported.dtype == np.float32
+        assert exported.shape == (2, 2)
+
+        restored = Blob()
+        restored.from_numpy(exported)
+        np.testing.assert_array_equal(restored.to_numpy(), small_data)
+        assert _live() == live_before_restore + 1
+        assert _mem() == mem_before_restore + expected_2x2, \
+            f"restored blob should add {expected_2x2}B"
+
+        del restored
+        _gc()
+        assert _live() == live_before_restore, \
+            "restored blob must be freed after del"
+        assert _mem() == mem_before_restore, \
+            f"restored blob memory must be fully freed (leaked {_mem() - mem_before_restore}B)"
+
+        # ── Phase 9: Cleanup & memory verification ──────────────────────────
+        # At this point: blob=[2,2](32B) + snapshot=[4,3](96B) = baseline+128B
+        mem_with_both = _mem()
+        live_with_both = _live()
+        expected_with_both = expected_2x2 + expected_4x3
+        assert mem_with_both == mem_baseline + expected_with_both, \
+            f"Before cleanup, expected +{expected_with_both}B, got +{mem_with_both - mem_baseline}B"
+        assert live_with_both == live_baseline + 2, \
+            f"Before cleanup, expected {live_baseline+2} live blobs, got {live_with_both}"
+
+        # Delete snapshot first: frees 96B, live count -1
+        del snapshot
+        _gc()
+        assert _live() == live_with_both - 1, \
+            "snapshot must be freed after del"
+        assert _mem() == mem_with_both - expected_4x3, \
+            f"snapshot should free {expected_4x3}B, freed {mem_with_both - _mem()}B"
+
+        # Delete main blob: frees 32B, live count returns to baseline
+        del blob
+        _gc()
+
+        live_final = _live()
+        mem_final = _mem()
+        assert live_final == live_baseline, \
+            f"Blob leak: live count {live_final} != baseline {live_baseline}"
+        assert mem_final == mem_baseline, \
+            f"Memory leak: {mem_final - mem_baseline} bytes not freed after lifecycle " \
+            f"(baseline={mem_baseline}, final={mem_final})"
+
+    def test_lifecycle_dtype_conversion_chain(self):
+        """Test a lifecycle where data flows through multiple dtype conversions:
+        Python list → int64 numpy → float64 numpy → Blob (float32) → verify precision.
+        """
+        # Start with Python list (inference-style input).
+        input_list = [1, 2, 3, 4, 5]
+
+        # Convert through int64 and float64 before reaching Blob.
+        arr_int = np.array(input_list, dtype=np.int64)
+        arr_f64 = arr_int.astype(np.float64) + 0.5  # [1.5, 2.5, 3.5, 4.5, 5.5]
+
+        blob = Blob()
+        blob.from_numpy(arr_f64)
+        assert blob.data_tensor.dtype == np.float32
+        np.testing.assert_allclose(
+            blob.to_numpy(), [1.5, 2.5, 3.5, 4.5, 5.5], rtol=1e-6
+        )
+
+        # Modify via zero-copy and verify.
+        blob.data_tensor[0] = 99.0
+        assert abs(blob.to_numpy()[0] - 99.0) < 0.01
+
+        # set_diff with int array should also convert to float32.
+        diff_int = np.array([10, 20, 30, 40, 50], dtype=np.int32)
+        blob.from_numpy(diff_int, set_diff=True)
+        assert blob.diff_tensor.dtype == np.float32
+        np.testing.assert_array_equal(blob.diff, [10.0, 20.0, 30.0, 40.0, 50.0])
+
+        # Chained from_numpy → fill → zero → verify state.
+        blob.from_numpy(np.ones(3, dtype=np.float32)).fill(42.0).zero()
+        assert np.all(blob.data == 0.0)
+        assert blob.shape == (3,)
+        assert np.all(blob.diff_tensor == 0.0)
+
+
 class TestBlobZeroCopy:
     def test_data_tensor_returns_ndarray(self):
         b = Blob([2, 3, 4, 5])
