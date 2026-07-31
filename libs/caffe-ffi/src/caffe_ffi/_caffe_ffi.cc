@@ -188,7 +188,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("mutable_data_tensor", &Blob::mutable_data_tensor, "Get mutable data tensor with COW trigger (DLPack write interop)")
       .def("mutable_diff_tensor", &Blob::mutable_diff_tensor, "Get mutable diff tensor with COW trigger (DLPack write interop)")
       // Phase 3.1: Lazy allocation
-      .def("set_shape_only", &Blob::SetShapeOnly, "Set shape metadata only, without allocating data memory (Phase 3.1 lazy Reshape)")
+      .def("set_shape_only", [](Blob* self, Shape shape) {
+        ShapeView sv(shape.data(), shape.size());
+        self->SetShapeOnly(sv);
+      }, "Set shape metadata only, without allocating data memory (Phase 3.1 lazy Reshape)")
       .def("is_lazy_allocated", &Blob::IsLazyAllocated, "Check if Blob is in lazy-allocation mode (Phase 3.1)");
 
   refl::ObjectDef<Layer>()

@@ -60,6 +60,7 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   // Measure total reshape (memory allocation) time
   auto t_reshape_start = std::chrono::high_resolution_clock::now();
   int64_t total_alloc_bytes = 0;
+  bool used_lazy_reshape = false;
 
   // Note: For N=1 zero-copy path, we still reshape top[0] to the correct shape
   // here so downstream layers see valid shapes during their own Reshape().
@@ -73,6 +74,7 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
       // Forward() will replace the lazy tensor with ShareData().
       auto bottom_shape = bottom[0]->shape();
       top[i]->SetShapeOnly(ShapeView(bottom_shape.data(), bottom_shape.size()));
+      used_lazy_reshape = true;
       continue;
     }
 #endif
@@ -95,8 +97,9 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
       top[i]->ReshapeLike(*bottom[0]);
     }
   }
-  // For large N, compute total_alloc_bytes once
-  if (num_top >= kLogAggregateThreshold) {
+  // For large N (Phase 2, no lazy), compute total_alloc_bytes once.
+  // When Phase 3 lazy reshape is active, total_alloc_bytes stays 0 (no allocation).
+  if (num_top >= kLogAggregateThreshold && !used_lazy_reshape) {
     total_alloc_bytes = num_top * count * static_cast<int64_t>(sizeof(float));
   }
 
