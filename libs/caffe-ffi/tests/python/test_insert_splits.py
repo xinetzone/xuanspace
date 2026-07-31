@@ -1,7 +1,7 @@
 """InsertSplits graph transformation — edge case tests.
 
 Tests boundary conditions for the implicit Split insertion pass that runs during
-Net initialization:
+Net initialization. Covered scenarios:
 
 1.  Zero-consumer blob (dead end, no split)
 2.  Single-consumer blob (no split)
@@ -14,6 +14,13 @@ Net initialization:
 9.  Linear chain (no fan-out, zero splits)
 10. Double in-place chain (two consecutive in-place ops, split after last producer)
 11. Mixed Input layer + param.input() external inputs
+12. Caffe native naming convention alignment (with forward verification)
+13. Split→Concat→Split nesting (Inception-style topology)
+14. Multiple independent splits with correct positions
+15. Empty network (zero layers, no crash)
+16. Explicit Input layer with 3 consumers (split with 3 outputs)
+17. Loss weight + multiple downstream consumers (3-output split)
+18. Unknown bottom blob reference raises error
 
 Run with:
     pytest tests/python/test_insert_splits.py -v
@@ -349,3 +356,154 @@ layer { name: 'fc3' type: 'InnerProduct' bottom: 'innerprod1' top: 'fc3_out'
         assert outputs["innerprod2"].shape == (2, 3)
         assert outputs["fc2_out"].shape == (2, 3)
         assert outputs["fc3_out"].shape == (2, 3)
+
+    def test_split_concat_split_nested(self):
+        """Split→Concat→Split nesting (Inception-style topology).
+
+        Topology:
+            data → split → fc_a, fc_b
+            fc_a → concat
+            fc_b → concat
+            concat → split → loss1, loss2
+        Both data and concat outputs need splits.
+        """
+        prototxt = """
+name: 'test_inception'
+input: 'data'
+input_shape { dim: 2 dim: 4 }
+layer { name: 'fc_a' type: 'InnerProduct' bottom: 'data' top: 'fc_a_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc_b' type: 'InnerProduct' bottom: 'data' top: 'fc_b_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'cat' type: 'Concat' bottom: 'fc_a_out' bottom: 'fc_b_out' top: 'cat_out'
+  concat_param { axis: 1 } }
+layer { name: 'fc_c' type: 'InnerProduct' bottom: 'cat_out' top: 'fc_c_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc_d' type: 'InnerProduct' bottom: 'cat_out' top: 'fc_d_out'
+  inner_product_param { num_output: 3 } }
+"""
+        net = _make_net(prototxt)
+        names = list(net.layer_names())
+        # data → fc_a + fc_b = 2 consumers → split
+        # cat_out → fc_c + fc_d = 2 consumers → split
+        assert any("data_input_0_split" in n for n in names)
+        assert any("cat_out_cat_0_split" in n for n in names)
+        assert _count_splits(net) == 2
+
+        # Verify split positions: data split at position 0,
+        # cat split immediately after cat layer
+        cat_idx = names.index("cat")
+        cat_split_idx = next(i for i, n in enumerate(names) if "cat_out_cat_0_split" in n)
+        assert cat_split_idx == cat_idx + 1
+
+        # Forward correctness
+        inp = np.random.randn(2, 4).astype(np.float32)
+        outputs = net.Forward({"data": inp})
+        assert outputs["fc_c_out"].shape == (2, 3)
+        assert outputs["fc_d_out"].shape == (2, 3)
+
+    def test_multiple_layers_need_splits_positions(self):
+        """Multiple independent splits: each inserted right after its producer."""
+        prototxt = """
+name: 'test_multi_split'
+input: 'data'
+input_shape { dim: 2 dim: 4 }
+layer { name: 'fc1' type: 'InnerProduct' bottom: 'data' top: 'fc1_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc2' type: 'InnerProduct' bottom: 'fc1_out' top: 'fc2_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc3' type: 'InnerProduct' bottom: 'fc1_out' top: 'fc3_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc4' type: 'InnerProduct' bottom: 'fc2_out' top: 'fc4_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc5' type: 'InnerProduct' bottom: 'fc2_out' top: 'fc5_out'
+  inner_product_param { num_output: 3 } }
+"""
+        net = _make_net(prototxt)
+        names = list(net.layer_names())
+        # data has 1 consumer (fc1) → no split
+        # fc1_out → fc2 + fc3 = 2 → split
+        # fc2_out → fc4 + fc5 = 2 → split
+        assert not any("data_input_0_split" in n for n in names)
+        assert any("fc1_out_fc1_0_split" in n for n in names)
+        assert any("fc2_out_fc2_0_split" in n for n in names)
+        assert _count_splits(net) == 2
+
+        # Each split immediately follows its producer
+        fc1_idx = names.index("fc1")
+        fc1_split_idx = next(i for i, n in enumerate(names) if "fc1_out_fc1_0_split" in n)
+        assert fc1_split_idx == fc1_idx + 1
+        fc2_idx = names.index("fc2")
+        fc2_split_idx = next(i for i, n in enumerate(names) if "fc2_out_fc2_0_split" in n)
+        assert fc2_split_idx == fc2_idx + 1
+
+    def test_empty_network_no_crash(self):
+        """Network with zero layers should not crash and produce zero splits."""
+        prototxt = """
+name: 'test_empty'
+input: 'data'
+input_shape { dim: 1 dim: 4 }
+"""
+        net = _make_net(prototxt)
+        assert _count_splits(net) == 0
+        assert len(list(net.layer_names())) == 0
+
+    def test_input_layer_three_consumers(self):
+        """Explicit Input layer with 3 consumers → split with 3 outputs."""
+        prototxt = """
+name: 'test_input3'
+layer { name: 'data' type: 'Input' top: 'data'
+  input_param { shape { dim: 2 dim: 4 } } }
+layer { name: 'fc1' type: 'InnerProduct' bottom: 'data' top: 'fc1_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc2' type: 'InnerProduct' bottom: 'data' top: 'fc2_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc3' type: 'InnerProduct' bottom: 'data' top: 'fc3_out'
+  inner_product_param { num_output: 3 } }
+"""
+        net = _make_net(prototxt)
+        names = list(net.layer_names())
+        assert "data_data_0_split" in names
+        assert _count_splits(net) == 1
+        data_idx = names.index("data")
+        split_idx = names.index("data_data_0_split")
+        assert split_idx == data_idx + 1
+
+        # Forward: all three branches produce output
+        inp = np.random.randn(2, 4).astype(np.float32)
+        outputs = net.Forward({"data": inp})
+        assert outputs["fc1_out"].shape == (2, 3)
+        assert outputs["fc2_out"].shape == (2, 3)
+        assert outputs["fc3_out"].shape == (2, 3)
+
+    def test_loss_weight_plus_multiple_consumers(self):
+        """A layer top with loss_weight + 2 downstream consumers → split with 3 outputs."""
+        prototxt = """
+name: 'test_loss3'
+force_backward: true
+input: 'data'
+input_shape { dim: 2 dim: 4 }
+layer { name: 'fc1' type: 'InnerProduct' bottom: 'data' top: 'fc1_out'
+  inner_product_param { num_output: 3 bias_term: false } loss_weight: 1.0 }
+layer { name: 'fc2' type: 'InnerProduct' bottom: 'fc1_out' top: 'fc2_out'
+  inner_product_param { num_output: 3 bias_term: false } }
+layer { name: 'fc3' type: 'InnerProduct' bottom: 'fc1_out' top: 'fc3_out'
+  inner_product_param { num_output: 3 bias_term: false } }
+"""
+        net = _make_net(prototxt)
+        names = list(net.layer_names())
+        # fc1_out → fc2(1) + fc3(1) + loss(1) = 3 consumers → split needed
+        assert any("fc1_out_fc1_0_split" in n for n in names)
+        assert _count_splits(net) == 1  # only fc1 split; data has 1 consumer
+
+    def test_unknown_bottom_raises_error(self):
+        """Referencing an undefined bottom blob should raise a runtime error."""
+        prototxt = """
+name: 'test_bad_ref'
+input: 'data'
+input_shape { dim: 1 dim: 4 }
+layer { name: 'fc1' type: 'InnerProduct' bottom: 'nonexistent' top: 'out'
+  inner_product_param { num_output: 3 } }
+"""
+        with pytest.raises((RuntimeError, ValueError), match="Unknown bottom blob|nonexistent"):
+            _make_net(prototxt)
