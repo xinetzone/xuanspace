@@ -1,19 +1,15 @@
 """Phase 3.0: Log aggregation verification test for N=100 Split.
 
 Verifies that when N=100 (>= kLogAggregateThreshold=32), the [SPLIT-PERF]
-log output is controlled to ≤ 10 lines, instead of the ~200 lines in Phase 2.
+log output is controlled to a small number of lines, instead of O(N) per-top lines.
 
-Test strategy:
-  1. Capture CAFFE_FFI_LOG_WARN output during Split::Reshape() + Forward()
-  2. Count lines containing [SPLIT-PERF]
-  3. Assert line count ≤ 10
+NOTE: caffe_ffi Logger sends WARN-level (including [SPLIT-PERF]) to stdout
+(std::cout), NOT stderr. Use capfd (fd-level capture) and check .out.
 
 Usage:
   pytest tests/python/test_phase3_log_aggregation.py -v -s
 """
-import os
-import sys
-import logging
+import re
 import pytest
 import numpy as np
 import caffe_ffi
@@ -21,31 +17,31 @@ import caffe_ffi
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _make_split_net(num_top: int, input_shape):
+def _make_split_prototxt(num_top: int, feat_dim: int, batch: int = 1, name: str = None) -> str:
+    """Create a minimal prototxt with Input + Split(N=num_top)."""
+    if name is None:
+        name = f"split_log_test_N{num_top}"
+    tops = "\n".join(f'  top: "split_{i}"' for i in range(num_top))
+    return f"""name: "{name}"
+layer {{
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param {{ shape {{ dim: {batch} dim: {feat_dim} }} }}
+}}
+layer {{
+  name: "split"
+  type: "Split"
+  bottom: "data"
+{tops}
+}}
+"""
+
+
+def _make_split_net(num_top: int, feat_dim: int, batch: int = 1):
     """Create a minimal Net with a single Split layer of N=num_top."""
-    from caffe_ffi import LayerParameter, NetParameter, Blob
-
-    proto = NetParameter()
-    proto.name = f"split_log_test_N{num_top}"
-
-    # Input layer
-    input_param = LayerParameter()
-    input_param.type = "Input"
-    input_param.name = "data"
-    input_param.top.append("data")
-    input_param.input_param.shape.add().dim[:] = list(input_shape)
-    proto.layer.append(input_param)
-
-    # Split layer
-    split_param = LayerParameter()
-    split_param.type = "Split"
-    split_param.name = "split"
-    split_param.bottom.append("data")
-    for i in range(num_top):
-        split_param.top.append(f"split_{i}")
-    proto.layer.append(split_param)
-
-    return proto
+    prototxt = _make_split_prototxt(num_top, feat_dim, batch)
+    return caffe_ffi.Net(prototxt)
 
 
 def _count_split_perf_lines(log_output: str) -> int:
@@ -53,221 +49,86 @@ def _count_split_perf_lines(log_output: str) -> int:
     return sum(1 for line in log_output.splitlines() if "[SPLIT-PERF]" in line)
 
 
-def _count_reshape_lines(log_output: str) -> int:
-    """Count lines containing 'Split Reshape' in log output."""
-    return sum(1 for line in log_output.splitlines() if "Split Reshape" in line)
-
-
-def _count_forward_lines(log_output: str) -> int:
-    """Count lines containing 'Split Forward' in log output."""
-    return sum(1 for line in log_output.splitlines() if "Split Forward" in line)
-
-
 # ── Test Cases ────────────────────────────────────────────────────────
 
 class TestLogAggregationN100:
     """Verify Phase 3.0 log aggregation for N=100 Split."""
 
-    def test_n100_split_perf_lines_le_10(self):
-        """N=100: [SPLIT-PERF] lines should be ≤ 10."""
-        # This test requires the compiled C++ code with kLogAggregateThreshold.
-        # When running in a build environment, it captures the actual log output.
+    def test_n100_split_perf_lines_bounded(self, capfd):
+        """N=100: [SPLIT-PERF] lines should be bounded (summary only, no per-top flood)."""
         num_top = 100
-        N = num_top
-        C = 1024  # count per blob
+        C = 1024
 
-        proto = _make_split_net(num_top, (1, C))
-        net = caffe_ffi.Net(proto)
+        net = _make_split_net(num_top, C)
         inp = np.random.randn(1, C).astype(np.float32)
 
-        # Capture WARN-level log output
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.WARN)
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
-
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
+        # Capture stdout (C++ WARN logs go to stdout via std::cout)
+        _ = capfd.readouterr()  # clear any prior output
+        out = net.Forward({"data": inp})
+        captured = capfd.readouterr()
+        log_output = captured.out
 
         perf_lines = _count_split_perf_lines(log_output)
+        # With log aggregation, we expect at most a few summary lines
+        # (1 Reshape summary from Net init + 1 Forward summary, maybe one
+        # extra Reshape if Forward triggers it = ~3 lines)
+        assert perf_lines >= 1, (
+            f"N=100: expected at least 1 [SPLIT-PERF] line, got {perf_lines}"
+        )
         assert perf_lines <= 10, (
             f"N=100 produced {perf_lines} [SPLIT-PERF] lines, "
-            f"expected ≤ 10. Phase 3.0 log aggregation may not be active."
+            f"expected <= 10. Phase 3.0 log aggregation may not be active.\n"
+            f"Log output:\n{log_output}"
         )
 
-    def test_n100_no_per_top_reshape_logs(self):
-        """N=100: per-top 'Split Reshape: top[N]' should NOT appear."""
+    def test_n100_forward_summary_present(self, capfd):
+        """N=100: the Forward summary [SPLIT-PERF] log must be present."""
         num_top = 100
+        C = 1024
 
-        proto = _make_split_net(num_top, (1, 512))
-        net = caffe_ffi.Net(proto)
-        inp = np.random.randn(1, 512).astype(np.float32)
+        net = _make_split_net(num_top, C)
+        inp = np.random.randn(1, C).astype(np.float32)
 
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.DEBUG)  # Capture all levels
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
+        _ = capfd.readouterr()
+        out = net.Forward({"data": inp})
+        captured = capfd.readouterr()
+        log_output = captured.out
 
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
-
-        # Per-top reshape logs contain "Split Reshape: top["
-        per_top_lines = _count_reshape_lines(log_output)
-        assert per_top_lines == 0, (
-            f"N=100 produced {per_top_lines} per-top reshape log lines, "
-            f"expected 0 with log aggregation enabled."
-        )
-
-    def test_n4_per_top_logs_still_present(self):
-        """N=4 (< threshold): per-top logs should still be present."""
-        num_top = 4
-
-        proto = _make_split_net(num_top, (1, 256))
-        net = caffe_ffi.Net(proto)
-        inp = np.random.randn(1, 256).astype(np.float32)
-
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.DEBUG)
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
-
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
-
-        # N=4 < 32, so per-top logs should still be emitted
-        perf_lines = _count_split_perf_lines(log_output)
-        # With N=4, we expect at least the summary line + some per-top info
-        assert perf_lines >= 1, (
-            f"N=4 produced only {perf_lines} [SPLIT-PERF] lines, "
-            f"expected at least 1 (summary)."
-        )
-
-    def test_n100_forward_summary_present(self):
-        """N=100: the summary [SPLIT-PERF] Forward log must be present."""
-        num_top = 100
-
-        proto = _make_split_net(num_top, (1, 1024))
-        net = caffe_ffi.Net(proto)
-        inp = np.random.randn(1, 1024).astype(np.float32)
-
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.WARN)
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
-
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
-
-        # The summary must contain "Forward(N=100" and "COW" or "COW-BATCH"
+        # The summary must contain "Forward" and "SPLIT-PERF" with N=100
         has_forward_summary = any(
-            "Forward(N=100" in line and "SPLIT-PERF" in line
+            "Forward" in line and "SPLIT-PERF" in line and f"N={num_top}" in line
             for line in log_output.splitlines()
         )
         assert has_forward_summary, (
-            "N=100 Forward summary [SPLIT-PERF] log is missing. "
-            "The summary log must always be emitted regardless of N."
+            f"N={num_top} Forward summary [SPLIT-PERF] log is missing.\n"
+            f"Log output:\n{log_output}"
         )
 
-    def test_n100_reshape_summary_present(self):
-        """N=100: the summary [SPLIT-PERF] Reshape log must be present."""
+    def test_n100_reshape_summary_present(self, capfd):
+        """N=100: the Reshape summary [SPLIT-PERF] log must be present."""
         num_top = 100
+        C = 1024
 
-        proto = _make_split_net(num_top, (1, 1024))
-        net = caffe_ffi.Net(proto)
-        inp = np.random.randn(1, 1024).astype(np.float32)
-
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.WARN)
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
-
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
+        _ = capfd.readouterr()
+        net = _make_split_net(num_top, C)
+        captured = capfd.readouterr()
+        log_output = captured.out
 
         has_reshape_summary = any(
-            "Reshape:" in line and "SPLIT-PERF" in line and "num_top=100" in line
+            "Reshape" in line and "SPLIT-PERF" in line and f"num_top={num_top}" in line
             for line in log_output.splitlines()
         )
         assert has_reshape_summary, (
-            "N=100 Reshape summary [SPLIT-PERF] log is missing."
+            f"N={num_top} Reshape summary [SPLIT-PERF] log is missing.\n"
+            f"Log output:\n{log_output}"
         )
 
+    def test_n4_split_output_correct(self):
+        """N=4: all top outputs should equal bottom input (functional correctness)."""
+        num_top = 4
+        C = 256
 
-class TestLogAggregationBoundary:
-    """Verify boundary behavior around kLogAggregateThreshold=32."""
-
-    @pytest.mark.parametrize("num_top,expect_aggregated", [
-        (31, False),   # just below threshold
-        (32, True),    # exactly at threshold
-        (33, True),    # just above threshold
-    ])
-    def test_threshold_boundary(self, num_top, expect_aggregated):
-        """Verify log aggregation kicks in at exactly N=32."""
-        proto = _make_split_net(num_top, (1, 256))
-        net = caffe_ffi.Net(proto)
-        inp = np.random.randn(1, 256).astype(np.float32)
-
-        import io
-        log_capture = io.StringIO()
-        handler = logging.StreamHandler(log_capture)
-        handler.setLevel(logging.DEBUG)
-        logger = logging.getLogger("caffe_ffi")
-        logger.addHandler(handler)
-
-        try:
-            out = net.Forward({"data": inp})
-            log_output = log_capture.getvalue()
-        finally:
-            logger.removeHandler(handler)
-
-        perf_lines = _count_split_perf_lines(log_output)
-
-        if expect_aggregated:
-            assert perf_lines <= 10, (
-                f"N={num_top} should be aggregated but produced {perf_lines} lines"
-            )
-        else:
-            # N=31 should still produce per-top logs
-            assert perf_lines >= 1, (
-                f"N={num_top} should have per-top logs but only produced {perf_lines}"
-            )
-
-
-class TestLogAggregationCorrectness:
-    """Verify log aggregation does not affect functional correctness."""
-
-    def test_n100_split_output_correct(self):
-        """N=100: all top outputs should equal bottom input."""
-        num_top = 100
-        C = 128
-
-        proto = _make_split_net(num_top, (1, C))
-        net = caffe_ffi.Net(proto)
+        net = _make_split_net(num_top, C)
         inp = np.random.randn(1, C).astype(np.float32)
 
         out = net.Forward({"data": inp})
@@ -276,7 +137,25 @@ class TestLogAggregationCorrectness:
             key = f"split_{i}"
             assert key in out, f"Missing output '{key}'"
             np.testing.assert_array_almost_equal(
-                out[key], inp,
+                net.blob_by_name(key).to_numpy(), inp,
+                err_msg=f"split_{i} output differs from input"
+            )
+
+    def test_n100_split_output_correct(self):
+        """N=100: all top outputs should equal bottom input."""
+        num_top = 100
+        C = 128
+
+        net = _make_split_net(num_top, C)
+        inp = np.random.randn(1, C).astype(np.float32)
+
+        out = net.Forward({"data": inp})
+
+        for i in range(num_top):
+            key = f"split_{i}"
+            assert key in out, f"Missing output '{key}'"
+            np.testing.assert_array_almost_equal(
+                net.blob_by_name(key).to_numpy(), inp,
                 err_msg=f"split_{i} output differs from input"
             )
 
@@ -285,44 +164,134 @@ class TestLogAggregationCorrectness:
         num_top = 100
         C = 64
 
-        proto = _make_split_net(num_top, (1, C))
-        net = caffe_ffi.Net(proto)
+        net = _make_split_net(num_top, C)
         inp = np.random.randn(1, C).astype(np.float32)
 
-        out1 = net.Forward({"data": inp})
-        out2 = net.Forward({"data": inp})
+        net.Forward({"data": inp})
+        out1 = {f"split_{i}": net.blob_by_name(f"split_{i}").to_numpy().copy()
+                for i in range(num_top)}
+
+        net.Forward({"data": inp})
+        out2 = {f"split_{i}": net.blob_by_name(f"split_{i}").to_numpy().copy()
+                for i in range(num_top)}
 
         for i in range(num_top):
             key = f"split_{i}"
             np.testing.assert_array_equal(out1[key], out2[key])
 
 
+class TestLogAggregationBoundary:
+    """Verify boundary behavior around kLogAggregateThreshold=32."""
+
+    @pytest.mark.parametrize("num_top,expect_aggregated", [
+        (4, False),    # well below threshold
+        (31, False),   # just below threshold
+        (32, True),    # exactly at threshold
+        (33, True),    # just above threshold
+        (64, True),    # well above
+    ])
+    def test_threshold_boundary(self, capfd, num_top, expect_aggregated):
+        """Verify log aggregation kicks in at exactly N=32."""
+        C = 256
+        _ = capfd.readouterr()
+        net = _make_split_net(num_top, C)
+        inp = np.random.randn(1, C).astype(np.float32)
+        out = net.Forward({"data": inp})
+        captured = capfd.readouterr()
+        log_output = captured.out
+
+        perf_lines = _count_split_perf_lines(log_output)
+
+        # All N values should produce at least 1 [SPLIT-PERF] summary line
+        assert perf_lines >= 1, (
+            f"N={num_top}: expected at least 1 [SPLIT-PERF] line, got {perf_lines}\n"
+            f"Log output:\n{log_output}"
+        )
+
+        if expect_aggregated:
+            # Aggregated: bounded number of summary lines (summary only, no per-top flood)
+            assert perf_lines <= 10, (
+                f"N={num_top} should be aggregated but produced {perf_lines} lines\n"
+                f"Log output:\n{log_output}"
+            )
+            # Verify log_aggregated=yes appears in summary
+            has_agg_flag = any("log_aggregated=yes" in line for line in log_output.splitlines())
+            assert has_agg_flag, (
+                f"N={num_top}: expected log_aggregated=yes in [SPLIT-PERF] output"
+            )
+        else:
+            # Not aggregated: summary lines present with log_aggregated=no
+            has_no_agg_flag = any("log_aggregated=no" in line for line in log_output.splitlines())
+            assert has_no_agg_flag, (
+                f"N={num_top}: expected log_aggregated=no in [SPLIT-PERF] output"
+            )
+
+        # Functional correctness regardless of log mode
+        for i in range(num_top):
+            np.testing.assert_array_almost_equal(
+                net.blob_by_name(f"split_{i}").to_numpy(), inp
+            )
+
+
+class TestLogAggregationCorrectness:
+    """Verify log aggregation does not affect functional correctness."""
+
+    def test_n100_split_forward_plus_relu(self):
+        """N=100 Split + ReLU downstream: outputs correct."""
+        num_top = 100
+        tops = "\n".join(f'  top: "split_{i}"' for i in range(num_top))
+        prototxt = f"""name: "split_relu_n100"
+layer {{
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param {{ shape {{ dim: 1 dim: 64 }} }}
+}}
+layer {{
+  name: "split"
+  type: "Split"
+  bottom: "data"
+{tops}
+}}
+layer {{
+  name: "relu"
+  type: "ReLU"
+  bottom: "split_0"
+  top: "relu_out"
+}}
+"""
+        net = caffe_ffi.Net(prototxt)
+        inp = np.random.randn(1, 64).astype(np.float32)
+
+        out = net.Forward({"data": inp})
+
+        assert "relu_out" in out
+        expected = np.maximum(0, inp)
+        np.testing.assert_array_almost_equal(
+            net.blob_by_name("relu_out").to_numpy(), expected
+        )
+
+
 # ── Manual verification script ────────────────────────────────────────
 
 if __name__ == "__main__":
-    """Manual verification: run with N=100 and count log lines.
-
-    Usage:
-      python tests/python/test_phase3_log_aggregation.py
-    """
     print("Phase 3.0 Log Aggregation Manual Verification")
     print("=" * 60)
 
     num_top = 100
     C = 1024
 
-    proto = _make_split_net(num_top, (1, C))
-    net = caffe_ffi.Net(proto)
+    net = _make_split_net(num_top, C)
     inp = np.random.randn(1, C).astype(np.float32)
 
-    print(f"Running Split with N={num_top}, count={C}...")
+    print(f"Running Split with N={num_top}, feat_dim={C}...")
     out = net.Forward({"data": inp})
 
     # Verify correctness
     all_ok = True
     for i in range(num_top):
         key = f"split_{i}"
-        if not np.allclose(out[key], inp):
+        if not np.allclose(net.blob_by_name(key).to_numpy(), inp):
             print(f"  FAIL: {key} differs from input")
             all_ok = False
     if all_ok:
@@ -330,5 +299,4 @@ if __name__ == "__main__":
 
     print(f"\nLog aggregation threshold: 32")
     print(f"N={num_top} >= 32 → aggregation ENABLED")
-    print(f"Expected [SPLIT-PERF] lines: ≤ 10 (Reshape summary + Forward summary)")
-    print(f"Expected per-top logs: 0 (all skipped)")
+    print(f"Expected [SPLIT-PERF] lines: <= 10 (Reshape summary + Forward summary)")
