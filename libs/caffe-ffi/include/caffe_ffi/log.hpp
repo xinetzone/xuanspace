@@ -107,5 +107,9 @@ class Logger {
 #define CAFFE_FFI_NET_LOG       CAFFE_FFI_LOG_DEBUG() << "[NET] "
 #define CAFFE_FFI_LAYER_LOG     CAFFE_FFI_LOG_DEBUG() << "[LAYER] "
 #define CAFFE_FFI_BLOB_LOG      CAFFE_FFI_LOG_DEBUG() << "[BLOB] "
+// SPLIT_INSERT log: INFO level so graph transformations are visible
+// when debug logging is enabled (level <= INFO=2), without requiring
+// full DEBUG (level=1) which is very verbose.
+#define CAFFE_FFI_SPLIT_LOG     CAFFE_FFI_LOG_INFO()  << "[SPLIT-INSERT] "
 
 #endif  // CAFFE_FFI_LOG_HPP_

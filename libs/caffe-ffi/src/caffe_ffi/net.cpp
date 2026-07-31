@@ -17,6 +17,335 @@
 
 namespace caffe_ffi {
 
+// ======================================================================
+// InsertSplits: Graph transformation pass that inserts explicit Split
+// layers for blobs consumed by multiple layers (fan-out > 1).
+//
+// This is a port of native Caffe's InsertSplits() (caffe/util/insert_splits.cpp),
+// adapted for caffe-ffi's NetParameter format (which supports both
+// legacy param.input() inputs and Input-type layers).
+//
+// Without this pass, a blob consumed by multiple layers causes
+// "Unknown bottom blob" errors because AppendBottom erases blobs from
+// available_blobs after first consumption.
+//
+// Algorithm (two-pass):
+//   Pass 1: Build data structures mapping bottom references to their
+//           producing (layer, top_idx), and count how many times each
+//           top is consumed. External inputs (param.input()) are tracked
+//           with a virtual producer index (-1, input_idx).
+//   Pass 2: For each layer in order:
+//           - Rewrite bottoms that come from multi-consumer tops to point
+//             to the corresponding split output name.
+//           - After processing each layer's tops, if a top is consumed
+//             by >1 downstream layers/losses, insert a Split layer.
+//
+// Split layer naming: <blob_name>_<producer_name>_<top_idx>_split
+// Split output naming: <blob_name>_<producer_name>_<top_idx>_split_<k>
+// ======================================================================
+
+namespace {
+
+// Generate split layer name matching native Caffe convention.
+std::string SplitLayerName(const std::string& producer_name,
+                           const std::string& blob_name,
+                           int blob_idx) {
+  std::ostringstream oss;
+  oss << blob_name << "_" << producer_name << "_" << blob_idx << "_split";
+  return oss.str();
+}
+
+// Generate split blob (top) name matching native Caffe convention.
+std::string SplitBlobName(const std::string& producer_name,
+                          const std::string& blob_name,
+                          int blob_idx,
+                          int split_idx) {
+  std::ostringstream oss;
+  oss << blob_name << "_" << producer_name << "_" << blob_idx
+      << "_split_" << split_idx;
+  return oss.str();
+}
+
+void ConfigureSplitLayer(const std::string& producer_name,
+                         const std::string& blob_name,
+                         int blob_idx, int split_count, float loss_weight,
+                         caffe::LayerParameter* split_layer_param,
+                         int log_level = 0) {
+  split_layer_param->Clear();
+  split_layer_param->add_bottom(blob_name);
+  split_layer_param->set_name(SplitLayerName(producer_name, blob_name, blob_idx));
+  split_layer_param->set_type("Split");
+  for (int k = 0; k < split_count; ++k) {
+    split_layer_param->add_top(
+        SplitBlobName(producer_name, blob_name, blob_idx, k));
+    if (loss_weight != 0.0f) {
+      split_layer_param->add_loss_weight(k == 0 ? loss_weight : 0.0f);
+    }
+  }
+  if (log_level >= 2) {
+    CAFFE_FFI_SPLIT_LOG << "  ConfigureSplitLayer: name='"
+                       << split_layer_param->name()
+                       << "' type=Split bottom='" << blob_name
+                       << "' tops=" << split_count;
+    for (int k = 0; k < split_count; ++k) {
+      CAFFE_FFI_SPLIT_LOG << "    top[" << k << "] = '"
+                         << split_layer_param->top(k) << "'";
+    }
+  }
+}
+
+void InsertSplits(const caffe::NetParameter& in_param, caffe::NetParameter* out_param) {
+  using std::make_pair;
+  CAFFE_FFI_SPLIT_LOG << "=== InsertSplits BEGIN ===";
+  CAFFE_FFI_SPLIT_LOG << "Input: name='" << in_param.name()
+                     << "' layers=" << in_param.layer_size()
+                     << " inputs=" << in_param.input_size();
+
+  // Initialize output by copying metadata from input
+  out_param->CopyFrom(in_param);
+  out_param->clear_layer();
+
+  // === Data structures for Pass 1 ===
+  std::map<std::string, std::pair<int, int>> blob_name_to_last_top_idx;
+  std::map<std::pair<int, int>, std::pair<int, int>> bottom_idx_to_source_top_idx;
+  std::map<std::pair<int, int>, int> top_idx_to_bottom_count;
+  std::map<std::pair<int, int>, float> top_idx_to_loss_weight;
+  std::map<std::pair<int, int>, int> top_idx_to_bottom_split_idx;
+  std::map<int, std::string> layer_idx_to_layer_name;
+
+  // Register external inputs (param.input()) as virtual producers at (-1, i)
+  CAFFE_FFI_SPLIT_LOG << "--- Pass 1a: registering external inputs ---";
+  for (int i = 0; i < in_param.input_size(); ++i) {
+    const std::string& blob_name = in_param.input(i);
+    blob_name_to_last_top_idx[blob_name] = make_pair(-1, i);
+    top_idx_to_bottom_count[make_pair(-1, i)] = 0;
+    CAFFE_FFI_SPLIT_LOG << "  External input['" << blob_name
+                       << "'] -> virtual producer (-1," << i << ")";
+  }
+
+  // === Pass 1: Count references and build mappings ===
+  CAFFE_FFI_SPLIT_LOG << "--- Pass 1b: counting bottom references across layers ---";
+  for (int i = 0; i < in_param.layer_size(); ++i) {
+    const caffe::LayerParameter& layer_param = in_param.layer(i);
+    layer_idx_to_layer_name[i] = layer_param.name();
+
+    CAFFE_FFI_SPLIT_LOG << "  Pass1 layer[" << i << "] '" << layer_param.name()
+                       << "'(" << layer_param.type() << ")"
+                       << " bottoms=" << layer_param.bottom_size()
+                       << " tops=" << layer_param.top_size();
+
+    // Record bottom -> source top mapping
+    for (int j = 0; j < layer_param.bottom_size(); ++j) {
+      const std::string& blob_name = layer_param.bottom(j);
+      CAFFE_FFI_CHECK_RUNTIME(blob_name_to_last_top_idx.count(blob_name) > 0)
+          << "InsertSplits: Unknown bottom blob '" << blob_name
+          << "' (layer '" << layer_param.name()
+          << "', bottom index " << j << ")";
+      auto bottom_idx = make_pair(i, j);
+      auto source_top_idx = blob_name_to_last_top_idx[blob_name];
+      bottom_idx_to_source_top_idx[bottom_idx] = source_top_idx;
+      ++top_idx_to_bottom_count[source_top_idx];
+      CAFFE_FFI_SPLIT_LOG << "    bottom[" << j << "]='" << blob_name
+                         << "' <- producer layer[" << source_top_idx.first
+                         << "] top[" << source_top_idx.second << "]"
+                         << " (consumer_count=" << top_idx_to_bottom_count[source_top_idx]
+                         << ")";
+    }
+
+    // Register this layer's tops
+    for (int j = 0; j < layer_param.top_size(); ++j) {
+      const std::string& blob_name = layer_param.top(j);
+      blob_name_to_last_top_idx[blob_name] = make_pair(i, j);
+      if (top_idx_to_bottom_count.find(make_pair(i, j)) == top_idx_to_bottom_count.end()) {
+        top_idx_to_bottom_count[make_pair(i, j)] = 0;
+      }
+    }
+
+    // Loss-weighted tops also count as consumers
+    int last_loss = std::min(layer_param.loss_weight_size(), layer_param.top_size());
+    for (int j = 0; j < last_loss; ++j) {
+      const std::string& blob_name = layer_param.top(j);
+      auto top_idx = blob_name_to_last_top_idx[blob_name];
+      top_idx_to_loss_weight[top_idx] = layer_param.loss_weight(j);
+      if (top_idx_to_loss_weight[top_idx] != 0.0f) {
+        ++top_idx_to_bottom_count[top_idx];
+        CAFFE_FFI_SPLIT_LOG << "    top[" << j << "]='" << blob_name
+                           << "' has loss_weight=" << layer_param.loss_weight(j)
+                           << " -> consumer_count=" << top_idx_to_bottom_count[top_idx]
+                           << " (loss counts as consumer)";
+      }
+    }
+  }
+
+  // Pass 1 summary: list all tops that need splits
+  CAFFE_FFI_SPLIT_LOG << "--- Pass 1 fan-out summary ---";
+  int split_needed_count = 0;
+  for (const auto& kv : top_idx_to_bottom_count) {
+    int layer_id = kv.first.first;
+    int top_id = kv.first.second;
+    int count = kv.second;
+    bool needs_split = (count > 1);
+    std::string producer_desc;
+    if (layer_id == -1) {
+      producer_desc = "external_input[" + std::to_string(top_id) + "]='"
+                    + in_param.input(top_id) + "'";
+    } else {
+      producer_desc = "layer[" + std::to_string(layer_id) + "]='"
+                    + layer_idx_to_layer_name[layer_id] + "' top["
+                    + std::to_string(top_id) + "]";
+    }
+    CAFFE_FFI_SPLIT_LOG << "  " << producer_desc
+                       << " consumers=" << count
+                       << (needs_split ? " *** NEEDS SPLIT ***" : "");
+    if (needs_split) split_needed_count++;
+  }
+  CAFFE_FFI_SPLIT_LOG << "Total blobs needing split: " << split_needed_count
+                     << " (out of " << top_idx_to_bottom_count.size() << " total tops)";
+
+  if (split_needed_count == 0) {
+    CAFFE_FFI_SPLIT_LOG << "No splits needed, copying all layers directly";
+    for (int i = 0; i < in_param.layer_size(); ++i) {
+      out_param->add_layer()->CopyFrom(in_param.layer(i));
+    }
+    CAFFE_FFI_SPLIT_LOG << "=== InsertSplits END (no splits inserted) ===";
+    return;
+  }
+
+  // === Pass 2: Rewrite bottoms and insert Split layers ===
+  CAFFE_FFI_SPLIT_LOG << "--- Pass 2: rewriting layers and inserting splits ---";
+  for (int i = 0; i < in_param.layer_size(); ++i) {
+    const caffe::LayerParameter& layer_param = in_param.layer(i);
+    CAFFE_FFI_SPLIT_LOG << "  Pass2 layer[" << i << "] '" << layer_param.name()
+                       << "'(" << layer_param.type() << ")";
+
+    caffe::LayerParameter* layer_param_ptr = out_param->add_layer();
+    layer_param_ptr->CopyFrom(layer_param);
+
+    // Step 2a: Rewrite bottom references for multi-consumer blobs
+    for (int j = 0; j < layer_param_ptr->bottom_size(); ++j) {
+      auto source_top_idx = bottom_idx_to_source_top_idx[make_pair(i, j)];
+      int split_count = top_idx_to_bottom_count[source_top_idx];
+      if (split_count > 1) {
+        int producer_layer = source_top_idx.first;
+        int producer_top = source_top_idx.second;
+        std::string producer_name;
+        std::string blob_name = layer_param_ptr->bottom(j);
+        if (producer_layer == -1) {
+          producer_name = "input";
+          blob_name = in_param.input(producer_top);
+        } else {
+          producer_name = layer_idx_to_layer_name[producer_layer];
+        }
+        int& split_idx = top_idx_to_bottom_split_idx[source_top_idx];
+        std::string new_blob_name = SplitBlobName(producer_name, blob_name,
+                                                  producer_top, split_idx);
+        CAFFE_FFI_SPLIT_LOG << "    Rewriting bottom[" << j << "] '"
+                           << layer_param_ptr->bottom(j)
+                           << "' -> '" << new_blob_name << "'"
+                           << " (split output " << (split_idx + 1) << "/" << split_count
+                           << " from producer '" << producer_name << "')";
+        layer_param_ptr->set_bottom(j, new_blob_name);
+        split_idx++;
+      } else {
+        CAFFE_FFI_SPLIT_LOG << "    bottom[" << j << "]='"
+                           << layer_param_ptr->bottom(j)
+                           << "' (single consumer, no rewrite)";
+      }
+    }
+
+    // Step 2b: After this layer, insert Split layers for any tops that need them
+    for (int j = 0; j < layer_param_ptr->top_size(); ++j) {
+      auto top_idx = make_pair(i, j);
+      int split_count = top_idx_to_bottom_count[top_idx];
+      if (split_count > 1) {
+        const std::string& producer_name = layer_idx_to_layer_name[i];
+        const std::string& blob_name = layer_param_ptr->top(j);
+        float loss_weight = 0.0f;
+        if (top_idx_to_loss_weight.count(top_idx)) {
+          loss_weight = top_idx_to_loss_weight[top_idx];
+        }
+        CAFFE_FFI_SPLIT_LOG << "    *** Inserting Split after '"
+                           << layer_param.name() << "' for top[" << j << "]='"
+                           << blob_name << "' (consumers=" << split_count
+                           << ", loss_weight=" << loss_weight << ")";
+        caffe::LayerParameter* split_layer_param = out_param->add_layer();
+        ConfigureSplitLayer(producer_name, blob_name, j, split_count,
+                            loss_weight, split_layer_param, 2);
+        if (loss_weight != 0.0f) {
+          layer_param_ptr->clear_loss_weight();
+          top_idx_to_bottom_split_idx[top_idx]++;
+        }
+      }
+    }
+  }
+
+  // Handle external inputs that need splits (insert at the very beginning)
+  // Collect splits in input order, then insert them all at position 0 in order.
+  CAFFE_FFI_SPLIT_LOG << "--- Pass 2b: handling external input splits ---";
+  std::vector<caffe::LayerParameter> input_splits;
+  for (int i = 0; i < in_param.input_size(); ++i) {
+    auto top_idx = make_pair(-1, i);
+    int split_count = top_idx_to_bottom_count[top_idx];
+    if (split_count > 1) {
+      const std::string& blob_name = in_param.input(i);
+      CAFFE_FFI_SPLIT_LOG << "  External input '" << blob_name
+                         << "' has " << split_count << " consumers, inserting Split";
+      caffe::LayerParameter split_layer;
+      ConfigureSplitLayer("input", blob_name, i, split_count, 0.0f, &split_layer, 2);
+      input_splits.push_back(split_layer);
+    }
+  }
+  if (!input_splits.empty()) {
+    // Make room at the beginning: shift all existing layers to the right by
+    // input_splits.size() positions, then insert splits at positions 0..n-1.
+    int existing = out_param->layer_size();
+    int n_ext = static_cast<int>(input_splits.size());
+    for (int k = 0; k < n_ext; ++k) {
+      out_param->add_layer();
+    }
+    for (int i = existing - 1; i >= 0; --i) {
+      out_param->mutable_layer(i + n_ext)->CopyFrom(out_param->layer(i));
+    }
+    for (int k = 0; k < n_ext; ++k) {
+      out_param->mutable_layer(k)->CopyFrom(input_splits[k]);
+    }
+  }
+
+  // === Final verification and summary ===
+  int num_split_layers = 0;
+  for (int i = 0; i < out_param->layer_size(); ++i) {
+    if (out_param->layer(i).type() == "Split") num_split_layers++;
+  }
+  CAFFE_FFI_SPLIT_LOG << "=== InsertSplits END ===";
+  CAFFE_FFI_SPLIT_LOG << "Output: name='" << out_param->name()
+                     << "' layers=" << out_param->layer_size()
+                     << " (original " << in_param.layer_size()
+                     << " + " << num_split_layers << " auto-inserted Split layers)";
+
+  // Log full transformed layer list for traceability
+  CAFFE_FFI_SPLIT_LOG << "--- Transformed layer list ---";
+  for (int i = 0; i < out_param->layer_size(); ++i) {
+    const caffe::LayerParameter& lp = out_param->layer(i);
+    std::ostringstream bs, ts;
+    for (int b = 0; b < lp.bottom_size(); ++b) {
+      if (b > 0) bs << ", ";
+      bs << "'" << lp.bottom(b) << "'";
+    }
+    for (int t = 0; t < lp.top_size(); ++t) {
+      if (t > 0) ts << ", ";
+      ts << "'" << lp.top(t) << "'";
+    }
+    const char* auto_split = (lp.type() == "Split" &&
+                              lp.name().find("_split") != std::string::npos)
+                              ? " [AUTO-INSERTED]" : "";
+    CAFFE_FFI_SPLIT_LOG << "  layer[" << i << "] '" << lp.name()
+                       << "'(" << lp.type() << ")" << auto_split
+                       << " bottoms=[" << bs.str() << "]"
+                       << " tops=[" << ts.str() << "]";
+  }
+}
+}  // namespace
+
 Net::Net(const caffe::NetParameter& param) {
   CAFFE_FFI_NET_LOG << "Net(NetParameter): name='" << param.name() << "' layers=" << param.layer_size() << " inputs=" << param.input_size();
   Init(param);
@@ -29,12 +358,22 @@ Net::Net(const std::string& param_file) {
   Init(param);
 }
 
-void Net::Init(const caffe::NetParameter& param) {
-  name_ = param.name();
+void Net::Init(const caffe::NetParameter& in_param) {
+  name_ = in_param.name();
   CAFFE_FFI_NET_LOG << "Init: starting network '" << name_ << "' initialization";
+
+  // Step 0: Run InsertSplits graph transformation pass to automatically insert
+  // Split layers for blobs consumed by multiple layers (fan-out > 1).
+  // This mirrors native Caffe's behavior where implicit splits are handled
+  // transparently so users don't need to manually add Split layers.
+  caffe::NetParameter param;
+  InsertSplits(in_param, &param);
+  int num_layers = param.layer_size();
+  CAFFE_FFI_NET_LOG << "Init: after InsertSplits, network has " << num_layers
+                    << " layers (original: " << in_param.layer_size() << ")";
+
   std::set<std::string> available_blobs;
   std::map<std::string, int> blob_name_to_idx;
-  int num_layers = param.layer_size();
   layers_.resize(num_layers);
   layer_names_.resize(num_layers);
   bottom_vecs_.resize(num_layers);
@@ -207,14 +546,14 @@ int Net::AppendBottom(const caffe::NetParameter& param, int layer_id,
                           << (previous_consumers_ss.tellp() > 0 ? previous_consumers_ss.str() : "none")
                           << "\n  *** Future producers of '" << blob_name << "': "
                           << (future_producers_ss.tellp() > 0 ? future_producers_ss.str() : "none")
-                          << "\n  *** Common causes:"
-                          << "\n      1) FORGOT EXPLICIT SPLIT: caffe-ffi requires explicit Split layers when a blob"
-                          << "\n         is consumed by multiple layers (no implicit Split like native Caffe)."
-                          << "\n         Add: layer { name:'split' type:'Split' bottom:'" << blob_name << "'"
-                          << "\n              top:'consumer1_in' top:'consumer2_in' } and use the split tops."
-                          << "\n      2) LAYER ORDERING: The layer producing '" << blob_name << "' comes after this layer."
+                          << "\n  *** Note: caffe-ffi automatically inserts Split layers for multi-consumer blobs"
+                          << "\n      (see [SPLIT-INSERT] logs above). If you see this error, common causes are:"
+                          << "\n      1) LAYER ORDERING: The layer producing '" << blob_name << "' comes after this layer."
                           << "\n         Move the producer layer before this layer in the prototxt."
-                          << "\n      3) TYPO: Check for misspelled blob name.";
+                          << "\n      2) TYPO: Check for misspelled blob name."
+                          << "\n      3) IN-PLACE CYCLE: An in-place layer (top==same bottom) combined with skip"
+                          << "\n         connection may confuse the split inserter. Use explicit Split layer."
+                          << "\n      4) Check [SPLIT-INSERT] logs above to verify the graph transformation.";
   }
   CAFFE_FFI_CHECK_KEY(available_blobs->find(blob_name) != available_blobs->end())
       << "Unknown bottom blob '" << blob_name << "' (layer '" << layer_param.name()

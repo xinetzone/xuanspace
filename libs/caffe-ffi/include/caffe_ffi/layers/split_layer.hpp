@@ -31,6 +31,7 @@ class SplitLayer : public Layer {
   static constexpr bool _type_mutable = true;
 
   explicit SplitLayer(const caffe::LayerParameter& param) : Layer(param) {}
+  void LayerSetUp(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
   void Reshape(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
 
   const char* type() const override { return "Split"; }

@@ -41,6 +41,39 @@ constexpr int kLogAggregateThreshold = 32;
 ///          shows lazy_reshape=yes, total_alloc_bytes=0, log_aggregated=yes
 constexpr int kLazyReshapeThreshold = 16;
 
+void SplitLayer::LayerSetUp(const std::vector<Blob*>& bottom,
+                             const std::vector<Blob*>& top) {
+  int num_top = static_cast<int>(top.size());
+  int num_bottom = static_cast<int>(bottom.size());
+
+  CAFFE_FFI_LAYER_LOG << "Split LayerSetUp: name='" << this->name()
+                      << "' num_bottom=" << num_bottom
+                      << " num_top=" << num_top;
+
+  // N=1 single-top Split is a rename/identity operation.
+  // This is useful for in-place computation but can be confusing because
+  // the original bottom blob name becomes unavailable (consumed by Split).
+  // For residual connections, you typically need N=2 (one top for the
+  // identity/residual path, one for the sublayer path).
+  if (num_top == 1) {
+    CAFFE_FFI_LOG_WARN() << "[SPLIT-N1] Split '" << this->name()
+                         << "' has num_top=1 (identity/rename path)."
+                         << " The bottom blob is consumed and ONLY the single top name"
+                         << " will be available downstream. If you need the original blob"
+                         << " for a residual/skip connection, use num_top=2:"
+                         << " one top for the sublayer input and one top for the"
+                         << " residual identity path."
+                         << " COW sharing: N=1 uses direct zero-copy ShareData/ShareDiff.";
+  } else {
+    CAFFE_FFI_LOG_WARN() << "[SPLIT-FANOUT] Split '" << this->name()
+                         << "' fans out bottom to " << num_top << " tops."
+                         << " COW (Copy-on-Write) is enabled: all tops initially share"
+                         << " bottom's memory; actual copies are deferred to first"
+                         << " mutable access (cpu_mutable_data/cpu_mutable_diff)."
+                         << " Top names will all be available as independent blobs downstream.";
+  }
+}
+
 void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
   int count = bottom[0]->count();
