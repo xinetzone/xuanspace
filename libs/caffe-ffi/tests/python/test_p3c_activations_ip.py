@@ -327,6 +327,114 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         assert np.all(out["out"] > 0.0)
         assert np.all(out["out"] < 1.0)
 
+    def test_sigmoid_float32_saturation_exact(self, ptrace):
+        """Sigmoid saturation behavior in float32.
+
+        In IEEE754 float32:
+        - sigmoid(88) = 1/(1+exp(-88)) ≈ 1.0 exactly, because exp(-88)≈6e-39
+          is far below ULP(1.0)≈1.2e-7, so 1+6e-39 rounds to 1.0.
+        - sigmoid(-88) = 1/(1+exp(88)) ≈ 6.1e-39, which is a representable
+          subnormal float32 (min subnormal ≈ 1.4e-45), so it is NOT exactly 0.0.
+          It is however extremely small (effectively zero for all practical purposes).
+        - sigmoid(±80) is very close but not at the extreme (≈1.8e-35 / 1-1.8e-35).
+        """
+        prototxt = """name: "sigmoid_sat"
+layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 1 dim: 1 dim: 1 dim: 4 } } }
+layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
+"""
+        with ptrace("Net(sigmoid saturation)"):
+            net = _make_net(prototxt)
+        # Test saturation points
+        inp = np.array([[[[-88.0, -80.0, 80.0, 88.0]]]], dtype=np.float32)
+        with ptrace("sigmoid saturation forward"):
+            out = net.forward({"data": inp})
+        result = out["out"]
+        # sigmoid(-88) ≈ 6e-39 in float32 (subnormal, not exactly 0)
+        assert result[0, 0, 0, 0] < 1e-37, (
+            f"sigmoid(-88) should be < 1e-37 (effectively zero), got {result[0,0,0,0]}"
+        )
+        # sigmoid(88) is exactly 1.0 in float32
+        assert result[0, 0, 0, 3] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result[0,0,0,3]}"
+        # Near-saturation: sigmoid(±80) is very close but NOT at the extreme
+        assert 0.0 < result[0, 0, 0, 1] < 1e-30, f"sigmoid(-80) should be < 1e-30, got {result[0,0,0,1]}"
+        assert result[0, 0, 0, 2] > 1.0 - 1e-30, f"sigmoid(80) should be > 1-1e-30, got {result[0,0,0,2]}"
+        # No NaN or Inf
+        assert not np.any(np.isnan(result))
+        assert not np.any(np.isinf(result))
+
+    def test_sigmoid_saturation_transition_zone(self, ptrace):
+        """Find the approximate transition zone where float32 saturation begins.
+
+        In float32, ULP(1.0) ≈ 1.2e-7, so sigmoid(x) rounds to 1.0 when
+        1-sigmoid(x) ≈ exp(-x) < ULP/2 ≈ 6e-8, i.e. x > ~16.6.
+        Values below x≈15 remain strictly < 1.0.
+        """
+        prototxt = """name: "sigmoid_trans"
+layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 1 dim: 1 dim: 1 dim: 10 } } }
+layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
+"""
+        with ptrace("Net(sigmoid transition)"):
+            net = _make_net(prototxt)
+        # Sweep values from well-behaved to saturated
+        # In float32, saturation to 1.0 starts around x≈17
+        x_values = np.array([[[[0.0, 5.0, 10.0, 12.0, 14.0, 15.0, 16.0, 20.0, 40.0, 88.0]]]], dtype=np.float32)
+        with ptrace("sigmoid transition forward"):
+            out = net.forward({"data": x_values})
+        result = out["out"]
+        # For x <= 14, output should be strictly < 1.0 (not yet saturated)
+        for i in range(5):
+            assert result.flat[i] < 1.0, (
+                f"sigmoid({x_values.flat[i]}) should be < 1.0, got {result.flat[i]}"
+            )
+        # At x=88 it must be exactly 1.0
+        assert result.flat[9] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result.flat[9]}"
+        # Monotonicity: output should be non-decreasing as x increases
+        for i in range(9):
+            assert result.flat[i+1] >= result.flat[i], (
+                f"Sigmoid not monotonic at index {i}: {result.flat[i]} -> {result.flat[i+1]}"
+            )
+        # No NaN or Inf anywhere
+        assert not np.any(np.isnan(result)), "Sigmoid produced NaN"
+        assert not np.any(np.isinf(result)), "Sigmoid produced Inf"
+
+    def test_sigmoid_extreme_large_tensor(self, ptrace):
+        """Sigmoid on large tensor with extreme values: no NaN/Inf/crash, correct behavior."""
+        N = 65536
+        prototxt = f"""name: "sigmoid_large"
+layer {{ name: "data" type: "Input" top: "data" input_param {{ shape {{ dim: 1 dim: 1 dim: 1 dim: {N} }} }} }}
+layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
+"""
+        with ptrace("Net(sigmoid large tensor)"):
+            net = _make_net(prototxt)
+        # Mix of extreme values: -88, 0, 88 repeated
+        inp = np.zeros((1, 1, 1, N), dtype=np.float32)
+        inp.flat[0::3] = -88.0
+        inp.flat[1::3] = 0.0
+        inp.flat[2::3] = 88.0
+        with ptrace("sigmoid large tensor forward"):
+            out = net.forward({"data": inp})
+        result = out["out"]
+        assert result.shape == (1, 1, 1, N)
+        # sigmoid(-88) ≈ 6e-39 (subnormal, effectively zero but not exactly 0.0)
+        assert np.all(result.flat[0::3] < 1e-37), "All sigmoid(-88) should be < 1e-37"
+        assert np.all(result.flat[1::3] == pytest.approx(0.5, abs=1e-6)), "All sigmoid(0) should be 0.5"
+        assert np.all(result.flat[2::3] == 1.0), "All sigmoid(88) should be exactly 1.0"
+        assert not np.any(np.isnan(result)), "NaN in large tensor sigmoid"
+        assert not np.any(np.isinf(result)), "Inf in large tensor sigmoid"
+
+    def test_sigmoid_zero_input(self, ptrace):
+        """Sigmoid of all zeros should produce exactly 0.5 for all elements."""
+        prototxt = """name: "sigmoid_zero"
+layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 2 dim: 3 dim: 4 dim: 4 } } }
+layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
+"""
+        with ptrace("Net(sigmoid zero)"):
+            net = _make_net(prototxt)
+        inp = np.zeros((2, 3, 4, 4), dtype=np.float32)
+        with ptrace("sigmoid zero forward"):
+            out = net.forward({"data": inp})
+        assert np.all(out["out"] == 0.5), "sigmoid(0) should be exactly 0.5 for all elements"
+
     def test_sigmoid_symmetric(self, ptrace):
         """Sigmoid should satisfy 1 - sigmoid(x) = sigmoid(-x)."""
         prototxt = """name: "sigmoid_sym"
