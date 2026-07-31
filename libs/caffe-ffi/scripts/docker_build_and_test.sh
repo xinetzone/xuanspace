@@ -61,8 +61,8 @@ log_info "Source directory: $SRC_DIR"
 # ── Step 1: Clean previous build (if any) and reconfigure with Phase 3 ──
 log_info "Step 1: Configure & Build (Phase 3 enabled: COW + LAZY_RESHAPE)"
 docker_conda "rm -rf build && \
-    SKBUILD_CMAKE_ARGS='-DCAFFE_FFI_ENABLE_COW=ON;-DCAFFE_FFI_ENABLE_COW_PHASE3=ON;-DCAFFE_FFI_BUILD_TESTS=ON' \
-    pip install --no-build-isolation -e . 2>&1 | tail -40"
+    SKBUILD_CMAKE_ARGS='-DCAFFE_FFI_ENABLE_COW=ON;-DCAFFE_FFI_ENABLE_COW_PHASE3=ON;-DCAFFE_FFI_BUILD_TESTS=OFF' \
+    pip install --no-build-isolation -v -e ." || { log_error "pip install (build) FAILED — see errors above"; exit 1; }
 
 # ── Step 2: Verify caffe_ffi imports ──
 log_info "Step 2: Verify caffe_ffi import"
