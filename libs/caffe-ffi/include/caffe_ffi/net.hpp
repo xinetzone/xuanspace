@@ -60,6 +60,22 @@ class Net : public Object {
    */
   float ForwardFromTo(int start, int end);
 
+  /**
+   * @brief Run backward pass through all layers (reverse order).
+   *
+   * Before calling Backward, output blob diffs must be set (via Blob::mutable_cpu_diff()
+   * or the Python Blob.diff setter). For non-loss networks, setting output diff to 1.0
+   * is the standard convention (as if backpropagating from a unit loss gradient).
+   */
+  void Backward();
+
+  /**
+   * @brief Run backward pass from layer start down to layer end (inclusive, reverse order).
+   * @param start Index of first layer to backprop from (typically last layer).
+   * @param end Index of last layer to backprop to (typically 0).
+   */
+  void BackwardFromTo(int start, int end);
+
   /** @brief Get the network name. */
   const std::string& name() const { return name_; }
   /** @brief Get ordered list of all layer names. */

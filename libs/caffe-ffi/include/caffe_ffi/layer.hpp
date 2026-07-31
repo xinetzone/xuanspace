@@ -48,6 +48,16 @@ class Layer : public Object {
   float Forward(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top);
 
   /**
+   * @brief Perform backward pass: compute gradients w.r.t. bottom blobs and parameters.
+   * @param top    Top blobs (containing output values in cpu_data() and upstream gradients in cpu_diff()).
+   * @param propagate_down  Boolean vector indicating whether to compute gradients for each bottom blob.
+   * @param bottom Bottom blobs (gradients written to mutable_cpu_diff()).
+   */
+  void Backward(const std::vector<Blob*>& top,
+                const std::vector<bool>& propagate_down,
+                const std::vector<Blob*>& bottom);
+
+  /**
    * @brief One-time layer-specific initialization (read layer parameters, create weight blobs).
    * Called once during network construction after blob shapes are known.
    */
@@ -135,6 +145,22 @@ class Layer : public Object {
 
   virtual void Forward_cpu(const std::vector<Blob*>& bottom,
                            const std::vector<Blob*>& top) = 0;
+
+  /**
+   * @brief CPU backward pass implementation. Subclasses should override this to compute gradients.
+   *
+   * Default implementation logs a warning and returns immediately. Override in concrete layers
+   * to implement actual gradient computation. The method signature follows Caffe convention:
+   * top blobs first (with upstream gradients in cpu_diff()), then propagate_down flags,
+   * then bottom blobs (where gradients are written to mutable_cpu_diff()).
+   *
+   * @param top             Top blobs (output values from forward pass, upstream gradients).
+   * @param propagate_down  For each bottom blob, whether gradient computation is needed.
+   * @param bottom          Bottom blobs (gradients written to mutable_cpu_diff()).
+   */
+  virtual void Backward_cpu(const std::vector<Blob*>& top,
+                            const std::vector<bool>& propagate_down,
+                            const std::vector<Blob*>& bottom);
 
   void CheckBlobCounts(const std::vector<Blob*>& bottom,
                        const std::vector<Blob*>& top);

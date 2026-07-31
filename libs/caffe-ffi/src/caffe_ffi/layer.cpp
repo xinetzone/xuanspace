@@ -53,6 +53,23 @@ float Layer::Forward(const std::vector<Blob*>& bottom, const std::vector<Blob*>&
   return loss;
 }
 
+void Layer::Backward(const std::vector<Blob*>& top,
+                     const std::vector<bool>& propagate_down,
+                     const std::vector<Blob*>& bottom) {
+  CAFFE_FFI_LAYER_LOG << "Backward('" << layer_param_.name() << "', " << type()
+                      << "): bottom=" << bottom.size() << " top=" << top.size();
+  CheckBlobCounts(bottom, top);
+  Backward_cpu(top, propagate_down, bottom);
+  CAFFE_FFI_LAYER_LOG << "Backward('" << layer_param_.name() << "'): complete";
+}
+
+void Layer::Backward_cpu(const std::vector<Blob*>& top,
+                         const std::vector<bool>& propagate_down,
+                         const std::vector<Blob*>& bottom) {
+  CAFFE_FFI_LOG_WARN() << "Backward_cpu not implemented for " << type()
+                       << " layer '" << layer_param_.name() << "'";
+}
+
 Array<ObjectPtr<Blob>> Layer::blobs_array() const {
   Array<ObjectPtr<Blob>> result;
   for (const auto& blob : blobs_) {

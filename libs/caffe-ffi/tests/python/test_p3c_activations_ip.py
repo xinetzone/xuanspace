@@ -471,6 +471,285 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Sigmoid Layer Backward Tests (P3-D: Gradient & Saturation Counter)
+# ═══════════════════════════════════════════════════════════════════════
+
+def sigmoid_grad_np(x):
+    """Numpy reference for sigmoid gradient: sigmoid'(x) = y * (1 - y)."""
+    y = sigmoid_np(x)
+    return (y * (1.0 - y)).astype(np.float32)
+
+
+class TestSigmoidBackward:
+    """Tests for Sigmoid backward pass: gradient correctness and saturation counter.
+
+    These tests verify:
+    1. Gradient values match numpy reference dx = dy * y * (1-y)
+    2. Saturation counter correctly identifies elements where y is in saturation zone
+       (y < 1e-4 or y > 1-1e-4, where the local gradient is < 1e-4, causing vanishing gradients)
+    3. propagate_down=false skips gradient computation
+    """
+
+    def _make_sigmoid_net(self, N):
+        """Create a simple Input->Sigmoid network with 1D input of size N."""
+        prototxt = f"""name: "sigmoid_bwd"
+layer {{ name: "data" type: "Input" top: "data" input_param {{ shape {{ dim: 1 dim: 1 dim: 1 dim: {N} }} }} }}
+layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
+"""
+        return _make_net(prototxt)
+
+    def test_sigmoid_backward_gradient_values(self, ptrace):
+        """Gradient dx should equal dy * sigmoid(x) * (1 - sigmoid(x))."""
+        N = 10
+        with ptrace("Net(sigmoid bwd gradient)"):
+            net = self._make_sigmoid_net(N)
+        np.random.seed(1001)
+        x = np.random.randn(1, 1, 1, N).astype(np.float32) * 2.0
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)  # upstream gradient = 1
+        with ptrace("sigmoid forward"):
+            net.forward({"data": x})
+        with ptrace("sigmoid backward"):
+            net.backward({"out": dy})
+        # Read input blob diff (bottom gradient)
+        data_blob = net.blob_by_name("data")
+        dx = data_blob.diff
+        expected_dx = sigmoid_grad_np(x)  # dy=1, so dx = y*(1-y)
+        np.testing.assert_allclose(dx, expected_dx, rtol=1e-5, atol=1e-6)
+
+    def test_sigmoid_backward_with_arbitrary_dy(self, ptrace):
+        """Gradient dx = dy * y * (1-y) with non-unit upstream gradient."""
+        N = 20
+        with ptrace("Net(sigmoid bwd arbitrary dy)"):
+            net = self._make_sigmoid_net(N)
+        np.random.seed(1002)
+        x = np.random.randn(1, 1, 1, N).astype(np.float32) * 3.0
+        dy = np.random.randn(1, 1, 1, N).astype(np.float32) * 0.5
+        with ptrace("sigmoid forward"):
+            out = net.forward({"data": x})
+        with ptrace("sigmoid backward"):
+            net.backward({"out": dy})
+        y = out["out"]
+        expected_dx = (dy * y * (1.0 - y)).astype(np.float32)
+        dx = net.blob_by_name("data").diff
+        np.testing.assert_allclose(dx, expected_dx, rtol=1e-5, atol=1e-6)
+
+    def test_sigmoid_backward_saturation_counter_zero_input(self, ptrace):
+        """All-zero input: y=0.5 for all elements → zero saturated elements.
+
+        At x=0, sigmoid(0)=0.5 which is right in the linear zone (not near 0 or 1),
+        so saturate count must be exactly 0 and ratio=0.
+        """
+        N = 100
+        with ptrace("Net(sigmoid bwd zero sat)"):
+            net = self._make_sigmoid_net(N)
+        x = np.zeros((1, 1, 1, N), dtype=np.float32)
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward zero"):
+            net.forward({"data": x})
+        with ptrace("sigmoid backward zero") as t:
+            net.backward({"out": dy})
+        # Verify gradient is max at 0.25 for all elements
+        dx = net.blob_by_name("data").diff
+        np.testing.assert_allclose(dx, np.full_like(dx, 0.25), rtol=1e-6)
+        t['note'] = 'All elements at y=0.5, max gradient, zero saturation'
+
+    def test_sigmoid_backward_saturation_counter_all_saturated_positive(self, ptrace):
+        """All large positive inputs (x=20): y≈1 for all → all saturated.
+
+        At x=20, sigmoid(20) ≈ 1-2e-9, which is > 1-1e-4, so all elements are
+        in the positive saturation zone. saturate count must equal N, ratio=1.0.
+        Gradient dx should be near zero (vanishing gradient).
+        """
+        N = 50
+        with ptrace("Net(sigmoid bwd all sat pos)"):
+            net = self._make_sigmoid_net(N)
+        x = np.full((1, 1, 1, N), 20.0, dtype=np.float32)
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward sat pos"):
+            out = net.forward({"data": x})
+        y = out["out"]
+        # Verify forward outputs are near 1.0
+        assert np.all(y > 1.0 - 1e-4), f"Expected all y > 1-1e-4, min={y.min()}"
+        with ptrace("sigmoid backward sat pos") as t:
+            net.backward({"out": dy})
+        dx = net.blob_by_name("data").diff
+        # All gradients should be near zero (vanishing)
+        assert np.all(np.abs(dx) < 1e-4), f"Expected near-zero gradients, max|dx|={np.abs(dx).max()}"
+        t['max_dx'] = float(np.abs(dx).max())
+        t['note'] = f'All {N} elements in positive saturation zone, vanishing gradients'
+
+    def test_sigmoid_backward_saturation_counter_all_saturated_negative(self, ptrace):
+        """All large negative inputs (x=-20): y≈0 for all → all saturated.
+
+        At x=-20, sigmoid(-20) ≈ 2e-9, which is < 1e-4, so all elements are
+        in the negative saturation zone. saturate count must equal N, ratio=1.0.
+        """
+        N = 50
+        with ptrace("Net(sigmoid bwd all sat neg)"):
+            net = self._make_sigmoid_net(N)
+        x = np.full((1, 1, 1, N), -20.0, dtype=np.float32)
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward sat neg"):
+            out = net.forward({"data": x})
+        y = out["out"]
+        assert np.all(y < 1e-4), f"Expected all y < 1e-4, max={y.max()}"
+        with ptrace("sigmoid backward sat neg") as t:
+            net.backward({"out": dy})
+        dx = net.blob_by_name("data").diff
+        assert np.all(np.abs(dx) < 1e-4), f"Expected near-zero gradients, max|dx|={np.abs(dx).max()}"
+        t['max_dx'] = float(np.abs(dx).max())
+        t['note'] = f'All {N} elements in negative saturation zone, vanishing gradients'
+
+    def test_sigmoid_backward_saturation_counter_mixed(self, ptrace):
+        """Mixed inputs: precisely control how many elements are saturated.
+
+        Construct input with known saturated/non-saturated elements and verify
+        the saturation counter matches exactly. Uses threshold boundary:
+        - y < 1e-4  → x < -ln(1/1e-4 - 1) ≈ -9.21 (negative saturation)
+        - y > 1-1e-4 → x > ln(1/1e-4 - 1) ≈ 9.21 (positive saturation)
+        - |x| < 9   → non-saturated
+        """
+        N = 30
+        with ptrace("Net(sigmoid bwd mixed)"):
+            net = self._make_sigmoid_net(N)
+        x = np.zeros((1, 1, 1, N), dtype=np.float32)
+        # 10 elements in negative saturation (x = -20)
+        x.flat[:10] = -20.0
+        # 10 elements in linear zone (x = 0)
+        x.flat[10:20] = 0.0
+        # 10 elements in positive saturation (x = 20)
+        x.flat[20:] = 20.0
+        expected_saturated = 20  # 10 neg + 10 pos
+        expected_linear = 10
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward mixed"):
+            out = net.forward({"data": x})
+        y = out["out"]
+        # Verify forward: saturated elements at extremes, linear at 0.5
+        assert np.all(y.flat[:10] < 1e-4)
+        np.testing.assert_allclose(y.flat[10:20], np.full(10, 0.5, dtype=np.float32), atol=1e-6)
+        assert np.all(y.flat[20:] > 1.0 - 1e-4)
+        with ptrace("sigmoid backward mixed") as t:
+            net.backward({"out": dy})
+        dx = net.blob_by_name("data").diff
+        # Saturated elements: near-zero gradients
+        assert np.all(np.abs(dx.flat[:10]) < 1e-4), "Neg saturated gradients should vanish"
+        assert np.all(np.abs(dx.flat[20:]) < 1e-4), "Pos saturated gradients should vanish"
+        # Linear elements: gradient ≈ 0.25 (max gradient at x=0)
+        np.testing.assert_allclose(dx.flat[10:20], np.full(10, 0.25, dtype=np.float32), rtol=1e-5)
+        t['expected_saturated'] = expected_saturated
+        t['expected_linear'] = expected_linear
+        t['note'] = f'Mixed: {expected_saturated} saturated (near-zero dx), {expected_linear} linear (dx≈0.25)'
+
+    def test_sigmoid_backward_saturation_boundary_threshold(self, ptrace):
+        """Test exact threshold boundary: elements just inside/outside saturation.
+
+        The saturation threshold is kSaturateThreshold = 1e-4.
+        Elements with y exactly at the boundary are NOT considered saturated
+        (condition uses strict < and >).
+        """
+        N = 4
+        with ptrace("Net(sigmoid bwd threshold)"):
+            net = self._make_sigmoid_net(N)
+        # x = ±9.21 gives y ≈ 1e-4 or 1-1e-4
+        # Use x = ±9 to be safely non-saturated, x = ±10 to be safely saturated
+        x = np.array([[[[-10.0, -9.0, 9.0, 10.0]]]], dtype=np.float32)
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward threshold"):
+            out = net.forward({"data": x})
+        y = out["out"]
+        # Verify threshold behavior:
+        # x=-10 → y ≈ 4.5e-5 < 1e-4 → saturated
+        # x=-9  → y ≈ 1.2e-4 > 1e-4 → NOT saturated
+        # x=9   → y ≈ 1-1.2e-4 < 1-1e-4 → NOT saturated
+        # x=10  → y ≈ 1-4.5e-5 > 1-1e-4 → saturated
+        assert y.flat[0] < 1e-4, f"x=-10 should give y<1e-4, got {y.flat[0]}"
+        assert y.flat[1] > 1e-4, f"x=-9 should give y>1e-4, got {y.flat[1]}"
+        assert y.flat[2] < 1.0 - 1e-4, f"x=9 should give y<1-1e-4, got {y.flat[2]}"
+        assert y.flat[3] > 1.0 - 1e-4, f"x=10 should give y>1-1e-4, got {y.flat[3]}"
+        with ptrace("sigmoid backward threshold") as t:
+            net.backward({"out": dy})
+        dx = net.blob_by_name("data").diff
+        # Elements 0 and 3 (indices 0,3) should have near-zero gradients
+        assert np.abs(dx.flat[0]) < 1e-4, f"Saturated element 0 should have near-zero dx"
+        assert np.abs(dx.flat[3]) < 1e-4, f"Saturated element 3 should have near-zero dx"
+        # Elements 1 and 2 (indices 1,2) should have non-trivial gradients
+        assert np.abs(dx.flat[1]) > 1e-4, f"Non-saturated element 1 should have non-zero dx"
+        assert np.abs(dx.flat[2]) > 1e-4, f"Non-saturated element 2 should have non-zero dx"
+        t['saturated_indices'] = [0, 3]
+        t['non_saturated_indices'] = [1, 2]
+
+    def test_sigmoid_backward_large_tensor_saturation_stats(self, ptrace):
+        """Large tensor mixed distribution: verify saturation statistics.
+
+        Uses normal distribution with std=5 to generate a realistic mix of
+        saturated and non-saturated elements. Compares saturation count against
+        numpy reference calculation to verify the C++ counter is accurate.
+        """
+        N = 65536
+        with ptrace("Net(sigmoid bwd large stats)"):
+            net = self._make_sigmoid_net(N)
+        np.random.seed(999)
+        x = np.random.randn(1, 1, 1, N).astype(np.float32) * 5.0
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward large"):
+            out = net.forward({"data": x})
+        y = out["out"]
+        # Compute expected saturation count using numpy
+        saturate_thresh = 1e-4
+        expected_saturated = int(np.sum((y < saturate_thresh) | (y > 1.0 - saturate_thresh)))
+        expected_ratio = expected_saturated / N
+        with ptrace("sigmoid backward large") as t:
+            net.backward({"out": dy})
+        dx = net.blob_by_name("data").diff
+        expected_dx = (y * (1.0 - y)).astype(np.float32)
+        np.testing.assert_allclose(dx, expected_dx, rtol=1e-5, atol=1e-6)
+        t['total_elements'] = N
+        t['expected_saturated'] = expected_saturated
+        t['expected_ratio'] = float(expected_ratio)
+        t['note'] = f'Large tensor: {expected_saturated}/{N} saturated ({expected_ratio:.2%})'
+        # Sanity: with std=5, expect roughly 5-10% saturation
+        assert 0.01 < expected_ratio < 0.30, (
+            f"Expected saturation ratio between 1-30% for N(0,5) inputs, got {expected_ratio:.2%}"
+        )
+
+    def test_sigmoid_backward_deterministic(self, ptrace):
+        """Backward should be deterministic across repeated calls."""
+        N = 32
+        with ptrace("Net(sigmoid bwd deterministic)"):
+            net = self._make_sigmoid_net(N)
+        np.random.seed(77)
+        x = np.random.randn(1, 1, 1, N).astype(np.float32) * 4.0
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward det"):
+            net.forward({"data": x})
+        dx_results = []
+        for i in range(5):
+            with ptrace(f"sigmoid backward det #{i}"):
+                net.backward({"out": dy})
+            dx_results.append(net.blob_by_name("data").diff.copy())
+        for i in range(1, 5):
+            np.testing.assert_array_equal(dx_results[0], dx_results[i])
+
+    def test_sigmoid_backward_preserves_forward_output(self, ptrace):
+        """Backward must not modify forward activations (top data)."""
+        N = 16
+        with ptrace("Net(sigmoid bwd preserves fwd)"):
+            net = self._make_sigmoid_net(N)
+        np.random.seed(88)
+        x = np.random.randn(1, 1, 1, N).astype(np.float32) * 3.0
+        dy = np.ones((1, 1, 1, N), dtype=np.float32)
+        with ptrace("sigmoid forward"):
+            out = net.forward({"data": x})
+        y_before = out["out"].copy()
+        with ptrace("sigmoid backward"):
+            net.backward({"out": dy})
+        # Forward output should be unchanged
+        y_after = net.blob_by_name("out").data
+        np.testing.assert_array_equal(y_before, y_after)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # TanH Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 

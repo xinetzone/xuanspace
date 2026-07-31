@@ -713,6 +713,32 @@ float Net::ForwardFromTo(int start, int end) {
   return total_loss;
 }
 
+void Net::Backward() {
+  CAFFE_FFI_NET_LOG << "Backward: starting BackwardFromTo(" << (layers_.size() - 1) << ", 0)";
+  BackwardFromTo(static_cast<int>(layers_.size()) - 1, 0);
+  CAFFE_FFI_NET_LOG << "Backward: completed";
+}
+
+void Net::BackwardFromTo(int start, int end) {
+  CAFFE_FFI_CHECK_INDEX_GE(end, 0);
+  CAFFE_FFI_CHECK_INDEX_LT(start, static_cast<int>(layers_.size()));
+  CAFFE_FFI_NET_LOG << "BackwardFromTo: layers[" << start << ".." << end << "] (reverse)";
+  // Backward traversal: from last layer to first
+  for (int i = start; i >= end; --i) {
+    // For MVP backward support: propagate gradients down to all bottom blobs.
+    // Layers with no bottoms (e.g., Input/Data layers) will have empty bottom_vecs,
+    // and their Backward will be a no-op. Learnable parameter blobs (layer.blobs_)
+    // gradients are handled separately (not yet implemented).
+    const std::vector<Blob*>& bottom = bottom_vecs_[i];
+    const std::vector<Blob*>& top = top_vecs_[i];
+    std::vector<bool> propagate_down(bottom.size(), true);
+    CAFFE_FFI_LAYER_LOG << "BackwardFromTo: <<< layer[" << i << "] '" << layer_names_[i] << "' backward";
+    layers_[i]->Backward(top, propagate_down, bottom);
+    CAFFE_FFI_LAYER_LOG << "BackwardFromTo: >>> layer[" << i << "] '" << layer_names_[i] << "' backward done";
+  }
+  CAFFE_FFI_NET_LOG << "BackwardFromTo: completed";
+}
+
 Array<String> Net::layer_names_array() const {
   Array<String> result;
   for (const auto& name : layer_names_) {

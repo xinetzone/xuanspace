@@ -527,6 +527,35 @@ class Net(_Object):
         """Convenience wrapper for forward with keyword arguments."""
         return self.forward(kwargs)
 
+    def backward(self, output_diffs: Optional[Dict[str, np.ndarray]] = None) -> None:
+        """Run backward pass through all layers.
+
+        Before calling backward, you must first call forward() to compute activations,
+        then set output blob diffs (e.g., to 1.0 for gradient checking).
+
+        Parameters
+        ----------
+        output_diffs : dict of str to ndarray, optional
+            Mapping from output blob names to gradient arrays. If None, output diffs
+            must be set manually via blob.diff_tensor before calling.
+            For simple gradient checking, passing all-ones diffs is standard convention.
+        """
+        if self._is_native:
+            if output_diffs is not None:
+                for name, arr in output_diffs.items():
+                    blob = self.blob_by_name(name)
+                    arr = np.asarray(arr, dtype=np.float32)
+                    # Make sure diff is allocated and write diff values
+                    diff_t = blob.mutable_diff_tensor()
+                    diff_t[:] = arr.reshape(diff_t.shape)
+            _native_method(self, 'Backward')()
+        else:
+            self._py_backward(output_diffs)
+
+    def _py_backward(self, output_diffs=None):
+        """Pure Python backward stub (no-op for non-native mode)."""
+        pass
+
     def blobs_array(self) -> List[Blob]:
         if self._is_native:
             return list(_native_method(self, 'blobs_array')())

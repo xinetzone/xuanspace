@@ -184,7 +184,7 @@ void SigmoidLayer::Backward_cpu(const std::vector<Blob*>& top,
 
   const float* top_data = top[0]->cpu_data();      // 前向输出 Y
   const float* top_diff = top[0]->cpu_diff();      // 上游梯度 dY
-  float* bottom_diff = bottom[0]->mutable_cpu_diff();  // 写入梯度 dX
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();  // 写入梯度 dX
   const int64_t count = bottom[0]->count();
 
   CAFFE_FFI_LAYER_LOG << "Sigmoid Backward_cpu: count=" << count;
