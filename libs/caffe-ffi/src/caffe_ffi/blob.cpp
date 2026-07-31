@@ -1,6 +1,7 @@
 #include "caffe_ffi/blob.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <sstream>
@@ -260,22 +261,47 @@ namespace {
 // that's ~10μs of pure atomic overhead. The batch approach reduces this to a
 // single fetch_add(N) (~10ns) plus N raw pointer writes.
 //
-// Safety invariants:
-//   1. Caller must hold at least one strong ref on the source object (refcount >= 1)
-//   2. No concurrent weak/strong ref modifications (caffe-ffi is single-threaded)
-//   3. After batch IncRef, caller must assign N ObjectPtr/ObjectRef instances to
-//      reference the raw object pointer WITHOUT calling IncRef again (otherwise
-//      refcount is over-counted)
-//   4. ObjectPtr<T> has exactly one member (Object* data_) at offset 0, and
-//      ObjectRef has exactly one member (ObjectPtr<Object> data_) at offset 0.
-//      Tensor inherits from ObjectRef, so Tensor's data_ is transitively at
-//      offset 0 from the Tensor address. This is guaranteed by TVM FFI design.
+// ═══ RISK ANALYSIS (memory leak / refcount imbalance) ═══
+//
+// Risk #1: Self-reference (source ∈ targets)
+//   - If source Blob's own tensor is released in Phase 1, src_obj becomes dangling.
+//   - Mitigation: Filter out targets[i] == source before Phase 1 (defensive guard).
+//
+// Risk #2: Exception between Phase 1 and Phase 3
+//   - If Phase 1 completes (old refs released) but Phase 2/3 throws, some targets
+//     have nullptr tensors (valid but data-less) and source refcount is not yet
+//     incremented by n. This is recoverable (targets are reset to null, source
+//     is still alive). BatchStrongIncRef is a compiler intrinsic that cannot throw;
+//     AssignRawTensorNoIncRef is a memcpy that cannot throw. The only throwing
+//     points are CAFFE_FFI_CHECK_* macros which fire on programmer errors —
+//     in that case we abort loudly rather than silently corrupt memory.
+//
+// Risk #3: ObjectPtr memory layout assumption violation
+//   - We rely on Tensor being pointer-sized with Object* at offset 0. This is
+//     guaranteed by TVM FFI's design (ObjectRef → ObjectPtr<Object> → Object*).
+//   - Mitigation: static_assert(sizeof(Tensor) == sizeof(Object*)) catches any
+//     layout change at compile time.
+//
+// Risk #4: Weak refcount bit corruption
+//   - Adding n to combined_ref_count adds to lower 32 bits (strong). As long as
+//     strong refcount < 2^32, no carry into upper 32 bits (weak). With n ≤ 10000
+//     and typical refcounts < 1000, overflow is impossible. Normal IncRef() does
+//     the exact same add-1 to combined_ref_count, so we are consistent with TVM FFI.
+//
+// Risk #5: Double-IncRef after AssignRawTensorNoIncRef
+//   - After memcpy-planting the raw pointer, the Tensor "owns" one reference
+//     (balanced by the n added in Phase 2). The Tensor's destructor/reset() will
+//     DecRef exactly once. If ShareData() or operator= is later called on the
+//     target, ObjectPtr's copy assignment IncRefs the new object first, then
+//     DecRefs the old (our planted) pointer — net zero for self-assignment, net
+//     +1 for new object — correct refcount semantics.
+//
+// Risk #6: Reshape/COW interaction
+//   - After batch share, Reshape() allocates a new tensor (DecRefs source, IncRefs
+//     new private tensor) — correct. cpu_mutable_data() triggers UnshareData()
+//     which checks use_count() > 1 and clones — correct, because use_count()
+//     includes the n batch-added references.
 
-/**
- * @brief Atomically add @p n to an Object's strong reference count (one atomic op).
- * @param obj  The object (must be alive, strong refcount >= 1).
- * @param n    Number of strong references to add (must be > 0).
- */
 inline void BatchStrongIncRef(const Object* obj, int n) {
   TVMFFIObject* header = details::ObjectUnsafe::GetHeader(obj);
 #ifdef _MSC_VER
@@ -287,117 +313,176 @@ inline void BatchStrongIncRef(const Object* obj, int n) {
 #endif
 }
 
-/**
- * @brief DecRef a tensor that's currently installed in a Blob, preparing for
- *        raw-pointer replacement. Returns the old raw Object* for diagnostic logging.
- */
 inline const Object* ReleaseTensorRef(Tensor& t) {
   const Object* old = t.defined() ? t.get() : nullptr;
   t = Tensor();  // reset: DecRef old object, data_ becomes nullptr
   return old;
 }
 
-/**
- * @brief Assign a raw Object* into a Tensor WITHOUT calling IncRef.
- *
- * After this call, @p t references @p raw, and @p raw's refcount is expected to
- * have already been incremented via BatchStrongIncRef. @p t's previous reference
- * is released (DecRef'd) by ReleaseTensorRef before this call.
- *
- * This exploits the memory layout guarantee:
- *   Tensor : ObjectRef { ObjectPtr<Object> data_; }
- *   ObjectPtr<Object> { Object* data_; }
- * → The Object* is at offset 0 in Tensor.
- */
 inline void AssignRawTensorNoIncRef(Tensor& t, Object* raw) {
   static_assert(sizeof(Tensor) == sizeof(Object*),
                 "Tensor must be pointer-sized for Phase 3 batch share");
-  // t was just reset() to nullptr by ReleaseTensorRef; now plant the raw pointer.
   Object* p = raw;
   std::memcpy(&t, &p, sizeof(p));
+}
+
+/**
+ * @brief Core implementation shared by BatchShareData and BatchShareDiff.
+ * @param TensorField  Member pointer to Tensor (e.g., &Blob::data_tensor_)
+ * @param kind         "Data" or "Diff" for log messages
+ */
+void BatchShareImpl(const Blob* source, const std::vector<Blob*>& targets,
+                    Tensor Blob::*TensorField, const char* kind) {
+  CAFFE_FFI_CHECK_TYPE(source != nullptr)
+      << "BatchShare" << kind << ": source must not be null";
+  CAFFE_FFI_CHECK_TYPE((source->*TensorField).defined())
+      << "BatchShare" << kind << ": source Blob#" << source->id_
+      << " has undefined " << kind << " tensor";
+
+  int n_raw = static_cast<int>(targets.size());
+
+  // ── Defensive: filter out self-references (source must not be in targets) ──
+  std::vector<Blob*> safe_targets;
+  safe_targets.reserve(n_raw);
+  for (int i = 0; i < n_raw; ++i) {
+    Blob* tgt = targets[i];
+    CAFFE_FFI_CHECK_TYPE(tgt != nullptr)
+        << "BatchShare" << kind << ": targets[" << i << "] is null";
+    if (tgt == source) {
+      CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] WARNING: targets[" << i
+                           << "] == source (Blob#" << source->id_
+                           << "), skipping self-reference to prevent double-free";
+      continue;
+    }
+    safe_targets.push_back(tgt);
+  }
+
+  int n = static_cast<int>(safe_targets.size());
+  if (n == 0) {
+    CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] BatchShare" << kind
+                         << ": no valid targets after filtering, nothing to do";
+    return;
+  }
+
+  const Tensor& src_tensor = source->*TensorField;
+  const Object* src_obj = src_tensor.get();
+  const int64_t nbytes = TensorNBytes(src_tensor);
+  const void* src_dptr = src_tensor.data_ptr();
+
+  // ── ENTRY LOG: state before any mutations ──
+  uint64_t rc_entry = src_obj->use_count();
+  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] ═══ ENTRY BatchShare" << kind
+                       << " ═══ src=Blob#" << source->id_
+                       << " n=" << n << " (raw_input=" << n_raw << ")"
+                       << " src_dptr=" << PtrToString(src_dptr)
+                       << " nbytes=" << nbytes
+                       << " rc_entry=" << rc_entry
+                       << " (expected: 1 atomic add of " << n << ")";
+
+  // Per-target pre-snapshot: log which targets already share with source
+  int already_shared = 0;
+  for (int i = 0; i < n; ++i) {
+    Blob* tgt = safe_targets[i];
+    const Tensor& tgt_tensor = tgt->*TensorField;
+    bool already = tgt_tensor.defined() && tgt_tensor.get() == src_obj;
+    if (already) ++already_shared;
+    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   pre[" << i << "] Blob#" << tgt->id_
+                         << " defined=" << (tgt_tensor.defined() ? "yes" : "no")
+                         << " dptr=" << PtrToString(tgt_tensor.defined() ? tgt_tensor.data_ptr() : nullptr)
+                         << " already_sharing_src=" << (already ? "yes" : "no");
+  }
+  if (already_shared > 0) {
+    CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] " << already_shared << "/" << n
+                         << " targets already share source " << kind
+                         << " — they will be re-linked (DecRef+IncRef cancels out)";
+  }
+
+  // ── Phase 1: Release all target old references ──
+  auto t_p1_start = std::chrono::high_resolution_clock::now();
+  for (int i = 0; i < n; ++i) {
+    Blob* tgt = safe_targets[i];
+    const Object* old = ReleaseTensorRef(tgt->*TensorField);
+    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   p1_release[" << i << "] Blob#" << tgt->id_
+                         << " released old_obj=" << old;
+  }
+  auto t_p1_end = std::chrono::high_resolution_clock::now();
+  uint64_t rc_after_p1 = src_obj->use_count();
+  double p1_us = std::chrono::duration<double, std::micro>(t_p1_end - t_p1_start).count();
+  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE]   Phase 1 (release) done: rc "
+                       << rc_entry << " → " << rc_after_p1
+                       << " (Δ=" << static_cast<int64_t>(rc_after_p1) - static_cast<int64_t>(rc_entry) << ")"
+                       << " time=" << p1_us << "us";
+
+  // ── Phase 2: Single atomic add of N to source refcount ──
+  auto t_p2_start = std::chrono::high_resolution_clock::now();
+  BatchStrongIncRef(src_obj, n);
+  auto t_p2_end = std::chrono::high_resolution_clock::now();
+  uint64_t rc_after_p2 = src_obj->use_count();
+  double p2_us = std::chrono::duration<double, std::micro>(t_p2_end - t_p2_start).count();
+  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE]   Phase 2 (atomic+" << n << ") done: rc "
+                       << rc_after_p1 << " → " << rc_after_p2
+                       << " (Δ=" << static_cast<int64_t>(rc_after_p2) - static_cast<int64_t>(rc_after_p1) << ")"
+                       << " time=" << p2_us << "us"
+                       << " (vs " << n << "× ~10ns = " << n * 10 << "ns per-atomics path)";
+
+  // Sanity: refcount should be rc_after_p1 + n
+  CAFFE_FFI_CHECK_RUNTIME_EQ(rc_after_p2, rc_after_p1 + static_cast<uint64_t>(n))
+      << "BatchShare" << kind << ": refcount mismatch after atomic add: expected "
+      << (rc_after_p1 + n) << ", got " << rc_after_p2;
+
+  // ── Phase 3: Raw pointer assignment without IncRef ──
+  auto t_p3_start = std::chrono::high_resolution_clock::now();
+  Object* raw = const_cast<Object*>(src_obj);
+  for (int i = 0; i < n; ++i) {
+    AssignRawTensorNoIncRef(safe_targets[i]->*TensorField, raw);
+  }
+  auto t_p3_end = std::chrono::high_resolution_clock::now();
+  uint64_t rc_after_p3 = src_obj->use_count();
+  double p3_us = std::chrono::duration<double, std::micro>(t_p3_end - t_p3_start).count();
+
+  // ── Post-assignment verification ──
+  int verify_ok = 0, verify_fail = 0;
+  for (int i = 0; i < n; ++i) {
+    Blob* tgt = safe_targets[i];
+    const Tensor& tgt_tensor = tgt->*TensorField;
+    bool points_to_src = tgt_tensor.defined() && tgt_tensor.get() == src_obj;
+    bool dptr_matches = tgt_tensor.defined() && tgt_tensor.data_ptr() == src_dptr;
+    if (points_to_src && dptr_matches) { ++verify_ok; }
+    else { ++verify_fail; }
+    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   p3_assign[" << i << "] Blob#" << tgt->id_
+                         << " points_to_src=" << (points_to_src ? "yes" : "NO")
+                         << " dptr_matches=" << (dptr_matches ? "yes" : "NO")
+                         << " rc_now=" << src_obj->use_count();
+  }
+
+  // Final sanity check
+  CAFFE_FFI_CHECK_RUNTIME_EQ(rc_after_p3, rc_after_p1 + static_cast<uint64_t>(n))
+      << "BatchShare" << kind << ": refcount mismatch after assignment: expected "
+      << (rc_after_p1 + n) << ", got " << rc_after_p3;
+  CAFFE_FFI_CHECK_RUNTIME_EQ(verify_fail, 0u)
+      << "BatchShare" << kind << ": " << verify_fail << "/" << n
+      << " targets failed verification (not pointing to source)";
+
+  double total_us = p1_us + p2_us + p3_us;
+  double per_target_atomic_savings_ns = static_cast<double>(n - 1) * 10.0;
+  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] ═══ EXIT BatchShare" << kind
+                       << " ═══ rc: " << rc_entry << " → " << rc_after_p3
+                       << " (net Δ=" << static_cast<int64_t>(rc_after_p3) - static_cast<int64_t>(rc_entry) << ")"
+                       << " verify=" << verify_ok << "/" << n << " OK"
+                       << " time: p1=" << p1_us << "us + p2=" << p2_us
+                       << "us + p3=" << p3_us << "us = " << total_us << "us"
+                       << " atomic_savings≈" << per_target_atomic_savings_ns << "ns"
+                       << " (replaced " << n << " atomics with 1)";
 }
 
 }  // namespace
 
 void Blob::BatchShareData(const Blob* source, const std::vector<Blob*>& targets) {
-  CAFFE_FFI_CHECK_TYPE(source != nullptr) << "BatchShareData: source must not be null";
-  CAFFE_FFI_CHECK_TYPE(source->data_tensor_.defined())
-      << "BatchShareData: source Blob#" << source->id_ << " has undefined data tensor";
-  int n = static_cast<int>(targets.size());
-  if (n == 0) return;
-
-  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareData from Blob#" << source->id_
-                    << " to " << n << " targets"
-                    << " src_ptr=" << PtrToString(source->data_tensor_.data_ptr())
-                    << " nbytes=" << TensorNBytes(source->data_tensor_)
-                    << " (batch refcount: 1 atomic add of " << n << ")";
-
-  // Phase 1: Release all target old references (DecRef, sets to nullptr)
-  for (int i = 0; i < n; ++i) {
-    Blob* tgt = targets[i];
-    CAFFE_FFI_CHECK_TYPE(tgt != nullptr) << "BatchShareData: targets[" << i << "] is null";
-    const Object* old = ReleaseTensorRef(tgt->data_tensor_);
-    if (old != nullptr) {
-      CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   target Blob#" << tgt->id_
-                           << " released old data ref (ptr=" << old << ")";
-    }
-  }
-
-  // Phase 2: Single atomic add of N to source refcount
-  const Object* src_obj = source->data_tensor_.get();
-  uint64_t rc_before = src_obj->use_count();
-  BatchStrongIncRef(src_obj, n);
-  uint64_t rc_after = src_obj->use_count();
-
-  // Phase 3: Raw pointer assignment without IncRef
-  Object* raw = const_cast<Object*>(src_obj);
-  for (int i = 0; i < n; ++i) {
-    AssignRawTensorNoIncRef(targets[i]->data_tensor_, raw);
-  }
-
-  // Sanity check: refcount should be rc_before + n
-  CAFFE_FFI_CHECK_RUNTIME_EQ(src_obj->use_count(), rc_before + static_cast<uint64_t>(n))
-      << "BatchShareData: refcount mismatch after batch share: expected "
-      << (rc_before + n) << ", got " << src_obj->use_count();
-
-  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareData complete: refcount "
-                    << rc_before << " → " << rc_after
-                    << " (+" << n << " via single atomic op)";
+  BatchShareImpl(source, targets, &Blob::data_tensor_, "Data");
 }
 
 void Blob::BatchShareDiff(const Blob* source, const std::vector<Blob*>& targets) {
-  CAFFE_FFI_CHECK_TYPE(source != nullptr) << "BatchShareDiff: source must not be null";
-  CAFFE_FFI_CHECK_TYPE(source->diff_tensor_.defined())
-      << "BatchShareDiff: source Blob#" << source->id_ << " has undefined diff tensor";
-  int n = static_cast<int>(targets.size());
-  if (n == 0) return;
-
-  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareDiff from Blob#" << source->id_
-                    << " to " << n << " targets"
-                    << " src_ptr=" << PtrToString(source->diff_tensor_.data_ptr())
-                    << " nbytes=" << TensorNBytes(source->diff_tensor_)
-                    << " (batch refcount: 1 atomic add of " << n << ")";
-
-  for (int i = 0; i < n; ++i) {
-    Blob* tgt = targets[i];
-    CAFFE_FFI_CHECK_TYPE(tgt != nullptr) << "BatchShareDiff: targets[" << i << "] is null";
-    ReleaseTensorRef(tgt->diff_tensor_);
-  }
-
-  const Object* src_obj = source->diff_tensor_.get();
-  uint64_t rc_before = src_obj->use_count();
-  BatchStrongIncRef(src_obj, n);
-
-  Object* raw = const_cast<Object*>(src_obj);
-  for (int i = 0; i < n; ++i) {
-    AssignRawTensorNoIncRef(targets[i]->diff_tensor_, raw);
-  }
-
-  CAFFE_FFI_CHECK_RUNTIME_EQ(src_obj->use_count(), rc_before + static_cast<uint64_t>(n))
-      << "BatchShareDiff: refcount mismatch after batch share";
-
-  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareDiff complete: refcount "
-                    << rc_before << " → " << src_obj->use_count();
+  BatchShareImpl(source, targets, &Blob::diff_tensor_, "Diff");
 }
 #endif  // CAFFE_FFI_ENABLE_COW_PHASE3
 

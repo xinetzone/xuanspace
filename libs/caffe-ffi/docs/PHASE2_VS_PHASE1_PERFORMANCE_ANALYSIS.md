@@ -19,7 +19,8 @@ Phase 2 将 Split 层 N≥2 场景从 **memcpy 全量复制** 升级为 **COW (C
 | N=1 | ShareData 零拷贝 | ShareData 零拷贝（不变） |
 | N≥2 Forward | N × count × 4B memcpy | ShareData 引用计数（零拷贝） |
 | N≥2 首次写入 | 无额外开销（已私有） | COW 触发：克隆1份 + memcpy |
-| 内存峰值 | N × count × 4B | 1 × count × 4B（共享前） |
+| Forward稳态内存 | 1 × count × 4B（私有副本） | 1 × count × 4B（共享引用） |
+| Reshape阶段峰值 | N × count × 4B | N × count × 4B（待Phase 3 O2延迟分配优化） |
 | 回退能力 | 无 | 编译期 + 运行期双开关 |
 
 ---
@@ -43,7 +44,7 @@ Phase 2 将 Split 层 N≥2 场景从 **memcpy 全量复制** 升级为 **COW (C
 | N=16 宽扇出 | [8, 256] | 16 | 128 KB | 0 | 128 KB | 100% |
 | N=64 大扇出 | [4, 512] | 64 | 512 KB | 0 | 512 KB | 100% |
 | N=100 极端 | [4, 64] | 100 | 100 KB | 0 | 100 KB | 100% |
-| Deep Supervision | [2, 256, 14, 14] | 5 | 5 × 100KB = 500KB | 0 | 500 KB | 100% |
+| Deep Supervision | [2, 256, 14, 14] | 5 | 5 × 392KB ≈ 1.96MB | 0 | ≈1.96MB | 100% |
 
 > **注**: 上述为 Forward 阶段内存节省。当所有 top 都触发 COW 写入时，总开销回归到 `N × count × 4` bytes，与 Phase 1 持平。但对于大多数推理场景（只读）和部分训练场景（仅部分分支写入），COW 避免了不必要的 memcpy。
 

@@ -115,6 +115,42 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   // cpu_mutable_data() / cpu_mutable_diff() call on any top triggers
   // COW, cloning the shared tensor into a private copy.
   auto t_share_start = std::chrono::high_resolution_clock::now();
+
+#ifdef CAFFE_FFI_ENABLE_COW_PHASE3
+  // Phase 3 batch path: use BatchShareData/BatchShareDiff for large N
+  // to reduce atomic refcount operations from O(N) to O(1).
+  // Threshold chosen based on atomic op latency (~10-20ns per op):
+  //   N >= 16 → batch overhead amortized, ~10× speedup for N=100.
+  constexpr int kBATCH_SHARE_THRESHOLD = 16;
+  if (num_top >= kBATCH_SHARE_THRESHOLD) {
+    Blob::BatchShareData(bottom[0], top);
+    Blob::BatchShareDiff(bottom[0], top);
+
+    auto t_share_end = std::chrono::high_resolution_clock::now();
+    double share_ms = std::chrono::duration<double, std::milli>(
+        t_share_end - t_share_start).count();
+
+    bool all_shared = true;
+    for (int i = 0; i < num_top; ++i) {
+      if (!top[i]->SharesDataWith(bottom[0])) { all_shared = false; break; }
+    }
+
+    CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
+                         << " Forward(N=" << num_top << " COW-BATCH): count=" << count
+                         << " shared_bytes=" << total_copy_bytes << "B"
+                         << " share_time=" << share_ms << "ms"
+                         << " all_shared=" << (all_shared ? "yes" : "no")
+                         << " threshold=" << kBATCH_SHARE_THRESHOLD
+                         << " memcpy_saved=" << total_copy_bytes << "B (batch refcount: 1 atomic add of " << num_top << ")";
+    CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW-BATCH): batch share complete,"
+                        << " data_ptr=" << static_cast<const void*>(top[0]->cpu_data())
+                        << " bottom_ptr=" << static_cast<const void*>(bottom_data)
+                        << " refcount=" << bottom[0]->DataRefCount();
+    return;
+  }
+#endif  // CAFFE_FFI_ENABLE_COW_PHASE3
+
+  // Phase 2 per-top path (N < threshold or Phase 3 disabled)
   bool all_shared = true;
   int not_shared_count = 0;
 

@@ -59,6 +59,14 @@ else()
   message(STATUS "[caffe_ffi] COW optimization: DISABLED")
 endif()
 
+# COW Phase 3 compile-time switch (batch refcount, lazy reshape)
+if(CAFFE_FFI_ENABLE_COW_PHASE3)
+  target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_ENABLE_COW_PHASE3)
+  message(STATUS "[caffe_ffi] COW Phase 3 batch optimizations: ENABLED")
+else()
+  message(STATUS "[caffe_ffi] COW Phase 3 batch optimizations: DISABLED")
+endif()
+
 # tvm_ffi header 链接（主库特有）
 target_link_libraries(_caffe_ffi PUBLIC tvm_ffi::header)
 message(STATUS "[caffe_ffi] _caffe_ffi links: tvm_ffi::header (PUBLIC)")
