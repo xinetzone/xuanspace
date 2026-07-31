@@ -178,7 +178,15 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("name", &Blob::name, "Get Blob name")
       .def("set_name", &Blob::set_name, "Set Blob name")
       .def("id", &Blob::id, "Get unique Blob ID (debugging)")
-      .def("construction_backtrace", &Blob::construction_backtrace, "Get construction stack backtrace (debug)");
+      .def("construction_backtrace", &Blob::construction_backtrace, "Get construction stack backtrace (debug)")
+      .def("IsDataShared", &Blob::IsDataShared, "Check if data tensor is shared (refcount > 1)")
+      .def("IsDiffShared", &Blob::IsDiffShared, "Check if diff tensor is shared (refcount > 1)")
+      .def("DataRefCount", &Blob::DataRefCount, "Get data tensor refcount (0 if undefined)")
+      .def("DiffRefCount", &Blob::DiffRefCount, "Get diff tensor refcount (0 if undefined)")
+      .def("UnshareData", &Blob::UnshareData, "Explicitly force COW for data tensor, returns data pointer")
+      .def("UnshareDiff", &Blob::UnshareDiff, "Explicitly force COW for diff tensor, returns diff pointer")
+      .def("mutable_data_tensor", &Blob::mutable_data_tensor, "Get mutable data tensor with COW trigger (DLPack write interop)")
+      .def("mutable_diff_tensor", &Blob::mutable_diff_tensor, "Get mutable diff tensor with COW trigger (DLPack write interop)");
 
   refl::ObjectDef<Layer>()
       .def("type", &Layer::type, "Get layer type string (e.g., 'ReLU', 'InnerProduct')")

@@ -10,19 +10,21 @@
 namespace caffe_ffi {
 
 /**
- * @brief Split layer: copies a single bottom blob to N top blobs.
+ * @brief Split layer: fans out a single bottom blob to N top blobs.
  *
- * Split creates N copies of the input blob, enabling multi-branch/skip-connection
+ * Split creates N views of the input blob, enabling multi-branch/skip-connection
  * topologies where one blob is consumed by multiple downstream layers (since
  * Net::AppendBottom enforces single-consumer semantics by erasing blobs from
  * available_blobs after first use).
  *
- * When N=1 (single top), Split acts as an identity passthrough but still performs
- * a memcpy (following Caffe original behavior; zero-copy is deferred as Future Work).
+ * Zero-copy optimization:
+ * - N=1: Direct ShareData/ShareDiff (Phase 1), no memcpy at all.
+ * - N>=2: All tops share bottom's data/diff via intrusive refcount (Phase 2 COW).
+ *   Actual copies are deferred to cpu_mutable_data()/cpu_mutable_diff() on first
+ *   write, triggered by the Copy-on-Write mechanism in Blob.
  *
- * Performance logging: Forward_cpu records per-copy timing, total bytes moved,
- * and throughput via a dedicated [SPLIT-PERF] tag at WARN level (always visible
- * in Release builds) plus detailed DEBUG-level breakdown.
+ * Performance logging: Forward_cpu records sharing timing, total bytes saved,
+ * and COW refcount info via a dedicated [SPLIT-PERF] tag at WARN level.
  */
 class SplitLayer : public Layer {
  public:

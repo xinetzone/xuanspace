@@ -51,6 +51,14 @@ caffe_ffi_configure_target(_caffe_ffi VISIBILITY PUBLIC)
 target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_EXPORTS)
 message(STATUS "[caffe_ffi] _caffe_ffi DLL: CAFFE_FFI_EXPORTS enabled (data symbol export)")
 
+# COW Phase 2 compile-time switch
+if(CAFFE_FFI_ENABLE_COW)
+  target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_ENABLE_COW)
+  message(STATUS "[caffe_ffi] COW optimization: ENABLED (Phase 2)")
+else()
+  message(STATUS "[caffe_ffi] COW optimization: DISABLED")
+endif()
+
 # tvm_ffi header 链接（主库特有）
 target_link_libraries(_caffe_ffi PUBLIC tvm_ffi::header)
 message(STATUS "[caffe_ffi] _caffe_ffi links: tvm_ffi::header (PUBLIC)")

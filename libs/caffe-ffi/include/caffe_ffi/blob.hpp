@@ -22,6 +22,22 @@ int64_t TotalAllocatedBytes();
 int64_t LiveBlobCount();
 
 /**
+ * @brief Runtime COW enable/disable switch (Phase 2).
+ *
+ * When COW is disabled at runtime, cpu_mutable_data()/cpu_mutable_diff()
+ * still trigger COW if the data is shared — this is the safety default.
+ * When disabled, the COW logic is bypassed and the raw pointer is returned
+ * (same as Phase 1 behavior). This is useful for emergency rollback or
+ * performance comparison.
+ *
+ * The compile-time switch CAFFE_FFI_ENABLE_COW (CMake option) controls
+ * whether the COW code is compiled at all. When OFF, all COW methods
+ * become no-ops at compile time.
+ */
+void SetCOWEnabled(bool enabled);
+bool IsCOWEnabled();
+
+/**
  * @brief Tensor storage wrapper for network parameters and intermediate activations.
  *
  * Blob is the fundamental data container in caffe-ffi, wrapping a pair of TVM FFI
@@ -95,13 +111,9 @@ class Blob : public Object {
   /** @brief Legacy Caffe API: get spatial width (dimension 3). */
   int width() const { return LegacyShape(3); }
 
-  /** @brief Get mutable pointer to CPU data buffer. */
-  float* cpu_data() { return static_cast<float*>(data_tensor_.data_ptr()); }
-  /** @brief Get const pointer to CPU data buffer. */
+  /** @brief Get const pointer to CPU data buffer (read-only, zero-overhead). */
   const float* cpu_data() const { return static_cast<const float*>(data_tensor_.data_ptr()); }
-  /** @brief Get mutable pointer to CPU diff (gradient) buffer. */
-  float* cpu_diff() { return static_cast<float*>(diff_tensor_.data_ptr()); }
-  /** @brief Get const pointer to CPU diff (gradient) buffer. */
+  /** @brief Get const pointer to CPU diff buffer (read-only, zero-overhead). */
   const float* cpu_diff() const { return static_cast<const float*>(diff_tensor_.data_ptr()); }
 
   /**
@@ -113,11 +125,13 @@ class Blob : public Object {
    * PAT-001 "explicit break semantics" pattern — calling cpu_mutable_data()
    * explicitly signals write intent and breaks sharing.
    *
-   * Unlike cpu_data(), this method guarantees the returned pointer points to
-   * private (unshared) memory. Use this when you intend to mutate the data.
+   * This method guarantees the returned pointer points to private (unshared)
+   * memory. Use this when you intend to mutate the data. For read-only access,
+   * use cpu_data() const instead.
    */
   float* cpu_mutable_data() {
-    if (data_tensor_.defined() && data_tensor_.use_count() > 1) {
+#ifdef CAFFE_FFI_ENABLE_COW
+    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
       const void* old_ptr = data_tensor_.data_ptr();
@@ -133,6 +147,7 @@ class Blob : public Object {
                         << " new_ptr=" << data_tensor_.data_ptr()
                         << " nbytes=" << nbytes;
     }
+#endif
     return static_cast<float*>(data_tensor_.data_ptr());
   }
   /**
@@ -181,6 +196,21 @@ class Blob : public Object {
   Tensor diff_tensor() const;
 
   /**
+   * @brief Get mutable data tensor with COW trigger for DLPack write interop.
+   *
+   * Unlike data_tensor() which is read-only, this method triggers COW
+   * (calls UnshareData()) before returning the tensor. Use this when
+   * the caller intends to modify the tensor data through DLPack.
+   *
+   * @note The returned tensor has exclusive ownership (refcount=1).
+   */
+  Tensor mutable_data_tensor();
+  /**
+   * @brief Get mutable diff tensor with COW trigger for DLPack write interop.
+   */
+  Tensor mutable_diff_tensor();
+
+  /**
    * @brief Zero-copy share data tensor from another Blob (Phase 1 N=1 split shortcut).
    *
    * Instead of allocating new memory and memcpy-ing, directly shares the underlying
@@ -198,6 +228,57 @@ class Blob : public Object {
   void ShareDiff(const Blob* other);
   bool SharesDataWith(const Blob* other) const;
   bool SharesDiffWith(const Blob* other) const;
+
+#ifdef CAFFE_FFI_ENABLE_COW_PHASE3
+  /**
+   * @brief Phase 3 prototype: Batch zero-copy data sharing for large-N Split.
+   *
+   * Shares data tensor from @p source to all blobs in @p targets using a single
+   * atomic refcount increment (O(1) atomics instead of O(N)), followed by raw
+   * pointer assignment without per-target IncRef. This reduces Forward latency
+   * from O(N) atomic ops to O(1) atomic op + O(N) raw pointer writes for
+   * large fan-out scenarios (N >= BATCH_SHARE_THRESHOLD).
+   *
+   * @note Prototype API — guarded by CAFFE_FFI_ENABLE_COW_PHASE3 compile-time flag.
+   *       Requires TVM FFI Object header layout knowledge (single Object* at offset 0
+   *       in ObjectPtr). Safe on MSVC/GCC/Clang where ObjectPtr is standard-layout
+   *       with a single pointer member.
+   *
+   * @param source  Source Blob whose data tensor is shared (must outlive all targets).
+   * @param targets Vector of target Blobs that will share the source data tensor.
+   */
+  static void BatchShareData(const Blob* source, const std::vector<Blob*>& targets);
+
+  /**
+   * @brief Phase 3 prototype: Batch zero-copy diff sharing for large-N Split.
+   * @see BatchShareData for semantics.
+   */
+  static void BatchShareDiff(const Blob* source, const std::vector<Blob*>& targets);
+#endif  // CAFFE_FFI_ENABLE_COW_PHASE3
+
+  /** @brief Check if data tensor is shared (refcount > 1). */
+  bool IsDataShared() const { return data_tensor_.defined() && data_tensor_.use_count() > 1; }
+  /** @brief Check if diff tensor is shared (refcount > 1). */
+  bool IsDiffShared() const { return diff_tensor_.defined() && diff_tensor_.use_count() > 1; }
+  /** @brief Get data tensor refcount (0 if undefined). */
+  int DataRefCount() const { return data_tensor_.defined() ? data_tensor_.use_count() : 0; }
+  /** @brief Get diff tensor refcount (0 if undefined). */
+  int DiffRefCount() const { return diff_tensor_.defined() ? diff_tensor_.use_count() : 0; }
+
+  /**
+   * @brief Explicitly force Copy-on-Write for data tensor.
+   *
+   * If data is shared (refcount > 1), clones it into a private copy.
+   * Returns the data pointer. No-op if already private or undefined.
+   */
+  void* UnshareData();
+  /**
+   * @brief Explicitly force Copy-on-Write for diff tensor.
+   *
+   * If diff is shared (refcount > 1), clones it into a private copy.
+   * Returns the diff pointer. No-op if already private or undefined.
+   */
+  void* UnshareDiff();
 
   /** @brief Load blob data from a BlobProto protobuf message. */
   void FromProto(const caffe::BlobProto& proto, bool reshape = true);

@@ -55,11 +55,10 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   double reshape_ms = std::chrono::duration<double, std::milli>(
       t_reshape_end - t_reshape_start).count();
 
-  // For N=1, Forward will zero-copy share (no memcpy), so actual bytes copied = 0.
-  // For N>=2, Forward will memcpy to each top.
-  int64_t bytes_copied_per_fwd = (num_top > 1)
-      ? (num_top * count * static_cast<int64_t>(sizeof(float)))
-      : 0;
+  // For N=1, Forward will zero-copy share (no memcpy).
+  // For N>=2, Forward will COW-share via refcount (no memcpy). Actual copies
+  // are deferred to cpu_mutable_data()/cpu_mutable_diff() on first write.
+  int64_t bytes_copied_per_fwd = 0;
 
   CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
                        << " Reshape: num_top=" << num_top
