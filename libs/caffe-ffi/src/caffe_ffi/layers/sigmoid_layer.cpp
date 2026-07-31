@@ -4,34 +4,12 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
-#include <sstream>
 #include <vector>
 
 #include "caffe_ffi/layer_factory.hpp"
 #include "caffe_ffi/log.hpp"
 
 namespace caffe_ffi {
-
-void SigmoidLayer::Reshape(const std::vector<Blob*>& bottom,
-                            const std::vector<Blob*>& top) {
-  std::ostringstream bottom_shape_ss;
-  bottom_shape_ss << "[";
-  for (int i = 0; i < bottom[0]->num_axes(); ++i) {
-    if (i > 0) bottom_shape_ss << ", ";
-    bottom_shape_ss << bottom[0]->shape(i);
-  }
-  bottom_shape_ss << "]";
-  CAFFE_FFI_LAYER_LOG << "Sigmoid Reshape: bottom shape=" << bottom_shape_ss.str();
-  top[0]->ReshapeLike(*bottom[0]);
-  std::ostringstream top_shape_ss;
-  top_shape_ss << "[";
-  for (int i = 0; i < top[0]->num_axes(); ++i) {
-    if (i > 0) top_shape_ss << ", ";
-    top_shape_ss << top[0]->shape(i);
-  }
-  top_shape_ss << "]";
-  CAFFE_FFI_LAYER_LOG << "Sigmoid Reshape: top shape=" << top_shape_ss.str();
-}
 
 void SigmoidLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                const std::vector<Blob*>& top) {

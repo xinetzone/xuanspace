@@ -55,18 +55,7 @@ void PReLULayer::LayerSetUp(const std::vector<Blob*>& bottom,
 
 void PReLULayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
-  top[0]->ReshapeLike(*bottom[0]);
-
-  std::ostringstream input_shape_ss;
-  for (int i = 0; i < bottom[0]->num_axes(); ++i) {
-    if (i > 0) input_shape_ss << ", ";
-    input_shape_ss << bottom[0]->shape(i);
-  }
-  std::ostringstream output_shape_ss;
-  for (int i = 0; i < top[0]->num_axes(); ++i) {
-    if (i > 0) output_shape_ss << ", ";
-    output_shape_ss << top[0]->shape(i);
-  }
+  NeuronLayer::Reshape(bottom, top);
 
   if (!channel_shared_) {
     if (bottom[0]->num_axes() == 1) {
@@ -76,14 +65,8 @@ void PReLULayer::Reshape(const std::vector<Blob*>& bottom,
       channels_ = bottom[0]->shape(1);
       inner_dim_ = bottom[0]->count(2);
     }
-    CAFFE_FFI_LAYER_LOG << "PReLU Reshape: input=[" << input_shape_ss.str()
-                        << "] output=[" << output_shape_ss.str()
-                        << "] channels_=" << channels_
+    CAFFE_FFI_LAYER_LOG << "PReLU Reshape: channels_=" << channels_
                         << " inner_dim_=" << inner_dim_;
-  } else {
-    CAFFE_FFI_LAYER_LOG << "PReLU Reshape: input=[" << input_shape_ss.str()
-                        << "] output=[" << output_shape_ss.str()
-                        << "] (channel_shared mode)";
   }
 }
 
@@ -146,6 +129,133 @@ void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+}
+
+void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
+                               const std::vector<bool>& propagate_down,
+                               const std::vector<Blob*>& bottom) {
+  const float* bottom_data = bottom[0]->cpu_data();
+  const float* top_diff = top[0]->cpu_diff();
+  const float* slope_data = this->blobs_[0]->cpu_data();
+  const int64_t count = bottom[0]->count();
+  const bool prop_down = propagate_down[0];
+  const bool prop_slope = this->param_propagate_down(0);
+
+  CAFFE_FFI_LAYER_LOG << "PReLU Backward_cpu: count=" << count
+                      << " channel_shared=" << channel_shared_
+                      << " prop_down=" << prop_down
+                      << " prop_slope=" << prop_slope;
+
+  if (!prop_down && !prop_slope) {
+    CAFFE_FFI_LAYER_LOG << "PReLU Backward_cpu: nothing to propagate";
+    return;
+  }
+
+  float* bottom_diff = nullptr;
+  if (prop_down) {
+    bottom_diff = bottom[0]->cpu_mutable_diff();
+  }
+
+  float* slope_diff = nullptr;
+  if (prop_slope) {
+    slope_diff = this->blobs_[0]->cpu_mutable_diff();
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, slope_diff);
+  }
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float diff_in_min = std::numeric_limits<float>::max();
+  float diff_in_max = -std::numeric_limits<float>::max();
+  float diff_out_min = std::numeric_limits<float>::max();
+  float diff_out_max = -std::numeric_limits<float>::max();
+  float slope_diff_min = std::numeric_limits<float>::max();
+  float slope_diff_max = -std::numeric_limits<float>::max();
+  int64_t dead_count = 0;
+
+  if (channel_shared_) {
+    const float slope = slope_data[0];
+    for (int64_t i = 0; i < count; ++i) {
+      float dy = top_diff[i];
+      float x = bottom_data[i];
+      float dx;
+      if (x > 0.0f) {
+        dx = dy;
+      } else {
+        dx = dy * slope;
+        if (prop_slope) {
+          slope_diff[0] += dy * x;
+        }
+        dead_count++;
+      }
+      if (prop_down) {
+        bottom_diff[i] = dx;
+      }
+      diff_in_min = std::min(diff_in_min, dy);
+      diff_in_max = std::max(diff_in_max, dy);
+      if (prop_down) {
+        diff_out_min = std::min(diff_out_min, dx);
+        diff_out_max = std::max(diff_out_max, dx);
+      }
+    }
+    if (prop_slope) {
+      slope_diff_min = slope_diff_max = slope_diff[0];
+    }
+  } else {
+    for (int64_t i = 0; i < count; ++i) {
+      float dy = top_diff[i];
+      float x = bottom_data[i];
+      int c = static_cast<int>((i / inner_dim_) % channels_);
+      float slope = slope_data[c];
+      float dx;
+      if (x > 0.0f) {
+        dx = dy;
+      } else {
+        dx = dy * slope;
+        if (prop_slope) {
+          slope_diff[c] += dy * x;
+        }
+        dead_count++;
+      }
+      if (prop_down) {
+        bottom_diff[i] = dx;
+      }
+      diff_in_min = std::min(diff_in_min, dy);
+      diff_in_max = std::max(diff_in_max, dy);
+      if (prop_down) {
+        diff_out_min = std::min(diff_out_min, dx);
+        diff_out_max = std::max(diff_out_max, dx);
+      }
+    }
+    if (prop_slope) {
+      slope_diff_min = std::numeric_limits<float>::max();
+      slope_diff_max = -std::numeric_limits<float>::max();
+      for (int c = 0; c < channels_; ++c) {
+        slope_diff_min = std::min(slope_diff_min, slope_diff[c]);
+        slope_diff_max = std::max(slope_diff_max, slope_diff[c]);
+      }
+    }
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  float dead_ratio = static_cast<float>(dead_count) / static_cast<float>(count);
+
+  std::ostringstream perf_ss;
+  perf_ss << "[ACTIVATION-PERF] " << this->name()
+          << " PReLU backward: count=" << count
+          << " channel_shared=" << (channel_shared_ ? "true" : "false")
+          << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]";
+  if (prop_down) {
+    perf_ss << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]";
+  }
+  if (prop_slope) {
+    perf_ss << " slope_diff=[" << slope_diff_min << ", " << slope_diff_max << "]";
+  }
+  perf_ss << " dead=" << dead_count << "/" << count
+          << " (" << dead_ratio << ")"
+          << " time=" << elapsed_us << "us";
+  CAFFE_FFI_LOG_INFO() << perf_ss.str();
 }
 
 REGISTER_LAYER_CLASS(PReLU);
