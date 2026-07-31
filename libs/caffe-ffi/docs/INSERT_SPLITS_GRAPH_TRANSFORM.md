@@ -3,6 +3,8 @@
 > **维护位置**：`src/caffe_ffi/net.cpp` → `InsertSplits()` 函数（L97-L375）
 > **日志宏**：`CAFFE_FFI_SPLIT_LOG`（`include/caffe_ffi/log.hpp`，WARN 级别，默认可见）
 > **原生参考**：`vendor/caffe/caffex/src/caffe/util/insert_splits.cpp`
+> **测试文件**：`tests/python/test_insert_splits.py`（18 个边界测试，使用 `caffe_test_helpers` 辅助库）
+> **性能基准**：`tests/python/test_split_concat_bench.py`（Split/Concat 嵌套场景耗时基准）
 
 ---
 
@@ -83,20 +85,28 @@ Split 层名为 `x_relu2_0_split`，不是 `x_fc1_0_split`。
 
 ---
 
-## 4. 边界情况处理
+## 4. 边界情况处理（18 个场景）
 
-| 边界场景 | 处理逻辑 | 测试用例 |
-|---|---|---|
-| **零消费者（dead-end blob）** | `split_count == 0`，不进入 `>1` 分支，不插入 Split | `test_insert_splits_edge.py::Test1_dead_end` |
-| **单消费者 blob** | `split_count == 1`，不进入 `>1` 分支，不重写、不插入 Split | `test_insert_splits_edge.py::Test2_single_consumer_no_split` |
-| **线性链路（无 fan-out）** | 每个 blob 恰好 1 个消费者，0 个 Split 插入 | `test_insert_splits_edge.py::Test9_linear_no_splits` |
-| **In-place ReLU → 双消费者** | 追踪 `blob_name_to_last_top_idx` 更新到 ReLU，Split 以 ReLU 命名 | `test_insert_splits_edge.py::Test3_inplace_relu` |
-| **双重 In-place（ReLU+Dropout）** | 连续 in-place 更新生产者，Split 以最后一个 in-place 层命名 | `test_insert_splits_edge.py::Test10_double_inplace` |
-| **Loss weight 导致 split** | 非零 loss_weight 使消费者计数 +1（loss 本身是消费者），若总 count>1 则插入 Split；第一个 split top 继承 loss_weight，其余为 0 | `test_insert_splits_edge.py::Test4_loss_weight_split` |
-| **链式分裂（fan-out 后 fan-out）** | 内层 split 输出各 1 消费者，不会重复 split；外层多消费者 blob 各插入自己的 Split | `test_insert_splits_edge.py::Test5_chained_splits` |
-| **幂等性（已显式 Split 的网络）** | 显式 Split 的每个输出恰好 1 个消费者，不会触发额外 Split 插入 | `test_insert_splits_edge.py::Test6_idempotence` |
-| **多外部输入各需 split** | 收集所有需要 split 的外部输入，批量头插保持声明顺序 | `test_insert_splits_edge.py::Test8_multi_input_splits` |
-| **前向正确性** | Split 层 N=1 时做 identity 转发（share_data），N>1 时 memcpy 复制 | `test_insert_splits_edge.py::Test7_forward_correctness` |
+| # | 边界场景 | 处理逻辑 | 测试方法 |
+|---|---|---|---|
+| 1 | **零消费者（dead-end blob）** | `split_count == 0`，不进入 `>1` 分支，不插入 Split | `test_dead_end_no_split` |
+| 2 | **单消费者 blob** | `split_count == 1`，不进入 `>1` 分支，不重写、不插入 Split | `test_single_consumer_no_split` |
+| 3 | **线性链路（无 fan-out）** | 每个 blob 恰好 1 个消费者，0 个 Split 插入 | `test_linear_chain_zero_splits` |
+| 4 | **In-place ReLU → 双消费者** | 追踪 `blob_name_to_last_top_idx` 更新到 ReLU，Split 以 ReLU 命名 | `test_inplace_relu_split_named_after_last_producer` |
+| 5 | **双重 In-place（ReLU+ReLU）** | 连续 in-place 更新生产者，Split 以最后一个 in-place 层命名 | `test_double_inplace_split_after_last_producer` |
+| 6 | **Loss weight 导致 split** | 非零 loss_weight 使消费者计数 +1（loss 本身是消费者），若总 count>1 则插入 Split；第一个 split top 继承 loss_weight，其余为 0 | `test_loss_weight_triggers_split` |
+| 7 | **链式分裂（fan-out 后 fan-out）** | 内层 split 输出各 1 消费者，不会重复 split；外层多消费者 blob 各插入自己的 Split | `test_chained_splits` |
+| 8 | **幂等性（已显式 Split 的网络）** | 显式 Split 的每个输出恰好 1 个消费者，不会触发额外 Split 插入 | `test_idempotent_no_duplicate_splits` |
+| 9 | **多外部输入各需 split** | 收集所有需要 split 的外部输入，批量头插保持声明顺序 | `test_multiple_external_inputs_order` |
+| 10 | **前向正确性（in-place+split）** | Split 层 N=1 时做 identity 转发（share_data），N>1 时 memcpy 复制 | `test_forward_correctness_inplace_split` |
+| 11 | **混合 Input 层 + param.input()** | param.input() split 位于 position 0，显式 Input 层 split 紧跟 Input 层之后 | `test_mixed_input_layer_and_param_input` |
+| 12 | **Caffe 原生命名约定对齐** | 显式 Input 层的 producer 名为层自身名（如 `data_data_0_split`），与原生 Caffe test_split_layer.cpp 一致 | `test_split_output_names_match_caffe_native_convention` |
+| 13 | **Split→Concat→Split 嵌套（Inception 式）** | 两层 split 位置均正确：data split 在 position 0，cat split 紧跟 cat 层之后；前向输出 shape 正确 | `test_split_concat_split_nested` |
+| 14 | **多个独立 split 位置** | 每个独立 split 紧跟各自的 producer 层（producer_idx + 1） | `test_multiple_layers_need_splits_positions` |
+| 15 | **空网络（0 层）** | 快速路径：`split_needed_count==0`，直接复制原网络，不崩溃 | `test_empty_network_no_crash` |
+| 16 | **显式 Input 层 3+ 消费者** | split 输出数与消费者数一致（3 outputs for 3 consumers） | `test_input_layer_three_consumers` |
+| 17 | **loss_weight + 多 downstream 消费者** | split 输出数 = downstream 数 + 1（含 loss 通道） | `test_loss_weight_plus_multiple_consumers` |
+| 18 | **未知 bottom blob 引用** | 抛出 `RuntimeError`，消息含 `Unknown bottom blob` 和 blob 名 | `test_unknown_bottom_raises_error` |
 
 ---
 
@@ -133,28 +143,49 @@ Net::Init() [net.cpp:~L417]
               └── layers/split_layer.cpp/.hpp
 ```
 
-**外部依赖检查结论**（2026-07-31 验证）：
+**外部依赖检查结论**（2026-07-31 v1.2.0 验证）：
 
 | 模块 | 依赖类型 | 影响评估 |
 |---|---|---|
 | `tests/python/test_p3c_transformer.py` | 隐式依赖（残差连接需要 auto-split） | ✅ 13 测试全通过 |
-| `test_insert_splits.py` / `test_insert_splits_edge.py` | 显式测试 InsertSplits | ✅ 10+10 测试全通过 |
+| `tests/python/test_insert_splits.py` | 显式测试 InsertSplits（18 个边界用例） | ✅ 18/18 全通过 |
+| `tests/python/test_split_concat_bench.py` | Split/Concat 嵌套性能基准 | ✅ 基准+正确性通过 |
 | `tests/python/test_split_topologies.py` | 显式 Split 层测试（不依赖自动插入） | ✅ 7 测试全通过 |
 | `tests/python/test_cow.py` | Split 层 COW 行为（显式 Split） | ✅ 21 测试全通过 |
 | `tests/python/test_extreme_boundaries.py` | 极端边界（显式 Split） | ✅ 11 测试全通过 |
 | `tests/python/test_p2b_regression.py` | P2B 回归（含显式 Split） | ✅ 29 测试全通过 |
 | `vendor/caffe/caffex/` 和 `vendor/caffe/caffe-slim/` | 独立 git submodule，有自己的 InsertSplits | ❌ 不受影响（禁止本地修改 vendor） |
 
-**总计 91 个相关测试全部通过，无回归。**
+**总计 99 个相关测试全部通过，无回归。**
 
 ---
 
-## 7. 修改 Checklist
+## 7. 测试辅助函数库
+
+`tests/python/caffe_test_helpers.py` 提供了通用断言辅助函数，编写新图变换测试时应优先使用：
+
+| 函数 | 用途 |
+|------|------|
+| `make_net(prototxt)` | 从 prototxt 字符串构造 Net |
+| `count_splits(net)` | 统计自动插入的 Split 层数 |
+| `assert_split_exists(names, pattern)` | 断言匹配 pattern 的 split 存在 |
+| `assert_split_after_producer(names, producer, pattern)` | 断言 split 紧跟在 producer 之后（idx+1） |
+| `assert_split_at_position(names, pattern, idx)` | 断言 split 在指定位置 |
+| `assert_split_order(names, pattern_a, pattern_b)` | 断言 split A 在 split B 之前 |
+| `assert_no_split(names, pattern)` | 断言不存在匹配的 split |
+| `assert_exact_split_name(names, name)` | 断言精确 split 名称存在 |
+| `assert_forward_shapes(outputs, expected_dict)` | 断言前向输出 shape 匹配 |
+| `assert_finite(arr, label)` | NaN/Inf 防护 |
+
+---
+
+## 8. 修改 Checklist
 
 修改 InsertSplits 相关代码后，请确认：
 
-- [ ] 所有 10 类边界测试通过（`test_insert_splits_edge.py`）
-- [ ] P3-C Transformer 13 个测试通过（`tests/python/test_p3c_transformer.py`）
+- [ ] 所有 18 个边界测试通过（`pytest tests/python/test_insert_splits.py -v`）
+- [ ] P3-C Transformer 13 个测试通过（`pytest tests/python/test_p3c_transformer.py -v`）
+- [ ] Split/Concat 基准测试通过（`pytest tests/python/test_split_concat_bench.py -v`）
 - [ ] Split topology / COW / extreme boundary / p2b regression 全通过
 - [ ] 外部输入 split 顺序与 `param.input()` 声明一致（查 `Pass2b AFTER` 日志）
 - [ ] In-place 场景下 Split 以最后生产者命名（非初始生产者）
@@ -162,4 +193,8 @@ Net::Init() [net.cpp:~L417]
 - [ ] 零消费者 dead-end blob 不插入 Split（`split_count == 0`）
 - [ ] 幂等性：对已含显式 Split 的网络运行不产生重复 Split
 - [ ] Loss weight 正确传播到 Split 第一个 top
+- [ ] Split→Concat→Split 嵌套场景两层 split 位置均正确
+- [ ] 显式 Input 层 + param.input() 混合场景两种 split 位置均正确
+- [ ] 空网络（0 层）不崩溃
+- [ ] 未知 bottom blob 抛出含 blob 名的 RuntimeError
 - [ ] 日志中 `=== InsertSplits END ===` 统计数字与预期一致

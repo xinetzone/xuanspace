@@ -1,9 +1,9 @@
 ---
 id: "testing-guidelines"
-version: "1.0.0"
+version: "1.1.0"
 date: "2026-07-31"
 status: "active"
-source: "Sigmoid saturation precision fix + InsertSplits edge case testing (2026-07-31)"
+source: "Sigmoid saturation precision fix + InsertSplits edge case testing + test helper library extraction (2026-07-31)"
 ---
 
 # Caffe-FFI 测试用例编写规范
@@ -21,12 +21,14 @@ source: "Sigmoid saturation precision fix + InsertSplits edge case testing (2026
 ```
 tests/python/
 ├── conftest.py                          # 全局fixture与性能追踪基础设施
+├── caffe_test_helpers.py                # ⭐ 通用测试辅助函数库（断言/构造/验证）
 ├── test_python_api.py                   # P0 基础API测试
 ├── test_blob.py                         # P1 Blob生命周期测试
 ├── test_layers.py                       # P1 单层功能测试
 ├── test_net.py                          # P1 网络构造测试
 ├── test_cow.py                          # P2 COW机制测试
 ├── test_split_topologies.py             # P2 Split拓扑测试
+├── test_split_concat_bench.py           # P2 Split/Concat嵌套性能基准
 ├── test_p3a_conv_pool_bn.py             # P3 组合层测试（Conv/Pool/BN）
 ├── test_p3b_eltwise_scale.py            # P3 组合层测试（Eltwise/Scale/Concat）
 ├── test_p3c_activations_ip.py           # P3 激活层+InnerProduct测试
@@ -49,16 +51,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
 from .conftest import require_cpp_extension
-
-
-# ── Helpers ──────────────────────────────────────────────────────────
-
-def _make_net(prototxt: str):
-    """从prototxt字符串构造Net的便捷函数。"""
-    return net_from_param(net_param_from_string(prototxt))
+from .caffe_test_helpers import (       # ⭐ 优先使用辅助函数库
+    make_net, count_splits,
+    assert_split_exists, assert_split_after_producer,
+    assert_split_at_position, assert_split_order,
+    assert_no_split, assert_exact_split_name,
+    assert_forward_shapes, assert_finite,
+)
 
 
 # ── Test class ───────────────────────────────────────────────────────
@@ -70,12 +70,16 @@ class TestXxx:
     def test_yyy(self):
         """测试方法docstring：描述测试意图（断言什么）。"""
         prototxt = """..."""
-        net = _make_net(prototxt)
-        # 结构性断言
-        assert ...
+        net = make_net(prototxt)        # 使用make_net而非手动构造
+        names = list(net.layer_names())
+        # 结构性断言（使用辅助函数）
+        assert count_splits(net) == expected_count
+        assert_split_exists(names, "pattern")
+        assert_split_after_producer(names, "producer", "split_pattern")
         # 前向传播断言（结构测试之后）
         outputs = net.Forward({...})
-        assert ...
+        assert_forward_shapes(outputs, {"blob": expected_shape})
+        assert_finite(outputs["blob"])
 ```
 
 ### 1.3 强制装饰器
@@ -192,6 +196,20 @@ assert not np.any(np.isnan(result)), "sigmoid output contains NaN"
 assert not np.any(np.isinf(result)), "sigmoid output contains Inf"
 ```
 
+> ⭐ **快捷方式**：使用 `caffe_test_helpers` 中的预封装断言：
+> ```python
+> from .caffe_test_helpers import (
+>     assert_finite, assert_all_between,
+>     assert_sigmoid_negative_saturated,
+>     assert_sigmoid_positive_saturated,
+>     assert_sigmoid_transition,
+> )
+> assert_sigmoid_negative_saturated(result_neg)  # < 1e-37 + NaN/Inf guard
+> assert_sigmoid_positive_saturated(result_pos)  # == 1.0 + NaN/Inf guard
+> assert_sigmoid_transition(result_mid)          # 严格在(0,1)区间 + NaN/Inf guard
+> assert_finite(arr, label="blob_name")          # 通用NaN/Inf防护
+> ```
+
 ### 3.4 饱和函数测试模板
 
 ```python
@@ -245,29 +263,52 @@ def test_saturation_behavior(self):
 
 ### 4.3 结构性断言模板
 
+使用 `caffe_test_helpers` 中的辅助函数，**禁止**手写 `next(i for i,n in enumerate(names) if ...)` 等重复模式：
+
 ```python
+from .caffe_test_helpers import (
+    make_net, count_splits,
+    assert_split_exists, assert_split_after_producer,
+    assert_split_at_position, assert_split_order,
+    assert_no_split, assert_exact_split_name,
+    assert_forward_shapes, assert_finite,
+)
+
 def test_something(self):
     prototxt = """..."""
-    net = _make_net(prototxt)
+    net = make_net(prototxt)
     names = list(net.layer_names())
 
     # 1. split数量断言
-    assert _count_splits(net) == expected_count
+    assert count_splits(net) == expected_count
 
-    # 2. split存在性断言（用any/精确匹配）
-    assert any("expected_name" in n for n in names)  # 子串匹配
-    assert "exact_name" in names                      # 精确匹配
+    # 2. split存在性断言（子串匹配）
+    assert_split_exists(names, "expected_name_pattern")
 
-    # 3. split位置断言
-    producer_idx = names.index("producer_name")
-    split_idx = next(i for i, n in enumerate(names) if "expected_split" in n)
-    assert split_idx == producer_idx + 1
+    # 3. 精确名称断言（知道完整名称时）
+    assert_exact_split_name(names, "data_data_0_split")
 
-    # 4. 外部输入split位置断言
-    assert split_idx == 0, "external input split must be at position 0"
+    # 4. split位置断言：紧跟在producer之后
+    assert_split_after_producer(names, "producer_name", "split_pattern")
 
-    # 5. 顺序断言
-    assert split_a_idx < split_b_idx, "splits must be in declaration order"
+    # 5. 外部输入split位置断言（position 0）
+    assert_split_at_position(names, "data_input_0_split", 0)
+
+    # 6. 顺序断言
+    assert_split_order(names, "pattern_a", "pattern_b", msg="a should precede b")
+
+    # 7. 不存在断言
+    assert_no_split(names, "should_not_exist_pattern")
+
+    # 8. 前向输出shape断言（批量）
+    outputs = net.Forward({"data": inp})
+    assert_forward_shapes(outputs, {
+        "blob_a": (batch, dim_a),
+        "blob_b": (batch, dim_b),
+    })
+    # NaN/Inf防护
+    for v in outputs.values():
+        assert_finite(v)
 ```
 
 ### 4.4 前向验证（结构断言之后必做）
@@ -449,7 +490,9 @@ assert data_split_idx < weight_split_idx  # 声明顺序：data在weight前
 | 文件 | 用途 | 参考章节 |
 |------|------|---------|
 | `tests/python/conftest.py` | fixture定义、perf_trace、泄漏检测 | §1.3, §7 |
-| `tests/python/test_insert_splits.py` | 图变换边界测试范本 | §4 |
+| `tests/python/caffe_test_helpers.py` | ⭐ 通用测试辅助函数（断言/构造/验证） | §4.3, §3 |
+| `tests/python/test_insert_splits.py` | 图变换边界测试范本（使用辅助函数） | §4 |
+| `tests/python/test_split_concat_bench.py` | Split/Concat嵌套性能基准范本 | §7 |
 | `tests/python/test_p3c_activations_ip.py` | 浮点数饱和测试范本 | §3 |
 | `tests/python/test_cow.py` | COW机制+refcount测试 | - |
-| `docs/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解 | §4 |
+| `docs/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解+辅助函数索引 | §4 |
