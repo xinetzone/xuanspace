@@ -441,7 +441,14 @@ _P3A_TEST_CLASSES = {
     "TestConvPoolBNCombination",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES
+_P3B_TEST_CLASSES = {
+    "TestScaleLayers", "TestBiasLayers", "TestEltwiseLayers",
+    "TestConcatLayers", "TestDropoutLayers",
+    "TestSoftmaxWithLossLayers", "TestAccuracyLayers",
+    "TestScaleBiasEltwiseCombination",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES
 
 
 @pytest.fixture(autouse=True)
