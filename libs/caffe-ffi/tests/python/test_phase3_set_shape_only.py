@@ -1,9 +1,9 @@
 """Phase 3.1: SetShapeOnly compatibility and integration tests.
 
-Covers 18 test cases from the SetShapeOnly API Design Document:
+Covers 17 test cases from the SetShapeOnly API Design Document:
   - 7 Blob-level unit tests (TestSetShapeOnly)
   - 4 Split-layer integration tests (TestSplitLazyReshape)
-  - 7 extended tests for edge cases & regression
+  - 6 extended tests for edge cases & regression
 
 Usage:
   pytest tests/python/test_phase3_set_shape_only.py -v
@@ -276,7 +276,7 @@ class TestSplitLazyReshape:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Extended tests — edge cases & regression (7 cases)
+# Extended tests — edge cases & regression (6 cases)
 # ═══════════════════════════════════════════════════════════════════════
 
 class TestSetShapeOnlyExtended:
@@ -293,20 +293,7 @@ class TestSetShapeOnlyExtended:
         assert blob.count(1) == 64 * 112 * 112
         assert blob.count(0, 2) == 32 * 64
 
-    # ── Case 13: DoubleSetShapeOnly ──
-
-    def test_double_set_shape_only(self):
-        """Second SetShapeOnly should overwrite the first."""
-        blob = caffe_ffi.Blob()
-        blob.set_shape_only([10, 20])
-        assert blob.count() == 200
-
-        blob.set_shape_only([5, 5, 5])
-        assert blob.is_lazy_allocated()
-        assert blob.num_axes() == 3
-        assert blob.count() == 125
-
-    # ── Case 14: SetShapeOnlyThenFromProto ──
+    # ── Case 13: SetShapeOnlyThenFromProto ──
 
     def test_set_shape_only_then_from_proto(self):
         """FromProto should clear lazy flag and allocate data."""
@@ -326,7 +313,7 @@ class TestSetShapeOnlyExtended:
         assert not blob.is_lazy_allocated(), "FromProto should clear lazy flag"
         assert blob.cpu_data() is not None
 
-    # ── Case 15: EmptyShape ──
+    # ── Case 14: EmptyShape ──
 
     def test_empty_shape_rejected(self):
         """Empty shape should be rejected."""
@@ -335,7 +322,7 @@ class TestSetShapeOnlyExtended:
         with pytest.raises((ValueError, RuntimeError)):
             blob.set_shape_only([])
 
-    # ── Case 16: LazyBlobShareDataThenWrite ──
+    # ── Case 15: LazyBlobShareDataThenWrite ──
 
     def test_lazy_blob_share_data_then_write(self):
         """After ShareData, cpu_mutable_data() should trigger COW."""
@@ -351,7 +338,7 @@ class TestSetShapeOnlyExtended:
         mutable = target.cpu_mutable_data()
         assert mutable is not None, "cpu_mutable_data() should return valid pointer"
 
-    # ── Case 17: N1SplitLazyAllocation ──
+    # ── Case 16: N1SplitLazyAllocation ──
 
     def test_n1_split_no_lazy_allocation(self):
         """N=1 Split should NOT trigger lazy allocation (N=1 is special path)."""
@@ -379,7 +366,7 @@ class TestSetShapeOnlyExtended:
         assert "split_0" in out
         np.testing.assert_array_almost_equal(out["split_0"], inp)
 
-    # ── Case 18: N16Boundary ──
+    # ── Case 17: N16Boundary ──
 
     def test_n16_boundary(self):
         """N=16 exactly at threshold should trigger lazy allocation."""

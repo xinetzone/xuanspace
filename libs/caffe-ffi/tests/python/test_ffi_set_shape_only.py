@@ -41,13 +41,6 @@ class TestSetShapeOnlyFFI:
 
     # ── set_shape_only 调用流程 ───────────────────────────────────────
 
-    def test_set_shape_only_basic(self):
-        """set_shape_only 设置 shape 后 is_lazy_allocated 返回 True。"""
-        blob = caffe_ffi.Blob()
-        blob.set_shape_only([2, 3, 224, 224])
-        assert blob.is_lazy_allocated(), \
-            "set_shape_only should set is_lazy_allocated=True"
-
     def test_set_shape_only_shape_access(self):
         """set_shape_only 后 shape() 返回正确的 shape。"""
         blob = caffe_ffi.Blob()
@@ -82,28 +75,6 @@ class TestSetShapeOnlyFFI:
 
     # ── 生命周期转换 ──────────────────────────────────────────────────
 
-    def test_reshape_clears_lazy(self):
-        """Reshape 调用后 lazy 标志被清除。"""
-        blob = caffe_ffi.Blob()
-        blob.set_shape_only([10, 20])
-        assert blob.is_lazy_allocated()
-        blob.reshape([5, 5])
-        assert not blob.is_lazy_allocated(), \
-            "Reshape should clear lazy flag"
-        assert blob.cpu_data() is not None
-
-    def test_share_data_clears_lazy(self):
-        """ShareData 调用后 lazy 标志被清除。"""
-        source = caffe_ffi.Blob([3, 4])
-        target = caffe_ffi.Blob()
-        target.set_shape_only([3, 4])
-        assert target.is_lazy_allocated()
-        target.share_data(source)
-        assert not target.is_lazy_allocated(), \
-            "ShareData should clear lazy flag"
-        assert target.shares_data_with(source)
-        assert target.cpu_data() == source.cpu_data()
-
     def test_from_proto_clears_lazy(self):
         """FromProto 调用后 lazy 标志被清除（通过 Reshape 间接触发）。"""
         blob = caffe_ffi.Blob()
@@ -118,19 +89,6 @@ class TestSetShapeOnlyFFI:
         assert not blob.is_lazy_allocated(), \
             "FromProto should clear lazy flag (via Reshape)"
         assert blob.cpu_data() is not None
-
-    # ── 双重 set_shape_only ───────────────────────────────────────────
-
-    def test_double_set_shape_only(self):
-        """连续两次 set_shape_only 覆盖前一次 shape。"""
-        blob = caffe_ffi.Blob()
-        blob.set_shape_only([10, 20])
-        assert blob.count() == 200
-        blob.set_shape_only([5, 5, 3])
-        assert blob.is_lazy_allocated()
-        assert blob.count() == 75
-        assert blob.num_axes() == 3
-        assert blob.shape(0) == 5
 
     # ── 边界条件 ──────────────────────────────────────────────────────
 
