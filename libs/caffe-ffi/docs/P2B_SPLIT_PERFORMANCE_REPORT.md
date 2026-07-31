@@ -290,8 +290,63 @@ pip install --no-build-isolation -e .
 **解决方案**：使用项目指定的conda环境或Docker容器编译。
 
 ---
+## 五、Phase 3.0: 日志聚合优化
 
-## 五、总结与下一步
+### 5.1 问题
+
+N≥100 大 fan-out 场景下，Phase 2 的逐 top 日志产生洪水效应：
+- Reshape: N=100 输出 100 行 `CAFFE_FFI_LAYER_LOG`（每 top 一行）
+- Forward: N=100 输出 100 行 `CAFFE_FFI_LAYER_LOG`（每 top 数据+差异各一行）
+- 总计: ~200 行 `[SPLIT-PERF]` 相关日志，日志文件膨胀，性能分析困难
+
+### 5.2 方案
+
+引入 `kLogAggregateThreshold = 32` 编译期常量：
+
+| 场景 | N < 32 | N ≥ 32 |
+|------|--------|--------|
+| Reshape per-top 日志 | 逐 top 输出 | 跳过 |
+| Forward per-top 日志 | 逐 top 输出 | 跳过 |
+| 汇总 `[SPLIT-PERF]` 日志 | 始终输出 | 始终输出 |
+
+**实现**: [split_layer.cpp](../src/caffe_ffi/layers/split_layer.cpp#L14-L24)
+
+### 5.3 预期效果
+
+| 指标 | Phase 2 (N=100) | Phase 3.0 (N=100) | 改善 |
+|------|----------------|-------------------|------|
+| Reshape 日志行数 | ~100 行 | ~3 行 | **~33×** |
+| Forward 日志行数 | ~100 行 | ~3 行 | **~33×** |
+| 总计 | ~200 行 | ~6 行 | **~40×** |
+
+> 汇总 `[SPLIT-PERF]` 日志（WARN 级别）始终输出，不丢失关键诊断信息。
+
+---
+
+## 六、Phase 3.1: 延迟 Reshape 分配
+
+### 6.1 问题
+
+Phase 2 的 `Reshape()` 为每个 top 调用 `ReshapeLike()` 分配完整内存，随后在 `Forward()` 中被 `ShareData()` 替换为共享引用。N=100 时：
+- 内存峰值: 100 × count × 4B（随后被释放）
+- GC 压力: 100 次 alloc + 100 次隐式 free
+
+### 6.2 方案
+
+新增 `Blob::SetShapeOnly(ShapeView)` 方法，仅设置 shape 元数据不分配内存。`SplitLayer::Reshape()` 中通过 `kLazyReshapeThreshold = 16` 控制。
+
+**设计文档**: [SETSHAPEONLY_API_DESIGN.md](SETSHAPEONLY_API_DESIGN.md)
+
+### 6.3 预期效果
+
+| 指标 | Phase 2 (N=100) | Phase 3.1 (N=100) | 改善 |
+|------|----------------|-------------------|------|
+| Reshape 内存峰值 | ~100×count×4B | ~1×count×4B | **~99%** |
+| alloc/free 次数 | 100 次 | 0 次 | **消除** |
+
+---
+
+## 七、总结与下一步
 
 ### 已完成
 1. ✅ Split层C++实现（基于memcpy，含完整性能埋点）
@@ -301,10 +356,17 @@ pip install --no-build-isolation -e .
 5. ✅ Split拓扑测试用例（6个正确性测试+1个性能缩放测试）
 6. ✅ 极端边界测试用例（10个测试覆盖大输入/异常值/极端权重/深层/内存稳定性/最小输入）
 7. ✅ [SPLIT-PERF] WARN级别性能日志，覆盖Reshape分配+Forward memcpy全链路
+8. ✅ Phase 2 COW 零拷贝实现（N≥2 ShareData 引用计数共享）
+9. ✅ Phase 3.0 日志聚合（kLogAggregateThreshold=32，N=100 日志从 ~200 行降至 ~6 行）
+10. ✅ Phase 3.1 SetShapeOnly API 设计文档 + 18 个测试用例
 
 ### 待执行
 - [ ] 在正确编译环境中构建并运行测试
 - [ ] 收集CSV性能数据，填写1.4节实测数据表格
 - [ ] 基于实测数据确认瓶颈程度
+- [ ] Phase 3.0 验证: N=100 日志行数 ≤ 10
+- [ ] Phase 3.1 实现: Blob::SetShapeOnly() + SplitLayer::Reshape() 集成
+- [ ] Phase 3.1 验证: N=100 Reshape 内存峰值降幅 ≥ 90%
+- [ ] Phase 3.2 调研: TVM FFI Tensor AddRef(n) 批量接口
+- [ ] Phase 3.3 设计: 批量 COW + 写入意图传递机制
 - [ ] （可选）补充多线程并发测试
-- [ ] （P3阶段）实现零拷贝优化
