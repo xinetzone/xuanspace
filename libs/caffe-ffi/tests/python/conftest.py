@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import gc
 import logging
+import os
 import sys
+import threading
 import time
+import traceback
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +15,12 @@ from typing import Iterator, Optional
 
 import pytest
 import numpy as np
+
+# Resolve OpenMP duplicate library crash on Windows (multiple copies of
+# libiomp5md.dll loaded by numpy/BLAS + caffe-ffi). This is required before
+# importing caffe_ffi so the C++ DLL can load without aborting.
+if os.environ.get("KMP_DUPLICATE_LIB_OK") is None:
+    os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 _project_root = Path(__file__).resolve().parent.parent.parent
 _python_dir = _project_root / "python"
@@ -42,6 +51,7 @@ def _ensure_csv():
     _csv_writer.writerow([
         "timestamp", "test_class", "test_name", "operation",
         "elapsed_ms", "delta_mem", "delta_blobs",
+        "rss_before_mb", "rss_after_mb", "rss_peak_mb",
         "cow_events", "cow_bytes", "cow_saved_bytes",
         "extra_fields"
     ])
@@ -51,6 +61,7 @@ def _ensure_csv():
 def _write_csv_row(test_class: str, test_name: str, operation: str,
                    elapsed_ms: float, delta_mem: int, delta_blobs: int,
                    extra: str = "", *,
+                   rss_before: int = 0, rss_after: int = 0, rss_peak: int = 0,
                    cow_events: int = 0, cow_bytes: int = 0,
                    cow_saved_bytes: int = 0):
     """Write one row to the performance CSV file."""
@@ -59,6 +70,7 @@ def _write_csv_row(test_class: str, test_name: str, operation: str,
         datetime.now().isoformat(timespec="milliseconds"),
         test_class, test_name, operation,
         f"{elapsed_ms:.4f}", delta_mem, delta_blobs,
+        f"{rss_before/1024/1024:.2f}", f"{rss_after/1024/1024:.2f}", f"{rss_peak/1024/1024:.2f}",
         cow_events, cow_bytes, cow_saved_bytes,
         extra,
     ])
@@ -123,66 +135,154 @@ def _mem_bytes_blobs():
     return total_allocated_bytes(), live_blob_count()
 
 
+def _get_rss_bytes() -> int:
+    """Return current process RSS in bytes using psutil (0 if unavailable)."""
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss
+    except Exception:
+        return 0
+
+
+class _RSSPeakSampler:
+    """Background thread that samples RSS every *interval_ms* to capture peak."""
+
+    def __init__(self, interval_ms: float = 1.0):
+        self._interval = interval_ms / 1000.0
+        self._stop = threading.Event()
+        self._peak = 0
+        self._thread: Optional[threading.Thread] = None
+
+    def _run(self):
+        while not self._stop.is_set():
+            rss = _get_rss_bytes()
+            if rss > self._peak:
+                self._peak = rss
+            self._stop.wait(self._interval)
+
+    def __enter__(self):
+        self._peak = _get_rss_bytes()
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *args):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        # Final sample after stop to catch late allocations
+        rss = _get_rss_bytes()
+        if rss > self._peak:
+            self._peak = rss
+
+    @property
+    def peak_bytes(self) -> int:
+        return self._peak
+
+
+def _fmt_bytes(n: int) -> str:
+    """Format byte count as human-readable string (B/KB/MB/GB)."""
+    if n == 0:
+        return "0B"
+    sign = "+" if n >= 0 else ""
+    n_abs = abs(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if n_abs < 1024 or unit == "GB":
+            return f"{sign}{n_abs:.1f}{unit}" if unit != "B" else f"{sign}{n}B"
+        n_abs /= 1024.0
+    return f"{sign}{n}B"
+
+
 _current_test_context = {"cls": "", "name": ""}
 
 
 @contextmanager
 def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
-    """Context manager that measures wall-clock time and memory delta for a block.
+    """Context manager that measures wall-clock time, memory delta, and RSS peak for a block.
 
     Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
     'input_size'); these are appended to the exit log line and CSV.
 
-    If an exception is raised inside the block, it is logged with exception type
-    and message before being re-raised. The caller may set info['expected_error']=True
-    to indicate the error is expected (e.g. boundary testing).
+    If an exception is raised inside the block, it is logged with exception type,
+    message, and traceback before being re-raised. The caller may set
+    info['expected_error']=True to indicate the error is expected (e.g. boundary testing).
+
+    Logged metrics:
+        Δtime  - wall-clock elapsed time in ms
+        Δmem   - caffe-ffi Blob allocated bytes delta (after GC)
+        Δblobs - live Blob count delta (after GC, leak detection)
+        RSS    - process RSS before/after/peak (in MB)
 
     Usage:
         with perf_trace("Net(prototxt)") as t:
             net = Net(prototxt)
             t['layers'] = len(net.layers_array())
-        # Logs: [PERF] Net(prototxt) ... Δtime=12.3ms Δmem=+4096B Δblobs=+5 layers=5
+        # Logs: [PERF] Net(prototxt) ... Δtime=12.3ms Δmem=+4096B Δblobs=+5 RSS=42.1→43.2MB peak=43.5MB layers=5
     """
     mem_before, blobs_before = _mem_bytes_blobs()
+    rss_before = _get_rss_bytes()
     t0 = time.perf_counter()
     info: dict = {}
     exc_info = None
+    exc_tb_str = None
+    sampler = _RSSPeakSampler(interval_ms=0.5)
+    sampler.__enter__()
     try:
         yield info
     except BaseException as e:
         exc_info = (type(e).__name__, str(e)[:200])
+        exc_tb_str = traceback.format_exc()
         info["exception"] = f"{type(e).__name__}: {str(e)[:120]}"
         raise
     finally:
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        sampler.__exit__()
+        rss_peak = sampler.peak_bytes
+        rss_after = _get_rss_bytes()
         mem_after, blobs_after = _mem_bytes_blobs()
         delta_mem = mem_after - mem_before
         delta_blobs = blobs_after - blobs_before
-        extra_parts = [f"{k}={v}" for k, v in info.items()
-                       if k not in ("elapsed_ms", "delta_mem", "delta_blobs")]
+        delta_rss = rss_after - rss_before
+
+        # Build extra fields string (exclude internal keys)
+        _internal_keys = {"elapsed_ms", "delta_mem", "delta_blobs", "rss_before",
+                          "rss_after", "rss_peak", "delta_rss", "exception"}
+        extra_parts = [f"{k}={v}" for k, v in info.items() if k not in _internal_keys]
         extra_str = " ".join(extra_parts)
+
         if verbose:
-            mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
+            mem_str = _fmt_bytes(delta_mem)
             blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
+            rss_str = (f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB "
+                       f"peak={rss_peak/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}")
             if exc_info is not None:
                 status = "EXC" if not info.get("expected_error") else "EXP"
                 _perf_logger.info(
-                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  [%s] %s: %s  %s",
-                    label, elapsed_ms, mem_str, blob_str, status,
+                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s  [%s] %s: %s  %s",
+                    label, elapsed_ms, mem_str, blob_str, rss_str, status,
                     exc_info[0], exc_info[1][:100], extra_str,
                 )
+                # Log full traceback at DEBUG level for diagnosis
+                if exc_tb_str:
+                    _perf_logger.debug("Exception traceback for [%s]:\n%s", label, exc_tb_str)
             else:
                 _perf_logger.info(
-                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s",
-                    label, elapsed_ms, mem_str, blob_str, extra_str,
+                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s  %s",
+                    label, elapsed_ms, mem_str, blob_str, rss_str, extra_str,
                 )
         _write_csv_row(
             _current_test_context["cls"], _current_test_context["name"],
             label, elapsed_ms, delta_mem, delta_blobs, extra_str,
+            rss_before=rss_before, rss_after=rss_after, rss_peak=rss_peak,
         )
         info["elapsed_ms"] = elapsed_ms
         info["delta_mem"] = delta_mem
         info["delta_blobs"] = delta_blobs
+        info["rss_before"] = rss_before
+        info["rss_after"] = rss_after
+        info["rss_peak"] = rss_peak
+        info["delta_rss"] = delta_rss
 
 # Configure memory stress test logger to output INFO logs during test runs
 _mem_stress_logger = logging.getLogger("caffe_ffi.test.memory_stress")
@@ -358,22 +458,30 @@ def _test_timing_log(request):
     _current_test_context["name"] = test_name
 
     mem_before, blobs_before = _mem_bytes_blobs()
+    rss_before = _get_rss_bytes()
     t0 = time.perf_counter()
-    _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d", cls_name, test_name, mem_before, blobs_before)
-    _write_csv_row(cls_name, test_name, "BEGIN", 0.0, 0, 0, f"mem={mem_before} blobs={blobs_before}")
+    _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d rss=%.1fMB",
+                      cls_name, test_name, mem_before, blobs_before, rss_before/1024/1024)
+    _write_csv_row(cls_name, test_name, "BEGIN", 0.0, 0, 0,
+                   f"mem={mem_before} blobs={blobs_before} rss_mb={rss_before/1024/1024:.1f}",
+                   rss_before=rss_before)
     yield
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     mem_after, blobs_after = _mem_bytes_blobs()
+    rss_after = _get_rss_bytes()
     delta_mem = mem_after - mem_before
     delta_blobs = blobs_after - blobs_before
-    mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
+    delta_rss = rss_after - rss_before
+    mem_str = _fmt_bytes(delta_mem)
     blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
     _perf_logger.info(
-        "─── END   %s.%s ───  Δtime=%.2fms  Δmem=%s  Δblobs=%s  total=%dB/%d blobs",
-        cls_name, test_name, elapsed_ms, mem_str, blob_str, mem_after, blobs_after,
+        "─── END   %s.%s ───  Δtime=%.2fms  Δmem=%s  Δblobs=%s  Δrss=%s  total=%dB/%d blobs rss=%.1fMB",
+        cls_name, test_name, elapsed_ms, mem_str, blob_str, _fmt_bytes(delta_rss),
+        mem_after, blobs_after, rss_after/1024/1024,
     )
     _write_csv_row(cls_name, test_name, "END", elapsed_ms, delta_mem, delta_blobs,
-                   f"total_mem={mem_after} total_blobs={blobs_after}")
+                   f"total_mem={mem_after} total_blobs={blobs_after} rss_mb={rss_after/1024/1024:.1f}",
+                   rss_before=rss_before, rss_after=rss_after, rss_peak=rss_after)
 
     _current_test_context["cls"] = ""
     _current_test_context["name"] = ""

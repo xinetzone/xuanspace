@@ -1274,17 +1274,24 @@ layer {
             t['input_shape'] = f"{inp.shape}"
             t['bn_output_finite'] = np.all(np.isfinite(out["bn"]))
         
-        # Shape checks
-        assert out["conv"].shape == (2, 4, 8, 8), "Conv with pad=1 should preserve size"
-        assert out["pool"].shape == (2, 4, 4, 4), "Pool 2x2 s2 should halve size"
-        assert out["bn"].shape == (2, 4, 4, 4), "BN should preserve shape"
+        # Shape checks — intermediate blobs are accessed via blob_by_name
+        # because net.forward() only returns terminal output blobs.
+        conv_data = net.blob_by_name("conv").data
+        pool_data = net.blob_by_name("pool").data
+        bn_data = out["bn"]
+        assert conv_data.shape == (2, 4, 8, 8), f"Conv with pad=1 should preserve size, got {conv_data.shape}"
+        assert pool_data.shape == (2, 4, 4, 4), f"Pool 2x2 s2 should halve size, got {pool_data.shape}"
+        assert bn_data.shape == (2, 4, 4, 4), f"BN should preserve shape, got {bn_data.shape}"
         
         # Numpy reference pipeline
         conv_out = conv2d_np(inp, W, b_conv, stride=1, pad=1)
         pool_out = pooling2d_np(conv_out, 2, stride=2, pool_type='MAX')
         bn_out = batchnorm_np(pool_out, bn_mean, bn_var, eps=1e-5)
         
-        np.testing.assert_allclose(out["bn"], bn_out, rtol=1e-4, atol=1e-5)
+        # Verify intermediate Conv and Pool outputs match numpy reference
+        np.testing.assert_allclose(conv_data, conv_out, rtol=1e-4, atol=1e-5)
+        np.testing.assert_allclose(pool_data, pool_out, rtol=1e-4, atol=1e-5)
+        np.testing.assert_allclose(bn_data, bn_out, rtol=1e-4, atol=1e-5)
     
     def test_pipeline_repeated_forward_no_crash(self, ptrace):
         """Conv->Pool->BN pipeline should be stable over many forwards (segfault/OOM check)."""
