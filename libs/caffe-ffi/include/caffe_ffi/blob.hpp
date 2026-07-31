@@ -75,15 +75,45 @@ class Blob : public Object {
   void ReshapeLike(const Blob& other);
 
   /** @brief Get the current shape as a TVM FFI Shape. */
-  Shape shape() const { return Shape(data_tensor_.shape()); }
+  Shape shape() const {
+    if (is_lazy_allocated_) {
+      return Shape(shape_only_.begin(), shape_only_.end());
+    }
+    return Shape(data_tensor_.shape());
+  }
   /** @brief Get the number of dimensions (axes). */
-  int num_axes() const { return data_tensor_.ndim(); }
+  int num_axes() const {
+    return is_lazy_allocated_ ? static_cast<int>(shape_only_.size()) : data_tensor_.ndim();
+  }
   /** @brief Get the total number of elements (product of all dimensions). */
-  int64_t count() const { return data_tensor_.numel(); }
+  int64_t count() const {
+    if (is_lazy_allocated_) {
+      if (shape_only_.empty()) return 0;
+      int64_t prod = 1;
+      for (int64_t d : shape_only_) prod *= d;
+      return prod;
+    }
+    return data_tensor_.numel();
+  }
   /** @brief Count elements from start_axis to the last axis. */
-  int64_t count(int start_axis) const { return Count(data_tensor_.shape(), start_axis); }
+  int64_t count(int start_axis) const {
+    if (is_lazy_allocated_) {
+      int canonical = CanonicalAxisIndex(start_axis);
+      int64_t prod = 1;
+      for (size_t i = canonical; i < shape_only_.size(); ++i) prod *= shape_only_[i];
+      return prod;
+    }
+    return Count(data_tensor_.shape(), start_axis);
+  }
   /** @brief Count elements in the range [start_axis, end_axis). */
   int64_t count(int start_axis, int end_axis) const {
+    if (is_lazy_allocated_) {
+      int canonical_start = CanonicalAxisIndex(start_axis);
+      int canonical_end = CanonicalAxisIndex(end_axis);
+      int64_t prod = 1;
+      for (int i = canonical_start; i < canonical_end; ++i) prod *= shape_only_[i];
+      return prod;
+    }
     return Count(data_tensor_.shape(), start_axis, end_axis);
   }
 
@@ -131,6 +161,19 @@ class Blob : public Object {
    */
   float* cpu_mutable_data() {
 #ifdef CAFFE_FFI_ENABLE_COW
+    if (is_lazy_allocated_) {
+      // Phase 3.1: Lazy blob — allocate data tensor now (first write).
+      // This should not normally happen in Split layer usage (ShareData
+      // is called before any write), but guards against undefined behavior
+      // if a downstream layer accidentally writes to a lazy blob.
+      auto shape = ShapeView(shape_only_.data(), shape_only_.size());
+      data_tensor_ = NewCPUTensor(shape);
+      is_lazy_allocated_ = false;
+      shape_only_.clear();
+      CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
+                        << " cpu_mutable_data() allocated data for lazy blob"
+                        << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
+    }
     if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
@@ -307,6 +350,25 @@ class Blob : public Object {
   /** @brief Get the construction backtrace string (for debugging memory issues). */
   std::string construction_backtrace() const { return construct_bt_; }
 
+  // ── Phase 3.1: Lazy Allocation (SetShapeOnly) ──────────────────────
+
+  /**
+   * @brief Set shape metadata only, without allocating data memory.
+   *
+   * Stores the shape in a separate vector (shape_only_) and marks the Blob
+   * as lazy-allocated. After this call, shape()/num_axes()/count() work
+   * correctly, but cpu_data()/cpu_diff() return nullptr and data_tensor()
+   * returns undefined. Designed for large-N Split layer Reshape where
+   * per-top allocation is wasteful (will be replaced by ShareData).
+   *
+   * @param shape The target shape. Dimensions must be > 0.
+   * @throws std::invalid_argument if any dimension <= 0.
+   */
+  void SetShapeOnly(ShapeView shape);
+
+  /** @brief Check if this Blob is in lazy-allocation mode. */
+  bool IsLazyAllocated() const { return is_lazy_allocated_; }
+
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL(
       "caffe_ffi.Blob", Blob, Object);
 
@@ -316,6 +378,10 @@ class Blob : public Object {
   std::string construct_bt_;
   Tensor data_tensor_;
   Tensor diff_tensor_;
+
+  // Phase 3.1: lazy allocation support
+  std::vector<int64_t> shape_only_;       // stored shape for lazy allocation
+  bool is_lazy_allocated_ = false;         // whether in lazy-allocation mode
 };
 
 }  // namespace caffe_ffi

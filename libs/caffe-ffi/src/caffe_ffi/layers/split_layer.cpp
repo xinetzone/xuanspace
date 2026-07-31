@@ -23,6 +23,24 @@ namespace caffe_ffi {
 ///   - Atomic op overhead for N=32 is ~640ns, still negligible
 constexpr int kLogAggregateThreshold = 32;
 
+/// Phase 3.1: Lazy Reshape threshold for Split layer.
+/// When N >= this threshold, Reshape() uses SetShapeOnly() to store only
+/// shape metadata without allocating data memory. The actual allocation is
+/// deferred to Forward() where ShareData() replaces the lazy tensor with
+/// a shared reference.
+///
+/// N=16 is chosen because:
+///   - N=16 produces 16 × 1KB = 16KB allocation overhead — negligible
+///   - N=16 ≈ 2× typical CNN fan-out (1-8), above which lazy pays off
+///   - Aligns with kLogAggregateThreshold (32) as a "medium" tier
+///
+/// Three-tier layering (kLazyReshapeThreshold=16, kLogAggregateThreshold=32):
+///   N<16:  Phase 2 — per-top ReshapeLike with timing and per-top log
+///   16≤N<32: Phase 3.1 — SetShapeOnly (no allocation), no per-top log
+///   N≥32: Phase 3.0+3.1 — SetShapeOnly (no allocation), [SPLIT-PERF] summary
+///          shows lazy_reshape=yes, total_alloc_bytes=0, log_aggregated=yes
+constexpr int kLazyReshapeThreshold = 16;
+
 void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
   int count = bottom[0]->count();
@@ -49,6 +67,15 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   // freeing the Reshape-allocated buffer (one alloc+free overhead but avoids
   // breaking the layer setup contract).
   for (int i = 0; i < num_top; ++i) {
+#ifdef CAFFE_FFI_ENABLE_COW_PHASE3
+    if (num_top >= kLazyReshapeThreshold) {
+      // Phase 3.1: Lazy allocation — store shape only, no memory allocation.
+      // Forward() will replace the lazy tensor with ShareData().
+      auto bottom_shape = bottom[0]->shape();
+      top[i]->SetShapeOnly(ShapeView(bottom_shape.data(), bottom_shape.size()));
+      continue;
+    }
+#endif
     if (num_top < kLogAggregateThreshold) {
       auto t_top_start = std::chrono::high_resolution_clock::now();
       int64_t bytes_before = top[i]->count() * static_cast<int64_t>(sizeof(float));
@@ -89,7 +116,11 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                        << " bytes_copied_per_fwd=" << bytes_copied_per_fwd << "B"
                        << " reshape_time=" << reshape_ms << "ms"
                        << " net_alloc=" << total_alloc_bytes << "B"
-                       << " zerocopy_n1=" << ((num_top == 1) ? "yes" : "no");
+                       << " zerocopy_n1=" << ((num_top == 1) ? "yes" : "no")
+#ifdef CAFFE_FFI_ENABLE_COW_PHASE3
+                       << " lazy_reshape=" << ((num_top >= kLazyReshapeThreshold) ? "yes" : "no")
+#endif
+                       << " log_aggregated=" << ((num_top >= kLogAggregateThreshold) ? "yes" : "no");
 }
 
 void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,

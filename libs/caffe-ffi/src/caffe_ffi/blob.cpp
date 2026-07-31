@@ -216,6 +216,11 @@ void Blob::ShareData(const Blob* other) {
       << "ShareData: source Blob must not be null";
   CAFFE_FFI_CHECK_TYPE(other->data_tensor_.defined())
       << "ShareData: source Blob#" << other->id_ << " has undefined data tensor";
+
+  // Phase 3.1: Clear lazy allocation flag when ShareData replaces the tensor
+  is_lazy_allocated_ = false;
+  shape_only_.clear();
+
   CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareData from Blob#" << other->id_
                     << " this=" << this
                     << " old_data_ptr=" << PtrToString(data_tensor_.data_ptr())
@@ -232,6 +237,11 @@ void Blob::ShareDiff(const Blob* other) {
       << "ShareDiff: source Blob must not be null";
   CAFFE_FFI_CHECK_TYPE(other->diff_tensor_.defined())
       << "ShareDiff: source Blob#" << other->id_ << " has undefined diff tensor";
+
+  // Phase 3.1: Clear lazy allocation flag
+  is_lazy_allocated_ = false;
+  shape_only_.clear();
+
   CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareDiff from Blob#" << other->id_
                     << " this=" << this
                     << " old_diff_ptr=" << PtrToString(diff_tensor_.data_ptr())
@@ -519,6 +529,10 @@ void* Blob::UnshareDiff() {
 }
 
 void Blob::Reshape(ShapeView shape) {
+  // Phase 3.1: Clear lazy allocation flag on any Reshape call
+  is_lazy_allocated_ = false;
+  shape_only_.clear();
+
   for (size_t i = 0; i < shape.size(); ++i) {
     CAFFE_FFI_CHECK_VALUE_GE(shape[i], 0)
         << "Blob#" << id_ << " Reshape: dimension " << i << " is negative (" << shape[i] << ")";
@@ -605,6 +619,30 @@ int64_t Blob::LegacyShape(int index) const {
     return 1;
   }
   return shape(index);
+}
+
+// ── Phase 3.1: Lazy Allocation (SetShapeOnly) ────────────────────────
+
+void Blob::SetShapeOnly(ShapeView shape) {
+  // Validate: all dimensions must be positive
+  for (size_t i = 0; i < shape.size(); ++i) {
+    CAFFE_FFI_CHECK_VALUE_GT(shape[i], 0)
+        << "Blob#" << id_ << " SetShapeOnly: dimension " << i
+        << " is " << shape[i] << " (must be positive)";
+  }
+
+  // Store shape metadata without allocating data tensor
+  shape_only_.assign(shape.data(), shape.data() + shape.size());
+  is_lazy_allocated_ = true;
+
+  // Compute count for log
+  int64_t total_count = 1;
+  for (size_t i = 0; i < shape.size(); ++i) total_count *= shape[i];
+
+  CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
+                    << " SetShapeOnly: shape=" << ShapeToString(shape)
+                    << " count=" << total_count
+                    << " (no data allocated, data_tensor_ remains undefined)";
 }
 
 void Blob::FromProto(const caffe::BlobProto& proto, bool reshape) {
