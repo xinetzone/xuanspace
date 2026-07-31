@@ -1,0 +1,94 @@
+name: "MultiExternalInput"
+# Multiple external inputs that BOTH need splits.
+#
+# DAG topology:
+#   data  ─┬─→ branch_fc → branch_pred → loss1
+#          └─→ main_fc → main_out ──┐
+#                                   ├─→ concat → cat → main_pred → main_loss
+#   weight ─┬─→ aux_fc → aux_pred ──┘                 ↑
+#           └─→ gate_fc → gate_out ──────────────────┘
+#   label  → loss1, main_loss, aux_loss
+#
+# Key complexity: Tests multiple external input splits and their INPUT-ORDER insertion:
+#   1. data (input 0): feeds branch_fc AND main_fc (fan-out=2) → data_input_0_split
+#   2. weight (input 1): feeds aux_fc AND gate_fc (fan-out=2) → weight_input_1_split
+#   3. label (input 2): feeds loss1, main_loss, aux_loss (fan-out=3) → label_input_2_split
+#
+# External input splits must be inserted in INPUT ORDER (data first, then weight,
+# then label), not in the order their consumers appear in the layer list.
+# No internal splits needed: every internal blob has exactly 1 consumer.
+#
+# Expected auto-splits (3):
+#   1. data_input_0_split: data → 2 outputs (branch_fc, main_fc)
+#   2. weight_input_1_split: weight → 2 outputs (aux_fc, gate_fc)
+#   3. label_input_2_split: label → 3 outputs (loss1, main_loss, aux_loss)
+input: "data"
+input: "weight"
+input: "label"
+input_shape { dim: 4 dim: 32 }
+input_shape { dim: 4 dim: 16 }
+input_shape { dim: 4 dim: 1 }
+layer {
+  name: "branch_fc"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "branch_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "main_fc"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "main_out"
+  inner_product_param { num_output: 16 }
+}
+layer {
+  name: "aux_fc"
+  type: "InnerProduct"
+  bottom: "weight"
+  top: "aux_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "gate_fc"
+  type: "InnerProduct"
+  bottom: "weight"
+  top: "gate_out"
+  inner_product_param { num_output: 16 }
+}
+layer {
+  name: "concat"
+  type: "Concat"
+  bottom: "main_out"
+  bottom: "gate_out"
+  top: "cat"
+  concat_param { axis: 1 }
+}
+layer {
+  name: "main_pred"
+  type: "InnerProduct"
+  bottom: "cat"
+  top: "main_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss1"
+  type: "SoftmaxWithLoss"
+  bottom: "branch_pred"
+  bottom: "label"
+  top: "loss1"
+}
+layer {
+  name: "main_loss"
+  type: "SoftmaxWithLoss"
+  bottom: "main_pred"
+  bottom: "label"
+  top: "main_loss"
+}
+layer {
+  name: "aux_loss"
+  type: "SoftmaxWithLoss"
+  bottom: "aux_pred"
+  bottom: "label"
+  top: "aux_loss"
+}

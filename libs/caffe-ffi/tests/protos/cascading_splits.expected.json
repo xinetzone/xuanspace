@@ -1,0 +1,14 @@
+{
+  "auto_split_count": 3,
+  "auto_split_names": [
+    "label_input_1_split",
+    "a_out_a_relu_0_split",
+    "b_out_b_relu_0_split"
+  ],
+  "auto_split_sources": [
+    "label",
+    "a_out",
+    "b_out"
+  ],
+  "description": "Two independent split points (cascading): fc_a→a_relu output a_out feeds fc_b AND fc_d (2 consumers); fc_b→b_relu output b_out feeds fc_c AND fc_e (2 consumers). Three splits total: (1) label feeding 3 loss layers; (2) a_out after a_relu (→fc_b, fc_d); (3) b_out after b_relu (→fc_c, fc_e). Tests multiple independent split points in a non-trivial topology where splits are NOT at the head and NOT along a simple linear chain — the second split point's source is the OUTPUT of a layer that comes AFTER the first split."
+}

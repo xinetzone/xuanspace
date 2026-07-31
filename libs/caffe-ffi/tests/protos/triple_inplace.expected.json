@@ -1,0 +1,12 @@
+{
+  "auto_split_count": 2,
+  "auto_split_names": [
+    "label_input_1_split",
+    "feat_relu_0_split"
+  ],
+  "auto_split_sources": [
+    "label",
+    "feat"
+  ],
+  "description": "Triple in-place chain before fan-out: conv1→bn→scale→relu (THREE consecutive in-place operations on 'feat'). Tests that last-producer tracking correctly identifies relu (the FINAL in-place op) as the split point, not conv1, bn, or scale. Split MUST be named 'feat_relu_0_split' (blob='feat', producer='relu', idx=0), not feat_conv1_0_split, feat_bn_0_split, or feat_scale_0_split. Also tests label split for dual loss."
+}

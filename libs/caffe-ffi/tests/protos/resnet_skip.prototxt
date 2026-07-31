@@ -1,0 +1,78 @@
+name: "ResNet_Skip"
+# ResNet-style residual (skip) connection.
+#
+# DAG topology:
+#   data → conv1 → bn1 → relu1 (in-place) → conv2 → bn2 → add ──→ fc → loss
+#                                    (skip)           ↗             ↑
+#                                                               label
+#
+# Key complexity: relu1 output (after 3 layers: conv1→bn1→relu1) has TWO consumers
+#   at DIFFERENT distances: conv2 (immediate next layer) and add (several layers later).
+# This tests last-producer tracking across a skip connection that jumps over layers.
+#
+# Expected auto-splits (1):
+#   1. relu1_bn1_0_split: bn1→relu1 is in-place on "conv1_out" through the chain.
+#      Wait — let's trace carefully:
+#        conv1 top: "conv1_out" → producer(conv1,0), consumers: bn1
+#        bn1 bottom: "conv1_out", top: "conv1_out" (in-place) → producer(bn1,0), consumers: relu1
+#        relu1 bottom: "conv1_out", top: "conv1_out" (in-place) → producer(relu1,0), consumers: conv2, add
+#      So the split is named after the LAST producer: relu1, blob "conv1_out"
+#      → conv1_out_relu1_0_split (2 outputs: conv2, add)
+input: "data"
+input: "label"
+input_shape { dim: 8 dim: 64 dim: 1 dim: 1 }
+input_shape { dim: 8 dim: 1 }
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "data"
+  top: "conv1_out"
+  convolution_param { num_output: 64 kernel_size: 1 }
+}
+layer {
+  name: "bn1"
+  type: "BatchNorm"
+  bottom: "conv1_out"
+  top: "conv1_out"
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "conv1_out"
+  top: "conv1_out"
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "conv1_out"
+  top: "conv2_out"
+  convolution_param { num_output: 64 kernel_size: 1 pad: 1 }
+}
+layer {
+  name: "bn2"
+  type: "BatchNorm"
+  bottom: "conv2_out"
+  top: "conv2_out"
+}
+layer {
+  name: "add"
+  type: "Eltwise"
+  bottom: "conv2_out"
+  bottom: "conv1_out"
+  top: "res_out"
+  eltwise_param { operation: SUM }
+}
+layer {
+  name: "fc"
+  type: "InnerProduct"
+  bottom: "res_out"
+  top: "pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "pred"
+  bottom: "label"
+  top: "loss"
+}

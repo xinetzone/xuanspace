@@ -118,6 +118,11 @@ jobs:
       - name: Build all projects
         run: xs build
 
+      # --- Windows DLL 自检 (A3) ---
+      - name: Run Windows DLL self-check
+        if: runner.os == 'Windows'
+        run: python libs/caffe-ffi/scripts/check_windows_dll.py --skip-load
+
       # --- 文档构建 ---
       - name: Build documentation
         run: xs docs build

@@ -1,0 +1,34 @@
+name: "MLP_Basic"
+# Simple MLP: linear chain (data → fc1 → relu(in-place) → fc2 → loss)
+# Expected: 0 auto-splits (every blob has exactly 1 consumer; no fan-out > 1)
+input: "data"
+input: "label"
+input_shape { dim: 64 dim: 784 }
+input_shape { dim: 64 dim: 1 }
+layer {
+  name: "fc1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "fc1"
+  inner_product_param { num_output: 256 }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "fc1"
+  top: "fc1"
+}
+layer {
+  name: "fc2"
+  type: "InnerProduct"
+  bottom: "fc1"
+  top: "pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "pred"
+  bottom: "label"
+  top: "loss"
+}

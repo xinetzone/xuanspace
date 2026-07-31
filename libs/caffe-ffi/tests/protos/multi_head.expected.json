@@ -1,0 +1,12 @@
+{
+  "auto_split_count": 2,
+  "auto_split_names": [
+    "label_input_1_split",
+    "conv1_out_relu1_0_split"
+  ],
+  "auto_split_sources": [
+    "label",
+    "conv1_out"
+  ],
+  "description": "Multi-head network with 4-way fan-out: conv1→relu1 output consumed by 4 parallel heads (head1_fc through head4_fc). Two splits: (1) external input 'label' consumed by 4 loss layers → label_input_1_split with 4 outputs; (2) conv1_out after in-place relu1 consumed by 4 heads → conv1_out_relu1_0_split with 4 outputs. Tests N-way fan-out (N>2) and simultaneous external+internal splits."
+}

@@ -89,12 +89,21 @@ function(caffe_ffi_configure_target target_name)
     message(STATUS "[caffe_ffi]   Compile options (MSVC): /W3 /WX /utf-8")
     target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /WX /utf-8)
   else()
-    message(STATUS "[caffe_ffi]   Compile options (GCC/Clang): -Wall -Wextra -Werror -fvisibility=hidden -fvisibility-inlines-hidden")
-    target_compile_options(${target_name} ${ARG_VISIBILITY}
-      -Wall -Wextra -Werror -Wno-unused-parameter
-      -fvisibility=hidden              # 默认隐藏所有符号，防止 WEAK 符号泄漏
-      -fvisibility-inlines-hidden      # 隐藏内联/模板实例化产生的 WEAK 符号
-    )
+    if(ARG_VISIBILITY STREQUAL "PUBLIC")
+      # PUBLIC targets (shared library): export all symbols; let CMake visibility properties control visibility
+      message(STATUS "[caffe_ffi]   Compile options (GCC/Clang): -Wall -Wextra -Werror (PUBLIC: symbols exported)")
+      target_compile_options(${target_name} ${ARG_VISIBILITY}
+        -Wall -Wextra -Werror -Wno-unused-parameter
+      )
+    else()
+      # PRIVATE/INTERFACE targets (tests/executables): hide symbols by default
+      message(STATUS "[caffe_ffi]   Compile options (GCC/Clang): -Wall -Wextra -Werror -fvisibility=hidden -fvisibility-inlines-hidden")
+      target_compile_options(${target_name} ${ARG_VISIBILITY}
+        -Wall -Wextra -Werror -Wno-unused-parameter
+        -fvisibility=hidden              # 默认隐藏所有符号，防止 WEAK 符号泄漏
+        -fvisibility-inlines-hidden      # 隐藏内联/模板实例化产生的 WEAK 符号
+      )
+    endif()
   endif()
 
   # Link libraries

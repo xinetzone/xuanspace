@@ -1,0 +1,68 @@
+name: "MLP_Branch"
+# Branched MLP: tests external input split + in-place last-producer split.
+#
+# DAG topology:
+#   data ──┬─→ fc1 → relu1 (in-place: fc1_out) ─┬─→ fc2 → fc2_out ──┐
+#         │                                     └─→ fc3 → fc3_out ──┤
+#         └─→ fc_aux → aux_out ──────────────────────────────────────┼─→ concat → cat → loss
+#                                                              label ─┘
+#
+# Expected auto-splits (2):
+#   1. data_input_0_split:   data (external) → fc1 + fc_aux (fan-out=2)
+#   2. fc1_out_relu1_0_split: fc1_out (after relu1, NOT fc1) → fc2 + fc3 (fan-out=2)
+#
+# All other blobs have exactly 1 consumer — no additional splits needed.
+input: "data"
+input: "label"
+input_shape { dim: 32 dim: 784 }
+input_shape { dim: 32 dim: 1 }
+layer {
+  name: "fc1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "fc1_out"
+  inner_product_param { num_output: 128 }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "fc1_out"
+  top: "fc1_out"
+}
+layer {
+  name: "fc2"
+  type: "InnerProduct"
+  bottom: "fc1_out"
+  top: "fc2_out"
+  inner_product_param { num_output: 64 }
+}
+layer {
+  name: "fc3"
+  type: "InnerProduct"
+  bottom: "fc1_out"
+  top: "fc3_out"
+  inner_product_param { num_output: 64 }
+}
+layer {
+  name: "fc_aux"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "aux_out"
+  inner_product_param { num_output: 64 }
+}
+layer {
+  name: "concat"
+  type: "Concat"
+  bottom: "fc2_out"
+  bottom: "fc3_out"
+  bottom: "aux_out"
+  top: "cat"
+  concat_param { axis: 1 }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "cat"
+  bottom: "label"
+  top: "loss"
+}

@@ -1,0 +1,10 @@
+{
+  "auto_split_count": 1,
+  "auto_split_names": [
+    "conv1_out_relu1_0_split"
+  ],
+  "auto_split_sources": [
+    "conv1_out"
+  ],
+  "description": "ResNet-style residual/skip connection: conv1→bn1→relu1 output (conv1_out) feeds BOTH conv2 (main path) AND add (shortcut). Split must be named after LAST producer (relu1) after TWO consecutive in-place ops (bn1, relu1), NOT bn1 or conv1. Tests skip connection correctness and deep in-place last-producer tracking."
+}

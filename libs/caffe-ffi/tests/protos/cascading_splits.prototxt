@@ -1,0 +1,100 @@
+name: "CascadingTwoSplits"
+# Two INDEPENDENT split points in one network (cascading fan-out).
+#
+# DAG topology:
+#   data → trunk → A ─┬─→ B ─┬─→ D
+#                     │      └─→ E
+#                     └─→ C
+#
+# In terms of layers:
+#   data → fc_a → a_relu(in-place) ─┬─→ fc_b → b_relu(in-place) ─┬─→ fc_d → loss_d
+#                                   │                            └─→ fc_e → loss_e
+#                                   └─→ fc_c → loss_c
+#                              label → loss_c, loss_d, loss_e
+#
+# Key complexity: TWO independent fan-out points at different positions:
+#   1. fc_a output (after a_relu): feeds fc_b AND fc_c (fan-out=2) → split after a_relu
+#   2. fc_b output (after b_relu): feeds fc_d AND fc_e (fan-out=2) → split after b_relu
+#   3. label: feeds all 3 losses (fan-out=3) → external input split
+#
+# This is NOT "cascading splits on split outputs" (which InsertSplits doesn't do in
+# a single pass because split outputs each have exactly 1 consumer). It tests that
+# multiple independent split points coexist correctly without interfering with each
+# other, and that split naming is independent per split point.
+#
+# Expected auto-splits (3):
+#   1. label_input_1_split: label → 3 outputs
+#   2. a_out_a_relu_0_split: a_out after a_relu → 2 outputs (fc_b, fc_c)
+#   3. b_out_b_relu_0_split: b_out after b_relu → 2 outputs (fc_d, fc_e)
+input: "data"
+input: "label"
+input_shape { dim: 4 dim: 32 }
+input_shape { dim: 4 dim: 1 }
+layer {
+  name: "fc_a"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "a_out"
+  inner_product_param { num_output: 32 }
+}
+layer {
+  name: "a_relu"
+  type: "ReLU"
+  bottom: "a_out"
+  top: "a_out"
+}
+layer {
+  name: "fc_b"
+  type: "InnerProduct"
+  bottom: "a_out"
+  top: "b_out"
+  inner_product_param { num_output: 16 }
+}
+layer {
+  name: "b_relu"
+  type: "ReLU"
+  bottom: "b_out"
+  top: "b_out"
+}
+layer {
+  name: "fc_c"
+  type: "InnerProduct"
+  bottom: "a_out"
+  top: "c_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "fc_d"
+  type: "InnerProduct"
+  bottom: "b_out"
+  top: "d_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "fc_e"
+  type: "InnerProduct"
+  bottom: "b_out"
+  top: "e_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss_c"
+  type: "SoftmaxWithLoss"
+  bottom: "c_out"
+  bottom: "label"
+  top: "loss_c"
+}
+layer {
+  name: "loss_d"
+  type: "SoftmaxWithLoss"
+  bottom: "d_out"
+  bottom: "label"
+  top: "loss_d"
+}
+layer {
+  name: "loss_e"
+  type: "SoftmaxWithLoss"
+  bottom: "e_out"
+  bottom: "label"
+  top: "loss_e"
+}

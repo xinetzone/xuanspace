@@ -1,0 +1,86 @@
+name: "TripleInplaceChain"
+# Triple in-place chain before fan-out: conv→bn→scale→relu (3 in-place ops).
+#
+# DAG topology:
+#   data → conv1 → bn(in-place) → scale(in-place) → relu(in-place) ─┬─→ fc2 → loss
+#                                                                    └─→ fc3 → loss
+#                                                               label → loss, loss
+#
+# Key complexity: After THREE consecutive in-place operations, the last producer
+# of "feat" is relu (NOT conv1, NOT bn, NOT scale). This is an extreme test of
+# last-producer tracking through deep in-place chains.
+#
+# In real Caffe models (especially optimized inference graphs), Conv→BN→Scale→ReLU
+# is commonly fused or applied in-place. The split MUST be named after the LAST
+# producer in the chain (relu), not after any earlier layer.
+#
+# Trace of blob_to_last_top for "feat":
+#   conv1 top "feat"        → producer(conv1, 0)
+#   bn bottom "feat", top "feat" (in-place)  → producer(bn, 0)
+#   scale bottom "feat", top "feat" (in-place) → producer(scale, 0)
+#   relu bottom "feat", top "feat" (in-place) → producer(relu, 0)  ← LAST producer
+#   fc2 bottom "feat" → source(relu, 0)
+#   fc3 bottom "feat" → source(relu, 0)
+#
+# Expected auto-splits (2):
+#   1. label_input_1_split: label → 2 outputs (loss, loss — two loss layers)
+#   2. feat_relu_0_split: feat after relu (3 in-place ops deep) → 2 outputs (fc2, fc3)
+#      NOT feat_conv1_0_split, NOT feat_bn_0_split, NOT feat_scale_0_split!
+input: "data"
+input: "label"
+input_shape { dim: 4 dim: 64 }
+input_shape { dim: 4 dim: 1 }
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "data"
+  top: "feat"
+  convolution_param { num_output: 32 kernel_size: 1 }
+}
+layer {
+  name: "bn"
+  type: "BatchNorm"
+  bottom: "feat"
+  top: "feat"
+}
+layer {
+  name: "scale"
+  type: "Scale"
+  bottom: "feat"
+  top: "feat"
+  scale_param { bias_term: true }
+}
+layer {
+  name: "relu"
+  type: "ReLU"
+  bottom: "feat"
+  top: "feat"
+}
+layer {
+  name: "fc2"
+  type: "InnerProduct"
+  bottom: "feat"
+  top: "fc2_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "fc3"
+  type: "InnerProduct"
+  bottom: "feat"
+  top: "fc3_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss_fc2"
+  type: "SoftmaxWithLoss"
+  bottom: "fc2_out"
+  bottom: "label"
+  top: "loss2"
+}
+layer {
+  name: "loss_fc3"
+  type: "SoftmaxWithLoss"
+  bottom: "fc3_out"
+  bottom: "label"
+  top: "loss3"
+}

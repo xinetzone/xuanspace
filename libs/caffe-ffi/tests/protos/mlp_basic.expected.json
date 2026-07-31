@@ -1,0 +1,6 @@
+{
+  "auto_split_count": 0,
+  "auto_split_names": [],
+  "auto_split_sources": [],
+  "description": "Simple linear chain MLP: data→fc1→relu(in-place)→fc2→loss. Every blob has exactly 1 consumer."
+}

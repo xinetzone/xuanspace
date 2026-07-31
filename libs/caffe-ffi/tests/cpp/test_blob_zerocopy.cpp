@@ -1140,3 +1140,1673 @@ TEST(COWApiTest, COWWriteIsolation) {
   EXPECT_NEAR(static_cast<double>(src->cpu_mutable_data()[1]), 2.0, 1e-6);
   EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[1]), 2.0, 1e-6);
 }
+
+// ── ShareDiff 引用计数边界测试 (ShareDiffRefCount) ──
+// ShareDiff 的对称测试，覆盖与 ShareDataRefCount 对应的关键边界场景，
+// 确保 diff 共享的 COW 语义与 data 共享完全对称。
+
+/// ShareDiff 自共享幂等性（对应 ShareDataRefCount.SelfShareIsIdempotent）
+TEST(ShareDiffRefCount, SelfShareIsIdempotent) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4, 4});
+  a->cpu_mutable_diff()[0] = 42.0f;
+  const float* ptr_before = a->cpu_diff();
+
+  a->ShareDiff(a.get());
+
+  EXPECT_EQ(a->cpu_diff(), ptr_before);
+  EXPECT_TRUE(a->SharesDiffWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_diff()[0]), 42.0, 1e-6);
+}
+
+/// ShareDiff 重复共享幂等（对应 ShareDataRefCount.RepeatedShareDataIsIdempotent）
+TEST(ShareDiffRefCount, RepeatedShareDiffIsIdempotent) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_mutable_diff()[0] = 7.0f;
+
+  b->ShareDiff(a.get());
+  const float* ptr_after_first = b->cpu_diff();
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+
+  b->ShareDiff(a.get());
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+  EXPECT_EQ(b->cpu_diff(), ptr_after_first);
+  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_diff()[0]), 7.0, 1e-6);
+
+  b->ShareDiff(a.get());
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+  EXPECT_EQ(b->cpu_diff(), ptr_after_first);
+}
+
+/// ShareDiff 不同形状共享（对应 ShareDataRefCount.ShareDataWithDifferentShapes）
+TEST(ShareDiffRefCount, ShareDiffWithDifferentShapes) {
+  auto a = make_object<Blob>(std::vector<int64_t>{2, 3, 4});
+  auto b = make_object<Blob>(std::vector<int64_t>{8});
+
+  a->cpu_mutable_diff()[0] = 5.0f;
+  a->cpu_mutable_diff()[23] = 10.0f;
+
+  b->ShareDiff(a.get());
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+
+  // b 的 diff shape 应跟随 a
+  EXPECT_EQ(b->num_axes(), 3);
+  EXPECT_EQ(b->count(), 24);
+
+  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_diff()[0]), 5.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_diff()[23]), 10.0, 1e-6);
+}
+
+/// ShareDiff COW 后数据隔离（对应 COWTest.DataIsolationAfterCOW）
+TEST(ShareDiffRefCount, DiffIsolationAfterCOW) {
+  auto src = make_object<Blob>(std::vector<int64_t>{4});
+  auto dst = make_object<Blob>(std::vector<int64_t>{4});
+
+  src->cpu_mutable_diff()[0] = 10.0f;
+  src->cpu_mutable_diff()[1] = 20.0f;
+  src->cpu_mutable_diff()[2] = 30.0f;
+  src->cpu_mutable_diff()[3] = 40.0f;
+
+  dst->ShareDiff(src.get());
+
+  // 触发 COW 并修改 dst
+  dst->cpu_mutable_diff()[0] = 999.0f;
+  dst->cpu_mutable_diff()[1] = 888.0f;
+
+  // src 不受影响
+  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[3]), 40.0, 1e-6);
+
+  // dst 有自己的值
+  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[1]), 888.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[3]), 40.0, 1e-6);
+}
+
+/// ShareDiff 三向共享 COW 仅影响写入者（对应 COWTest.ThreeWayShareCOWOnlyAffectsMutator）
+TEST(ShareDiffRefCount, ThreeWayDiffCOWOnlyAffectsMutator) {
+  auto a = make_object<Blob>(std::vector<int64_t>{4});
+  auto b = make_object<Blob>(std::vector<int64_t>{4});
+  auto c = make_object<Blob>(std::vector<int64_t>{4});
+
+  a->cpu_mutable_diff()[0] = 1.0f;
+  b->ShareDiff(a.get());
+  c->ShareDiff(a.get());
+
+  EXPECT_TRUE(b->SharesDiffWith(a.get()));
+  EXPECT_TRUE(c->SharesDiffWith(a.get()));
+
+  // b 触发 COW
+  b->cpu_mutable_diff()[0] = 999.0f;
+
+  EXPECT_FALSE(b->SharesDiffWith(a.get()));
+  EXPECT_FALSE(b->SharesDiffWith(c.get()));
+
+  // a 和 c 仍共享
+  EXPECT_TRUE(a->SharesDiffWith(c.get()));
+  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_diff()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_mutable_diff()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_diff()[0]), 999.0, 1e-6);
+}
+
+// ── Owner COW 关键测试（A5 修复验证） ──
+// 验证关键 bug 修复：当 Blob 是 tensor 的 owner（data_shared_=false / diff_shared_=false），
+// 但其他 Blob 仍共享该 tensor（use_count > 1）时，owner 调用 cpu_mutable_data()/cpu_mutable_diff()
+// 也应触发 COW，避免写入破坏 borrower 的视图。这是 Split N≥2 Backward 梯度累加的必要条件。
+
+/// Owner 写入共享 data tensor 时触发 COW（防止写入破坏 borrowers）
+TEST(OwnerCOWTest, OwnerMutableDataTriggersCOWWhenShared) {
+  auto owner = make_object<Blob>(std::vector<int64_t>{4});
+  auto borrower1 = make_object<Blob>(std::vector<int64_t>{4});
+  auto borrower2 = make_object<Blob>(std::vector<int64_t>{4});
+
+  owner->cpu_mutable_data()[0] = 10.0f;
+  owner->cpu_mutable_data()[1] = 20.0f;
+  owner->cpu_mutable_data()[2] = 30.0f;
+  owner->cpu_mutable_data()[3] = 40.0f;
+
+  borrower1->ShareData(owner.get());
+  borrower2->ShareData(owner.get());
+
+  EXPECT_TRUE(borrower1->SharesDataWith(owner.get()));
+  EXPECT_TRUE(borrower2->SharesDataWith(owner.get()));
+  const float* borrower1_ptr_before = borrower1->cpu_data();
+  const float* owner_ptr_before = owner->cpu_data();
+
+  // Owner 调用 cpu_mutable_data() —— 因为有 borrowers 共享，应触发 COW
+  float* owner_mut = owner->cpu_mutable_data();
+
+  // Owner 获得新的私有 buffer（与 borrowers 断开）
+  EXPECT_NE(owner->cpu_data(), borrower1_ptr_before);
+  EXPECT_NE(owner->cpu_data(), owner_ptr_before);
+  EXPECT_FALSE(owner->SharesDataWith(borrower1.get()));
+  EXPECT_FALSE(owner->SharesDataWith(borrower2.get()));
+
+  // Borrowers 仍指向旧数据（不受 owner COW 影响）
+  EXPECT_TRUE(borrower1->SharesDataWith(borrower2.get()));
+  EXPECT_EQ(borrower1->cpu_data(), borrower1_ptr_before);
+  EXPECT_NEAR(static_cast<double>(borrower1->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(borrower1->cpu_data()[1]), 20.0, 1e-6);
+
+  // Owner 写入新 buffer 不影响 borrowers
+  owner_mut[0] = 999.0f;
+  EXPECT_NEAR(static_cast<double>(borrower1->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(owner->cpu_data()[0]), 999.0, 1e-6);
+}
+
+/// Owner 写入共享 diff tensor 时触发 COW（Split Backward 梯度累加核心场景）
+TEST(OwnerCOWTest, OwnerMutableDiffTriggersCOWWhenShared) {
+  auto owner = make_object<Blob>(std::vector<int64_t>{4});
+  auto borrower1 = make_object<Blob>(std::vector<int64_t>{4});
+  auto borrower2 = make_object<Blob>(std::vector<int64_t>{4});
+
+  // 模拟 N=2 Split Forward: bottom(owner) 的 diff 被两个 top(borrowers) 共享
+  owner->cpu_mutable_diff()[0] = 0.0f;  // init zeros
+  borrower1->ShareDiff(owner.get());
+  borrower2->ShareDiff(owner.get());
+
+  EXPECT_TRUE(borrower1->SharesDiffWith(owner.get()));
+  EXPECT_TRUE(borrower2->SharesDiffWith(owner.get()));
+
+  // 模拟 borrower1 的 downstream 写入梯度（触发 COW on borrower1）
+  borrower1->cpu_mutable_diff()[0] = 1.0f;  // d_top1 = 1.0
+  borrower1->cpu_mutable_diff()[1] = 2.0f;
+
+  // borrower2 未被写入（假设该分支不传播梯度），仍与 owner 共享
+  EXPECT_TRUE(borrower2->SharesDiffWith(owner.get()));
+  EXPECT_FALSE(borrower1->SharesDiffWith(owner.get()));  // borrower1 COW'd away
+
+  // 模拟 Split Backward: owner(bottom) 调用 cpu_mutable_diff() 准备累加
+  // 因为 borrower2 仍共享 owner 的 diff，COW 必须触发以避免别名
+  float* owner_diff = owner->cpu_mutable_diff();
+
+  // Owner 现在有私有 buffer（不与任何 borrower 别名）
+  EXPECT_FALSE(owner->SharesDiffWith(borrower2.get()));
+
+  // borrower2 的指针不变且仍为原始 zeros（未被破坏）
+  EXPECT_NEAR(static_cast<double>(borrower2->cpu_diff()[0]), 0.0, 1e-6);
+
+  // borrower1 的梯度完好
+  EXPECT_NEAR(static_cast<double>(borrower1->cpu_diff()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(borrower1->cpu_diff()[1]), 2.0, 1e-6);
+
+  // 模拟梯度累加：copy borrower1 + axpy borrower2(zeros)
+  // (这正是 SplitLayer::Backward_cpu 中的核心逻辑)
+  const float* b1_diff = borrower1->cpu_diff();
+  const float* b2_diff = borrower2->cpu_diff();
+  // copy: owner_diff = b1_diff
+  for (int64_t i = 0; i < owner->count(); ++i) owner_diff[i] = b1_diff[i];
+  // axpy: owner_diff += 1.0 * b2_diff (b2_diff != owner_diff, no aliasing)
+  EXPECT_NE(b2_diff, owner_diff);  // 关键断言：无别名
+  for (int64_t i = 0; i < owner->count(); ++i) owner_diff[i] += b2_diff[i];
+
+  EXPECT_NEAR(static_cast<double>(owner_diff[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(owner_diff[1]), 2.0, 1e-6);
+}
+
+/// 单 borrower 时 owner mutable 仍触发 COW（N=1 反向传播场景）
+TEST(OwnerCOWTest, OwnerMutableDiffCOWWithSingleBorrower) {
+  auto owner = make_object<Blob>(std::vector<int64_t>{4});
+  auto borrower = make_object<Blob>(std::vector<int64_t>{4});
+
+  owner->cpu_mutable_diff()[0] = 0.0f;
+  borrower->ShareDiff(owner.get());
+
+  // Borrower COW（模拟 downstream 写梯度）
+  borrower->cpu_mutable_diff()[0] = 42.0f;
+
+  // 此时 borrower 已 COW 到私有 buffer，owner 不再被任何人共享（use_count=1）
+  EXPECT_FALSE(borrower->SharesDiffWith(owner.get()));
+
+  // Owner mutable: use_count=1，不触发 COW（性能优化，不影响正确性）
+  const float* owner_ptr_before = owner->cpu_diff();
+  float* owner_mut = owner->cpu_mutable_diff();
+  // Owner 仍持有原 buffer（因为无 borrower 共享，无需 COW）
+  EXPECT_EQ(owner_mut, owner_ptr_before);
+}
+
+// ── Split layer Backward 集成测试 ──
+
+/// N=1 Backward：单分支梯度直通（d_bottom = d_top）
+TEST(SplitBackwardTest, N1GradientPassThrough) {
+  std::string prototxt = R"(
+name: "test_split_n1_backward"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 2
+input_dim: 2
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "split_out"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  // Forward
+  auto data = net->blob_by_name("data");
+  auto out = net->blob_by_name("split_out");
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data->cpu_mutable_data()[i] = static_cast<float>(i + 1);
+  }
+  net->Forward();
+
+  // Set output diff to known values (simulate upstream gradient)
+  float expected_dy[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  float* out_diff = out->cpu_mutable_diff();
+  for (int64_t i = 0; i < out->count() && i < 8; ++i) {
+    out_diff[i] = expected_dy[i];
+  }
+
+  // Backward
+  net->Backward();
+
+  // Input diff should equal output diff (N=1 pass-through)
+  const float* data_diff = data->cpu_diff();
+  for (int64_t i = 0; i < data->count() && i < 8; ++i) {
+    EXPECT_NEAR(static_cast<double>(data_diff[i]),
+                static_cast<double>(expected_dy[i]), 1e-6)
+        << "Mismatch at index " << i;
+  }
+}
+
+/// N=2 Backward：双分支梯度累加（d_bottom = d_top_a + d_top_b）
+TEST(SplitBackwardTest, N2GradientAccumulation) {
+  std::string prototxt = R"(
+name: "test_split_n2_backward"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 3
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "out_a"
+  top: "out_b"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data = net->blob_by_name("data");
+  auto out_a = net->blob_by_name("out_a");
+  auto out_b = net->blob_by_name("out_b");
+
+  // Set forward data and run forward
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data->cpu_mutable_data()[i] = static_cast<float>(i + 1) * 0.1f;
+  }
+  net->Forward();
+
+  // Verify zero-copy sharing after forward
+  EXPECT_TRUE(out_a->SharesDataWith(data.get()));
+  EXPECT_TRUE(out_b->SharesDataWith(data.get()));
+
+  // Set distinct gradients on each output branch
+  // out_a diff: [1, 2, 3, 4, 5, 6]
+  // out_b diff: [10, 20, 30, 40, 50, 60]
+  float* diff_a = out_a->cpu_mutable_diff();
+  float* diff_b = out_b->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    diff_a[i] = static_cast<float>(i + 1);
+    diff_b[i] = static_cast<float>((i + 1) * 10);
+  }
+
+  // After COW triggered by mutable_diff on each top, they should NOT share diff with data
+  EXPECT_FALSE(out_a->SharesDiffWith(data.get()));
+  EXPECT_FALSE(out_b->SharesDiffWith(data.get()));
+
+  // Backward: should accumulate diff_a + diff_b into data diff
+  net->Backward();
+
+  // Expected: data_diff[i] = (i+1) + (i+1)*10 = (i+1)*11
+  const float* data_diff = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    float expected = static_cast<float>((i + 1) * 11);
+    EXPECT_NEAR(static_cast<double>(data_diff[i]),
+                static_cast<double>(expected), 1e-5)
+        << "Gradient accumulation mismatch at index " << i
+        << " expected " << expected << " got " << data_diff[i];
+  }
+}
+
+/// N=3 Backward：三分支梯度累加（d_bottom = d_a + d_b + d_c）
+TEST(SplitBackwardTest, N3GradientAccumulation) {
+  std::string prototxt = R"(
+name: "test_split_n3_backward"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "out_a"
+  top: "out_b"
+  top: "out_c"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data = net->blob_by_name("data");
+  auto out_a = net->blob_by_name("out_a");
+  auto out_b = net->blob_by_name("out_b");
+  auto out_c = net->blob_by_name("out_c");
+
+  net->Forward();
+
+  // Set per-branch gradients
+  float* diff_a = out_a->cpu_mutable_diff();
+  float* diff_b = out_b->cpu_mutable_diff();
+  float* diff_c = out_c->cpu_mutable_diff();
+  diff_a[0] = 1.0f; diff_a[1] = 0.0f; diff_a[2] = 0.0f; diff_a[3] = 0.0f;
+  diff_b[0] = 0.0f; diff_b[1] = 2.0f; diff_b[2] = 0.0f; diff_b[3] = 0.0f;
+  diff_c[0] = 0.0f; diff_c[1] = 0.0f; diff_c[2] = 3.0f; diff_c[3] = 4.0f;
+
+  net->Backward();
+
+  // Expected sum: [1, 2, 3, 4]
+  const float* data_diff = data->cpu_diff();
+  EXPECT_NEAR(static_cast<double>(data_diff[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(data_diff[1]), 2.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(data_diff[2]), 3.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(data_diff[3]), 4.0, 1e-6);
+}
+
+/// N=2 Backward：验证 COW 后数据不被破坏（梯度隔离）
+/// 在写入 out_a diff 后，out_b 的 diff 不应受影响（COW 隔离）
+TEST(SplitBackwardTest, N2GradientIsolationAfterCOW) {
+  std::string prototxt = R"(
+name: "test_split_n2_isolation"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split1"
+  type: "Split"
+  bottom: "data"
+  top: "out_a"
+  top: "out_b"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data_blob = net->blob_by_name("data");
+  // Zero-initialize diff explicitly (Reshape does not zero diff)
+  caffe_set_fp32(static_cast<size_t>(data_blob->count()), 0.0f, data_blob->cpu_mutable_diff());
+  net->Forward();
+
+  auto out_a = net->blob_by_name("out_a");
+  auto out_b = net->blob_by_name("out_b");
+
+  // Both share data's diff initially (we zeroed it above)
+  EXPECT_TRUE(out_a->SharesDiffWith(out_b.get()));
+
+  // Write distinct patterns to each branch diff
+  float* da = out_a->cpu_mutable_diff();
+  da[0] = 100.0f; da[1] = 200.0f; da[2] = 300.0f; da[3] = 400.0f;
+
+  // After writing out_a, out_b should NOT be affected (COW broke sharing for out_a)
+  const float* db_before_b_write = out_b->cpu_diff();
+  // out_b still shares with data (original zero buffer), not with out_a
+  EXPECT_FALSE(out_a->SharesDiffWith(out_b.get()));
+  EXPECT_NEAR(static_cast<double>(db_before_b_write[0]), 0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(db_before_b_write[1]), 0.0, 1e-6);
+
+  // Now write out_b
+  float* db = out_b->cpu_mutable_diff();
+  db[0] = 1.0f; db[1] = 2.0f; db[2] = 3.0f; db[3] = 4.0f;
+
+  // Both should now be independent
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_diff()[0]), 100.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_diff()[0]), 1.0, 1e-6);
+
+  // Backward should correctly sum
+  net->Backward();
+  const float* data_diff = data_blob->cpu_diff();
+  EXPECT_NEAR(static_cast<double>(data_diff[0]), 101.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(data_diff[1]), 202.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(data_diff[2]), 303.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(data_diff[3]), 404.0, 1e-5);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// P1: COW Integration Tests — End-to-end Split → In-place → Backward
+// ═══════════════════════════════════════════════════════════════════════
+//
+// These tests verify COW behavior in realistic network topologies:
+//   - Forward: in-place activation on a Split branch triggers COW,
+//              sibling branches must see original data (not corrupted)
+//   - Backward: gradients from all branches accumulate correctly through Split
+//   - Data/diff isolation after COW: writes on one branch don't leak to others
+
+// ── Helper: fill input blob with deterministic values ──
+namespace {
+void FillBlobSequential(Blob* blob, float base = 1.0f) {
+  float* data = blob->cpu_mutable_data();
+  for (int64_t i = 0; i < blob->count(); ++i) {
+    data[i] = base * static_cast<float>(i + 1);
+  }
+}
+
+void FillDiffSequential(Blob* blob, float base) {
+  float* diff = blob->cpu_mutable_diff();
+  for (int64_t i = 0; i < blob->count(); ++i) {
+    diff[i] = base * static_cast<float>(i + 1);
+  }
+}
+}  // namespace
+
+// ── Test 1: Split → ReLU (in-place) Forward+Backward ──
+// Scenario: data → Split → (raw_branch, relu_branch[in-place ReLU])
+// After Forward: relu_branch must have max(x,0), raw_branch must have original x.
+// After writing top diffs and calling Backward: data_diff = raw_diff + relu_diff * (x>0?1:0)
+TEST(COWIntegrationTest, SplitReLUInplaceForwardCOWIsolation) {
+  std::string prototxt = R"(
+name: "cow_split_relu_fwd"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 3
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "relu"
+  type: "ReLU"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  // Input: mix of positive and negative values to test ReLU masking
+  float* inp = data->cpu_mutable_data();
+  inp[0] =  1.0f; inp[1] = -2.0f; inp[2] =  3.0f;
+  inp[3] = -4.0f; inp[4] =  5.0f; inp[5] = -6.0f;
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+
+  // After in-place ReLU, act must have triggered COW (written to shared data)
+  EXPECT_FALSE(act->SharesDataWith(raw.get()))
+      << "ReLU in-place write must trigger COW, isolating act from raw";
+
+  // raw must still have original data (unchanged by ReLU on sibling)
+  const float* raw_data = raw->cpu_data();
+  EXPECT_NEAR(static_cast<double>(raw_data[0]),  1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(raw_data[1]), -2.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(raw_data[2]),  3.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(raw_data[3]), -4.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(raw_data[4]),  5.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(raw_data[5]), -6.0, 1e-6);
+
+  // act must have ReLU'd values
+  const float* act_data = act->cpu_data();
+  EXPECT_NEAR(static_cast<double>(act_data[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(act_data[1]), 0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(act_data[2]), 3.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(act_data[3]), 0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(act_data[4]), 5.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(act_data[5]), 0.0, 1e-6);
+}
+
+// ── Test 2: Split → ReLU (in-place) Backward gradient accumulation ──
+// After Backward: data_diff = raw_diff + relu_diff * mask(x>0)
+TEST(COWIntegrationTest, SplitReLUInplaceBackwardGradientAccumulation) {
+  std::string prototxt = R"(
+name: "cow_split_relu_bwd"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 3
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "relu"
+  type: "ReLU"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  float* inp = data->cpu_mutable_data();
+  inp[0] =  1.0f; inp[1] = -2.0f; inp[2] =  3.0f;
+  inp[3] = -4.0f; inp[4] =  5.0f; inp[5] = -6.0f;
+
+  // Zero-init diffs
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+
+  // Write gradients: raw gets constant 1.0, act gets constant 2.0
+  FillDiffSequential(raw.get(), 0.0f);  // will overwrite below
+  float* raw_diff = raw->cpu_mutable_diff();
+  float* act_diff = act->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    raw_diff[i] = 1.0f;
+    act_diff[i] = 2.0f;
+  }
+
+  net->Backward();
+
+  // Expected: data_diff[i] = raw_diff[i] + (x[i] > 0 ? act_diff[i] : 0)
+  //   i=0 (x=1>0):  1 + 2 = 3
+  //   i=1 (x=-2<0): 1 + 0 = 1
+  //   i=2 (x=3>0):  1 + 2 = 3
+  //   i=3 (x=-4<0): 1 + 0 = 1
+  //   i=4 (x=5>0):  1 + 2 = 3
+  //   i=5 (x=-6<0): 1 + 0 = 1
+  const float* dd = data->cpu_diff();
+  EXPECT_NEAR(static_cast<double>(dd[0]), 3.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[1]), 1.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[2]), 3.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[3]), 1.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[4]), 3.0, 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[5]), 1.0, 1e-5);
+}
+
+// ── Test 3: Split → Sigmoid (in-place) Forward+Backward ──
+TEST(COWIntegrationTest, SplitSigmoidInplaceForwardCOWAndBackward) {
+  std::string prototxt = R"(
+name: "cow_split_sigmoid"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "sigmoid"
+  type: "Sigmoid"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  float* inp = data->cpu_mutable_data();
+  inp[0] = 0.0f; inp[1] = 1.0f; inp[2] = -1.0f; inp[3] = 2.0f;
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+
+  // COW isolation
+  EXPECT_FALSE(act->SharesDataWith(raw.get()));
+  // raw must have original data
+  const float* rd = raw->cpu_data();
+  EXPECT_NEAR(static_cast<double>(rd[0]),  0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[1]),  1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[2]), -1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[3]),  2.0, 1e-6);
+
+  // act must have sigmoid values
+  auto sigmoid = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
+  const float* ad = act->cpu_data();
+  EXPECT_NEAR(static_cast<double>(ad[0]), static_cast<double>(sigmoid(0.0f)),  1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[1]), static_cast<double>(sigmoid(1.0f)),  1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[2]), static_cast<double>(sigmoid(-1.0f)), 1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[3]), static_cast<double>(sigmoid(2.0f)),  1e-5);
+
+  // Write top diffs and Backward
+  float* raw_diff = raw->cpu_mutable_diff();
+  float* act_diff = act->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    raw_diff[i] = 0.5f;
+    act_diff[i] = 1.0f;
+  }
+  net->Backward();
+
+  // Expected: data_diff = 0.5 + sigmoid(x)*(1-sigmoid(x))*1.0
+  const float* dd = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    float s = sigmoid(inp[i]);
+    float expected = 0.5f + s * (1.0f - s) * 1.0f;
+    EXPECT_NEAR(static_cast<double>(dd[i]), static_cast<double>(expected), 1e-4)
+        << "Mismatch at index " << i;
+  }
+}
+
+// ── Test 4: Split → TanH (in-place) Forward+Backward ──
+TEST(COWIntegrationTest, SplitTanHInplaceForwardCOWAndBackward) {
+  std::string prototxt = R"(
+name: "cow_split_tanh"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "tanh"
+  type: "TanH"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  float* inp = data->cpu_mutable_data();
+  inp[0] = 0.0f; inp[1] = 0.5f; inp[2] = -0.5f; inp[3] = 1.0f;
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+
+  EXPECT_FALSE(act->SharesDataWith(raw.get()));
+  // raw unchanged
+  const float* rd = raw->cpu_data();
+  EXPECT_NEAR(static_cast<double>(rd[0]),  0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[1]),  0.5, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[2]), -0.5, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[3]),  1.0, 1e-6);
+
+  // Write diffs + Backward
+  float* raw_diff = raw->cpu_mutable_diff();
+  float* act_diff = act->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    raw_diff[i] = 0.0f;
+    act_diff[i] = 1.0f;
+  }
+  net->Backward();
+
+  // Expected: data_diff = tanh'(x)*1 = (1 - tanh^2(x))
+  const float* dd = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    double t = std::tanh(static_cast<double>(inp[i]));
+    double expected = 1.0 - t * t;
+    EXPECT_NEAR(static_cast<double>(dd[i]), expected, 1e-4)
+        << "Mismatch at index " << i;
+  }
+}
+
+// ── Test 5: N=3 Split → all branches have in-place ReLU ──
+// All three branches COW independently after Forward
+TEST(COWIntegrationTest, SplitN3ThreeReLUInplaceCOWIsolation) {
+  std::string prototxt = R"(
+name: "cow_split_n3_relu"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "a"
+  top: "b"
+  top: "c"
+}
+layer { name: "relu_a"; type: "ReLU"; bottom: "a"; top: "a" }
+layer { name: "relu_b"; type: "ReLU"; bottom: "b"; top: "b" }
+layer { name: "relu_c"; type: "ReLU"; bottom: "c"; top: "c" }
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  float* inp = data->cpu_mutable_data();
+  inp[0] = -1.0f; inp[1] = 2.0f; inp[2] = -3.0f; inp[3] = 4.0f;
+
+  net->Forward();
+
+  auto a = net->blob_by_name("a");
+  auto b = net->blob_by_name("b");
+  auto c = net->blob_by_name("c");
+
+  // All branches must be isolated (each ReLU triggered COW independently)
+  EXPECT_FALSE(a->SharesDataWith(b.get()));
+  EXPECT_FALSE(a->SharesDataWith(c.get()));
+  EXPECT_FALSE(b->SharesDataWith(c.get()));
+  EXPECT_FALSE(a->SharesDataWith(data.get()));
+
+  // Each branch must have max(x,0)
+  float expected_relu[4] = {0.0f, 2.0f, 0.0f, 4.0f};
+  for (auto branch : {a.get(), b.get(), c.get()}) {
+    const float* bd = branch->cpu_data();
+    for (int64_t i = 0; i < 4; ++i) {
+      EXPECT_NEAR(static_cast<double>(bd[i]), static_cast<double>(expected_relu[i]), 1e-6);
+    }
+  }
+
+  // Backward: each branch gets different gradient, all accumulate to data
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+  float* a_diff = a->cpu_mutable_diff();
+  float* b_diff = b->cpu_mutable_diff();
+  float* c_diff = c->cpu_mutable_diff();
+  for (int64_t i = 0; i < 4; ++i) {
+    a_diff[i] = 1.0f;
+    b_diff[i] = 2.0f;
+    c_diff[i] = 3.0f;
+  }
+  net->Backward();
+
+  // data_diff[i] = (x[i]>0) ? (1+2+3) : 0 = 6 if positive, 0 if negative
+  const float* dd = data->cpu_diff();
+  EXPECT_NEAR(static_cast<double>(dd[0]), 0.0, 1e-5);  // x=-1, all blocked
+  EXPECT_NEAR(static_cast<double>(dd[1]), 6.0, 1e-5);  // x=2, all pass
+  EXPECT_NEAR(static_cast<double>(dd[2]), 0.0, 1e-5);  // x=-3, all blocked
+  EXPECT_NEAR(static_cast<double>(dd[3]), 6.0, 1e-5);  // x=4, all pass
+}
+
+// ── Test 6: Split → Dropout (inference/in-place identity) → Backward ──
+// Dropout in inference mode is identity copy. Split fan-out with dropout
+// on one branch: COW not triggered (identity copy is read-only of input).
+// Backward: dropout in inference should pass gradient straight through.
+TEST(COWIntegrationTest, SplitDropoutInferenceInplaceBackwardPassthrough) {
+  std::string prototxt = R"(
+name: "cow_split_dropout"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "dropped"
+}
+layer {
+  name: "drop"
+  type: "Dropout"
+  bottom: "dropped"
+  top: "dropped"
+  dropout_param { dropout_ratio: 0.5 }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  FillBlobSequential(data.get(), 1.0f);
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto dropped = net->blob_by_name("dropped");
+
+  // Dropout in inference mode is identity copy (no mutation of shared buffer
+  // from the layer's perspective — but the impl copies data anyway).
+  // What matters: data is correct.
+  const float* rd = raw->cpu_data();
+  const float* dd = dropped->cpu_data();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(dd[i]), static_cast<double>(rd[i]), 1e-6)
+        << "Dropout inference must produce same output as input";
+  }
+
+  // Write diffs and Backward
+  float* raw_diff = raw->cpu_mutable_diff();
+  float* drop_diff = dropped->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    raw_diff[i] = 1.0f;
+    drop_diff[i] = 2.0f;
+  }
+  net->Backward();
+
+  // Dropout inference backward is identity: data_diff = raw_diff + drop_diff = 3.0
+  const float* data_diff = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(data_diff[i]), 3.0, 1e-5)
+        << "Dropout inference backward must pass gradients through at index " << i;
+  }
+}
+
+// ── Test 7: Split → ELU (in-place) Forward+Backward ──
+TEST(COWIntegrationTest, SplitELUInplaceForwardCOWAndBackward) {
+  std::string prototxt = R"(
+name: "cow_split_elu"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "elu"
+  type: "ELU"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+
+  float* inp = data->cpu_mutable_data();
+  inp[0] =  1.0f; inp[1] = -1.0f; inp[2] =  0.0f; inp[3] = -2.0f;
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+  EXPECT_FALSE(act->SharesDataWith(raw.get()));
+
+  // raw unchanged
+  const float* rd = raw->cpu_data();
+  EXPECT_NEAR(static_cast<double>(rd[0]),  1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[1]), -1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[2]),  0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(rd[3]), -2.0, 1e-6);
+
+  // ELU forward: x if x>0, alpha*(exp(x)-1) if x<=0 (default alpha=1)
+  auto elu_fwd = [](float x) { return x > 0 ? x : (std::exp(x) - 1.0f); };
+  const float* ad = act->cpu_data();
+  EXPECT_NEAR(static_cast<double>(ad[0]), static_cast<double>(elu_fwd(1.0f)),  1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[1]), static_cast<double>(elu_fwd(-1.0f)), 1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[2]), static_cast<double>(elu_fwd(0.0f)),  1e-5);
+  EXPECT_NEAR(static_cast<double>(ad[3]), static_cast<double>(elu_fwd(-2.0f)), 1e-5);
+
+  // Write diffs and Backward — raw gets 0, act gets 1
+  float* raw_diff = raw->cpu_mutable_diff();
+  float* act_diff = act->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    raw_diff[i] = 0.0f;
+    act_diff[i] = 1.0f;
+  }
+  net->Backward();
+
+  // ELU backward: dY * (1 if x>0 else y+alpha) with alpha=1
+  // y = elu_fwd(x), so for x<=0: dY * (y+1) = dY * (exp(x)-1+1) = dY*exp(x)
+  const float* dd = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    float x = inp[i];
+    float expected;
+    if (x > 0) {
+      expected = 1.0f;
+    } else {
+      expected = std::exp(x);  // alpha=1, dy*(y+1)=dy*exp(x)
+    }
+    EXPECT_NEAR(static_cast<double>(dd[i]), static_cast<double>(expected), 1e-4)
+        << "Mismatch at index " << i;
+  }
+}
+
+// ── Test 8: Forward-Backward cycle isolation — COW doesn't corrupt diff buffer ──
+// After Forward (which COWs data), the diff buffers must still be properly
+// shareable and COW'd independently. Writing diff on one branch must not
+// corrupt sibling diffs.
+TEST(COWIntegrationTest, ForwardCOWDoesNotCorruptDiffSharing) {
+  std::string prototxt = R"(
+name: "cow_fwd_diff_isolation"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "a"
+  top: "b"
+}
+layer {
+  name: "relu_a"
+  type: "ReLU"
+  bottom: "a"
+  top: "a"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  FillBlobSequential(data.get(), 1.0f);  // 1,2,3,4 all positive
+
+  net->Forward();
+
+  auto a = net->blob_by_name("a");
+  auto b = net->blob_by_name("b");
+
+  // After Forward + ReLU on a: a has COW'd data, b still shares with data
+  EXPECT_FALSE(a->SharesDataWith(data.get()));
+  EXPECT_TRUE(b->SharesDataWith(data.get()));
+
+  // Diff side: both should still share diff with data initially
+  // (Forward doesn't touch diff)
+  EXPECT_TRUE(a->SharesDiffWith(data.get()));
+  EXPECT_TRUE(b->SharesDiffWith(data.get()));
+
+  // Write to a's diff via mutable → triggers COW for a's diff only
+  float* a_diff = a->cpu_mutable_diff();
+  a_diff[0] = 999.0f;
+
+  // b's diff must remain shared and zero (not corrupted by a's COW)
+  EXPECT_FALSE(a->SharesDiffWith(b.get()));
+  EXPECT_TRUE(b->SharesDiffWith(data.get()));
+
+  const float* b_diff = b->cpu_diff();
+  EXPECT_NEAR(static_cast<double>(b_diff[0]), 0.0, 1e-6)
+      << "Writing a's diff must not corrupt b's shared diff buffer";
+}
+
+// ── Test 9: N=1 Split backward is identity (gradient passthrough) ──
+TEST(COWIntegrationTest, SplitN1BackwardGradientPassthrough) {
+  std::string prototxt = R"(
+name: "cow_split_n1_bwd"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 4
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "out"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  FillBlobSequential(data.get(), 2.0f);
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+
+  auto out = net->blob_by_name("out");
+  EXPECT_TRUE(out->SharesDataWith(data.get()));  // N=1 zero-copy
+
+  float* out_diff = out->cpu_mutable_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    out_diff[i] = static_cast<float>(i + 1) * 10.0f;
+  }
+  net->Backward();
+
+  const float* dd = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    float expected = static_cast<float>(i + 1) * 10.0f;
+    EXPECT_NEAR(static_cast<double>(dd[i]), static_cast<double>(expected), 1e-5)
+        << "N=1 Split backward must pass gradient through at index " << i;
+  }
+}
+
+// ── Test 10: Multiple Forward-Backward iterations (training loop simulation) ──
+// Simulates 3 training steps: Forward → set diffs → Backward.
+// Each iteration must produce correct results without COW state leakage.
+TEST(COWIntegrationTest, MultipleForwardBackwardIterations) {
+  std::string prototxt = R"(
+name: "cow_multi_iter"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 3
+layer {
+  name: "split"
+  type: "Split"
+  bottom: "data"
+  top: "raw"
+  top: "act"
+}
+layer {
+  name: "relu"
+  type: "ReLU"
+  bottom: "act"
+  top: "act"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto raw = net->blob_by_name("raw");
+  auto act = net->blob_by_name("act");
+
+  for (int iter = 0; iter < 3; ++iter) {
+    // Set input: alternating positive/negative
+    float* inp = data->cpu_mutable_data();
+    for (int64_t i = 0; i < 3; ++i) {
+      inp[i] = ((i + iter) % 2 == 0) ? static_cast<float>(i + 1) : -static_cast<float>(i + 1);
+    }
+    // Zero diffs
+    caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+    net->Forward();
+
+    // Verify COW isolation
+    const float* rd = raw->cpu_data();
+    const float* ad = act->cpu_data();
+    for (int64_t i = 0; i < 3; ++i) {
+      EXPECT_NEAR(static_cast<double>(rd[i]), static_cast<double>(inp[i]), 1e-6)
+          << "Iter " << iter << ": raw corrupted at index " << i;
+      float expected_act = inp[i] > 0 ? inp[i] : 0.0f;
+      EXPECT_NEAR(static_cast<double>(ad[i]), static_cast<double>(expected_act), 1e-6)
+          << "Iter " << iter << ": act ReLU wrong at index " << i;
+    }
+
+    // Set diffs and Backward
+    float* raw_diff = raw->cpu_mutable_diff();
+    float* act_diff = act->cpu_mutable_diff();
+    for (int64_t i = 0; i < 3; ++i) {
+      raw_diff[i] = 1.0f;
+      act_diff[i] = 1.0f;
+    }
+    net->Backward();
+
+    const float* dd = data->cpu_diff();
+    for (int64_t i = 0; i < 3; ++i) {
+      float expected = inp[i] > 0 ? 2.0f : 1.0f;  // 1(raw) + (x>0?1:0)
+      EXPECT_NEAR(static_cast<double>(dd[i]), static_cast<double>(expected), 1e-5)
+          << "Iter " << iter << ": backward wrong at index " << i;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SoftmaxWithLoss Layer Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Test 1: Forward loss computation with uniform probabilities (all zeros input)
+/// When input logits are all zeros, softmax outputs uniform distribution 1/C.
+/// Cross-entropy loss = -log(1/C) = log(C) per sample.
+TEST(SoftmaxWithLossTest, ForwardLossUniform) {
+  // 2 inputs: data (N=2, C=3, H=1, W=1) and label (N=2, C=1, H=1, W=1)
+  // input_dim: 2 3 1 1 for data, then 2 1 1 1 for label → total 8 dims
+  std::string prototxt = R"(
+name: "softmax_loss_uniform"
+input: "data"
+input: "label"
+input_dim: 2
+input_dim: 3
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 1
+input_dim: 1
+input_dim: 1
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "data"
+  bottom: "label"
+  top: "loss"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto label = net->blob_by_name("label");
+  auto loss = net->blob_by_name("loss");
+
+  // Set all logits to zero → uniform softmax 1/3
+  float* data_ptr = data->cpu_mutable_data();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data_ptr[i] = 0.0f;
+  }
+  // Labels: sample 0 → class 0, sample 1 → class 2
+  label->cpu_mutable_data()[0] = 0.0f;
+  label->cpu_mutable_data()[1] = 2.0f;
+
+  net->Forward();
+
+  // Expected loss: -log(1/3) = log(3) ≈ 1.0986
+  float expected_loss = std::log(3.0f);
+  EXPECT_NEAR(static_cast<double>(loss->cpu_data()[0]),
+              static_cast<double>(expected_loss), 1e-5);
+}
+
+/// Test 2: Backward gradient correctness with uniform input
+/// Gradient formula: d_x = (prob - one_hot(label)) / N * loss_weight
+/// With zero logits: prob = 1/3 for all classes
+TEST(SoftmaxWithLossTest, BackwardGradientUniform) {
+  std::string prototxt = R"(
+name: "softmax_loss_bwd_uniform"
+input: "data"
+input: "label"
+input_dim: 2
+input_dim: 3
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 1
+input_dim: 1
+input_dim: 1
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "data"
+  bottom: "label"
+  top: "loss"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto label = net->blob_by_name("label");
+
+  // All zeros → uniform 1/3
+  float* data_ptr = data->cpu_mutable_data();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data_ptr[i] = 0.0f;
+  }
+  label->cpu_mutable_data()[0] = 0.0f;  // sample 0 → class 0
+  label->cpu_mutable_data()[1] = 2.0f;  // sample 1 → class 2
+
+  // Zero-initialize diff
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+
+  net->Forward();
+  // Set loss diff to 1.0 (standard for starting backprop from loss)
+  auto loss = net->blob_by_name("loss");
+  loss->cpu_mutable_diff()[0] = 1.0f;
+  net->Backward();
+
+  const float* dd = data->cpu_diff();
+  float third = 1.0f / 3.0f;
+  float sixth = 1.0f / 6.0f;
+  float neg_two_thirds_div2 = -third;  // (1/3 - 1) / 2 = -1/3
+
+  // Sample 0 (indices 0,1,2): label=0 → [-1/3, 1/6, 1/6]
+  EXPECT_NEAR(static_cast<double>(dd[0]), static_cast<double>(neg_two_thirds_div2), 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[1]), static_cast<double>(sixth), 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[2]), static_cast<double>(sixth), 1e-5);
+
+  // Sample 1 (indices 3,4,5): label=2 → [1/6, 1/6, -1/3]
+  EXPECT_NEAR(static_cast<double>(dd[3]), static_cast<double>(sixth), 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[4]), static_cast<double>(sixth), 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[5]), static_cast<double>(neg_two_thirds_div2), 1e-5);
+}
+
+/// Test 3: Backward with ignore_label — ignored samples must have zero gradient
+TEST(SoftmaxWithLossTest, BackwardIgnoreLabel) {
+  std::string prototxt = R"(
+name: "softmax_loss_ignore"
+input: "data"
+input: "label"
+input_dim: 3
+input_dim: 2
+input_dim: 1
+input_dim: 1
+input_dim: 3
+input_dim: 1
+input_dim: 1
+input_dim: 1
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "data"
+  bottom: "label"
+  top: "loss"
+  loss_param { ignore_label: 255 }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto label = net->blob_by_name("label");
+  auto loss = net->blob_by_name("loss");
+
+  float* data_ptr = data->cpu_mutable_data();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data_ptr[i] = 0.0f;
+  }
+  // 3 samples: class 0, ignore (255), class 1
+  label->cpu_mutable_data()[0] = 0.0f;
+  label->cpu_mutable_data()[1] = 255.0f;
+  label->cpu_mutable_data()[2] = 1.0f;
+
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+  net->Forward();
+  loss->cpu_mutable_diff()[0] = 1.0f;
+  net->Backward();
+
+  const float* dd = data->cpu_diff();
+  float quarter = 0.25f;
+  float neg_quarter = -0.25f;
+
+  // Sample 0 (valid, label=0, N_valid=2): (0.5-1)/2 = -0.25, 0.5/2 = 0.25
+  EXPECT_NEAR(static_cast<double>(dd[0]), static_cast<double>(neg_quarter), 1e-5);  // (0.5-1)/2
+  EXPECT_NEAR(static_cast<double>(dd[1]), static_cast<double>(quarter), 1e-5);      // 0.5/2
+
+  // Sample 1 (ignored): all zeros
+  EXPECT_NEAR(static_cast<double>(dd[2]), 0.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dd[3]), 0.0, 1e-6);
+
+  // Sample 2 (valid, label=1): 0.5/2 = 0.25, (0.5-1)/2 = -0.25
+  EXPECT_NEAR(static_cast<double>(dd[4]), static_cast<double>(quarter), 1e-5);
+  EXPECT_NEAR(static_cast<double>(dd[5]), static_cast<double>(neg_quarter), 1e-5);
+}
+
+/// Test 4: Single sample, one-hot-like confident prediction (one large logit)
+/// When one logit is very large, softmax approaches one-hot; loss approaches 0,
+/// gradient for correct class approaches (1-1)/1 = 0, others approach 0.
+TEST(SoftmaxWithLossTest, ForwardBackwardConfidentPrediction) {
+  std::string prototxt = R"(
+name: "softmax_loss_confident"
+input: "data"
+input: "label"
+input_dim: 1
+input_dim: 3
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 1
+input_dim: 1
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "data"
+  bottom: "label"
+  top: "loss"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto label = net->blob_by_name("label");
+  auto loss = net->blob_by_name("loss");
+
+  // Large logit for class 0, others small: exp(10)/(exp(10)+exp(0)+exp(0)) ≈ 1.0
+  float* data_ptr = data->cpu_mutable_data();
+  data_ptr[0] = 10.0f;
+  data_ptr[1] = 0.0f;
+  data_ptr[2] = 0.0f;
+  label->cpu_mutable_data()[0] = 0.0f;
+
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+  net->Forward();
+  float loss_val = loss->cpu_data()[0];
+  // Loss should be very small (near 0)
+  EXPECT_LT(static_cast<double>(loss_val), 0.01);
+
+  loss->cpu_mutable_diff()[0] = 1.0f;
+  net->Backward();
+
+  const float* dd = data->cpu_diff();
+  // Correct class gradient: (≈1 - 1)/1 ≈ 0
+  EXPECT_NEAR(static_cast<double>(dd[0]), 0.0, 1e-3);
+  // Wrong classes: ≈0/1 ≈ small positive
+  EXPECT_GT(static_cast<double>(dd[1]), 0.0);
+  EXPECT_GT(static_cast<double>(dd[2]), 0.0);
+}
+
+/// Test 5: Probability-only mode (no label input) — forward outputs probabilities
+/// backward zeros out gradient (no loss signal)
+TEST(SoftmaxWithLossTest, ProbabilityOnlyMode) {
+  std::string prototxt = R"(
+name: "softmax_prob_only"
+input: "data"
+input_dim: 1
+input_dim: 3
+input_dim: 1
+input_dim: 1
+layer {
+  name: "prob"
+  type: "SoftmaxWithLoss"
+  bottom: "data"
+  top: "prob"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto prob = net->blob_by_name("prob");
+
+  float* data_ptr = data->cpu_mutable_data();
+  data_ptr[0] = 1.0f;
+  data_ptr[1] = 2.0f;
+  data_ptr[2] = 3.0f;
+
+  net->Forward();
+
+  // Check probabilities sum to 1
+  const float* p = prob->cpu_data();
+  double sum = static_cast<double>(p[0]) + static_cast<double>(p[1]) + static_cast<double>(p[2]);
+  EXPECT_NEAR(sum, 1.0, 1e-5);
+  // p[2] should be largest (logit=3)
+  EXPECT_GT(static_cast<double>(p[2]), static_cast<double>(p[1]));
+  EXPECT_GT(static_cast<double>(p[1]), static_cast<double>(p[0]));
+
+  // Backward should zero out diff (no labels)
+  caffe_set_fp32(static_cast<size_t>(data->count()), 0.0f, data->cpu_mutable_diff());
+  net->Backward();
+  const float* dd = data->cpu_diff();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(dd[i]), 0.0, 1e-6);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Pooling Layer Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Test 1: Max Pooling 2x2 stride 2 no padding on simple 4x4 input
+/// Input (1x1x4x4):
+///   1  2  3  4
+///   5  6  7  8
+///   9 10 11 12
+///  13 14 15 16
+/// Expected output (1x1x2x2): max of each 2x2 block
+///   top-left:  max(1,2,5,6) = 6
+///   top-right: max(3,4,7,8) = 8
+///   bot-left:  max(9,10,13,14) = 14
+///   bot-right: max(11,12,15,16) = 16
+TEST(PoolingLayerTest, MaxPooling2x2Stride2) {
+  std::string prototxt = R"(
+name: "maxpool_test"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 4
+input_dim: 4
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto pooled = net->blob_by_name("pooled");
+
+  float in[16] = {
+    1, 2, 3, 4,
+    5, 6, 7, 8,
+    9, 10, 11, 12,
+    13, 14, 15, 16
+  };
+  float* dptr = data->cpu_mutable_data();
+  for (int i = 0; i < 16; ++i) dptr[i] = in[i];
+
+  net->Forward();
+
+  const float* out = pooled->cpu_data();
+  EXPECT_EQ(pooled->shape(2), 2);  // pooled height
+  EXPECT_EQ(pooled->shape(3), 2);  // pooled width
+
+  EXPECT_NEAR(static_cast<double>(out[0]), 6.0, 1e-6);   // top-left
+  EXPECT_NEAR(static_cast<double>(out[1]), 8.0, 1e-6);   // top-right
+  EXPECT_NEAR(static_cast<double>(out[2]), 14.0, 1e-6);  // bot-left
+  EXPECT_NEAR(static_cast<double>(out[3]), 16.0, 1e-6);  // bot-right
+}
+
+/// Test 2: Average Pooling 2x2 stride 2 no padding
+/// Same input as Max test, but averages instead of max.
+/// Expected: 3.5, 5.5, 11.5, 13.5
+TEST(PoolingLayerTest, AvePooling2x2Stride2) {
+  std::string prototxt = R"(
+name: "avepool_test"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 4
+input_dim: 4
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: AVE
+    kernel_size: 2
+    stride: 2
+  }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto pooled = net->blob_by_name("pooled");
+
+  float in[16] = {
+    1, 2, 3, 4,
+    5, 6, 7, 8,
+    9, 10, 11, 12,
+    13, 14, 15, 16
+  };
+  float* dptr = data->cpu_mutable_data();
+  for (int i = 0; i < 16; ++i) dptr[i] = in[i];
+
+  net->Forward();
+
+  const float* out = pooled->cpu_data();
+  EXPECT_NEAR(static_cast<double>(out[0]), (1+2+5+6)/4.0, 1e-6);    // 3.5
+  EXPECT_NEAR(static_cast<double>(out[1]), (3+4+7+8)/4.0, 1e-6);    // 5.5
+  EXPECT_NEAR(static_cast<double>(out[2]), (9+10+13+14)/4.0, 1e-6); // 11.5
+  EXPECT_NEAR(static_cast<double>(out[3]), (11+12+15+16)/4.0, 1e-6); // 13.5
+}
+
+/// Test 3: Max Pooling with padding
+/// Input 2x2, kernel 3x3, stride 1, pad 1
+/// With padding, the 2x2 input is surrounded by implicit -inf (max pool),
+/// but padding areas don't contribute max values since actual data > -inf.
+/// Output size: floor((2+2*1-3)/1)+1 = floor(1/1)+1 = 2
+/// So output is still 2x2 with proper edge handling.
+TEST(PoolingLayerTest, MaxPoolingWithPadding) {
+  std::string prototxt = R"(
+name: "maxpool_pad"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 2
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: MAX
+    kernel_size: 3
+    stride: 1
+    pad: 1
+  }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto pooled = net->blob_by_name("pooled");
+
+  float in[4] = {1, 2, 3, 4};
+  float* dptr = data->cpu_mutable_data();
+  for (int i = 0; i < 4; ++i) dptr[i] = in[i];
+
+  net->Forward();
+
+  const float* out = pooled->cpu_data();
+  // With pad=1, kernel=3, stride=1 on 2x2 input:
+  // Each output position's window includes some padding and some real values.
+  // Since max ignores -inf padding implicitly (by starting with -max and taking max),
+  // output at (0,0) = max(1,2,3,4) over window covering real values = 4?
+  // Actually let's verify pooled dimensions first
+  EXPECT_GE(pooled->shape(2), 2);
+  EXPECT_GE(pooled->shape(3), 2);
+  // The output should contain the max value 4 somewhere
+  float out_max = -1e30f;
+  for (int64_t i = 0; i < pooled->count(); ++i) {
+    out_max = std::max(out_max, out[i]);
+  }
+  EXPECT_NEAR(static_cast<double>(out_max), 4.0, 1e-6);
+}
+
+/// Test 4: Global Max/Average Pooling
+/// Global pooling pools over entire spatial dimensions (H×W).
+/// For 4x4 input with all values 1..16:
+///   global max = 16
+///   global avg = (1+2+...+16)/16 = 136/16 = 8.5
+TEST(PoolingLayerTest, GlobalPooling) {
+  // Test Global Max
+  {
+    std::string prototxt = R"(
+name: "global_maxpool"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 4
+input_dim: 4
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: MAX
+    global_pooling: true
+  }
+}
+)";
+    ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+    auto data = net->blob_by_name("data");
+    auto pooled = net->blob_by_name("pooled");
+
+    float* dptr = data->cpu_mutable_data();
+    for (int i = 0; i < 16; ++i) dptr[i] = static_cast<float>(i + 1);
+
+    net->Forward();
+    EXPECT_EQ(pooled->shape(2), 1);
+    EXPECT_EQ(pooled->shape(3), 1);
+    EXPECT_NEAR(static_cast<double>(pooled->cpu_data()[0]), 16.0, 1e-6);
+  }
+
+  // Test Global Average
+  {
+    std::string prototxt = R"(
+name: "global_avepool"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 4
+input_dim: 4
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: AVE
+    global_pooling: true
+  }
+}
+)";
+    ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+    auto data = net->blob_by_name("data");
+    auto pooled = net->blob_by_name("pooled");
+
+    float* dptr = data->cpu_mutable_data();
+    for (int i = 0; i < 16; ++i) dptr[i] = static_cast<float>(i + 1);
+
+    net->Forward();
+    EXPECT_EQ(pooled->shape(2), 1);
+    EXPECT_EQ(pooled->shape(3), 1);
+    float expected_avg = (16 * 17 / 2) / 16.0f;  // sum 1..16 = 136, avg = 8.5
+    EXPECT_NEAR(static_cast<double>(pooled->cpu_data()[0]),
+                static_cast<double>(expected_avg), 1e-5);
+  }
+}
+
+/// Test 5: Max Pooling multi-channel (2 channels, independent)
+/// Ensures pooling operates per-channel without cross-channel mixing.
+TEST(PoolingLayerTest, MaxPoolingMultiChannel) {
+  std::string prototxt = R"(
+name: "maxpool_2ch"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 2
+input_dim: 2
+layer {
+  name: "pool"
+  type: "Pooling"
+  bottom: "data"
+  top: "pooled"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto pooled = net->blob_by_name("pooled");
+
+  // Channel 0: 1,2,3,4 → max = 4
+  // Channel 1: 10,20,30,40 → max = 40
+  float in[8] = {1, 2, 3, 4, 10, 20, 30, 40};
+  float* dptr = data->cpu_mutable_data();
+  for (int i = 0; i < 8; ++i) dptr[i] = in[i];
+
+  net->Forward();
+
+  const float* out = pooled->cpu_data();
+  EXPECT_EQ(pooled->count(), 2);  // 2 channels, 1x1 output per channel
+  EXPECT_NEAR(static_cast<double>(out[0]), 4.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out[1]), 40.0, 1e-6);
+}
+

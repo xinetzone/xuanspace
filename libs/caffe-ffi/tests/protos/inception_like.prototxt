@@ -1,0 +1,70 @@
+name: "Inception_Like"
+# Inception-style topology: Split → Concat → Split nesting.
+#
+# DAG topology:
+#   data ──┬─→ fc_1x1 (simulated 1x1 conv path) → path1 ──┐
+#         └─→ fc_3x3 (simulated 3x3 conv path) → path2 ──┼─→ concat → cat ─┬─→ fc_final → pred ─→ loss
+#         └─→ fc_pool (simulated pool path)   → path3 ──┘                 └─→ fc_aux → aux
+#                                                                   label ─┘
+#
+# Expected auto-splits (2):
+#   1. data_input_0_split:     data → fc_1x1 + fc_3x3 + fc_pool (fan-out=3, 3 outputs)
+#   2. cat_concat_0_split:     cat → fc_final + fc_aux (fan-out=2, 2 outputs)
+#
+# Note: pred → loss (1 consumer), label → loss (1 consumer), path1/2/3 → concat (1 each),
+# aux → terminal (0 consumers, dead-end is valid in Caffe for auxiliary outputs).
+input: "data"
+input: "label"
+input_shape { dim: 16 dim: 256 }
+input_shape { dim: 16 dim: 1 }
+layer {
+  name: "fc_1x1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "path1"
+  inner_product_param { num_output: 64 }
+}
+layer {
+  name: "fc_3x3"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "path2"
+  inner_product_param { num_output: 128 }
+}
+layer {
+  name: "fc_pool"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "path3"
+  inner_product_param { num_output: 32 }
+}
+layer {
+  name: "concat"
+  type: "Concat"
+  bottom: "path1"
+  bottom: "path2"
+  bottom: "path3"
+  top: "cat"
+  concat_param { axis: 1 }
+}
+layer {
+  name: "fc_final"
+  type: "InnerProduct"
+  bottom: "cat"
+  top: "pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "fc_aux"
+  type: "InnerProduct"
+  bottom: "cat"
+  top: "aux_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "pred"
+  bottom: "label"
+  top: "loss"
+}

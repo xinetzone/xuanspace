@@ -1,0 +1,12 @@
+{
+  "auto_split_count": 2,
+  "auto_split_names": [
+    "data_input_0_split",
+    "fc1_out_relu1_0_split"
+  ],
+  "auto_split_sources": [
+    "data",
+    "fc1_out"
+  ],
+  "description": "Branched MLP testing two key split scenarios: (1) external input 'data' consumed by fc1+fc_aux → data_input_0_split; (2) fc1_out after in-place ReLU consumed by fc2+fc3 → split named after LAST producer (relu1), NOT fc1 → fc1_out_relu1_0_split."
+}

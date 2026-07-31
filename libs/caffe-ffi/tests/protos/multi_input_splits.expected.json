@@ -1,0 +1,14 @@
+{
+  "auto_split_count": 3,
+  "auto_split_names": [
+    "data_input_0_split",
+    "weight_input_1_split",
+    "label_input_2_split"
+  ],
+  "auto_split_sources": [
+    "data",
+    "weight",
+    "label"
+  ],
+  "description": "Multiple external inputs ALL needing splits simultaneously: 'data' (input 0) feeds 2 branches; 'weight' (input 1) feeds 2 branches; 'label' (input 2) feeds 3 loss layers. Tests that external input splits are: (1) inserted at the BEGINNING of the network (before all other layers); (2) ordered by INPUT INDEX (data_0 first, then weight_1, then label_2), NOT by the order their consumers appear; (3) each has the correct number of outputs matching their consumer count. No internal splits needed — every internal blob has exactly 1 consumer."
+}

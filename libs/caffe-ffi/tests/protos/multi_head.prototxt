@@ -1,0 +1,91 @@
+name: "MultiHead_FourBranches"
+# Multi-head network: shared trunk → 4 output branches (4-way fan-out).
+#
+# DAG topology:
+#   data → conv1 → relu1(in-place) ─┬─→ head1_fc → loss1
+#                                   ├─→ head2_fc → loss2
+#                                   ├─→ head3_fc → loss3
+#                                   └─→ head4_fc → loss4
+#                              label ↗
+#
+# Key complexity: After relu1 (in-place), conv1_out has 4 consumers (head1-4_fc).
+# This is a LARGE fan-out (N=4) stress test — verifies split has correct number
+# of outputs and all 4 heads receive data correctly.
+#
+# Expected auto-splits (1):
+#   1. conv1_out_relu1_0_split: conv1_out after relu1 → 4 outputs (for head1-4_fc)
+#      No external input split: data has only 1 consumer (conv1).
+#      No split for label: it has 4 consumers (loss1-4) — wait! label feeds ALL 4 losses!
+input: "data"
+input: "label"
+input_shape { dim: 8 dim: 128 }
+input_shape { dim: 8 dim: 1 }
+layer {
+  name: "conv1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "conv1_out"
+  inner_product_param { num_output: 64 }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "conv1_out"
+  top: "conv1_out"
+}
+layer {
+  name: "head1_fc"
+  type: "InnerProduct"
+  bottom: "conv1_out"
+  top: "head1_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "head2_fc"
+  type: "InnerProduct"
+  bottom: "conv1_out"
+  top: "head2_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "head3_fc"
+  type: "InnerProduct"
+  bottom: "conv1_out"
+  top: "head3_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "head4_fc"
+  type: "InnerProduct"
+  bottom: "conv1_out"
+  top: "head4_pred"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss1"
+  type: "SoftmaxWithLoss"
+  bottom: "head1_pred"
+  bottom: "label"
+  top: "loss1"
+}
+layer {
+  name: "loss2"
+  type: "SoftmaxWithLoss"
+  bottom: "head2_pred"
+  bottom: "label"
+  top: "loss2"
+}
+layer {
+  name: "loss3"
+  type: "SoftmaxWithLoss"
+  bottom: "head3_pred"
+  bottom: "label"
+  top: "loss3"
+}
+layer {
+  name: "loss4"
+  type: "SoftmaxWithLoss"
+  bottom: "head4_pred"
+  bottom: "label"
+  top: "loss4"
+}

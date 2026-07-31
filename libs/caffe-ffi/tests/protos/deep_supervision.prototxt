@@ -1,0 +1,82 @@
+name: "DeepSupervision"
+# Deep supervision: intermediate layers also connect to auxiliary losses.
+#
+# DAG topology:
+#   data → conv1 → relu1(in-place) ─┬─→ conv2 → relu2(in-place) ─┬─→ conv3 → loss3
+#                                   │                             └─→ loss2
+#                                   └─→ loss1
+#                              label → loss1, loss2, loss3
+#
+# Key complexity: THREE independent split points in one network:
+#   1. relu1 output: feeds conv2 AND loss1 (fan-out=2) → split after relu1
+#   2. relu2 output: feeds conv3 AND loss2 (fan-out=2) → split after relu2
+#   3. label (ext input): feeds loss1, loss2, loss3 (fan-out=3) → external input split
+#
+# Also tests: split inserted in the MIDDLE of the network (after relu1), not just at head.
+# conv1_out has only 1 consumer (relu1) so no split after conv1.
+#
+# Expected auto-splits (3):
+#   1. label_input_1_split: label → 3 outputs (for loss1, loss2, loss3)
+#   2. conv1_out_relu1_0_split: conv1_out after relu1 → 2 outputs (conv2, loss1)
+#   3. conv2_out_relu2_0_split: conv2_out after relu2 → 2 outputs (conv3, loss2)
+input: "data"
+input: "label"
+input_shape { dim: 8 dim: 64 }
+input_shape { dim: 8 dim: 1 }
+layer {
+  name: "conv1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "conv1_out"
+  inner_product_param { num_output: 32 }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "conv1_out"
+  top: "conv1_out"
+}
+layer {
+  name: "conv2"
+  type: "InnerProduct"
+  bottom: "conv1_out"
+  top: "conv2_out"
+  inner_product_param { num_output: 32 }
+}
+layer {
+  name: "relu2"
+  type: "ReLU"
+  bottom: "conv2_out"
+  top: "conv2_out"
+}
+layer {
+  name: "conv3"
+  type: "InnerProduct"
+  bottom: "conv2_out"
+  top: "conv3_out"
+  inner_product_param { num_output: 10 }
+}
+layer {
+  name: "loss1"
+  type: "SoftmaxWithLoss"
+  bottom: "conv1_out"
+  bottom: "label"
+  top: "loss1"
+  loss_weight: 0.3
+}
+layer {
+  name: "loss2"
+  type: "SoftmaxWithLoss"
+  bottom: "conv2_out"
+  bottom: "label"
+  top: "loss2"
+  loss_weight: 0.3
+}
+layer {
+  name: "loss3"
+  type: "SoftmaxWithLoss"
+  bottom: "conv3_out"
+  bottom: "label"
+  top: "loss3"
+  loss_weight: 1.0
+}

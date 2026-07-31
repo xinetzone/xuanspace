@@ -1,0 +1,14 @@
+{
+  "auto_split_count": 3,
+  "auto_split_names": [
+    "label_input_1_split",
+    "conv1_out_relu1_0_split",
+    "conv2_out_relu2_0_split"
+  ],
+  "auto_split_sources": [
+    "label",
+    "conv1_out",
+    "conv2_out"
+  ],
+  "description": "Deep supervision with auxiliary losses at multiple levels: conv1→relu1 output feeds conv2 AND loss1 (side supervision); conv2→relu2 output feeds conv3 AND loss2; conv3→loss3. Three splits total: (1) label feeding all 3 losses; (2) conv1_out after relu1 (2 consumers); (3) conv2_out after relu2 (2 consumers). Tests MULTIPLE independent split points along a linear chain and correct bottom rewriting for auxiliary loss layers."
+}

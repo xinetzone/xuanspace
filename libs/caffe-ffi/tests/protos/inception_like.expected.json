@@ -1,0 +1,12 @@
+{
+  "auto_split_count": 2,
+  "auto_split_names": [
+    "data_input_0_split",
+    "cat_concat_0_split"
+  ],
+  "auto_split_sources": [
+    "data",
+    "cat"
+  ],
+  "description": "Inception-style topology testing Split→Concat→Split nesting: (1) data→3 branches (fc_1x1/fc_3x3/fc_pool) → 3-output split data_input_0_split; (2) concat output→fc_final+fc_aux → 2-output split cat_concat_0_split."
+}

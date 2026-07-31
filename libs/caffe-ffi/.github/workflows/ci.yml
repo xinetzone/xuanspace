@@ -1,0 +1,315 @@
+name: caffe-ffi CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same PR/branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # Build & Test matrix: Linux / macOS / Windows
+  # ────────────────────────────────────────────────────────────────
+  build-and-test:
+    name: "${{ matrix.os }} / py${{ matrix.python-version }} / ${{ matrix.build_type }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux (primary) — Release + Debug with perf log verification
+          - os: ubuntu-latest
+            python-version: "3.14"
+            build_type: Release
+            enable_debug_log: "OFF"
+          - os: ubuntu-latest
+            python-version: "3.14"
+            build_type: Debug
+            enable_debug_log: "ON"
+          # macOS
+          - os: macos-latest
+            python-version: "3.14"
+            build_type: Release
+            enable_debug_log: "OFF"
+          # Windows
+          - os: windows-latest
+            python-version: "3.14"
+            build_type: Release
+            enable_debug_log: "OFF"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ── System dependencies ──
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ libomp-dev ccache
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja cmake ccache libomp
+
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install cmake ninja
+
+      # ── CCache setup for faster rebuilds ──
+      - name: Setup ccache (Linux/macOS)
+        if: runner.os != 'Windows'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.build_type }}
+
+      # ── Install Python build & test dependencies ──
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "numpy>=2.3" \
+            "protobuf>=7.0.0" \
+            "apache-tvm-ffi>0.1.12" \
+            "pytest>=8.0" \
+            scikit-build-core ninja cmake
+
+      # ── InsertSplits DAG simulation cross-validation (zero-dep, runs before build) ──
+      - name: Verify InsertSplits DAG simulation (built-in cases)
+        run: |
+          python scripts/viz_insert_splits.py --verify
+
+      - name: Verify InsertSplits DAG simulation (real-network fixtures)
+        run: |
+          python scripts/viz_insert_splits.py --fixture-dir tests/protos/
+
+      # ── Build & install caffe-ffi (editable) ──
+      # CAFFE_USE_BLAS=OFF avoids OpenBLAS/MKL dependency (pure C++ fallback).
+      # CAFFE_FFI_ENABLE_DEBUG_LOG controls [ACTIVATION-PERF] log visibility.
+      - name: Build and install caffe-ffi
+        env:
+          CMAKE_GENERATOR: Ninja
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          SKBUILD_CMAKE_ARGS: >-
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+            -DCAFFE_CPU_ONLY=ON
+            -DCAFFE_USE_BLAS=OFF
+            -DCAFFE_FFI_ENABLE_DEBUG_LOG=${{ matrix.enable_debug_log }}
+            -DCAFFE_FFI_BUILD_TESTS=OFF
+            -DCAFFE_FFI_ENABLE_COW=ON
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          pip install --no-build-isolation -v -e .
+
+      # ── Smoke test: verify import works ──
+      - name: Verify caffe_ffi import
+        run: |
+          python -c "import caffe_ffi; print('caffe_ffi version:', caffe_ffi.__version__)"
+
+      # ── Run full Python test suite ──
+      - name: Run all Python tests
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -m pytest tests/python -v --tb=short
+
+      # ── Focused: activation backward gradient tests ──
+      - name: Run activation backward tests
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -m pytest tests/python/test_activation_backward.py -v --tb=long
+
+      # ── [ACTIVATION-PERF] log verification (Debug build only) ──
+      - name: Verify [ACTIVATION-PERF] backward log structure
+        if: matrix.enable_debug_log == 'ON'
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -c "
+          import sys, io, textwrap
+          import numpy as np
+          from caffe_ffi import Net
+
+          # Test ReLU perf log
+          proto = textwrap.dedent('''
+              name: 'perf_relu'
+              input: 'data'
+              input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 5
+              layer { name: 'r' type: 'ReLU' bottom: 'data' top: 'out' }
+          ''')
+          net = Net(proto)
+          x = np.random.randn(1,1,4,5).astype(np.float32)
+          dy = np.ones_like(x)
+
+          old_err, sys.stderr = sys.stderr, io.StringIO()
+          net.forward({'data': x}); net.backward({'out': dy})
+          relu_log = sys.stderr.getvalue(); sys.stderr = old_err
+
+          # Test TanH perf log
+          proto_t = textwrap.dedent('''
+              name: 'perf_tanh'
+              input: 'data'
+              input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 5
+              layer { name: 't' type: 'TanH' bottom: 'data' top: 'out' }
+          ''')
+          net_t = Net(proto_t)
+          old_err, sys.stderr = sys.stderr, io.StringIO()
+          net_t.forward({'data': x}); net_t.backward({'out': dy})
+          tanh_log = sys.stderr.getvalue(); sys.stderr = old_err
+
+          # Test ELU perf log
+          proto_e = textwrap.dedent('''
+              name: 'perf_elu'
+              input: 'data'
+              input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 5
+              layer { name: 'e' type: 'ELU' bottom: 'data' top: 'out' }
+          ''')
+          net_e = Net(proto_e)
+          old_err, sys.stderr = sys.stderr, io.StringIO()
+          net_e.forward({'data': x}); net_e.backward({'out': dy})
+          elu_log = sys.stderr.getvalue(); sys.stderr = old_err
+
+          # Test Sigmoid perf log
+          proto_s = textwrap.dedent('''
+              name: 'perf_sig'
+              input: 'data'
+              input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 5
+              layer { name: 's' type: 'Sigmoid' bottom: 'data' top: 'out' }
+          ''')
+          net_s = Net(proto_s)
+          old_err, sys.stderr = sys.stderr, io.StringIO()
+          net_s.forward({'data': x}); net_s.backward({'out': dy})
+          sig_log = sys.stderr.getvalue(); sys.stderr = old_err
+
+          for name, log in [('ReLU', relu_log), ('TanH', tanh_log),
+                            ('ELU', elu_log), ('Sigmoid', sig_log)]:
+              assert '[ACTIVATION-PERF]' in log, f'{name}: missing [ACTIVATION-PERF] tag'
+              assert 'diff_in=' in log,  f'{name}: missing diff_in'
+              assert 'diff_out=' in log, f'{name}: missing diff_out'
+              assert 'time=' in log,     f'{name}: missing time'
+              print(f'[OK] {name} perf backward log verified')
+          "
+
+      # ── Build wheel (Linux Release only) ──
+      - name: Build wheel
+        if: matrix.build_type == 'Release' && runner.os == 'Linux'
+        run: |
+          pip wheel . -v --no-deps -w dist
+          ls -la dist/
+
+      - name: Upload wheel artifact
+        if: matrix.build_type == 'Release' && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: caffe-ffi-wheel-py${{ matrix.python-version }}-${{ matrix.os }}
+          path: dist/*.whl
+
+  # ────────────────────────────────────────────────────────────────
+  # C++ unit tests (Linux only)
+  # ────────────────────────────────────────────────────────────────
+  cpp-tests:
+    name: "C++ tests / ubuntu-latest"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ libomp-dev ccache
+
+      - name: Install Python dependencies (for protobuf/tvm-ffi discovery)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "numpy>=2.3" "protobuf>=7.0.0" "apache-tvm-ffi>0.1.12" ninja cmake
+
+      # ── InsertSplits DAG simulation cross-validation (zero-dep Python reference) ──
+      - name: Verify InsertSplits DAG simulation (built-in cases)
+        run: |
+          python scripts/viz_insert_splits.py --verify
+
+      - name: Verify InsertSplits DAG simulation (real-network fixtures)
+        run: |
+          python scripts/viz_insert_splits.py --fixture-dir tests/protos/
+
+      - name: Configure CMake with C++ tests enabled
+        run: |
+          cmake -S . -B build-cpp \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCAFFE_CPU_ONLY=ON \
+            -DCAFFE_USE_BLAS=OFF \
+            -DCAFFE_FFI_ENABLE_DEBUG_LOG=ON \
+            -DCAFFE_FFI_BUILD_TESTS=ON \
+            -DCAFFE_FFI_ENABLE_COW=ON
+
+      - name: Build C++ targets
+        run: |
+          cmake --build build-cpp -j$(nproc)
+
+      - name: Run C++ tests via ctest
+        run: |
+          cd build-cpp
+          ctest --output-on-failure -j$(nproc)
+
+  # ────────────────────────────────────────────────────────────────
+  # Lint / code quality
+  # ────────────────────────────────────────────────────────────────
+  lint:
+    name: "Lint (ruff)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff linter
+        run: ruff check python/ tests/ scripts/
+
+      - name: Check code formatting
+        run: ruff format --check python/ tests/ scripts/
