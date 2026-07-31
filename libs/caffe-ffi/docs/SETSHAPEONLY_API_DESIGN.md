@@ -40,10 +40,12 @@ class Blob : public Object {
    * allocates them.
    *
    * After calling SetShapeOnly():
-   *   - shape(), num_axes(), count() return the stored shape
-   *   - cpu_data(), cpu_diff() return nullptr (data_tensor_ is undefined)
-   *   - cpu_mutable_data(), cpu_mutable_diff() return nullptr
-   *   - data_tensor(), diff_tensor() return undefined Tensor
+   *   - shape(), num_axes(), count() return the stored shape metadata
+   *   - cpu_data(), cpu_diff() return nullptr (data/diff tensors undefined)
+   *   - cpu_mutable_data(), cpu_mutable_diff() trigger defensive allocation:
+   *     BOTH data_tensor_ and diff_tensor_ are allocated, diff is zero-initialized
+   *     via caffe_set_fp32, and is_lazy_allocated_ is cleared
+   *   - data_tensor(), diff_tensor() return undefined Tensor (defined() == false)
    *
    * This is NOT a general-purpose API. It is specifically designed for the
    * Split layer's lazy allocation pattern where:
@@ -54,7 +56,8 @@ class Blob : public Object {
    *      the layer actually needs to write into the blob
    *
    * @param shape The target shape to store as metadata.
-   * @pre shape dimensions must be positive (no negative dimensions).
+   * @pre shape must not be empty (shape.size() > 0).
+   * @pre shape dimensions must be positive (no zero or negative dimensions).
    * @post shape_only_ is set, is_lazy_allocated_ = true,
    *       data_tensor_ and diff_tensor_ remain undefined.
    */
@@ -90,6 +93,9 @@ class Blob : public Object {
 ```cpp
 // blob.cpp — 实际实现
 void Blob::SetShapeOnly(ShapeView shape) {
+  // Validate: shape must not be empty
+  CAFFE_FFI_CHECK_VALUE_GT(shape.size(), 0)
+      << "Blob#" << id_ << " SetShapeOnly: shape must not be empty";
   // Validate: all dimensions must be positive
   for (size_t i = 0; i < shape.size(); ++i) {
     CAFFE_FFI_CHECK_VALUE_GT(shape[i], 0)
@@ -124,9 +130,10 @@ void Blob::SetShapeOnly(ShapeView shape) {
 | `count(int)` | lazy 时从 `shape_only_[canonical:]` 计算，否则 `Count(data_tensor_.shape(), ...)` | blob.hpp 内联 |
 | `count(int,int)` | lazy 时从 `shape_only_[start:end)` 计算，否则 `Count(data_tensor_.shape(), ...)` | blob.hpp 内联 |
 | `shape(int)` | lazy 时通过 `CanonicalAxisIndex` 索引 `shape_only_`，否则 `data_tensor_.size(...)` | blob.hpp 内联（不变，`num_axes()` 已覆盖 lazy） |
-| `cpu_data()` | lazy 时 `data_tensor_.data_ptr()` 返回 nullptr（未定义 tensor） | blob.hpp 内联（不变） |
-| `cpu_mutable_data()` | **新增防御性分配**：lazy 时自动调用 `NewCPUTensor` 分配内存并清除 lazy 标志 | blob.hpp 内联 |
-| `cpu_mutable_diff()` | 同上（diff 路径） | blob.hpp 内联 |
+| `cpu_data()` | lazy/undefined 时显式检查 `is_lazy_allocated_ \|\| !data_tensor_.defined()` 返回 nullptr | blob.hpp 内联 |
+| `cpu_diff()` | lazy/undefined 时显式检查返回 nullptr | blob.hpp 内联 |
+| `cpu_mutable_data()` | **防御性分配**：lazy 时同时分配 data+diff（`NewCPUTensor`），diff 调用 `caffe_set_fp32` 零初始化，清除 lazy 标志 | blob.hpp 内联 |
+| `cpu_mutable_diff()` | **防御性分配**：同上（diff路径），非lazy但diff未定义时也补分配diff并零初始化 | blob.hpp 内联 |
 | `Reshape(ShapeView)` | 清除 `is_lazy_allocated_` 和 `shape_only_` | blob.cpp |
 | `ShareData()` | 清除 `is_lazy_allocated_` 和 `shape_only_` | blob.cpp |
 | `ShareDiff()` | 同上 | blob.cpp |
@@ -516,7 +523,7 @@ class TestSplitLazyReshape:
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|---------|
 | 下游层在 Reshape 阶段假设 data_tensor 已定义 | 中 | 高 | 在 Split 的 Forward 之后才调用下游层 Reshape，此时 ShareData 已完成 |
-| `cpu_mutable_data()` 在 lazy blob 上返回 nullptr 导致 crash | 低 | 高 | **已实现防御性分配**：`cpu_mutable_data()` 在 lazy 时自动调用 `NewCPUTensor` 分配内存并清除 lazy 标志 |
+| `cpu_mutable_data()` 在 lazy blob 上被意外调用导致 crash | 低 | 高 | **已实现防御性分配**：`cpu_mutable_data()`/`cpu_mutable_diff()` 在 lazy 时自动分配 data+diff 双张量，diff 零初始化，清除 lazy 标志 |
 | `shape()` 返回类型变化导致调用方编译错误 | 低 | 中 | `Shape(shape_only_.begin(), shape_only_.end())` 构造 `Shape` 对象（额外开销极小） |
 | 非 Split 层误用 `SetShapeOnly()` | 低 | 中 | 文档明确标注为 Split 专用 API，通过命名和注释限制使用范围 |
 | 大 N 场景下 `count()` 手动乘积性能 | 低 | 低 | 仅 4 维（NCHW），乘积计算 O(4) 可忽略 |
@@ -546,8 +553,12 @@ class TestSplitLazyReshape:
 
 ```cpp
 // _caffe_ffi.cc
-.def("set_shape_only", &Blob::SetShapeOnly,
-     "Set shape metadata only, without allocating data memory (Phase 3.1 lazy Reshape)")
+// 注意：ShapeView 缺少 TVM FFI TypeTraits，无法直接注册。
+// 使用 lambda 接收值类型 Shape 并构造 ShapeView 转发。
+.def("set_shape_only", [](Blob* self, Shape shape) {
+    ShapeView sv(shape.data(), shape.size());
+    self->SetShapeOnly(sv);
+  }, "Set shape metadata only, without allocating data memory (Phase 3.1 lazy Reshape)")
 .def("is_lazy_allocated", &Blob::IsLazyAllocated,
      "Check if Blob is in lazy-allocation mode (Phase 3.1)")
 ```
@@ -580,3 +591,4 @@ assert blob.num_axes() == 4
 
 - **v1.0** (2026-07-31): 初始设计 — 草稿阶段
 - **v1.1** (2026-07-31): 实现完成 — 更新为实际代码状态，更新方法表、风险矩阵、SplitLayer 集成代码，新增 FFI 绑定章节、Phase 3.0 协同表
+- **v1.2** (2026-07-31): 验证后修正 — 补充空shape校验、diff零初始化、FFI lambda包装、cpu_mutable_data/diff双张量分配细节

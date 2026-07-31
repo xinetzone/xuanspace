@@ -202,17 +202,20 @@ Tensor Blob::mutable_data_tensor() {
                    static_cast<float*>(diff_tensor_.data_ptr()));
     is_lazy_allocated_ = false;
     shape_only_.clear();
+    data_shared_ = false;
+    diff_shared_ = false;
     CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                       << " mutable_data_tensor() allocated data+diff for lazy blob"
                       << " nbytes=" << TensorNBytes(data_tensor_);
     return data_tensor_;
   }
 #endif
-  if (data_tensor_.defined() && data_tensor_.use_count() > 1) {
+  if (data_shared_ && data_tensor_.defined() && data_tensor_.use_count() > 1) {
     int refcount = data_tensor_.use_count();
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     data_tensor_ = CloneTensor(data_tensor_);
+    data_shared_ = false;  // COW broke sharing, now private owner
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " mutable_data_tensor() COW"
                       << " refcount=" << refcount
@@ -239,6 +242,8 @@ Tensor Blob::mutable_diff_tensor() {
                    static_cast<float*>(diff_tensor_.data_ptr()));
     is_lazy_allocated_ = false;
     shape_only_.clear();
+    data_shared_ = false;
+    diff_shared_ = false;
     CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                       << " mutable_diff_tensor() allocated data+diff for lazy blob"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
@@ -251,15 +256,17 @@ Tensor Blob::mutable_diff_tensor() {
                   static_cast<size_t>(data_tensor_.ndim())));
     caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
                    static_cast<float*>(diff_tensor_.data_ptr()));
+    diff_shared_ = false;  // newly allocated, private
     CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
                       << " mutable_diff_tensor() allocated diff to match data shape"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
   }
-  if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+  if (diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
     int refcount = diff_tensor_.use_count();
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     diff_tensor_ = CloneTensor(diff_tensor_);
+    diff_shared_ = false;  // COW broke sharing, now private owner
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " mutable_diff_tensor() COW"
                       << " refcount=" << refcount
@@ -294,6 +301,7 @@ void Blob::ShareData(const Blob* other) {
   is_lazy_allocated_ = false;
   shape_only_.clear();
   data_tensor_ = other->data_tensor_;
+  data_shared_ = true;  // borrowed via ShareData
 }
 
 void Blob::ShareDiff(const Blob* other) {
@@ -313,6 +321,7 @@ void Blob::ShareDiff(const Blob* other) {
   is_lazy_allocated_ = false;
   shape_only_.clear();
   diff_tensor_ = other->diff_tensor_;
+  diff_shared_ = true;  // borrowed via ShareDiff
 }
 
 bool Blob::SharesDataWith(const Blob* other) const {
@@ -380,6 +389,7 @@ void* Blob::UnshareData() {
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     data_tensor_ = CloneTensor(data_tensor_);
+    data_shared_ = false;  // explicitly unshared, now private
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " UnshareData() explicit COW"
                       << " refcount=" << refcount
@@ -396,6 +406,7 @@ void* Blob::UnshareDiff() {
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     diff_tensor_ = CloneTensor(diff_tensor_);
+    diff_shared_ = false;  // explicitly unshared, now private
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " UnshareDiff() explicit COW"
                       << " refcount=" << refcount
@@ -407,10 +418,6 @@ void* Blob::UnshareDiff() {
 }
 
 void Blob::Reshape(ShapeView shape) {
-  // Phase 3.1: Clear lazy allocation flag on any Reshape call
-  is_lazy_allocated_ = false;
-  shape_only_.clear();
-
   for (size_t i = 0; i < shape.size(); ++i) {
     CAFFE_FFI_CHECK_VALUE_GE(shape[i], 0)
         << "Blob#" << id_ << " Reshape: dimension " << i << " is negative (" << shape[i] << ")";
@@ -434,6 +441,12 @@ void Blob::Reshape(ShapeView shape) {
   int64_t old_nbytes = TensorNBytes(data_tensor_) + TensorNBytes(diff_tensor_);
 
   if (shape_changed || !data_tensor_.defined()) {
+    // Allocating new tensors: clear lazy + sharing flags (fresh private tensors)
+    is_lazy_allocated_ = false;
+    shape_only_.clear();
+    data_shared_ = false;
+    diff_shared_ = false;
+
     int64_t new_total_nbytes = new_count * sizeof(float) * 2;
     int64_t net_delta = new_total_nbytes - old_nbytes;
 
@@ -461,8 +474,12 @@ void Blob::Reshape(ShapeView shape) {
                       << " global_after=" << global_after << "B (" << FormatBytes(global_after) << ")"
                       << " live_blobs=" << g_live_blob_count.load(std::memory_order_relaxed);
   } else {
+    // Shape unchanged: tensor pointer stays the same, preserve sharing flags
+    // (data_shared_/diff_shared_ remain as-is so COW can still trigger correctly)
     CAFFE_FFI_TENSOR_LOG << "Reshape: Blob#" << id_ << " shape unchanged " << ShapeToString(shape)
                          << " (count=" << new_count << "), skipping reallocation"
+                         << " data_shared_=" << data_shared_
+                         << " diff_shared_=" << diff_shared_
                          << " data_ptr=" << PtrToString(data_tensor_.data_ptr())
                          << " diff_ptr=" << PtrToString(diff_tensor_.data_ptr());
   }
@@ -516,6 +533,8 @@ void Blob::SetShapeOnly(ShapeView shape) {
   // Store shape metadata without allocating data tensor
   shape_only_.assign(shape.data(), shape.data() + shape.size());
   is_lazy_allocated_ = true;
+  data_shared_ = false;
+  diff_shared_ = false;
 
   // Compute count for log
   int64_t total_count = 1;

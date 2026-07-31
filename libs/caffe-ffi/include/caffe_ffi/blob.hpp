@@ -180,12 +180,14 @@ class Blob : public Object {
                      static_cast<float*>(diff_tensor_.data_ptr()));
       is_lazy_allocated_ = false;
       shape_only_.clear();
+      data_shared_ = false;
+      diff_shared_ = false;
       CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                         << " cpu_mutable_data() allocated data+diff for lazy blob"
                         << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       return static_cast<float*>(data_tensor_.data_ptr());
     }
-    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+    if (IsCOWEnabled() && data_shared_ && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
       const void* old_ptr = data_tensor_.data_ptr();
@@ -194,6 +196,7 @@ class Blob : public Object {
                     static_cast<size_t>(data_tensor_.ndim())));
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       data_tensor_ = new_tensor;
+      data_shared_ = false;  // COW broke sharing, now private owner
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_data() unshared data"
                         << " refcount=" << refcount
@@ -222,6 +225,8 @@ class Blob : public Object {
                      static_cast<float*>(diff_tensor_.data_ptr()));
       is_lazy_allocated_ = false;
       shape_only_.clear();
+      data_shared_ = false;
+      diff_shared_ = false;
       CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                         << " cpu_mutable_diff() allocated data+diff for lazy blob"
                         << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
@@ -237,13 +242,14 @@ class Blob : public Object {
                       static_cast<size_t>(data_tensor_.ndim())));
         caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
                        static_cast<float*>(diff_tensor_.data_ptr()));
+        diff_shared_ = false;  // newly allocated, private
         CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
                           << " cpu_mutable_diff() allocated diff to match data shape"
                           << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       }
       return static_cast<float*>(diff_tensor_.data_ptr());
     }
-    if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+    if (diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
       int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = diff_tensor_.use_count();
       const void* old_ptr = diff_tensor_.data_ptr();
@@ -252,6 +258,7 @@ class Blob : public Object {
                     static_cast<size_t>(diff_tensor_.ndim())));
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       diff_tensor_ = new_tensor;
+      diff_shared_ = false;  // COW broke sharing, now private owner
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_diff() unshared diff"
                         << " refcount=" << refcount
@@ -341,14 +348,18 @@ class Blob : public Object {
   static void BatchShareDiff(const Blob* source, const std::vector<Blob*>& targets);
 #endif  // CAFFE_FFI_ENABLE_COW_PHASE3
 
-  /** @brief Check if data tensor is shared (refcount > 1). */
-  bool IsDataShared() const { return data_tensor_.defined() && data_tensor_.use_count() > 1; }
-  /** @brief Check if diff tensor is shared (refcount > 1). */
-  bool IsDiffShared() const { return diff_tensor_.defined() && diff_tensor_.use_count() > 1; }
+  /** @brief Check if data tensor is shared (borrowed via ShareData and still has multiple refs). */
+  bool IsDataShared() const {
+    return data_shared_ && data_tensor_.defined() && data_tensor_.use_count() > 1;
+  }
+  /** @brief Check if diff tensor is shared (borrowed via ShareDiff and still has multiple refs). */
+  bool IsDiffShared() const {
+    return diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1;
+  }
   /** @brief Get data tensor refcount (0 if undefined). */
-  int DataRefCount() const { return data_tensor_.defined() ? data_tensor_.use_count() : 0; }
-  /** @brief Get diff tensor refcount (0 if undefined). */
-  int DiffRefCount() const { return diff_tensor_.defined() ? diff_tensor_.use_count() : 0; }
+  int DataRefCount() const { return (data_tensor_.defined() && data_tensor_.numel() > 0) ? data_tensor_.use_count() : 0; }
+  /** @brief Get diff tensor refcount (0 if undefined or empty). */
+  int DiffRefCount() const { return (diff_tensor_.defined() && diff_tensor_.numel() > 0) ? diff_tensor_.use_count() : 0; }
 
   /**
    * @brief Explicitly force Copy-on-Write for data tensor.
@@ -420,6 +431,11 @@ class Blob : public Object {
   std::string construct_bt_;
   Tensor data_tensor_;
   Tensor diff_tensor_;
+
+  // COW sharing state: true if tensor was borrowed via ShareData/ShareDiff
+  // and hasn't been privatized by COW/Reshape yet.
+  bool data_shared_ = false;
+  bool diff_shared_ = false;
 
   // Phase 3.1: lazy allocation support
   std::vector<int64_t> shape_only_;       // stored shape for lazy allocation

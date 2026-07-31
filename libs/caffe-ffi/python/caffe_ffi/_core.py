@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 from pathlib import Path
@@ -104,6 +105,34 @@ class Blob(_Object):
         self._py_shape = list(shape)
         self._py_name = ""
 
+    @staticmethod
+    def _tensor_to_numpy(tensor, blob_ref) -> np.ndarray:
+        """Create a zero-copy numpy view from a TVM Tensor without adding Object refcount.
+
+        Uses ctypes to create a numpy array pointing directly at the tensor's data,
+        avoiding np.from_dlpack which creates a DLPack capsule that adds an extra
+        ObjectRef to the tensor's use_count. The blob_ref is attached to the ctypes
+        pointer to keep the Blob (and its memory) alive while the numpy array exists.
+        """
+        # Check for null/undefined tensor (lazy blob or empty blob)
+        if tensor.__chandle__() == 0:
+            return np.zeros(0, dtype=np.float32)
+        ptr = tensor.data_ptr()
+        shape = tensor.shape
+        # Release the TVM Tensor ObjectRef to decrement use_count
+        del tensor
+        if ptr == 0:
+            return np.zeros(shape, dtype=np.float32)
+        c_float_p = ctypes.POINTER(ctypes.c_float)
+        cptr = ctypes.cast(ptr, c_float_p)
+        arr = np.ctypeslib.as_array(cptr, shape=shape)
+        # Ensure the array is writable (ctypes arrays default to read-only)
+        arr.setflags(write=True)
+        # Attach blob reference to ctypes object to keep memory alive.
+        # numpy keeps cptr alive via arr.base, and cptr._blob_ref keeps blob alive.
+        cptr._blob_ref = blob_ref
+        return arr
+
     @property
     def _is_native(self) -> bool:
         return _NATIVE_MODE and self.__chandle__() != 0
@@ -176,7 +205,7 @@ class Blob(_Object):
         """Zero-copy numpy view of the data tensor (modifications affect C++ memory)."""
         if self._is_native:
             fn = _get_fn("BlobDataTensor")
-            return np.from_dlpack(fn(self))
+            return self._tensor_to_numpy(fn(self), self)
         return self._py_data
 
     @property
@@ -184,7 +213,21 @@ class Blob(_Object):
         """Zero-copy numpy view of the diff tensor (modifications affect C++ memory)."""
         if self._is_native:
             fn = _get_fn("BlobDiffTensor")
-            return np.from_dlpack(fn(self))
+            return self._tensor_to_numpy(fn(self), self)
+        return self._py_diff
+
+    def mutable_data_tensor(self) -> np.ndarray:
+        """Get mutable data tensor with COW trigger, returns numpy array for write access."""
+        if self._is_native:
+            tensor = _native_method(self, 'mutable_data_tensor')()
+            return self._tensor_to_numpy(tensor, self)
+        return self._py_data
+
+    def mutable_diff_tensor(self) -> np.ndarray:
+        """Get mutable diff tensor with COW trigger, returns numpy array for write access."""
+        if self._is_native:
+            tensor = _native_method(self, 'mutable_diff_tensor')()
+            return self._tensor_to_numpy(tensor, self)
         return self._py_diff
 
     @property
