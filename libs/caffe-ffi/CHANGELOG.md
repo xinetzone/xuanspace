@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-31
+
+### Added
+- **InsertSplits graph transformation edge case tests** (`test_insert_splits.py`): 18 test cases covering:
+  - Zero-consumer dead-end blobs, single-consumer no-split
+  - In-place ReLU with multi-consumer (split named after last producer)
+  - Loss weight as implicit consumer, chained splits (fan-out after fan-out)
+  - Idempotence (explicit splits not duplicated), forward correctness with in-place+split
+  - Multiple external inputs ordering, linear chain zero splits, double in-place chains
+  - Mixed explicit Input layer + `param.input()` external inputs
+  - Split→Concat→Split nesting (Inception-style topology)
+  - Multiple independent splits with correct position verification
+  - Empty network (zero layers) robustness
+  - Input layer with 3+ consumers, loss_weight + multiple downstream consumers
+  - Unknown bottom blob reference error path
+- **P3-C Transformer test suite** (`test_p3c_transformer.py`): 13 test cases covering:
+  - Positional encoding, scaled dot-product attention, multi-head projection
+  - Transformer encoder block forward pass correctness
+- **Diagnostic logging for core layers**: Detailed shape mismatch error messages to simplify debugging
+- **InsertSplits Pass 2b detailed logging**: Before/after layer order logging for external input split movement
+- **Documentation**:
+  - `INSERT_SPLITS_GRAPH_TRANSFORM.md`: Complete InsertSplits algorithm reference (passes, naming, edge cases, debugging)
+  - `TESTING_GUIDELINES.md`: Caffe-FFI test authoring guidelines (prototxt construction, float assertions, graph transform testing, anti-patterns)
+
+### Fixed
+- **InsertSplits external input split ordering**: When multiple `param.input()` sources needed splits, splits were inserted in reverse consumer order instead of input declaration order. Fixed by collecting all external input splits first and inserting them en masse at position 0.
+- **Sigmoid saturation precision assertions**: Three tests used exact equality (`==0.0`, `<1.0` at saturated values) that failed due to IEEE754 float32 subnormal behavior:
+  - `sigmoid(-88) ≈ 6e-39` (subnormal, not exactly 0) → threshold assertion `< 1e-37`
+  - `sigmoid(x ≥ 17)` is exactly `1.0` in float32 → transition zone verification uses `x ≤ 14` for strict `< 1.0`
+  - Added NaN/Inf guards to all saturation tests
+- **pytest InsertSplits test compatibility**: Replaced EuclideanLoss layers with Concat layers in structural tests to avoid shape mismatch from missing label blobs.
+
+### Verified
+- InsertSplits naming convention fully aligns with native Caffe (verified against `caffex/src/caffe/util/insert_splits.cpp`)
+- InsertSplits 18/18 edge case tests pass
+- P3-C activation tests (including fixed Sigmoid assertions) all pass
+- P3-C Transformer 13/13 tests pass
+- Split→Concat→Split nested topology forward produces correct output shapes
+- Mixed Input layer + param.input() splits verified at correct positions (data split at position 0, Input layer split immediately after Input layer)
+
+## [1.1.0] - 2026-07-30
+
 ### Added
 - Copy-on-Write (COW) mechanism for Blob tensor sharing:
   - `ShareData`/`ShareDiff`: O(1) zero-copy tensor sharing between Blobs (reference-counted)
