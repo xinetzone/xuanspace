@@ -111,26 +111,24 @@ class Blob(_Object):
 
         Uses ctypes to create a numpy array pointing directly at the tensor's data,
         avoiding np.from_dlpack which creates a DLPack capsule that adds an extra
-        ObjectRef to the tensor's use_count. The blob_ref is attached to the ctypes
-        pointer to keep the Blob (and its memory) alive while the numpy array exists.
+        ObjectRef to the tensor's use_count. The blob_ref is attached to numpy's
+        internal ctypes array (arr.base.obj) to keep the Blob memory alive while
+        the numpy array exists, without creating reference cycles.
         """
-        # Check for null/undefined tensor (lazy blob or empty blob)
         if tensor.__chandle__() == 0:
             return np.zeros(0, dtype=np.float32)
         ptr = tensor.data_ptr()
         shape = tensor.shape
-        # Release the TVM Tensor ObjectRef to decrement use_count
         del tensor
         if ptr == 0:
             return np.zeros(shape, dtype=np.float32)
         c_float_p = ctypes.POINTER(ctypes.c_float)
         cptr = ctypes.cast(ptr, c_float_p)
         arr = np.ctypeslib.as_array(cptr, shape=shape)
-        # Ensure the array is writable (ctypes arrays default to read-only)
         arr.setflags(write=True)
-        # Attach blob reference to ctypes object to keep memory alive.
-        # numpy keeps cptr alive via arr.base, and cptr._blob_ref keeps blob alive.
-        cptr._blob_ref = blob_ref
+        if arr.base is not None:
+            holder = arr.base.obj if isinstance(arr.base, memoryview) else arr.base
+            holder._blob_ref = blob_ref
         return arr
 
     @property

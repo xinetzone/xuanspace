@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Copy-on-Write (COW) mechanism for Blob tensor sharing:
+  - `ShareData`/`ShareDiff`: O(1) zero-copy tensor sharing between Blobs (reference-counted)
+  - `UnshareData`/`UnshareDiff`: Explicit deep copy to break sharing
+  - `IsDataShared`/`IsDiffShared`: Query sharing state (returns true only when original owner with refcount > 1)
+  - `DataRefCount`/`DiffRefCount`: Query tensor reference counts (returns 0 for undefined/empty tensors)
+  - `mutable_data_tensor()`/`mutable_diff_tensor()`: Auto-trigger COW clone on first write to shared tensor
+  - Environment variables `CAFFE_FFI_ENABLE_COW` and `CAFFE_FFI_ENABLE_COW_PHASE3` for runtime control
+  - `data_shared_`/`diff_shared_` flags to accurately track sharing state independent of reference count
+- Memory lifecycle tracking tools (`caffe_ffi.tools.memory`): `BlobRef`, `tracked_blob`, `blob_snapshot`, `mem_check`
+- Memory stress test suite: `test_create_destroy_loop_no_leak`, `test_reshape_loop_no_leak`
+- Comprehensive COW test suite (test_cow.py): 21 test cases covering API, split topology, snapshot, and refcount behaviors
+
+### Fixed
+- **Memory leak in `_tensor_to_numpy`**: Reference cycle caused by attaching `_blob_ref` to `ctypes.cast()` LP_c_float pointer; fixed by attaching to numpy's internal ctypes array object (`arr.base.obj`) instead, enabling immediate refcount-based cleanup without GC
+- **COW invalidation on Reshape**: `Reshape()` no longer unconditionally clears sharing flags; flags only clear when shape actually changes and new tensors are allocated (fixes in-place ReLU COW failure)
+- **Incorrect `IsDataShared()` for shared Blobs**: Now returns `data_shared_ && use_count > 1` to correctly identify the original owner vs shared copies
+- **Tensor item assignment error**: `mutable_data_tensor()`/`mutable_diff_tensor()` return numpy arrays (via ctypes zero-copy) instead of raw TVM Tensor objects, supporting `arr[i,j] = val` syntax
+- **`DataRefCount()` returns 1 for empty Blob**: Now returns 0 for undefined/zero-element tensors
+
+### Verified
+- Docker Linux Python 3.14.6: 561/562 tests passed (1 skipped), 0 failures
+- test_create_destroy_loop_no_leak: 500 create/fill/destroy cycles with zero memory leak
+- COW tests: All 21 test cases pass including split/in-place/forward snapshot scenarios
+
 ## [0.1.0] - 2026-07-29
 
 ### Added
