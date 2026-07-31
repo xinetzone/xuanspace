@@ -1,5 +1,8 @@
 #include "caffe_ffi/layers/bias_layer.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -133,17 +136,49 @@ void BiasLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " inner_dim_=" << inner_dim_
                       << " bias_from_bottom=" << (bottom.size() > 1);
 
-  caffe_copy_fp32(static_cast<size_t>(count), bottom_data, top_data);
+  auto t_start = std::chrono::high_resolution_clock::now();
 
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+  float b_min = std::numeric_limits<float>::max();
+  float b_max = -std::numeric_limits<float>::max();
+
+  // bias值域
+  for (int i = 0; i < bias_dim_; ++i) {
+    b_min = std::min(b_min, bias_data[i]);
+    b_max = std::max(b_max, bias_data[i]);
+  }
+
+  // 单次遍历：copy + bias + in/out值域统计（融合）
   for (int n = 0; n < outer_dim_; ++n) {
     for (int d = 0; d < bias_dim_; ++d) {
-      const float bias = bias_data[d];
+      const float b = bias_data[d];
       for (int i = 0; i < inner_dim_; ++i) {
         const int idx = n * bias_dim_ * inner_dim_ + d * inner_dim_ + i;
-        top_data[idx] += bias;
+        float x = bottom_data[idx];
+        float y = x + b;
+        top_data[idx] = y;
+        in_min = std::min(in_min, x);
+        in_max = std::max(in_max, x);
+        out_min = std::min(out_min, y);
+        out_max = std::max(out_max, y);
       }
     }
   }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[BIAS-PERF] " << this->name()
+                       << " Bias forward: outer_dim=" << outer_dim_
+                       << " bias_dim=" << bias_dim_
+                       << " inner_dim=" << inner_dim_
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " bias=[" << b_min << ", " << b_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Bias);

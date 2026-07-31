@@ -3,13 +3,22 @@
 #
 # 公共函数：
 #   caffe_ffi_copy_dll_if_exists(target dll_path)     - 通用单 DLL 复制
-#   caffe_ffi_copy_target_dll(target dep_target)     - 复制指定依赖目标的 DLL
+#   caffe_ffi_copy_target_dll(target dep_target)     - 复制指定依赖目标的 DLL（自动处理 WIN32 IMPORTED 反模式）
 #   caffe_ffi_copy_tvm_ffi_dll(target)               - 复制 tvm_ffi 共享库
 #   caffe_ffi_copy_openblas_dlls(target)             - 复制 OpenBLAS DLLs
 #   caffe_ffi_copy_protobuf_dlls(target)             - 复制 Protobuf DLLs
 #   caffe_ffi_copy_abseil_dlls(target)               - 复制 abseil DLLs
 #   caffe_ffi_copy_utf8_dlls(target)                 - 复制 utf8_range DLLs
 #   caffe_ffi_copy_runtime_dlls(target)              - 聚合函数：复制所有运行时依赖 DLLs
+#
+# 反模式修复（Anti-pattern A1）：
+#   WIN32 下许多 CMake 包（如 tvm_ffi-config.cmake）只设置 IMPORTED_IMPLIB（.lib），
+#   不设置 IMPORTED_LOCATION（.dll），导致 $<TARGET_FILE:dep> 生成表达式为空，
+#   POST_BUILD copy_if_different 静默失败（日志显示"Copying..."但实际未复制）。
+#   本模块通过 _caffe_ffi_resolve_imported_dll() 函数自动探测 DLL 路径：
+#     1. 优先读取 IMPORTED_LOCATION / IMPORTED_LOCATION_<CONFIG>
+#     2. 若缺失，从 IMPORTED_IMPLIB 同目录推算 .dll 文件名
+#     3. 验证文件存在性后再复制，避免静默失败
 
 if(MSVC)
   # Collect conda env Library/bin directories as primary search paths.
@@ -43,6 +52,80 @@ if(MSVC)
     endif()
   endmacro()
 
+  # ── 核心：WIN32 IMPORTED DLL 路径解析（修复反模式 A1）──
+  #
+  # 给定一个 IMPORTED SHARED 目标，解析其 WIN32 DLL 的实际路径。
+  # 解决仅设 IMPORTED_IMPLIB 不设 IMPORTED_LOCATION 导致 $<TARGET_FILE> 为空的问题。
+  #
+  # 用法：_caffe_ffi_resolve_imported_dll(dep_target out_dll_path_var)
+  #   dep_target:        IMPORTED 目标名（如 tvm_ffi::shared）
+  #   out_dll_path_var:  输出变量名，解析成功时设为 DLL 绝对路径；失败时为空
+  function(_caffe_ffi_resolve_imported_dll dep_target out_dll_path_var)
+    set(_dll_path "")
+
+    # 1. 尝试读取 IMPORTED_LOCATION（非 WIN32 或包配置正确时可用）
+    get_target_property(_loc ${dep_target} IMPORTED_LOCATION)
+    if(_loc AND EXISTS "${_loc}")
+      set(_dll_path "${_loc}")
+    endif()
+
+    # 2. 尝试按配置读取 IMPORTED_LOCATION_<CONFIG>（多配置生成器）
+    if(NOT _dll_path)
+      foreach(_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        get_target_property(_loc_cfg ${dep_target} IMPORTED_LOCATION_${_cfg})
+        if(_loc_cfg AND EXISTS "${_loc_cfg}")
+          set(_dll_path "${_loc_cfg}")
+          break()
+        endif()
+      endforeach()
+    endif()
+
+    # 3. 反模式修复：若 IMPORTED_LOCATION 缺失，从 IMPORTED_IMPLIB 推算 DLL 路径
+    #    （tvm_ffi-config.cmake 等包的 WIN32 分支只设 .lib 不设 .dll）
+    if(NOT _dll_path)
+      get_target_property(_implib ${dep_target} IMPORTED_IMPLIB)
+      if(_implib AND EXISTS "${_implib}")
+        get_filename_component(_dll_dir "${_implib}" DIRECTORY)
+        get_filename_component(_dll_name_we "${_implib}" NAME_WE)
+        set(_candidate "${_dll_dir}/${_dll_name_we}.dll")
+        if(EXISTS "${_candidate}")
+          set(_dll_path "${_candidate}")
+        else()
+          # 某些包 .lib 和 .dll 在不同目录（如 conda: lib/ 下是 .lib，bin/ 下是 .dll）
+          get_filename_component(_dll_dir_parent "${_dll_dir}" DIRECTORY)
+          set(_candidate2 "${_dll_dir_parent}/bin/${_dll_name_we}.dll")
+          if(EXISTS "${_candidate2}")
+            set(_dll_path "${_candidate2}")
+          endif()
+        endif()
+      endif()
+    endif()
+
+    # 4. 最后尝试按配置 IMPORTED_IMPLIB_<CONFIG> 推算
+    if(NOT _dll_path)
+      foreach(_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        get_target_property(_implib_cfg ${dep_target} IMPORTED_IMPLIB_${_cfg})
+        if(_implib_cfg AND EXISTS "${_implib_cfg}")
+          get_filename_component(_dll_dir "${_implib_cfg}" DIRECTORY)
+          get_filename_component(_dll_name_we "${_implib_cfg}" NAME_WE)
+          set(_candidate "${_dll_dir}/${_dll_name_we}.dll")
+          if(EXISTS "${_candidate}")
+            set(_dll_path "${_candidate}")
+            break()
+          endif()
+          get_filename_component(_dll_dir_parent "${_dll_dir}" DIRECTORY)
+          set(_candidate2 "${_dll_dir_parent}/bin/${_dll_name_we}.dll")
+          if(EXISTS "${_candidate2}")
+            set(_dll_path "${_candidate2}")
+            break()
+          endif()
+        endif()
+      endforeach()
+    endif()
+
+    set(${out_dll_path_var} "${_dll_path}" PARENT_SCOPE)
+  endfunction()
+
   function(caffe_ffi_copy_dll_if_exists target_name dll_path)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_dll_if_exists")
     if(NOT dll_path)
@@ -74,22 +157,49 @@ if(MSVC)
         "caffe_ffi_copy_target_dll(): 依赖目标 '${dependency_target}' 不存在"
       )
     endif()
-    add_custom_command(TARGET ${target_name} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:${dependency_target}>"
-        "$<TARGET_FILE_DIR:${target_name}>"
-      COMMENT "Copying ${dependency_target} DLL to output directory"
-    )
+
+    # 检查目标是否为 IMPORTED
+    get_target_property(_is_imported ${dependency_target} IMPORTED)
+    if(_is_imported)
+      # IMPORTED 目标：使用 _caffe_ffi_resolve_imported_dll 安全解析 DLL 路径
+      # （修复反模式 A1：不依赖 $<TARGET_FILE>，避免 IMPORTED_LOCATION 缺失时空拷贝）
+      _caffe_ffi_resolve_imported_dll(${dependency_target} _resolved_dll)
+      if(_resolved_dll)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_resolved_dll}"
+            "$<TARGET_FILE_DIR:${target_name}>"
+          COMMENT "Copying ${dependency_target} DLL (${_resolved_dll}) to output directory"
+        )
+      else()
+        # 无法解析 DLL 路径时，回退到 $<TARGET_FILE> 并发出警告
+        message(WARNING
+          "caffe_ffi_copy_target_dll(): could not resolve DLL path for IMPORTED target "
+          "'${dependency_target}'. Falling back to TARGET_FILE generator expression, "
+          "which may fail on WIN32 if IMPORTED_LOCATION is not set."
+        )
+        add_custom_command(TARGET ${target_name} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:${dependency_target}>"
+            "$<TARGET_FILE_DIR:${target_name}>"
+          COMMENT "Copying ${dependency_target} DLL to output directory (fallback)"
+        )
+      endif()
+    else()
+      # 非 IMPORTED 目标（本项目构建的目标如 _caffe_ffi）：$<TARGET_FILE> 可靠
+      add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:${dependency_target}>"
+          "$<TARGET_FILE_DIR:${target_name}>"
+        COMMENT "Copying ${dependency_target} DLL to output directory"
+      )
+    endif()
   endfunction()
 
   function(caffe_ffi_copy_tvm_ffi_dll target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_tvm_ffi_dll")
-    add_custom_command(TARGET ${target_name} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:tvm_ffi::shared>"
-        "$<TARGET_FILE_DIR:${target_name}>"
-      COMMENT "Copying tvm_ffi shared library to output directory"
-    )
+    # 使用通用的 IMPORTED DLL 解析函数处理 tvm_ffi
+    caffe_ffi_copy_target_dll(${target_name} tvm_ffi::shared)
   endfunction()
 
   function(caffe_ffi_copy_openblas_dlls target_name)

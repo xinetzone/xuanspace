@@ -42,6 +42,9 @@ class SplitLayer : public Layer {
 
  protected:
   void Forward_cpu(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  void Backward_cpu(const std::vector<Blob*>& top,
+                    const std::vector<bool>& propagate_down,
+                    const std::vector<Blob*>& bottom) override;
 };
 
 }  // namespace caffe_ffi

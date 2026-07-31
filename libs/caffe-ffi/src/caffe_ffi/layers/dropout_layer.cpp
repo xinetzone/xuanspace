@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/dropout_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -40,9 +42,19 @@ void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " dropout_ratio=" << dropout_ratio
                       << " inplace=" << (bottom[0] == top[0] ? "true" : "false")
                       << " (inference: identity copy)";
+
+  auto t_start = std::chrono::high_resolution_clock::now();
   if (bottom[0] != top[0]) {
     std::memcpy(top_data, bottom_data, sizeof(float) * count);
   }
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[DROPOUT-PERF] " << this->name()
+                       << " Dropout forward (inference): count=" << count
+                       << " dropout_ratio=" << dropout_ratio
+                       << " inplace=" << (bottom[0] == top[0] ? "true" : "false")
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Dropout);

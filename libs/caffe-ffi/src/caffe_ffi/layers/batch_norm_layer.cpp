@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/batch_norm_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -107,12 +109,57 @@ void BatchNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " scale_factor=" << scale_factor;
 
   const float scale_factor_use = scale_factor == 0.0f ? 1.0f : scale_factor;
-  const int count = static_cast<int>(bottom[0]->count());
+  const int64_t count = bottom[0]->count();
+
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+
+  // 单次遍历：normalize + 输出值域统计（融合，O(N)）
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+
   for (int i = 0; i < count; ++i) {
     int c = (i / spatial_dim) % channels;
-    top_data[i] = (bottom_data[i] - mean[c] * scale_factor_use)
+    float x = bottom_data[i];
+    float y = (x - mean[c] * scale_factor_use)
         / std::sqrt(std::max(variance[c] * scale_factor_use, 0.0f) + eps_);
+    top_data[i] = y;
+    in_min = std::min(in_min, x);
+    in_max = std::max(in_max, x);
+    out_min = std::min(out_min, y);
+    out_max = std::max(out_max, y);
   }
+
+  // mean/var参数值域统计（O(channels)，远小于count，独立遍历可接受）
+  float mean_min = std::numeric_limits<float>::max();
+  float mean_max = -std::numeric_limits<float>::max();
+  float var_min = std::numeric_limits<float>::max();
+  float var_max = -std::numeric_limits<float>::max();
+  for (int c = 0; c < channels; ++c) {
+    float m = mean[c] * scale_factor_use;
+    float v = variance[c] * scale_factor_use;
+    mean_min = std::min(mean_min, m);
+    mean_max = std::max(mean_max, m);
+    var_min = std::min(var_min, v);
+    var_max = std::max(var_max, v);
+  }
+
+  auto t_end = clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[BN-PERF] " << this->name()
+                       << " BatchNorm forward: num=" << num
+                       << " channels=" << channels
+                       << " spatial_dim=" << spatial_dim
+                       << " use_global_stats=" << use_global_stats_
+                       << " eps=" << eps_
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " mean=[" << mean_min << ", " << mean_max << "]"
+                       << " var=[" << var_min << ", " << var_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(BatchNorm);

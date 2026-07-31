@@ -187,7 +187,7 @@ class Blob : public Object {
                         << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       return static_cast<float*>(data_tensor_.data_ptr());
     }
-    if (IsCOWEnabled() && data_shared_ && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
       const void* old_ptr = data_tensor_.data_ptr();
@@ -249,7 +249,7 @@ class Blob : public Object {
       }
       return static_cast<float*>(diff_tensor_.data_ptr());
     }
-    if (diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+    if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
       int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = diff_tensor_.use_count();
       const void* old_ptr = diff_tensor_.data_ptr();

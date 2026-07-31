@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "caffe_ffi/layer_factory.hpp"
+#include "caffe_ffi/fill.hpp"
 #include "caffe_ffi/log.hpp"
 
 namespace caffe_ffi {
@@ -278,6 +279,83 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " all_shared=" << (all_shared ? "yes" : "no")
                        << " not_shared=" << not_shared_count
                        << " memcpy_saved=" << total_copy_bytes << "B (COW zero-copy)";
+}
+
+void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
+                               const std::vector<bool>& propagate_down,
+                               const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) {
+    CAFFE_FFI_LAYER_LOG << "Split Backward_cpu: propagate_down[0]=false, skipping gradient accumulation";
+    return;
+  }
+
+  int num_top = static_cast<int>(top.size());
+  int64_t count = bottom[0]->count();
+  size_t nbytes = static_cast<size_t>(count) * sizeof(float);
+
+  CAFFE_FFI_LAYER_LOG << "Split Backward_cpu: count=" << count
+                      << " num_top=" << num_top
+                      << " nbytes=" << nbytes;
+
+  // Get a writable pointer to bottom diff. COW triggers automatically if bottom's
+  // diff is still shared with any top (non-COW'd borrowers), ensuring bottom gets
+  // a private accumulation buffer that cannot alias with any top's diff pointer.
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();
+
+  if (num_top == 1) {
+    // N=1 zero-copy backward: copy the single top's diff to bottom.
+    // After downstream ReLU/Conv backward calls cpu_mutable_diff() on top[0],
+    // top[0] has COW'd to a private buffer with valid gradients. Copy them down.
+    const float* top_diff = top[0]->cpu_diff();
+    if (top_diff != bottom_diff) {
+      caffe_copy_fp32(static_cast<size_t>(count), top_diff, bottom_diff);
+    }
+    CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
+                         << " Backward(N=1): count=" << count
+                         << " memcpy_bytes=" << nbytes << "B"
+                         << " top_ptr=" << static_cast<const void*>(top_diff)
+                         << " bottom_ptr=" << static_cast<const void*>(bottom_diff);
+    return;
+  }
+
+  // N≥2 gradient accumulation: initialize bottom diff with first top's gradients,
+  // then axpy remaining tops' gradients into bottom. This implements the standard
+  // split backward: d_bottom = sum_i(d_top_i), which is mathematically correct
+  // because Split is the identity operation on each branch.
+  auto t_acc_start = std::chrono::high_resolution_clock::now();
+
+  const float* first_top_diff = top[0]->cpu_diff();
+  if (first_top_diff != bottom_diff) {
+    caffe_copy_fp32(static_cast<size_t>(count), first_top_diff, bottom_diff);
+  } else {
+    // First top still shares buffer with bottom: zero it to start fresh
+    // (this case should be rare after the cpu_mutable_diff() COW above,
+    // but guard against it for safety).
+    caffe_set_fp32(static_cast<size_t>(count), 0.0f, bottom_diff);
+  }
+
+  for (int i = 1; i < num_top; ++i) {
+    const float* top_diff = top[i]->cpu_diff();
+    if (top_diff == bottom_diff) {
+      // Skip self-referential accumulation (shouldn't happen after COW,
+      // but guard against it to avoid 2x scaling).
+      CAFFE_FFI_LAYER_LOG << "Split Backward_cpu: top[" << i
+                          << "] diff aliases bottom diff, skipping";
+      continue;
+    }
+    caffe_axpy_fp32(static_cast<size_t>(count), 1.0f, top_diff, bottom_diff);
+  }
+
+  auto t_acc_end = std::chrono::high_resolution_clock::now();
+  double acc_ms = std::chrono::duration<double, std::milli>(
+      t_acc_end - t_acc_start).count();
+
+  CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
+                       << " Backward(N=" << num_top << " ACCUMULATE): count=" << count
+                       << " num_tops_accumulated=" << num_top
+                       << " accum_bytes=" << nbytes << "B"
+                       << " accum_time=" << acc_ms << "ms"
+                       << " bottom_ptr=" << static_cast<const void*>(bottom_diff);
 }
 
 REGISTER_LAYER_CLASS(Split);

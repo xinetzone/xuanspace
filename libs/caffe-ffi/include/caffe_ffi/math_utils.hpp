@@ -2,6 +2,7 @@
 #define CAFFE_FFI_MATH_UTILS_HPP_
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -227,6 +228,48 @@ inline void col2im_fp32(const float* data_col, const int channels,
         }
       }
     }
+  }
+}
+
+inline void caffe_sqr_fp32(const int64_t n, const float* a, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = a[i] * a[i];
+  }
+}
+
+inline void caffe_axpy_fp32(const int64_t n, const float alpha, const float* x, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] += alpha * x[i];
+  }
+}
+
+inline void caffe_powx_fp32(const int64_t n, const float* a, const float alpha, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = std::pow(a[i], alpha);
+  }
+}
+
+inline void caffe_mul_fp32(const int64_t n, const float* a, const float* b, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = a[i] * b[i];
+  }
+}
+
+inline void caffe_div_fp32(const int64_t n, const float* a, const float* b, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = a[i] / b[i];
+  }
+}
+
+inline void caffe_sub_fp32(const int64_t n, const float* a, const float* b, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = a[i] - b[i];
+  }
+}
+
+inline void caffe_add_fp32(const int64_t n, const float* a, const float* b, float* y) {
+  for (int64_t i = 0; i < n; ++i) {
+    y[i] = a[i] + b[i];
   }
 }
 

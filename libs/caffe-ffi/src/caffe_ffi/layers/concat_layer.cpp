@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/concat_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -86,6 +88,12 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " inner_count=" << inner_count_
                       << " total_concat=" << total_concat;
 
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+  int64_t top_count = top[0]->count();
+
   for (int i = 0; i < num_bottoms; ++i) {
     const float* bottom_data = bottom[i]->cpu_data();
     const int64_t concat_dim = bottom[i]->shape(concat_axis_);
@@ -99,6 +107,21 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                   sizeof(float) * copy_size);
     }
   }
+
+  // out值域统计
+  for (int64_t i = 0; i < top_count; ++i) {
+    out_min = std::min(out_min, top_data[i]);
+    out_max = std::max(out_max, top_data[i]);
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[CONCAT-PERF] " << this->name()
+                       << " Concat forward: num_bottoms=" << num_bottoms
+                       << " concat_axis=" << concat_axis_
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Concat);

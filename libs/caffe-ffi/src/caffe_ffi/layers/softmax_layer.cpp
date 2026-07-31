@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/softmax_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -10,6 +12,8 @@
 #include "caffe_ffi/fill.hpp"
 #include "caffe_ffi/layer_factory.hpp"
 #include "caffe_ffi/log.hpp"
+#include "caffe_ffi/error.hpp"
+#include "caffe_ffi/math_utils.hpp"
 
 namespace caffe_ffi {
 
@@ -58,7 +62,12 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float* scale_data = scale_->cpu_mutable_data();
   int channels = static_cast<int>(bottom[0]->shape(softmax_axis_));
   int dim = channels * inner_num_;
-  caffe_copy_fp32(static_cast<size_t>(bottom[0]->count()), bottom_data, top_data);
+  const int64_t count = bottom[0]->count();
+
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+
+  caffe_copy_fp32(static_cast<size_t>(count), bottom_data, top_data);
   for (int i = 0; i < outer_num_; ++i) {
     float* top_data_i = top_data + i * dim;
     float* scale_data_i = scale_data + i * inner_num_;
@@ -86,6 +95,48 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       }
     }
   }
+
+  // 后处理独立reduce：概率分布统计（out值域/最大概率/熵/sum校验）
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+  float sum_max_prob = 0.0f;
+  float sum_entropy = 0.0f;
+  int n_samples = outer_num_ * inner_num_;
+  for (int i = 0; i < outer_num_; ++i) {
+    const float* top_data_i = top_data + i * dim;
+    for (int k = 0; k < inner_num_; ++k) {
+      float sample_max = 0.0f;
+      float sample_entropy = 0.0f;
+      for (int j = 0; j < channels; ++j) {
+        float p = top_data_i[j * inner_num_ + k];
+        out_min = std::min(out_min, p);
+        out_max = std::max(out_max, p);
+        sample_max = std::max(sample_max, p);
+        if (p > 0.0f) {
+          sample_entropy -= p * std::log(p);
+        }
+      }
+      sum_max_prob += sample_max;
+      sum_entropy += sample_entropy;
+    }
+  }
+  float avg_max_prob = sum_max_prob / static_cast<float>(n_samples);
+  float avg_entropy = sum_entropy / static_cast<float>(n_samples);
+  float max_entropy = std::log(static_cast<float>(channels));
+
+  auto t_end = clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[SOFTMAX-PERF] " << this->name()
+                       << " Softmax forward: outer_num=" << outer_num_
+                       << " channels=" << channels
+                       << " inner_num=" << inner_num_
+                       << " axis=" << softmax_axis_
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " avg_max_prob=" << avg_max_prob
+                       << " avg_entropy=" << avg_entropy
+                       << " max_entropy=" << max_entropy
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Softmax);

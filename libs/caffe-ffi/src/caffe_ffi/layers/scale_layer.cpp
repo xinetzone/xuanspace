@@ -1,5 +1,8 @@
 #include "caffe_ffi/layers/scale_layer.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -111,31 +114,67 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " bias_term_=" << bias_term_
                       << " scale_from_bottom=" << (bottom.size() > 1);
 
-  caffe_copy_fp32(static_cast<size_t>(count), bottom_data, top_data);
+  auto t_start = std::chrono::high_resolution_clock::now();
 
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+  float s_min = std::numeric_limits<float>::max();
+  float s_max = -std::numeric_limits<float>::max();
+  float b_min = std::numeric_limits<float>::max();
+  float b_max = -std::numeric_limits<float>::max();
+
+  // scale值域
+  for (int i = 0; i < scale_dim_; ++i) {
+    s_min = std::min(s_min, scale_data[i]);
+    s_max = std::max(s_max, scale_data[i]);
+  }
+
+  const float* bias_data = (bias_term_ && this->blobs_.size() > 1) ? this->blobs_[1]->cpu_data() : nullptr;
+  if (bias_data) {
+    for (int i = 0; i < scale_dim_; ++i) {
+      b_min = std::min(b_min, bias_data[i]);
+      b_max = std::max(b_max, bias_data[i]);
+    }
+  }
+
+  // 单次遍历：scale+bias+in/out值域统计（融合，无二次遍历）
   for (int n = 0; n < outer_dim_; ++n) {
     for (int d = 0; d < scale_dim_; ++d) {
       const float factor = scale_data[d];
+      const float b = bias_data ? bias_data[d] : 0.0f;
       for (int i = 0; i < inner_dim_; ++i) {
         const int idx = n * scale_dim_ * inner_dim_ + d * inner_dim_ + i;
-        top_data[idx] *= factor;
+        float x = bottom_data[idx];
+        float y = x * factor + b;
+        top_data[idx] = y;
+        in_min = std::min(in_min, x);
+        in_max = std::max(in_max, x);
+        out_min = std::min(out_min, y);
+        out_max = std::max(out_max, y);
       }
     }
   }
 
-  if (bias_term_ && this->blobs_.size() > 1) {
-    CAFFE_FFI_LAYER_LOG << "Scale Forward: adding bias";
-    const float* bias_data = this->blobs_[1]->cpu_data();
-    for (int n = 0; n < outer_dim_; ++n) {
-      for (int d = 0; d < scale_dim_; ++d) {
-        const float bias = bias_data[d];
-        for (int i = 0; i < inner_dim_; ++i) {
-          const int idx = n * scale_dim_ * inner_dim_ + d * inner_dim_ + i;
-          top_data[idx] += bias;
-        }
-      }
-    }
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  std::string b_str;
+  if (bias_data) {
+    b_str = " bias=[" + std::to_string(b_min) + ", " + std::to_string(b_max) + "]";
   }
+
+  CAFFE_FFI_LOG_INFO() << "[SCALE-PERF] " << this->name()
+                       << " Scale forward: outer_dim=" << outer_dim_
+                       << " scale_dim=" << scale_dim_
+                       << " inner_dim=" << inner_dim_
+                       << " bias_term=" << bias_term_
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " scale=[" << s_min << ", " << s_max << "]"
+                       << b_str
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Scale);

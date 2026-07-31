@@ -210,7 +210,7 @@ Tensor Blob::mutable_data_tensor() {
     return data_tensor_;
   }
 #endif
-  if (data_shared_ && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
     int refcount = data_tensor_.use_count();
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
@@ -261,7 +261,7 @@ Tensor Blob::mutable_diff_tensor() {
                       << " mutable_diff_tensor() allocated diff to match data shape"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
   }
-  if (diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+  if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
     int refcount = diff_tensor_.use_count();
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));

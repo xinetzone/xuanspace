@@ -1,6 +1,8 @@
 #include "caffe_ffi/layers/eltwise_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -155,6 +157,19 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " num_bottoms=" << num_bottoms
                       << " count=" << count;
 
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+
+  // coeffs值域
+  float coeff_min = std::numeric_limits<float>::max();
+  float coeff_max = -std::numeric_limits<float>::max();
+  for (int j = 0; j < num_bottoms; ++j) {
+    coeff_min = std::min(coeff_min, coeffs_[j]);
+    coeff_max = std::max(coeff_max, coeffs_[j]);
+  }
+
   switch (op_) {
     case PROD: {
       const float* bottom0_data = bottom[0]->cpu_data();
@@ -198,6 +213,23 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     default:
       CAFFE_FFI_THROW(RuntimeError) << "Unknown elementwise operation.";
   }
+
+  // out值域统计
+  for (int64_t i = 0; i < count; ++i) {
+    out_min = std::min(out_min, top_data[i]);
+    out_max = std::max(out_max, top_data[i]);
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[ELTWISE-PERF] " << this->name()
+                       << " Eltwise forward: op=" << op_name
+                       << " num_bottoms=" << num_bottoms
+                       << " count=" << count
+                       << " coeffs=[" << coeff_min << ", " << coeff_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Eltwise);

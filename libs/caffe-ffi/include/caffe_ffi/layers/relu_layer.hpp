@@ -4,26 +4,26 @@
 #include <vector>
 
 #include "caffe_ffi/blob.hpp"
-#include "caffe_ffi/layer.hpp"
+#include "caffe_ffi/layers/neuron_layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 
 namespace caffe_ffi {
 
-class ReLULayer : public Layer {
+class ReLULayer : public NeuronLayer {
  public:
   static constexpr bool _type_mutable = true;
 
-  explicit ReLULayer(const caffe::LayerParameter& param) : Layer(param) {}
-  void Reshape(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  explicit ReLULayer(const caffe::LayerParameter& param) : NeuronLayer(param) {}
 
   const char* type() const override { return "ReLU"; }
-  int ExactNumBottomBlobs() const override { return 1; }
-  int ExactNumTopBlobs() const override { return 1; }
 
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("caffe_ffi.ReLULayer", ReLULayer, Layer);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("caffe_ffi.ReLULayer", ReLULayer, NeuronLayer);
 
  protected:
   void Forward_cpu(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  void Backward_cpu(const std::vector<Blob*>& top,
+                    const std::vector<bool>& propagate_down,
+                    const std::vector<Blob*>& bottom) override;
 };
 
 }  // namespace caffe_ffi
