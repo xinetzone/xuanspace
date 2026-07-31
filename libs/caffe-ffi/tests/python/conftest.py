@@ -41,22 +41,64 @@ def _ensure_csv():
     _csv_writer = csv.writer(_csv_file)
     _csv_writer.writerow([
         "timestamp", "test_class", "test_name", "operation",
-        "elapsed_ms", "delta_mem", "delta_blobs", "extra_fields"
+        "elapsed_ms", "delta_mem", "delta_blobs",
+        "cow_events", "cow_bytes", "cow_saved_bytes",
+        "extra_fields"
     ])
     _csv_file.flush()
 
 
 def _write_csv_row(test_class: str, test_name: str, operation: str,
                    elapsed_ms: float, delta_mem: int, delta_blobs: int,
-                   extra: str = ""):
+                   extra: str = "", *,
+                   cow_events: int = 0, cow_bytes: int = 0,
+                   cow_saved_bytes: int = 0):
     """Write one row to the performance CSV file."""
     _ensure_csv()
     _csv_writer.writerow([
         datetime.now().isoformat(timespec="milliseconds"),
         test_class, test_name, operation,
-        f"{elapsed_ms:.4f}", delta_mem, delta_blobs, extra,
+        f"{elapsed_ms:.4f}", delta_mem, delta_blobs,
+        cow_events, cow_bytes, cow_saved_bytes,
+        extra,
     ])
     _csv_file.flush()
+
+
+def _write_cow_csv_row(test_class: str, test_name: str, operation: str,
+                       refcount_before: int, copy_bytes: int, copy_us: float,
+                       blob_id: int = -1, extra: str = ""):
+    """Write a COW-specific event row to the performance CSV.
+    
+    Records a Copy-on-Write trigger event with refcount and copy details.
+    Use operation='COW-Data' or 'COW-Diff' to distinguish data vs diff COW.
+    """
+    _ensure_csv()
+    _csv_writer.writerow([
+        datetime.now().isoformat(timespec="milliseconds"),
+        test_class, test_name, operation,
+        f"{copy_us / 1000.0:.4f}", 0, 0,  # elapsed_ms, delta_mem, delta_blobs
+        1, copy_bytes, 0,  # cow_events=1, cow_bytes, cow_saved_bytes
+        f"blob_id={blob_id} refcount_before={refcount_before} copy_bytes={copy_bytes} copy_us={copy_us:.1f} {extra}",
+    ])
+    _csv_file.flush()
+
+
+def cow_snapshot(blob) -> dict:
+    """Query COW state of a Blob's data and diff tensors.
+
+    Returns a dict with:
+      - data_shared: bool, whether data tensor is shared (refcount > 1)
+      - diff_shared: bool, whether diff tensor is shared (refcount > 1)
+      - data_refcount: int, data tensor refcount (0 if undefined)
+      - diff_refcount: int, diff tensor refcount (0 if undefined)
+    """
+    return {
+        "data_shared": blob.IsDataShared(),
+        "diff_shared": blob.IsDiffShared(),
+        "data_refcount": blob.DataRefCount(),
+        "diff_refcount": blob.DiffRefCount(),
+    }
 
 
 if not _perf_logger.handlers:
@@ -91,6 +133,10 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
     Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
     'input_size'); these are appended to the exit log line and CSV.
 
+    If an exception is raised inside the block, it is logged with exception type
+    and message before being re-raised. The caller may set info['expected_error']=True
+    to indicate the error is expected (e.g. boundary testing).
+
     Usage:
         with perf_trace("Net(prototxt)") as t:
             net = Net(prototxt)
@@ -100,8 +146,13 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
     mem_before, blobs_before = _mem_bytes_blobs()
     t0 = time.perf_counter()
     info: dict = {}
+    exc_info = None
     try:
         yield info
+    except BaseException as e:
+        exc_info = (type(e).__name__, str(e)[:200])
+        info["exception"] = f"{type(e).__name__}: {str(e)[:120]}"
+        raise
     finally:
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         mem_after, blobs_after = _mem_bytes_blobs()
@@ -113,10 +164,18 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
         if verbose:
             mem_str = f"+{delta_mem}B" if delta_mem >= 0 else f"{delta_mem}B"
             blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
-            _perf_logger.info(
-                "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s",
-                label, elapsed_ms, mem_str, blob_str, extra_str,
-            )
+            if exc_info is not None:
+                status = "EXC" if not info.get("expected_error") else "EXP"
+                _perf_logger.info(
+                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  [%s] %s: %s  %s",
+                    label, elapsed_ms, mem_str, blob_str, status,
+                    exc_info[0], exc_info[1][:100], extra_str,
+                )
+            else:
+                _perf_logger.info(
+                    "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s",
+                    label, elapsed_ms, mem_str, blob_str, extra_str,
+                )
         _write_csv_row(
             _current_test_context["cls"], _current_test_context["name"],
             label, elapsed_ms, delta_mem, delta_blobs, extra_str,
@@ -272,7 +331,9 @@ _P2_TEST_CLASSES = {
 }
 
 _P2B_TEST_CLASSES = {
-    "TestSplitTopologies", "TestExtremeBoundaries",
+    "TestExtremeValues", "TestDTypeErrors", "TestNonContiguousArrays",
+    "TestRecoveryAfterError", "TestSplitTopologies", "TestExtremeBoundaries",
+    "TestBlobCOWApi", "TestSplitCOWBehavior",
 }
 
 _PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES
