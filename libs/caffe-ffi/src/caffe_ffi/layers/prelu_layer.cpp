@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/prelu_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -95,19 +97,55 @@ void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "PReLU Forward: count=" << count
                       << " channel_shared=" << channel_shared_;
 
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+  float slope_min = std::numeric_limits<float>::max();
+  float slope_max = -std::numeric_limits<float>::max();
+
   if (channel_shared_) {
     const float slope = slope_data[0];
+    slope_min = slope_max = slope;
     for (int64_t i = 0; i < count; ++i) {
-      top_data[i] = std::max(bottom_data[i], 0.0f)
-          + slope * std::min(bottom_data[i], 0.0f);
+      float x = bottom_data[i];
+      float y = std::max(x, 0.0f) + slope * std::min(x, 0.0f);
+      top_data[i] = y;
+      in_min = std::min(in_min, x);
+      in_max = std::max(in_max, x);
+      out_min = std::min(out_min, y);
+      out_max = std::max(out_max, y);
     }
   } else {
+    for (int c = 0; c < channels_; ++c) {
+      float s = slope_data[c];
+      slope_min = std::min(slope_min, s);
+      slope_max = std::max(slope_max, s);
+    }
     for (int64_t i = 0; i < count; ++i) {
+      float x = bottom_data[i];
       int c = static_cast<int>((i / inner_dim_) % channels_);
-      top_data[i] = std::max(bottom_data[i], 0.0f)
-          + slope_data[c] * std::min(bottom_data[i], 0.0f);
+      float y = std::max(x, 0.0f) + slope_data[c] * std::min(x, 0.0f);
+      top_data[i] = y;
+      in_min = std::min(in_min, x);
+      in_max = std::max(in_max, x);
+      out_min = std::min(out_min, y);
+      out_max = std::max(out_max, y);
     }
   }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
+                       << " PReLU forward: count=" << count
+                       << " channel_shared=" << (channel_shared_ ? "true" : "false")
+                       << " slope=[" << slope_min << ", " << slope_max << "]"
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(PReLU);

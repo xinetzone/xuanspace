@@ -76,9 +76,45 @@ void BiasLayer::Reshape(const std::vector<Blob*>& bottom,
 
   int dim = bias_dim_;
   for (int i = 0; i < num_axes_; ++i) {
+    int expected = bottom[0]->shape(axis_ + i);
+    int actual = (bottom.size() > 1) ? static_cast<int>(bottom[1]->shape(i))
+                                     : static_cast<int>(this->blobs_[0]->shape(i));
+    if (expected != actual) {
+      // Format bias shape
+      std::ostringstream bias_shape_ss;
+      const Blob* bias_blob = (bottom.size() > 1) ? bottom[1] : this->blobs_[0].get();
+      bias_shape_ss << "(";
+      for (int bi = 0; bi < bias_blob->num_axes(); ++bi) {
+        if (bi > 0) bias_shape_ss << ", ";
+        bias_shape_ss << bias_blob->shape(bi);
+      }
+      bias_shape_ss << ")";
+      std::ostringstream input_shape_ss;
+      input_shape_ss << "(";
+      for (int si = 0; si < bottom[0]->num_axes(); ++si) {
+        if (si > 0) input_shape_ss << ", ";
+        input_shape_ss << bottom[0]->shape(si);
+      }
+      input_shape_ss << ")";
+      CAFFE_FFI_LOG_ERROR() << "[BIAS-SHAPE-MISMATCH] layer='" << this->name()
+                            << "' Bias dimension mismatch at axis[" << axis_ + i
+                            << "] (bias_axis=" << i << "):"
+                            << " input.shape(" << axis_ + i << ")=" << expected
+                            << " but bias.shape(" << i << ")=" << actual
+                            << ". input_shape=" << input_shape_ss.str()
+                            << " bias_shape=" << bias_shape_ss.str()
+                            << " axis_=" << axis_ << " num_axes_=" << num_axes_
+                            << " bias_source=" << ((bottom.size() > 1) ? "bottom[1]" : "learnable blob")
+                            << "\n  *** HINT: Bias shape must match input's dimensions starting at axis."
+                            << "\n      For learnable positional encoding with axis=1 num_axes=2:"
+                            << " bias shape must be (seq_len, d_model), same as input's axes 1..2."
+                            << "\n      For per-channel bias (e.g. CNN bias): use axis=1 num_axes=1"
+                            << " with bias shape (channels,).";
+    }
     CAFFE_FFI_CHECK_VALUE_EQ(bottom[0]->shape(axis_ + i), (bottom.size() > 1)
                  ? bottom[1]->shape(i) : this->blobs_[0]->shape(i))
-        << "Dimensions mismatch for bias";
+        << "Dimensions mismatch for bias (layer '" << this->name()
+        << "', axis " << (axis_ + i) << "). See [BIAS-SHAPE-MISMATCH] above.";
     dim /= static_cast<int>(bottom[0]->shape(axis_ + i));
   }
 }

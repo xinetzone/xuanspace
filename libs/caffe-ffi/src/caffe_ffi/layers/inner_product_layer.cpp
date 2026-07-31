@@ -1,5 +1,6 @@
 #include "caffe_ffi/layers/inner_product_layer.hpp"
 
+#include <sstream>
 #include <vector>
 
 #include <tvm/ffi/memory.h>
@@ -69,8 +70,42 @@ void InnerProductLayer::Reshape(const std::vector<Blob*>& bottom,
   const int axis = bottom[0]->CanonicalAxisIndex(
       this->layer_param_.inner_product_param().axis());
   const int new_K = static_cast<int>(bottom[0]->count(axis));
+
+  // Helper to format shape
+  auto shape_str = [](const Blob* b) -> std::string {
+    std::ostringstream oss;
+    oss << "(";
+    for (int i = 0; i < b->num_axes(); ++i) {
+      if (i > 0) oss << ", ";
+      oss << b->shape(i);
+    }
+    oss << ")";
+    return oss.str();
+  };
+
+  if (K_ != new_K) {
+    CAFFE_FFI_LOG_ERROR() << "[IP-K-MISMATCH] layer='" << this->name()
+                          << "' InnerProduct input dimension mismatch:"
+                          << " expected K_=" << K_
+                          << " (from LayerSetUp with weight shape ["
+                          << this->blobs_[0]->shape(0) << ", " << this->blobs_[0]->shape(1) << "])"
+                          << " but got new_K=" << new_K
+                          << " from bottom[0] shape=" << shape_str(bottom[0])
+                          << " (axis=" << axis << ", flattened dims from axis="
+                          << axis << " to end = " << new_K << ")."
+                          << " num_output(N_)=" << N_
+                          << " transpose=" << (transpose_ ? "true" : "false")
+                          << "\n  *** HINT: The input feature dimension (K) must match the weight matrix's inner dimension."
+                          << "\n      If transpose=false: weight is [N_, K_] = [" << N_ << ", " << K_ << "],"
+                          << " input last dim(s) must flatten to K_=" << K_
+                          << "\n      If transpose=true: weight is [K_, N_] = [" << K_ << ", " << N_ << "],"
+                          << " input last dim(s) must flatten to K_=" << K_
+                          << "\n      Common cause: input shape changed (e.g. different seq_len or d_model)"
+                          << " but weight was initialized for a different shape.";
+  }
   CAFFE_FFI_CHECK_VALUE_EQ(K_, new_K)
-      << "Input size incompatible with inner product parameters.";
+      << "Input size incompatible with inner product parameters (layer '"
+      << this->name() << "'). See [IP-K-MISMATCH] above.";
   M_ = static_cast<int>(bottom[0]->count(0, axis));
   std::vector<int64_t> top_shape;
   for (int i = 0; i < axis; ++i) {
