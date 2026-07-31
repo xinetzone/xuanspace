@@ -8,6 +8,7 @@
 
 #include "caffe_ffi/common.hpp"
 #include "caffe_ffi/math_utils.hpp"
+#include "caffe_ffi/fill.hpp"
 #include "caffe_ffi/backtrace.hpp"
 
 namespace caffe {
@@ -128,6 +129,9 @@ class Blob : public Object {
 
   /** @brief Get the dimension size at the given axis. */
   int64_t shape(int index) const {
+    if (is_lazy_allocated_) {
+      return shape_only_[this->CanonicalAxisIndex(index)];
+    }
     return data_tensor_.size(this->CanonicalAxisIndex(index));
   }
 
@@ -142,9 +146,15 @@ class Blob : public Object {
   int width() const { return LegacyShape(3); }
 
   /** @brief Get const pointer to CPU data buffer (read-only, zero-overhead). */
-  const float* cpu_data() const { return static_cast<const float*>(data_tensor_.data_ptr()); }
+  const float* cpu_data() const {
+    if (is_lazy_allocated_ || !data_tensor_.defined()) return nullptr;
+    return static_cast<const float*>(data_tensor_.data_ptr());
+  }
   /** @brief Get const pointer to CPU diff buffer (read-only, zero-overhead). */
-  const float* cpu_diff() const { return static_cast<const float*>(diff_tensor_.data_ptr()); }
+  const float* cpu_diff() const {
+    if (is_lazy_allocated_ || !diff_tensor_.defined()) return nullptr;
+    return static_cast<const float*>(diff_tensor_.data_ptr());
+  }
 
   /**
    * @brief Get mutable pointer to CPU data buffer with Copy-on-Write semantics.
@@ -162,17 +172,18 @@ class Blob : public Object {
   float* cpu_mutable_data() {
 #ifdef CAFFE_FFI_ENABLE_COW
     if (is_lazy_allocated_) {
-      // Phase 3.1: Lazy blob — allocate data tensor now (first write).
-      // This should not normally happen in Split layer usage (ShareData
-      // is called before any write), but guards against undefined behavior
-      // if a downstream layer accidentally writes to a lazy blob.
-      auto shape = ShapeView(shape_only_.data(), shape_only_.size());
-      data_tensor_ = NewCPUTensor(shape);
+      // Phase 3.1: Lazy blob — allocate both data and diff tensors now (first write).
+      auto sv = ShapeView(shape_only_.data(), shape_only_.size());
+      data_tensor_ = NewCPUTensor(sv);
+      diff_tensor_ = NewCPUTensor(sv);
+      caffe_set_fp32(static_cast<size_t>(diff_tensor_.numel()), 0.0f,
+                     static_cast<float*>(diff_tensor_.data_ptr()));
       is_lazy_allocated_ = false;
       shape_only_.clear();
       CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
-                        << " cpu_mutable_data() allocated data for lazy blob"
+                        << " cpu_mutable_data() allocated data+diff for lazy blob"
                         << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
+      return static_cast<float*>(data_tensor_.data_ptr());
     }
     if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
@@ -201,6 +212,37 @@ class Blob : public Object {
    * returning the mutable pointer. Use this when you intend to mutate the diff.
    */
   float* cpu_mutable_diff() {
+#ifdef CAFFE_FFI_ENABLE_COW
+    if (is_lazy_allocated_) {
+      // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+      auto sv = ShapeView(shape_only_.data(), shape_only_.size());
+      data_tensor_ = NewCPUTensor(sv);
+      diff_tensor_ = NewCPUTensor(sv);
+      caffe_set_fp32(static_cast<size_t>(diff_tensor_.numel()), 0.0f,
+                     static_cast<float*>(diff_tensor_.data_ptr()));
+      is_lazy_allocated_ = false;
+      shape_only_.clear();
+      CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
+                        << " cpu_mutable_diff() allocated data+diff for lazy blob"
+                        << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
+      return static_cast<float*>(diff_tensor_.data_ptr());
+    }
+#endif
+    if (!diff_tensor_.defined()) {
+      // Diff tensor not yet allocated (e.g. after cpu_mutable_data allocated only data)
+      // — allocate diff matching data shape.
+      if (data_tensor_.defined()) {
+        diff_tensor_ = NewCPUTensor(
+            ShapeView(data_tensor_.shape().data(),
+                      static_cast<size_t>(data_tensor_.ndim())));
+        caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
+                       static_cast<float*>(diff_tensor_.data_ptr()));
+        CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
+                          << " cpu_mutable_diff() allocated diff to match data shape"
+                          << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
+      }
+      return static_cast<float*>(diff_tensor_.data_ptr());
+    }
     if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
       int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = diff_tensor_.use_count();

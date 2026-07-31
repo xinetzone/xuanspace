@@ -128,13 +128,21 @@ Blob::~Blob() {
   int64_t live_before = g_live_blob_count.fetch_sub(1, std::memory_order_relaxed);
   int64_t live_after = live_before - 1;
 
-  CAFFE_FFI_MEM_LOG << "[MEM-FREE] Blob#" << id_ << " this=" << this
-                    << " shape=" << ShapeToString(ShapeView(data_tensor_.shape().data(),
-                                                            static_cast<size_t>(data_tensor_.ndim())))
-                    << " data_ptr=" << PtrToString(data_tensor_.data_ptr())
-                    << " diff_ptr=" << PtrToString(diff_tensor_.data_ptr())
-                    << " freed=" << total_freed << "B (" << FormatBytes(total_freed) << ")"
-                    << " live_blobs=" << live_after;
+  if (is_lazy_allocated_) {
+    CAFFE_FFI_MEM_LOG << "[MEM-FREE] Blob#" << id_ << " this=" << this
+                      << " shape=" << ShapeToString(ShapeView(shape_only_.data(), shape_only_.size()))
+                      << " (lazy-allocated, no data/diff pointers)"
+                      << " freed=" << total_freed << "B (" << FormatBytes(total_freed) << ")"
+                      << " live_blobs=" << live_after;
+  } else {
+    CAFFE_FFI_MEM_LOG << "[MEM-FREE] Blob#" << id_ << " this=" << this
+                      << " shape=" << (data_tensor_.defined() ? ShapeToString(ShapeView(data_tensor_.shape().data(),
+                                                                      static_cast<size_t>(data_tensor_.ndim()))) : "(undefined)")
+                      << " data_ptr=" << PtrToString(data_tensor_.defined() ? data_tensor_.data_ptr() : nullptr)
+                      << " diff_ptr=" << PtrToString(diff_tensor_.defined() ? diff_tensor_.data_ptr() : nullptr)
+                      << " freed=" << total_freed << "B (" << FormatBytes(total_freed) << ")"
+                      << " live_blobs=" << live_after;
+  }
 
   data_tensor_ = Tensor();
   diff_tensor_ = Tensor();
@@ -148,6 +156,11 @@ Blob::~Blob() {
 }
 
 Tensor Blob::data_tensor() const {
+  if (is_lazy_allocated_ || !data_tensor_.defined()) {
+    CAFFE_FFI_TENSOR_LOG << "data_tensor() Blob#" << id_ << " this=" << this
+                         << " (lazy/undefined, returning null Tensor)";
+    return Tensor();
+  }
   CAFFE_FFI_TENSOR_LOG << "data_tensor() Blob#" << id_ << " this=" << this
                        << " ptr=" << PtrToString(data_tensor_.data_ptr())
                        << " shape=" << ShapeToString(ShapeView(data_tensor_.shape().data(),
@@ -161,6 +174,11 @@ Tensor Blob::data_tensor() const {
 }
 
 Tensor Blob::diff_tensor() const {
+  if (is_lazy_allocated_ || !diff_tensor_.defined()) {
+    CAFFE_FFI_TENSOR_LOG << "diff_tensor() Blob#" << id_ << " this=" << this
+                         << " (lazy/undefined, returning null Tensor)";
+    return Tensor();
+  }
   CAFFE_FFI_TENSOR_LOG << "diff_tensor() Blob#" << id_ << " this=" << this
                        << " ptr=" << PtrToString(diff_tensor_.data_ptr())
                        << " shape=" << ShapeToString(ShapeView(diff_tensor_.shape().data(),
@@ -174,6 +192,22 @@ Tensor Blob::diff_tensor() const {
 }
 
 Tensor Blob::mutable_data_tensor() {
+#ifdef CAFFE_FFI_ENABLE_COW
+  if (is_lazy_allocated_) {
+    // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+    auto sv = ShapeView(shape_only_.data(), shape_only_.size());
+    data_tensor_ = NewCPUTensor(sv);
+    diff_tensor_ = NewCPUTensor(sv);
+    caffe_set_fp32(static_cast<size_t>(diff_tensor_.numel()), 0.0f,
+                   static_cast<float*>(diff_tensor_.data_ptr()));
+    is_lazy_allocated_ = false;
+    shape_only_.clear();
+    CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
+                      << " mutable_data_tensor() allocated data+diff for lazy blob"
+                      << " nbytes=" << TensorNBytes(data_tensor_);
+    return data_tensor_;
+  }
+#endif
   if (data_tensor_.defined() && data_tensor_.use_count() > 1) {
     int refcount = data_tensor_.use_count();
     const void* old_ptr = data_tensor_.data_ptr();
@@ -186,13 +220,41 @@ Tensor Blob::mutable_data_tensor() {
                       << " new_ptr=" << data_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
   }
-  CAFFE_FFI_TENSOR_LOG << "mutable_data_tensor() Blob#" << id_ << " this=" << this
-                       << " ptr=" << PtrToString(data_tensor_.data_ptr())
-                       << " refcount=" << DataRefCount();
+  if (data_tensor_.defined()) {
+    CAFFE_FFI_TENSOR_LOG << "mutable_data_tensor() Blob#" << id_ << " this=" << this
+                         << " ptr=" << PtrToString(data_tensor_.data_ptr())
+                         << " refcount=" << DataRefCount();
+  }
   return data_tensor_;
 }
 
 Tensor Blob::mutable_diff_tensor() {
+#ifdef CAFFE_FFI_ENABLE_COW
+  if (is_lazy_allocated_) {
+    // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+    auto sv = ShapeView(shape_only_.data(), shape_only_.size());
+    data_tensor_ = NewCPUTensor(sv);
+    diff_tensor_ = NewCPUTensor(sv);
+    caffe_set_fp32(static_cast<size_t>(diff_tensor_.numel()), 0.0f,
+                   static_cast<float*>(diff_tensor_.data_ptr()));
+    is_lazy_allocated_ = false;
+    shape_only_.clear();
+    CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
+                      << " mutable_diff_tensor() allocated data+diff for lazy blob"
+                      << " nbytes=" << TensorNBytes(diff_tensor_);
+    return diff_tensor_;
+  }
+#endif
+  if (!diff_tensor_.defined() && data_tensor_.defined()) {
+    diff_tensor_ = NewCPUTensor(
+        ShapeView(data_tensor_.shape().data(),
+                  static_cast<size_t>(data_tensor_.ndim())));
+    caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
+                   static_cast<float*>(diff_tensor_.data_ptr()));
+    CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
+                      << " mutable_diff_tensor() allocated diff to match data shape"
+                      << " nbytes=" << TensorNBytes(diff_tensor_);
+  }
   if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
     int refcount = diff_tensor_.use_count();
     const void* old_ptr = diff_tensor_.data_ptr();
@@ -205,9 +267,11 @@ Tensor Blob::mutable_diff_tensor() {
                       << " new_ptr=" << diff_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
   }
-  CAFFE_FFI_TENSOR_LOG << "mutable_diff_tensor() Blob#" << id_ << " this=" << this
-                       << " ptr=" << PtrToString(diff_tensor_.data_ptr())
-                       << " refcount=" << DiffRefCount();
+  if (diff_tensor_.defined()) {
+    CAFFE_FFI_TENSOR_LOG << "mutable_diff_tensor() Blob#" << id_ << " this=" << this
+                         << " ptr=" << PtrToString(diff_tensor_.data_ptr())
+                         << " refcount=" << DiffRefCount();
+  }
   return diff_tensor_;
 }
 
@@ -217,18 +281,18 @@ void Blob::ShareData(const Blob* other) {
   CAFFE_FFI_CHECK_TYPE(other->data_tensor_.defined())
       << "ShareData: source Blob#" << other->id_ << " has undefined data tensor";
 
-  // Phase 3.1: Clear lazy allocation flag when ShareData replaces the tensor
-  is_lazy_allocated_ = false;
-  shape_only_.clear();
-
   CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareData from Blob#" << other->id_
                     << " this=" << this
-                    << " old_data_ptr=" << PtrToString(data_tensor_.data_ptr())
+                    << " old_data_ptr=" << PtrToString(data_tensor_.defined() ? data_tensor_.data_ptr() : nullptr)
                     << " new_data_ptr=" << PtrToString(other->data_tensor_.data_ptr())
                     << " shape=" << ShapeToString(ShapeView(other->data_tensor_.shape().data(),
                                                              static_cast<size_t>(other->data_tensor_.ndim())))
                     << " nbytes=" << TensorNBytes(other->data_tensor_)
                     << " (zero-copy: refcount shared, no memcpy)";
+
+  // Phase 3.1: Clear lazy allocation flag when ShareData replaces the tensor
+  is_lazy_allocated_ = false;
+  shape_only_.clear();
   data_tensor_ = other->data_tensor_;
 }
 
@@ -238,261 +302,75 @@ void Blob::ShareDiff(const Blob* other) {
   CAFFE_FFI_CHECK_TYPE(other->diff_tensor_.defined())
       << "ShareDiff: source Blob#" << other->id_ << " has undefined diff tensor";
 
-  // Phase 3.1: Clear lazy allocation flag
-  is_lazy_allocated_ = false;
-  shape_only_.clear();
-
   CAFFE_FFI_MEM_LOG << "[ZEROCOPY] Blob#" << id_ << " ShareDiff from Blob#" << other->id_
                     << " this=" << this
-                    << " old_diff_ptr=" << PtrToString(diff_tensor_.data_ptr())
+                    << " old_diff_ptr=" << PtrToString(diff_tensor_.defined() ? diff_tensor_.data_ptr() : nullptr)
                     << " new_diff_ptr=" << PtrToString(other->diff_tensor_.data_ptr())
                     << " nbytes=" << TensorNBytes(other->diff_tensor_)
                     << " (zero-copy: refcount shared, no memcpy)";
+
+  // Phase 3.1: Clear lazy allocation flag
+  is_lazy_allocated_ = false;
+  shape_only_.clear();
   diff_tensor_ = other->diff_tensor_;
 }
 
 bool Blob::SharesDataWith(const Blob* other) const {
-  return other != nullptr && data_tensor_.data_ptr() == other->data_tensor_.data_ptr() && data_tensor_.defined();
+  if (other == nullptr) return false;
+  if (is_lazy_allocated_ || !data_tensor_.defined()) return false;
+  if (other->is_lazy_allocated_ || !other->data_tensor_.defined()) return false;
+  return data_tensor_.data_ptr() == other->data_tensor_.data_ptr();
 }
 
 bool Blob::SharesDiffWith(const Blob* other) const {
-  return other != nullptr && diff_tensor_.data_ptr() == other->diff_tensor_.data_ptr() && diff_tensor_.defined();
+  if (other == nullptr) return false;
+  if (is_lazy_allocated_ || !diff_tensor_.defined()) return false;
+  if (other->is_lazy_allocated_ || !other->diff_tensor_.defined()) return false;
+  return diff_tensor_.data_ptr() == other->diff_tensor_.data_ptr();
 }
 
 #ifdef CAFFE_FFI_ENABLE_COW_PHASE3
-namespace {
-
-// ─── Phase 3 Batch Refcount Internal Helpers ─────────────────────────────────
-//
-// These helpers implement O(1) batch IncRef by directly atomically adding N to
-// the TVMFFIObject::combined_ref_count (lower 32 bits = strong refcount).
-// The normal per-copy ObjectPtr constructor calls Object::IncRef() which does
-// a fetch_add(1) — for N targets this means N atomic operations. For N=100
-// that's ~10μs of pure atomic overhead. The batch approach reduces this to a
-// single fetch_add(N) (~10ns) plus N raw pointer writes.
-//
-// ═══ RISK ANALYSIS (memory leak / refcount imbalance) ═══
-//
-// Risk #1: Self-reference (source ∈ targets)
-//   - If source Blob's own tensor is released in Phase 1, src_obj becomes dangling.
-//   - Mitigation: Filter out targets[i] == source before Phase 1 (defensive guard).
-//
-// Risk #2: Exception between Phase 1 and Phase 3
-//   - If Phase 1 completes (old refs released) but Phase 2/3 throws, some targets
-//     have nullptr tensors (valid but data-less) and source refcount is not yet
-//     incremented by n. This is recoverable (targets are reset to null, source
-//     is still alive). BatchStrongIncRef is a compiler intrinsic that cannot throw;
-//     AssignRawTensorNoIncRef is a memcpy that cannot throw. The only throwing
-//     points are CAFFE_FFI_CHECK_* macros which fire on programmer errors —
-//     in that case we abort loudly rather than silently corrupt memory.
-//
-// Risk #3: ObjectPtr memory layout assumption violation
-//   - We rely on Tensor being pointer-sized with Object* at offset 0. This is
-//     guaranteed by TVM FFI's design (ObjectRef → ObjectPtr<Object> → Object*).
-//   - Mitigation: static_assert(sizeof(Tensor) == sizeof(Object*)) catches any
-//     layout change at compile time.
-//
-// Risk #4: Weak refcount bit corruption
-//   - Adding n to combined_ref_count adds to lower 32 bits (strong). As long as
-//     strong refcount < 2^32, no carry into upper 32 bits (weak). With n ≤ 10000
-//     and typical refcounts < 1000, overflow is impossible. Normal IncRef() does
-//     the exact same add-1 to combined_ref_count, so we are consistent with TVM FFI.
-//
-// Risk #5: Double-IncRef after AssignRawTensorNoIncRef
-//   - After memcpy-planting the raw pointer, the Tensor "owns" one reference
-//     (balanced by the n added in Phase 2). The Tensor's destructor/reset() will
-//     DecRef exactly once. If ShareData() or operator= is later called on the
-//     target, ObjectPtr's copy assignment IncRefs the new object first, then
-//     DecRefs the old (our planted) pointer — net zero for self-assignment, net
-//     +1 for new object — correct refcount semantics.
-//
-// Risk #6: Reshape/COW interaction
-//   - After batch share, Reshape() allocates a new tensor (DecRefs source, IncRefs
-//     new private tensor) — correct. cpu_mutable_data() triggers UnshareData()
-//     which checks use_count() > 1 and clones — correct, because use_count()
-//     includes the n batch-added references.
-
-inline void BatchStrongIncRef(const Object* obj, int n) {
-  TVMFFIObject* header = details::ObjectUnsafe::GetHeader(obj);
-#ifdef _MSC_VER
-  _InlineInterlockedAdd64(
-      reinterpret_cast<volatile __int64*>(&header->combined_ref_count),
-      static_cast<__int64>(n));
-#else
-  __atomic_fetch_add(&header->combined_ref_count, static_cast<uint64_t>(n), __ATOMIC_RELAXED);
-#endif
-}
-
-inline const Object* ReleaseTensorRef(Tensor& t) {
-  const Object* old = t.defined() ? t.get() : nullptr;
-  t = Tensor();  // reset: DecRef old object, data_ becomes nullptr
-  return old;
-}
-
-inline void AssignRawTensorNoIncRef(Tensor& t, Object* raw) {
-  static_assert(sizeof(Tensor) == sizeof(Object*),
-                "Tensor must be pointer-sized for Phase 3 batch share");
-  Object* p = raw;
-  std::memcpy(&t, &p, sizeof(p));
-}
-
-/**
- * @brief Core implementation shared by BatchShareData and BatchShareDiff.
- * @param TensorField  Member pointer to Tensor (e.g., &Blob::data_tensor_)
- * @param kind         "Data" or "Diff" for log messages
- */
-void BatchShareImpl(const Blob* source, const std::vector<Blob*>& targets,
-                    Tensor Blob::*TensorField, const char* kind) {
-  CAFFE_FFI_CHECK_TYPE(source != nullptr)
-      << "BatchShare" << kind << ": source must not be null";
-  CAFFE_FFI_CHECK_TYPE((source->*TensorField).defined())
-      << "BatchShare" << kind << ": source Blob#" << source->id_
-      << " has undefined " << kind << " tensor";
-
-  int n_raw = static_cast<int>(targets.size());
-
-  // ── Defensive: filter out self-references (source must not be in targets) ──
-  std::vector<Blob*> safe_targets;
-  safe_targets.reserve(n_raw);
-  for (int i = 0; i < n_raw; ++i) {
-    Blob* tgt = targets[i];
-    CAFFE_FFI_CHECK_TYPE(tgt != nullptr)
-        << "BatchShare" << kind << ": targets[" << i << "] is null";
-    if (tgt == source) {
-      CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] WARNING: targets[" << i
-                           << "] == source (Blob#" << source->id_
-                           << "), skipping self-reference to prevent double-free";
-      continue;
-    }
-    safe_targets.push_back(tgt);
-  }
-
-  int n = static_cast<int>(safe_targets.size());
-  if (n == 0) {
-    CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] BatchShare" << kind
-                         << ": no valid targets after filtering, nothing to do";
-    return;
-  }
-
-  const Tensor& src_tensor = source->*TensorField;
-  const Object* src_obj = src_tensor.get();
-  const int64_t nbytes = TensorNBytes(src_tensor);
-  const void* src_dptr = src_tensor.data_ptr();
-
-  // ── ENTRY LOG: state before any mutations ──
-  uint64_t rc_entry = src_obj->use_count();
-  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] ═══ ENTRY BatchShare" << kind
-                       << " ═══ src=Blob#" << source->id_
-                       << " n=" << n << " (raw_input=" << n_raw << ")"
-                       << " src_dptr=" << PtrToString(src_dptr)
-                       << " nbytes=" << nbytes
-                       << " rc_entry=" << rc_entry
-                       << " (expected: 1 atomic add of " << n << ")";
-
-  // Per-target pre-snapshot: log which targets already share with source
-  int already_shared = 0;
-  for (int i = 0; i < n; ++i) {
-    Blob* tgt = safe_targets[i];
-    const Tensor& tgt_tensor = tgt->*TensorField;
-    bool already = tgt_tensor.defined() && tgt_tensor.get() == src_obj;
-    if (already) ++already_shared;
-    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   pre[" << i << "] Blob#" << tgt->id_
-                         << " defined=" << (tgt_tensor.defined() ? "yes" : "no")
-                         << " dptr=" << PtrToString(tgt_tensor.defined() ? tgt_tensor.data_ptr() : nullptr)
-                         << " already_sharing_src=" << (already ? "yes" : "no");
-  }
-  if (already_shared > 0) {
-    CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] " << already_shared << "/" << n
-                         << " targets already share source " << kind
-                         << " — they will be re-linked (DecRef+IncRef cancels out)";
-  }
-
-  // ── Phase 1: Release all target old references ──
-  auto t_p1_start = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < n; ++i) {
-    Blob* tgt = safe_targets[i];
-    const Object* old = ReleaseTensorRef(tgt->*TensorField);
-    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   p1_release[" << i << "] Blob#" << tgt->id_
-                         << " released old_obj=" << old;
-  }
-  auto t_p1_end = std::chrono::high_resolution_clock::now();
-  uint64_t rc_after_p1 = src_obj->use_count();
-  double p1_us = std::chrono::duration<double, std::micro>(t_p1_end - t_p1_start).count();
-  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE]   Phase 1 (release) done: rc "
-                       << rc_entry << " → " << rc_after_p1
-                       << " (Δ=" << static_cast<int64_t>(rc_after_p1) - static_cast<int64_t>(rc_entry) << ")"
-                       << " time=" << p1_us << "us";
-
-  // ── Phase 2: Single atomic add of N to source refcount ──
-  auto t_p2_start = std::chrono::high_resolution_clock::now();
-  BatchStrongIncRef(src_obj, n);
-  auto t_p2_end = std::chrono::high_resolution_clock::now();
-  uint64_t rc_after_p2 = src_obj->use_count();
-  double p2_us = std::chrono::duration<double, std::micro>(t_p2_end - t_p2_start).count();
-  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE]   Phase 2 (atomic+" << n << ") done: rc "
-                       << rc_after_p1 << " → " << rc_after_p2
-                       << " (Δ=" << static_cast<int64_t>(rc_after_p2) - static_cast<int64_t>(rc_after_p1) << ")"
-                       << " time=" << p2_us << "us"
-                       << " (vs " << n << "× ~10ns = " << n * 10 << "ns per-atomics path)";
-
-  // Sanity: refcount should be rc_after_p1 + n
-  CAFFE_FFI_CHECK_RUNTIME_EQ(rc_after_p2, rc_after_p1 + static_cast<uint64_t>(n))
-      << "BatchShare" << kind << ": refcount mismatch after atomic add: expected "
-      << (rc_after_p1 + n) << ", got " << rc_after_p2;
-
-  // ── Phase 3: Raw pointer assignment without IncRef ──
-  auto t_p3_start = std::chrono::high_resolution_clock::now();
-  Object* raw = const_cast<Object*>(src_obj);
-  for (int i = 0; i < n; ++i) {
-    AssignRawTensorNoIncRef(safe_targets[i]->*TensorField, raw);
-  }
-  auto t_p3_end = std::chrono::high_resolution_clock::now();
-  uint64_t rc_after_p3 = src_obj->use_count();
-  double p3_us = std::chrono::duration<double, std::micro>(t_p3_end - t_p3_start).count();
-
-  // ── Post-assignment verification ──
-  int verify_ok = 0, verify_fail = 0;
-  for (int i = 0; i < n; ++i) {
-    Blob* tgt = safe_targets[i];
-    const Tensor& tgt_tensor = tgt->*TensorField;
-    bool points_to_src = tgt_tensor.defined() && tgt_tensor.get() == src_obj;
-    bool dptr_matches = tgt_tensor.defined() && tgt_tensor.data_ptr() == src_dptr;
-    if (points_to_src && dptr_matches) { ++verify_ok; }
-    else { ++verify_fail; }
-    CAFFE_FFI_TENSOR_LOG << "[BATCH-SHARE]   p3_assign[" << i << "] Blob#" << tgt->id_
-                         << " points_to_src=" << (points_to_src ? "yes" : "NO")
-                         << " dptr_matches=" << (dptr_matches ? "yes" : "NO")
-                         << " rc_now=" << src_obj->use_count();
-  }
-
-  // Final sanity check
-  CAFFE_FFI_CHECK_RUNTIME_EQ(rc_after_p3, rc_after_p1 + static_cast<uint64_t>(n))
-      << "BatchShare" << kind << ": refcount mismatch after assignment: expected "
-      << (rc_after_p1 + n) << ", got " << rc_after_p3;
-  CAFFE_FFI_CHECK_RUNTIME_EQ(verify_fail, 0u)
-      << "BatchShare" << kind << ": " << verify_fail << "/" << n
-      << " targets failed verification (not pointing to source)";
-
-  double total_us = p1_us + p2_us + p3_us;
-  double per_target_atomic_savings_ns = static_cast<double>(n - 1) * 10.0;
-  CAFFE_FFI_LOG_WARN() << "[BATCH-SHARE] ═══ EXIT BatchShare" << kind
-                       << " ═══ rc: " << rc_entry << " → " << rc_after_p3
-                       << " (net Δ=" << static_cast<int64_t>(rc_after_p3) - static_cast<int64_t>(rc_entry) << ")"
-                       << " verify=" << verify_ok << "/" << n << " OK"
-                       << " time: p1=" << p1_us << "us + p2=" << p2_us
-                       << "us + p3=" << p3_us << "us = " << total_us << "us"
-                       << " atomic_savings≈" << per_target_atomic_savings_ns << "ns"
-                       << " (replaced " << n << " atomics with 1)";
-}
-
-}  // namespace
+constexpr int kBatchShareThreshold = 2;
 
 void Blob::BatchShareData(const Blob* source, const std::vector<Blob*>& targets) {
-  BatchShareImpl(source, targets, &Blob::data_tensor_, "Data");
+  CAFFE_FFI_CHECK_TYPE(source != nullptr) << "BatchShareData: source must not be null";
+  int n = static_cast<int>(targets.size());
+  if (n < kBatchShareThreshold) {
+    for (int i = 0; i < n; ++i) {
+      if (targets[i] != nullptr && targets[i] != source) {
+        targets[i]->ShareData(source);
+      }
+    }
+    return;
+  }
+  // Large N batch path: share data to all targets using loop (safe, correct).
+  // TODO(Phase 3.0): optimize to O(1) atomic refcount via ObjectUnsafe API.
+  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareData n=" << n << " (loop-based)";
+  for (int i = 0; i < n; ++i) {
+    if (targets[i] != nullptr && targets[i] != source) {
+      targets[i]->ShareData(source);
+    }
+  }
 }
 
 void Blob::BatchShareDiff(const Blob* source, const std::vector<Blob*>& targets) {
-  BatchShareImpl(source, targets, &Blob::diff_tensor_, "Diff");
+  CAFFE_FFI_CHECK_TYPE(source != nullptr) << "BatchShareDiff: source must not be null";
+  int n = static_cast<int>(targets.size());
+  if (n < kBatchShareThreshold) {
+    for (int i = 0; i < n; ++i) {
+      if (targets[i] != nullptr && targets[i] != source) {
+        targets[i]->ShareDiff(source);
+      }
+    }
+    return;
+  }
+  // Large N batch path: share diff to all targets using loop (safe, correct).
+  CAFFE_FFI_MEM_LOG << "[BATCH-SHARE] BatchShareDiff n=" << n << " (loop-based)";
+  for (int i = 0; i < n; ++i) {
+    if (targets[i] != nullptr && targets[i] != source) {
+      targets[i]->ShareDiff(source);
+    }
+  }
 }
 #endif  // CAFFE_FFI_ENABLE_COW_PHASE3
 
@@ -624,6 +502,10 @@ int64_t Blob::LegacyShape(int index) const {
 // ── Phase 3.1: Lazy Allocation (SetShapeOnly) ────────────────────────
 
 void Blob::SetShapeOnly(ShapeView shape) {
+  // Validate: shape must not be empty
+  CAFFE_FFI_CHECK_VALUE_GT(shape.size(), 0)
+      << "Blob#" << id_ << " SetShapeOnly: shape must not be empty";
+
   // Validate: all dimensions must be positive
   for (size_t i = 0; i < shape.size(); ++i) {
     CAFFE_FFI_CHECK_VALUE_GT(shape[i], 0)
@@ -724,16 +606,25 @@ void Blob::ToProto(caffe::BlobProto* proto) const {
 }
 
 void Blob::Update() {
+  // Ensure data is allocated first (handles lazy blobs; allocates both data+diff)
+  float* data_ptr = cpu_mutable_data();
+  const float* diff_ptr = cpu_diff();
   CAFFE_FFI_TENSOR_LOG << "Update() Blob#" << id_ << " this=" << this
-                       << " data_ptr=" << PtrToString(cpu_data())
-                       << " diff_ptr=" << PtrToString(cpu_diff())
+                       << " data_ptr=" << PtrToString(data_ptr)
+                       << " diff_ptr=" << PtrToString(diff_ptr)
                        << " count=" << count()
                        << " operation: data -= diff";
-  caffe_cpu_axpby_fp32(static_cast<size_t>(count()), -1.0f, cpu_diff(), 1.0f, cpu_mutable_data());
+  if (diff_ptr != nullptr) {
+    caffe_cpu_axpby_fp32(static_cast<size_t>(count()), -1.0f, diff_ptr, 1.0f, data_ptr);
+  }
 }
 
 Array<float> Blob::get_data() const {
   Array<float> result;
+  if (is_lazy_allocated_ || !data_tensor_.defined()) {
+    CAFFE_FFI_CONTAINER_LOG << "get_data: Blob#" << id_ << " (lazy/undefined) returning empty Array";
+    return result;
+  }
   result.reserve(count());
   const float* ptr = cpu_data();
   CAFFE_FFI_CONTAINER_LOG << "get_data: Blob#" << id_ << " copying " << count() << " elements from " << ptr << " to Array<float>";
@@ -768,6 +659,10 @@ void Blob::set_data(Tensor data) {
 
 Array<float> Blob::get_diff() const {
   Array<float> result;
+  if (is_lazy_allocated_ || !diff_tensor_.defined()) {
+    CAFFE_FFI_CONTAINER_LOG << "get_diff: Blob#" << id_ << " (lazy/undefined) returning empty Array";
+    return result;
+  }
   result.reserve(count());
   const float* ptr = cpu_diff();
   CAFFE_FFI_CONTAINER_LOG << "get_diff: Blob#" << id_ << " copying " << count() << " elements from " << ptr << " to Array<float>";
