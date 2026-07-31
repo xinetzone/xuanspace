@@ -1,6 +1,8 @@
 # SetShapeOnly API 接口设计文档
 
-> **状态**: 草稿 | **日期**: 2026-07-31 | **来源**: Split COW Phase 3.1 延迟 Reshape 分配
+> **状态**: 已实现 | **日期**: 2026-07-31 | **来源**: Split COW Phase 3.1 延迟 Reshape 分配
+>
+> **实现文件**: [blob.hpp](../include/caffe_ffi/blob.hpp), [blob.cpp](../src/caffe_ffi/blob.cpp), [split_layer.cpp](../src/caffe_ffi/layers/split_layer.cpp), [_caffe_ffi.cc](../src/caffe_ffi/_caffe_ffi.cc)
 
 ---
 
@@ -86,46 +88,50 @@ class Blob : public Object {
 ```
 
 ```cpp
-// blob.cpp
+// blob.cpp — 实际实现
 void Blob::SetShapeOnly(ShapeView shape) {
-  // Validate shape
+  // Validate: all dimensions must be positive
   for (size_t i = 0; i < shape.size(); ++i) {
-    if (shape[i] <= 0) {
-      CAFFE_FFI_LOG_ERROR << "SetShapeOnly: invalid shape dimension " << shape[i]
-                          << " at axis " << i;
-      throw std::invalid_argument("SetShapeOnly: all dimensions must be positive");
-    }
+    CAFFE_FFI_CHECK_VALUE_GT(shape[i], 0)
+        << "Blob#" << id_ << " SetShapeOnly: dimension " << i
+        << " is " << shape[i] << " (must be positive)";
   }
 
-  // Store shape metadata
+  // Store shape metadata without allocating data tensor
   shape_only_.assign(shape.data(), shape.data() + shape.size());
   is_lazy_allocated_ = true;
 
-  // data_tensor_ and diff_tensor_ remain undefined
+  // Compute count for log
+  int64_t total_count = 1;
+  for (size_t i = 0; i < shape.size(); ++i) total_count *= shape[i];
+
   CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
-                    << " SetShapeOnly: shape=["
-                    << shape_only_ << "]"
-                    << " count=" << (shape_only_.empty() ? 0 :
-                        std::accumulate(shape_only_.begin(), shape_only_.end(),
-                                        1LL, std::multiplies<int64_t>()));
+                    << " SetShapeOnly: shape=" << ShapeToString(shape)
+                    << " count=" << total_count
+                    << " (no data allocated, data_tensor_ remains undefined)";
 }
 ```
 
-### 2.3 受影响的方法修改
+### 2.3 受影响的方法（已实现）
 
-以下方法需要检查 `is_lazy_allocated_` 标志：
+以下方法已检查 `is_lazy_allocated_` 标志：
 
-| 方法 | 当前行为 | 修改后行为 |
-|------|---------|-----------|
-| `shape()` | `Shape(data_tensor_.shape())` | `is_lazy_allocated_ ? Shape(shape_only_) : Shape(data_tensor_.shape())` |
-| `num_axes()` | `data_tensor_.ndim()` | `is_lazy_allocated_ ? shape_only_.size() : data_tensor_.ndim()` |
-| `count()` | `data_tensor_.numel()` | `is_lazy_allocated_ ? product(shape_only_) : data_tensor_.numel()` |
-| `shape(int)` | `data_tensor_.size(...)` | `is_lazy_allocated_ ? shape_only_[index] : data_tensor_.size(...)` |
-| `cpu_data()` | `data_tensor_.data_ptr()` | 不变（undefined tensor 返回 nullptr） |
-| `cpu_mutable_data()` | COW + data_ptr | 不变（undefined tensor 的 data_ptr 为 nullptr） |
-| `Reshape()` | 分配新内存 | 需清除 `is_lazy_allocated_` 标志 |
-| `ShareData()` | 替换 data_tensor_ | 需清除 `is_lazy_allocated_` 标志 |
-| `data_tensor()` | 返回 data_tensor_ | 不变（返回 undefined Tensor，下游层可检查 `defined()`） |
+| 方法 | 修改后行为 | 实现位置 |
+|------|-----------|---------|
+| `shape()` | lazy 时从 `shape_only_` 构造 `Shape`，否则委托 `data_tensor_.shape()` | blob.hpp 内联 |
+| `num_axes()` | lazy 时返回 `shape_only_.size()`，否则 `data_tensor_.ndim()` | blob.hpp 内联 |
+| `count()` | lazy 时手动计算 `shape_only_` 乘积，否则 `data_tensor_.numel()` | blob.hpp 内联 |
+| `count(int)` | lazy 时从 `shape_only_[canonical:]` 计算，否则 `Count(data_tensor_.shape(), ...)` | blob.hpp 内联 |
+| `count(int,int)` | lazy 时从 `shape_only_[start:end)` 计算，否则 `Count(data_tensor_.shape(), ...)` | blob.hpp 内联 |
+| `shape(int)` | lazy 时通过 `CanonicalAxisIndex` 索引 `shape_only_`，否则 `data_tensor_.size(...)` | blob.hpp 内联（不变，`num_axes()` 已覆盖 lazy） |
+| `cpu_data()` | lazy 时 `data_tensor_.data_ptr()` 返回 nullptr（未定义 tensor） | blob.hpp 内联（不变） |
+| `cpu_mutable_data()` | **新增防御性分配**：lazy 时自动调用 `NewCPUTensor` 分配内存并清除 lazy 标志 | blob.hpp 内联 |
+| `cpu_mutable_diff()` | 同上（diff 路径） | blob.hpp 内联 |
+| `Reshape(ShapeView)` | 清除 `is_lazy_allocated_` 和 `shape_only_` | blob.cpp |
+| `ShareData()` | 清除 `is_lazy_allocated_` 和 `shape_only_` | blob.cpp |
+| `ShareDiff()` | 同上 | blob.cpp |
+| `FromProto()` | 通过调用 `Reshape()` 间接触发清除 | blob.cpp（不变）
+| `data_tensor()` | 返回 `data_tensor_`（lazy 时 undefined） | blob.hpp 内联（不变） |
 
 ### 2.4 生命周期状态机
 
@@ -146,33 +152,44 @@ void Blob::SetShapeOnly(ShapeView shape) {
 
 ## 3. SplitLayer 集成
 
-### 3.1 Reshape 修改
+### 3.1 Reshape 修改（已实现）
 
 ```cpp
-// split_layer.cpp
+// split_layer.cpp — 实际实现
 constexpr int kLazyReshapeThreshold = 16;
 
 void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
-  int count = bottom[0]->count();
-  int num_top = static_cast<int>(top.size());
+  // ... (existing code: count, num_top, timing, bottom shape logging) ...
 
-  if (num_top >= kLazyReshapeThreshold) {
-    // Phase 3.1: Lazy allocation — only set shape metadata
-    for (int i = 0; i < num_top; ++i) {
-      top[i]->SetShapeOnly(bottom[0]->shape());
+  for (int i = 0; i < num_top; ++i) {
+#ifdef CAFFE_FFI_ENABLE_COW_PHASE3
+    if (num_top >= kLazyReshapeThreshold) {
+      // Phase 3.1: Lazy allocation — store shape only, no memory allocation.
+      // Forward() will replace the lazy tensor with ShareData().
+      auto bottom_shape = bottom[0]->shape();
+      top[i]->SetShapeOnly(ShapeView(bottom_shape.data(), bottom_shape.size()));
+      continue;
     }
-    total_alloc_bytes = 0;  // No memory allocated in Reshape
-  } else {
-    // Phase 2 behavior: full allocation (unchanged)
-    for (int i = 0; i < num_top; ++i) {
+#endif
+    if (num_top < kLogAggregateThreshold) {
+      // Phase 2: per-top ReshapeLike with timing and log
+      // ...
+    } else {
+      // Phase 3.0: ReshapeLike, log aggregation
       top[i]->ReshapeLike(*bottom[0]);
     }
-    total_alloc_bytes = num_top * count * static_cast<int64_t>(sizeof(float));
   }
-  // ... summary log unchanged
+
+  // Summary [SPLIT-PERF] log includes lazy_reshape=yes/no flag
+  // total_alloc_bytes = 0 for lazy path (no allocation in Reshape)
 }
 ```
+
+**关键点**:
+- `kLazyReshapeThreshold = 16` 与 `kLogAggregateThreshold = 32` 形成三级分层：N<16 逐 top 日志，16≤N<32 跳过日志，N≥32 惰性分配
+- `#ifdef CAFFE_FFI_ENABLE_COW_PHASE3` 控制编译期开关，`OFF` 时完整回退到 Phase 2 行为
+- `SetShapeOnly` 后 `continue` 跳过 `ReshapeLike`，`total_alloc_bytes` 保持 0
 
 ### 3.2 Forward 兼容性
 
@@ -499,9 +516,10 @@ class TestSplitLazyReshape:
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|---------|
 | 下游层在 Reshape 阶段假设 data_tensor 已定义 | 中 | 高 | 在 Split 的 Forward 之后才调用下游层 Reshape，此时 ShareData 已完成 |
-| `shape()` 返回类型变化导致调用方编译错误 | 低 | 中 | `Shape(shape_only_)` 需要构造 `Shape` 对象（额外开销），但调用频率低 |
-| `count(int)` 的 `Count()` 辅助函数期望 Tensor shape | 低 | 低 | 实现 `Count(shape_only_, start_axis)` 重载 |
+| `cpu_mutable_data()` 在 lazy blob 上返回 nullptr 导致 crash | 低 | 高 | **已实现防御性分配**：`cpu_mutable_data()` 在 lazy 时自动调用 `NewCPUTensor` 分配内存并清除 lazy 标志 |
+| `shape()` 返回类型变化导致调用方编译错误 | 低 | 中 | `Shape(shape_only_.begin(), shape_only_.end())` 构造 `Shape` 对象（额外开销极小） |
 | 非 Split 层误用 `SetShapeOnly()` | 低 | 中 | 文档明确标注为 Split 专用 API，通过命名和注释限制使用范围 |
+| 大 N 场景下 `count()` 手动乘积性能 | 低 | 低 | 仅 4 维（NCHW），乘积计算 O(4) 可忽略 |
 
 ---
 
@@ -521,3 +539,44 @@ class TestSplitLazyReshape:
 ```
 
 `OFF` 时保持 Phase 2 行为，零风险回退。
+
+---
+
+## 7. FFI 绑定
+
+```cpp
+// _caffe_ffi.cc
+.def("set_shape_only", &Blob::SetShapeOnly,
+     "Set shape metadata only, without allocating data memory (Phase 3.1 lazy Reshape)")
+.def("is_lazy_allocated", &Blob::IsLazyAllocated,
+     "Check if Blob is in lazy-allocation mode (Phase 3.1)")
+```
+
+Python 调用方式：
+```python
+blob = caffe_ffi.Blob()
+blob.set_shape_only([32, 64, 112, 112])  # 仅设置 shape，不分配内存
+assert blob.is_lazy_allocated()
+assert blob.num_axes() == 4
+```
+
+---
+
+## 8. 与 Phase 3.0 的协同
+
+| 维度 | Phase 3.0 (日志聚合) | Phase 3.1 (惰性 Reshape) |
+|------|---------------------|-------------------------|
+| 阈值 | `kLogAggregateThreshold = 32` | `kLazyReshapeThreshold = 16` |
+| 触发条件 | N ≥ 32 | N ≥ 16 |
+| 编译开关 | 无（始终启用） | `CAFFE_FFI_ENABLE_COW_PHASE3` |
+| 效果 | 跳过逐 top 日志，减少 ~200→6 行 | 跳过逐 top 分配，N=100 省 ~800KB 峰值 |
+| 三级分层 | N<32: 逐 top 日志 | N<16: 逐 top 分配+日志 |
+|            | 16≤N<32: 正常分配，无日志 | 16≤N<32: SetShapeOnly，无日志 |
+|            | N≥32: 正常分配，聚合日志 | N≥32: SetShapeOnly，聚合日志 |
+
+---
+
+## 9. Changelog
+
+- **v1.0** (2026-07-31): 初始设计 — 草稿阶段
+- **v1.1** (2026-07-31): 实现完成 — 更新为实际代码状态，更新方法表、风险矩阵、SplitLayer 集成代码，新增 FFI 绑定章节、Phase 3.0 协同表
