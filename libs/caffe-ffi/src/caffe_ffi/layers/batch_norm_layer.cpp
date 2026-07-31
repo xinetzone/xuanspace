@@ -38,7 +38,7 @@ void BatchNormLayer::LayerSetUp(const std::vector<Blob*>& bottom,
     this->blobs_[1] = make_object<Blob>(sz);
     std::vector<int64_t> one = {1};
     this->blobs_[2] = make_object<Blob>(one);
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[2]->count()), 1.0f, this->blobs_[2]->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[2]->count()), 1.0f, this->blobs_[2]->cpu_mutable_data());
     CAFFE_FFI_TENSOR_LOG << "BatchNorm: created mean blob shape=[" << channels_ << "]";
     CAFFE_FFI_TENSOR_LOG << "BatchNorm: created variance blob shape=[" << channels_ << "]";
     CAFFE_FFI_TENSOR_LOG << "BatchNorm: created scale factor blob shape=[1] (initialized to 1.0)";
@@ -86,7 +86,7 @@ void BatchNormLayer::Reshape(const std::vector<Blob*>& bottom,
 void BatchNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                   const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int num = static_cast<int>(bottom[0]->shape(0));
   const int channels = channels_;
   int spatial_dim = static_cast<int>(bottom[0]->count(2));

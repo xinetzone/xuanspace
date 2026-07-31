@@ -33,7 +33,7 @@ void BiasLayer::LayerSetUp(const std::vector<Blob*>& bottom,
       bias_shape.push_back(bottom[0]->shape(axis_ + i));
     }
     this->blobs_[0] = make_object<Blob>(bias_shape);
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, this->blobs_[0]->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, this->blobs_[0]->cpu_mutable_data());
 
     std::ostringstream bias_shape_ss;
     for (size_t i = 0; i < bias_shape.size(); ++i) {
@@ -88,7 +88,7 @@ void BiasLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const float* bias_data = (bottom.size() > 1) ? bottom[1]->cpu_data()
                           : this->blobs_[0]->cpu_data();
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int count = static_cast<int>(bottom[0]->count());
 
   CAFFE_FFI_LAYER_LOG << "Bias Forward: count=" << count

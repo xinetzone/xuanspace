@@ -20,7 +20,7 @@ void SoftmaxLayer::Reshape(const std::vector<Blob*>& bottom,
   top[0]->ReshapeLike(*bottom[0]);
   std::vector<int64_t> mult_dims = {bottom[0]->shape(softmax_axis_)};
   sum_multiplier_ = make_object<Blob>(mult_dims);
-  float* multiplier_data = sum_multiplier_->cpu_data();
+  float* multiplier_data = sum_multiplier_->cpu_mutable_data();
   caffe_set_fp32(static_cast<size_t>(sum_multiplier_->count()), 1.0f, multiplier_data);
   outer_num_ = static_cast<int>(bottom[0]->count(0, softmax_axis_));
   inner_num_ = static_cast<int>(bottom[0]->count(softmax_axis_ + 1));
@@ -54,8 +54,8 @@ void SoftmaxLayer::Reshape(const std::vector<Blob*>& bottom,
 void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
-  float* scale_data = scale_->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
+  float* scale_data = scale_->cpu_mutable_data();
   int channels = static_cast<int>(bottom[0]->shape(softmax_axis_));
   int dim = channels * inner_num_;
   caffe_copy_fp32(static_cast<size_t>(bottom[0]->count()), bottom_data, top_data);

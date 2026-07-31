@@ -57,11 +57,11 @@ void ScaleLayer::LayerSetUp(const std::vector<Blob*>& bottom,
       this->blobs_.resize(1);
     }
     this->blobs_[0] = make_object<Blob>(scale_shape);
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 1.0f, this->blobs_[0]->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 1.0f, this->blobs_[0]->cpu_mutable_data());
     CAFFE_FFI_TENSOR_LOG << "Scale: created scale blob shape=[" << scale_shape_ss.str() << "] (initialized to 1.0)";
     if (bias_term_) {
       this->blobs_[1] = make_object<Blob>(scale_shape);
-      caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f, this->blobs_[1]->cpu_data());
+      caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f, this->blobs_[1]->cpu_mutable_data());
       CAFFE_FFI_TENSOR_LOG << "Scale: created bias blob shape=[" << scale_shape_ss.str() << "] (initialized to 0.0)";
     }
   } else {
@@ -99,7 +99,7 @@ void ScaleLayer::Reshape(const std::vector<Blob*>& bottom,
 void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                               const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const float* scale_data = (bottom.size() > 1) ? bottom[1]->cpu_data()
                            : this->blobs_[0]->cpu_data();
   const int count = static_cast<int>(bottom[0]->count());

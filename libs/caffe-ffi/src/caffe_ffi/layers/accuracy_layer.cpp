@@ -64,7 +64,7 @@ void AccuracyLayer::Reshape(const std::vector<Blob*>& bottom,
   if (top.size() > 1) {
     std::vector<int64_t> per_class_shape = {static_cast<int64_t>(bottom[0]->shape(label_axis_))};
     top[1]->Reshape(per_class_shape);
-    caffe_set_fp32(static_cast<size_t>(top[1]->count()), 0.0f, top[1]->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(top[1]->count()), 0.0f, top[1]->cpu_mutable_data());
 
     std::ostringstream per_class_shape_ss;
     for (size_t i = 0; i < per_class_shape.size(); ++i) {
@@ -79,7 +79,7 @@ void AccuracyLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                  const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
   const float* bottom_label = bottom[1]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
 
   int channels = static_cast<int>(bottom[0]->shape(label_axis_));
   int dim = channels * inner_num_;

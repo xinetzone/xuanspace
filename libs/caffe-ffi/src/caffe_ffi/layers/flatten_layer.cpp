@@ -50,7 +50,7 @@ void FlattenLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   CAFFE_FFI_LAYER_LOG << "Flatten Forward: count=" << bottom[0]->count() << " (copy)";
   caffe_copy_fp32(static_cast<size_t>(bottom[0]->count()),
-                   bottom[0]->cpu_data(), top[0]->cpu_data());
+                   bottom[0]->cpu_data(), top[0]->cpu_mutable_data());
 }
 
 REGISTER_LAYER_CLASS(Flatten);

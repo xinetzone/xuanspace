@@ -143,7 +143,7 @@ TEST(NetTest, ForwardSingleInput) {
   ObjectPtr<Blob> blob = net->blob_by_name("data");
   EXPECT_TRUE(blob != nullptr);
   blob->Reshape(ShapeView({1, 2}));
-  float* data = blob->cpu_data();
+  float* data = blob->cpu_mutable_data();
   data[0] = -1.0f;
   data[1] = 2.0f;
   Map<String, ObjectPtr<Blob>> outputs = net->Forward({});

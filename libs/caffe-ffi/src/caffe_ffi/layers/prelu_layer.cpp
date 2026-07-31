@@ -40,12 +40,12 @@ void PReLULayer::LayerSetUp(const std::vector<Blob*>& bottom,
       this->blobs_[0] = make_object<Blob>(std::vector<int64_t>{channels_});
       CAFFE_FFI_TENSOR_LOG << "PReLU: created slope blob (per-channel) shape=[" << channels_ << "]";
     }
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.25f, this->blobs_[0]->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.25f, this->blobs_[0]->cpu_mutable_data());
     if (param.has_filler()) {
       const caffe::FillerParameter& filler = param.filler();
       float value = filler.value();
       CAFFE_FFI_LAYER_LOG << "PReLU: using custom filler value=" << value;
-      caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), value, this->blobs_[0]->cpu_data());
+      caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), value, this->blobs_[0]->cpu_mutable_data());
     }
   }
   this->param_propagate_down_.resize(this->blobs_.size(), true);
@@ -88,7 +88,7 @@ void PReLULayer::Reshape(const std::vector<Blob*>& bottom,
 void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                               const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   const float* slope_data = this->blobs_[0]->cpu_data();
 

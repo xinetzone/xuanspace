@@ -33,7 +33,7 @@ void DropoutLayer::Reshape(const std::vector<Blob*>& bottom,
 void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   const float dropout_ratio = this->layer_param_.dropout_param().dropout_ratio();
   CAFFE_FFI_LAYER_LOG << "Dropout Forward: count=" << count

@@ -68,7 +68,7 @@ void SoftmaxWithLossLayer::Reshape(const std::vector<Blob*>& bottom,
 
   std::vector<int64_t> mult_dims = {bottom[0]->shape(softmax_axis_)};
   sum_multiplier_ = make_object<Blob>(mult_dims);
-  caffe_set_fp32(static_cast<size_t>(sum_multiplier_->count()), 1.0f, sum_multiplier_->cpu_data());
+  caffe_set_fp32(static_cast<size_t>(sum_multiplier_->count()), 1.0f, sum_multiplier_->cpu_mutable_data());
   CAFFE_FFI_TENSOR_LOG << "SoftmaxWithLoss: created sum_multiplier_ shape=[" << mult_dims[0] << "] (initialized to 1.0)";
 
   std::vector<int64_t> scale_dims;
@@ -116,9 +116,9 @@ void SoftmaxWithLossLayer::Reshape(const std::vector<Blob*>& bottom,
 void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                         const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* prob_data = prob_->cpu_data();
-  float* top_data = top[0]->cpu_data();
-  float* scale_data = scale_->cpu_data();
+  float* prob_data = prob_->cpu_mutable_data();
+  float* top_data = top[0]->cpu_mutable_data();
+  float* scale_data = scale_->cpu_mutable_data();
 
   int channels = static_cast<int>(bottom[0]->shape(softmax_axis_));
   int dim = channels * inner_num_;
@@ -181,7 +181,7 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                         << " total_loss=" << loss
                         << " avg_loss=" << top_data[0];
     if (top.size() == 2) {
-      caffe_copy_fp32(static_cast<size_t>(prob_->count()), prob_data, top[1]->cpu_data());
+      caffe_copy_fp32(static_cast<size_t>(prob_->count()), prob_data, top[1]->cpu_mutable_data());
     }
   } else {
     caffe_copy_fp32(static_cast<size_t>(prob_->count()), prob_data, top_data);

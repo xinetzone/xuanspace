@@ -135,7 +135,7 @@ void ConvolutionLayer::Reshape(const std::vector<Blob*>& bottom,
   if (bias_term_) {
     std::vector<int64_t> bias_shape = {1, num_output_, 1, 1};
     bias_multiplier_ = make_object<Blob>(std::vector<int64_t>{conv_out_spatial_dim_});
-    caffe_set_fp32(static_cast<size_t>(conv_out_spatial_dim_), 1.0f, bias_multiplier_->cpu_data());
+    caffe_set_fp32(static_cast<size_t>(conv_out_spatial_dim_), 1.0f, bias_multiplier_->cpu_mutable_data());
     CAFFE_FFI_TENSOR_LOG << "Convolution: created bias_multiplier shape=["
                          << conv_out_spatial_dim_ << "]";
   }
@@ -152,10 +152,10 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                     const std::vector<Blob*>& top) {
   const float* weight = this->blobs_[0]->cpu_data();
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   float* col_buff = nullptr;
   if (!is_1x1_) {
-    col_buff = col_buffer_->cpu_data();
+    col_buff = col_buffer_->cpu_mutable_data();
   }
 
   const int num = static_cast<int>(bottom[0]->shape(0));

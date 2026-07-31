@@ -76,7 +76,7 @@ void ConcatLayer::Reshape(const std::vector<Blob*>& bottom,
 
 void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                const std::vector<Blob*>& top) {
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int num_bottoms = static_cast<int>(bottom.size());
   const int64_t total_concat = top[0]->shape(concat_axis_);
 

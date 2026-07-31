@@ -208,7 +208,7 @@ Map<String, ObjectPtr<Blob>> Net::Forward(const Map<String, Tensor>& inputs) {
         blob->Reshape(shape);
       }
 
-      float* dst = blob->cpu_data();
+      float* dst = blob->cpu_mutable_data();
       const float* src = static_cast<const float*>(data.data_ptr());
       int64_t nbytes = data_size * sizeof(float);
       CAFFE_FFI_TENSOR_LOG << "Forward: memcpy " << data_size << " input elements ("

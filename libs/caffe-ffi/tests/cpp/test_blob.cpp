@@ -121,7 +121,7 @@ TEST(BlobTest, SetDataWithTensorRoundTrip) {
   Blob b(shape);
 
   // Write test data via cpu_data
-  float* data = b.cpu_data();
+  float* data = b.cpu_mutable_data();
   for (int i = 0; i < 6; ++i) {
     data[i] = static_cast<float>(i) * 1.5f;
   }
@@ -136,7 +136,7 @@ TEST(BlobTest, SetDataWithTensorRoundTrip) {
 TEST(BlobTest, CpuDataWriteAndRead) {
   std::vector<int64_t> shape = {4};
   Blob b(shape);
-  float* data = b.cpu_data();
+  float* data = b.cpu_mutable_data();
   data[0] = 1.0f;
   data[1] = 2.0f;
   data[2] = 3.0f;
@@ -150,7 +150,7 @@ TEST(BlobTest, CpuDataWriteAndRead) {
 TEST(BlobTest, CpuDiffWriteAndRead) {
   std::vector<int64_t> shape = {3};
   Blob b(shape);
-  float* diff = b.cpu_diff();
+  float* diff = b.cpu_mutable_diff();
   diff[0] = 0.1f;
   diff[1] = 0.2f;
   diff[2] = 0.3f;
@@ -174,10 +174,10 @@ TEST(BlobTest, ObjectPtrRefCounting) {
 TEST(BlobTest, UpdateSubtractsDiffFromData) {
   std::vector<int64_t> shape = {2};
   Blob b(shape);
-  b.cpu_data()[0] = 10.0f;
-  b.cpu_data()[1] = 20.0f;
-  b.cpu_diff()[0] = 1.0f;
-  b.cpu_diff()[1] = 2.0f;
+  b.cpu_mutable_data()[0] = 10.0f;
+  b.cpu_mutable_data()[1] = 20.0f;
+  b.cpu_mutable_diff()[0] = 1.0f;
+  b.cpu_mutable_diff()[1] = 2.0f;
   b.Update();
   EXPECT_NEAR(static_cast<double>(b.cpu_data()[0]), 9.0, 1e-6);
   EXPECT_NEAR(static_cast<double>(b.cpu_data()[1]), 18.0, 1e-6);
@@ -217,7 +217,7 @@ TEST(BlobTest, NegativeAxisIndex) {
 TEST(BlobTest, GetDiffSetDiffRoundTrip) {
   std::vector<int64_t> shape = {2, 2};
   Blob b(shape);
-  float* diff = b.cpu_diff();
+  float* diff = b.cpu_mutable_diff();
   diff[0] = 0.5f;
   diff[1] = 1.5f;
   diff[2] = 2.5f;

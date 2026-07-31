@@ -40,7 +40,7 @@ void ELULayer::Reshape(const std::vector<Blob*>& bottom,
 void ELULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                             const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   CAFFE_FFI_LAYER_LOG << "ELU Forward_cpu: count=" << count
                       << " alpha=" << alpha_;

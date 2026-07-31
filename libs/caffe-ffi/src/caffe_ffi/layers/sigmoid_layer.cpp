@@ -34,7 +34,7 @@ void SigmoidLayer::Reshape(const std::vector<Blob*>& bottom,
 void SigmoidLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   CAFFE_FFI_LAYER_LOG << "Sigmoid Forward_cpu: count=" << count;
   for (int64_t i = 0; i < count; ++i) {

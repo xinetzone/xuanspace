@@ -123,7 +123,7 @@ void Layer::SetLossWeights(const std::vector<Blob*>& top) {
       if (loss_weight == 0.0f) continue;
       this->set_loss(static_cast<int>(top_id), loss_weight);
       const int64_t count = top[top_id]->count();
-      float* loss_multiplier = top[top_id]->cpu_diff();
+      float* loss_multiplier = top[top_id]->cpu_mutable_diff();
       caffe_set_fp32(static_cast<size_t>(count), loss_weight, loss_multiplier);
     }
   }

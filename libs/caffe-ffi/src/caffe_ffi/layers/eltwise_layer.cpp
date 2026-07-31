@@ -84,7 +84,7 @@ void EltwiseLayer::Reshape(const std::vector<Blob*>& bottom,
 void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   const int64_t count = bottom[0]->count();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int num_bottoms = static_cast<int>(bottom.size());
 
   const char* op_name = "UNKNOWN";

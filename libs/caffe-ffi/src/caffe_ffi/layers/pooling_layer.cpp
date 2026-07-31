@@ -120,7 +120,7 @@ void PoolingLayer::Reshape(const std::vector<Blob*>& bottom,
 void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int num = static_cast<int>(bottom[0]->shape(0));
   const int top_count = static_cast<int>(top[0]->count());
 

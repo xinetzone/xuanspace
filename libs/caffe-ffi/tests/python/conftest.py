@@ -336,7 +336,12 @@ _P2B_TEST_CLASSES = {
     "TestBlobCOWApi", "TestSplitCOWBehavior",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES
+_P3A_TEST_CLASSES = {
+    "TestConvolutionLayers", "TestPoolingLayers", "TestBatchNormLayers",
+    "TestConvPoolBNCombination",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES
 
 
 @pytest.fixture(autouse=True)

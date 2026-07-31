@@ -33,7 +33,7 @@ void ReLULayer::Reshape(const std::vector<Blob*>& bottom,
 void ReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                             const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_data();
+  float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   float negative_slope = this->layer_param_.relu_param().negative_slope();
   CAFFE_FFI_LAYER_LOG << "ReLU Forward_cpu: count=" << count
