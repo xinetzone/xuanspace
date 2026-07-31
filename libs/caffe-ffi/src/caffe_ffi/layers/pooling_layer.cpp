@@ -1,6 +1,7 @@
 #include "caffe_ffi/layers/pooling_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <sstream>
@@ -106,6 +107,14 @@ void PoolingLayer::Reshape(const std::vector<Blob*>& bottom,
   std::vector<int64_t> top_shape = {bottom[0]->shape(0), channels_, pooled_height_, pooled_width_};
   top[0]->Reshape(top_shape);
 
+  // Allocate max_idx_ for MAX pooling: stores flat index (within channel plane) of the max value
+  // for each pooling window, used by Backward_cpu to route gradients.
+  if (pool_method_ == caffe::PoolingParameter::MAX) {
+    max_idx_ = make_object<Blob>(top_shape);
+    CAFFE_FFI_TENSOR_LOG << "Pooling: created max_idx_ blob shape=[" << top_shape[0]
+                         << "," << channels_ << "," << pooled_height_ << "," << pooled_width_ << "]";
+  }
+
   std::ostringstream top_shape_ss;
   for (int i = 0; i < static_cast<int>(top_shape.size()); ++i) {
     if (i > 0) top_shape_ss << ", ";
@@ -137,7 +146,130 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " pooled=[" << pooled_height_ << "," << pooled_width_ << "]"
                       << " top_count=" << top_count;
 
-  caffe_set_fp32(static_cast<size_t>(top_count), (pool_method_ == caffe::PoolingParameter::AVE) ? 0.0f : -std::numeric_limits<float>::max(), top_data);
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+
+  // Initialize top_data and max_idx_
+  caffe_set_fp32(static_cast<size_t>(top_count),
+                 (pool_method_ == caffe::PoolingParameter::AVE) ? 0.0f : -std::numeric_limits<float>::max(),
+                 top_data);
+  float* mask_data = nullptr;
+  if (pool_method_ == caffe::PoolingParameter::MAX) {
+    mask_data = max_idx_->cpu_mutable_data();
+    caffe_set_fp32(static_cast<size_t>(top_count), -1.0f, mask_data);
+  }
+
+  // Main pooling loop
+  for (int n = 0; n < num; ++n) {
+    for (int c = 0; c < channels_; ++c) {
+      for (int ph = 0; ph < pooled_height_; ++ph) {
+        for (int pw = 0; pw < pooled_width_; ++pw) {
+          int hstart = ph * stride_h_ - pad_h_;
+          int wstart = pw * stride_w_ - pad_w_;
+          int hend = std::min(hstart + kernel_h_, height_);
+          int wend = std::min(wstart + kernel_w_, width_);
+          hstart = std::max(hstart, 0);
+          wstart = std::max(wstart, 0);
+          const int pool_index = (n * channels_ + c) * pooled_height_ * pooled_width_
+                                 + ph * pooled_width_ + pw;
+
+          if (pool_method_ == caffe::PoolingParameter::MAX) {
+            float max_val = -std::numeric_limits<float>::max();
+            int max_idx = -1;
+            for (int h = hstart; h < hend; ++h) {
+              for (int w = wstart; w < wend; ++w) {
+                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
+                float val = bottom_data[index];
+                in_min = std::min(in_min, val);
+                in_max = std::max(in_max, val);
+                if (val > max_val) {
+                  max_val = val;
+                  max_idx = h * width_ + w;  // flat index within channel plane
+                }
+              }
+            }
+            top_data[pool_index] = max_val;
+            mask_data[pool_index] = static_cast<float>(max_idx);
+          } else if (pool_method_ == caffe::PoolingParameter::AVE) {
+            float sum = 0.0f;
+            int count = 0;
+            for (int h = hstart; h < hend; ++h) {
+              for (int w = wstart; w < wend; ++w) {
+                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
+                float val = bottom_data[index];
+                in_min = std::min(in_min, val);
+                in_max = std::max(in_max, val);
+                sum += val;
+                ++count;
+              }
+            }
+            top_data[pool_index] = (count > 0) ? sum / count : 0.0f;
+          }
+        }
+      }
+    }
+  }
+
+  // out值域统计
+  for (int i = 0; i < top_count; ++i) {
+    out_min = std::min(out_min, top_data[i]);
+    out_max = std::max(out_max, top_data[i]);
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[POOL-PERF] " << this->name()
+                       << " Pooling forward: num=" << num
+                       << " channels=" << channels_
+                       << " pool=" << pool_method_str
+                       << " kernel=[" << kernel_h_ << "," << kernel_w_ << "]"
+                       << " stride=[" << stride_h_ << "," << stride_w_ << "]"
+                       << " pad=[" << pad_h_ << "," << pad_w_ << "]"
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
+}
+
+void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) {
+    CAFFE_FFI_LAYER_LOG << "Pooling Backward_cpu: propagate_down[0]=false, skipping";
+    return;
+  }
+
+  const float* top_diff = top[0]->cpu_diff();
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();
+  const int num = static_cast<int>(bottom[0]->shape(0));
+  const int bottom_count = static_cast<int>(bottom[0]->count());
+
+  const char* pool_method_str = "UNKNOWN";
+  if (pool_method_ == caffe::PoolingParameter::MAX) {
+    pool_method_str = "MAX";
+  } else if (pool_method_ == caffe::PoolingParameter::AVE) {
+    pool_method_str = "AVE";
+  }
+  CAFFE_FFI_LAYER_LOG << "Pooling Backward: num=" << num
+                      << " pool_method=" << pool_method_str
+                      << " channels=" << channels_
+                      << " bottom_count=" << bottom_count;
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  // Zero out bottom diff
+  caffe_set_fp32(static_cast<size_t>(bottom_count), 0.0f, bottom_diff);
+
+  float diff_in_min = std::numeric_limits<float>::max();
+  float diff_in_max = -std::numeric_limits<float>::max();
+  float diff_out_min = std::numeric_limits<float>::max();
+  float diff_out_max = -std::numeric_limits<float>::max();
+
+  const float* mask_data = (pool_method_ == caffe::PoolingParameter::MAX) ? max_idx_->cpu_data() : nullptr;
 
   for (int n = 0; n < num; ++n) {
     for (int c = 0; c < channels_; ++c) {
@@ -149,37 +281,53 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
           int wend = std::min(wstart + kernel_w_, width_);
           hstart = std::max(hstart, 0);
           wstart = std::max(wstart, 0);
-          const int pool_index = ph * pooled_width_ + pw;
+          const int pool_index = (n * channels_ + c) * pooled_height_ * pooled_width_
+                                 + ph * pooled_width_ + pw;
+          const float dy = top_diff[pool_index];
+
+          diff_in_min = std::min(diff_in_min, dy);
+          diff_in_max = std::max(diff_in_max, dy);
 
           if (pool_method_ == caffe::PoolingParameter::MAX) {
-            float max_val = -std::numeric_limits<float>::max();
-            for (int h = hstart; h < hend; ++h) {
-              for (int w = wstart; w < wend; ++w) {
-                const int index = h * width_ + w;
-                if (bottom_data[index] > max_val) {
-                  max_val = bottom_data[index];
-                }
-              }
+            // Route gradient to the max-pooling winner
+            const int winner = static_cast<int>(mask_data[pool_index]);
+            if (winner >= 0) {
+              const int bottom_idx = (n * channels_ + c) * height_ * width_ + winner;
+              bottom_diff[bottom_idx] += dy;
+              diff_out_min = std::min(diff_out_min, bottom_diff[bottom_idx]);
+              diff_out_max = std::max(diff_out_max, bottom_diff[bottom_idx]);
             }
-            top_data[pool_index] = max_val;
           } else if (pool_method_ == caffe::PoolingParameter::AVE) {
-            float sum = 0.0f;
-            int count = 0;
+            // Distribute gradient equally across the pooling window
+            const int pool_size = (hend - hstart) * (wend - wstart);
+            const float scale = (pool_size > 0) ? dy / pool_size : 0.0f;
             for (int h = hstart; h < hend; ++h) {
               for (int w = wstart; w < wend; ++w) {
-                const int index = h * width_ + w;
-                sum += bottom_data[index];
-                ++count;
+                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
+                bottom_diff[index] += scale;
+                diff_out_min = std::min(diff_out_min, bottom_diff[index]);
+                diff_out_max = std::max(diff_out_max, bottom_diff[index]);
               }
             }
-            top_data[pool_index] = (count > 0) ? sum / count : 0.0f;
           }
         }
       }
-      bottom_data += height_ * width_;
-      top_data += pooled_height_ * pooled_width_;
     }
   }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[POOL-PERF] " << this->name()
+                       << " Pooling backward: num=" << num
+                       << " channels=" << channels_
+                       << " pool=" << pool_method_str
+                       << " kernel=[" << kernel_h_ << "," << kernel_w_ << "]"
+                       << " stride=[" << stride_h_ << "," << stride_w_ << "]"
+                       << " pad=[" << pad_h_ << "," << pad_w_ << "]"
+                       << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
+                       << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Pooling);

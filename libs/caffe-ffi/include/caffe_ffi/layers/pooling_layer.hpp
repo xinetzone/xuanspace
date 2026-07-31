@@ -7,6 +7,8 @@
 #include "caffe_ffi/layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 
+#include <tvm/ffi/memory.h>
+
 namespace caffe_ffi {
 
 class PoolingLayer : public Layer {
@@ -25,6 +27,9 @@ class PoolingLayer : public Layer {
 
  protected:
   void Forward_cpu(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  void Backward_cpu(const std::vector<Blob*>& top,
+                    const std::vector<bool>& propagate_down,
+                    const std::vector<Blob*>& bottom) override;
 
   int kernel_h_, kernel_w_;
   int stride_h_, stride_w_;
@@ -35,6 +40,7 @@ class PoolingLayer : public Layer {
   bool global_pooling_;
   caffe::PoolingParameter::PoolMethod pool_method_;
   caffe::PoolingParameter::RoundMode round_mode_;
+  ObjectPtr<Blob> max_idx_;  // stores max-pooling winner indices for Backward
 };
 
 }  // namespace caffe_ffi
