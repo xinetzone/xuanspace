@@ -11,6 +11,18 @@
 
 namespace caffe_ffi {
 
+/// Phase 3.0: Log aggregation threshold for Split layer.
+/// When N >= this threshold, per-top detailed logs (CAFFE_FFI_LAYER_LOG
+/// level) are skipped in both Reshape() and Forward_cpu() to prevent log
+/// flooding. The summary [SPLIT-PERF] log (CAFFE_FFI_LOG_WARN level) is
+/// always emitted regardless of N.
+///
+/// Design rationale: N=32 is chosen as the default because:
+///   - N=32 produces ~64 per-top log lines (data+diff), already noisy
+///   - N=32 is above typical CNN fan-out (1-16) but below extreme cases
+///   - Atomic op overhead for N=32 is ~640ns, still negligible
+constexpr int kLogAggregateThreshold = 32;
+
 void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
   int count = bottom[0]->count();
@@ -37,18 +49,28 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   // freeing the Reshape-allocated buffer (one alloc+free overhead but avoids
   // breaking the layer setup contract).
   for (int i = 0; i < num_top; ++i) {
-    auto t_top_start = std::chrono::high_resolution_clock::now();
-    int64_t bytes_before = top[i]->count() * static_cast<int64_t>(sizeof(float));
-    top[i]->ReshapeLike(*bottom[0]);
-    int64_t bytes_after = top[i]->count() * static_cast<int64_t>(sizeof(float));
-    auto t_top_end = std::chrono::high_resolution_clock::now();
-    double top_reshape_us = std::chrono::duration<double, std::micro>(
-        t_top_end - t_top_start).count();
-    total_alloc_bytes += (bytes_after - bytes_before);
-    CAFFE_FFI_LAYER_LOG << "Split Reshape: top[" << i << "] reshape done"
-                        << " bytes_before=" << bytes_before
-                        << " bytes_after=" << bytes_after
-                        << " reshape_time=" << top_reshape_us << "us";
+    if (num_top < kLogAggregateThreshold) {
+      auto t_top_start = std::chrono::high_resolution_clock::now();
+      int64_t bytes_before = top[i]->count() * static_cast<int64_t>(sizeof(float));
+      top[i]->ReshapeLike(*bottom[0]);
+      int64_t bytes_after = top[i]->count() * static_cast<int64_t>(sizeof(float));
+      auto t_top_end = std::chrono::high_resolution_clock::now();
+      double top_reshape_us = std::chrono::duration<double, std::micro>(
+          t_top_end - t_top_start).count();
+      total_alloc_bytes += (bytes_after - bytes_before);
+      CAFFE_FFI_LAYER_LOG << "Split Reshape: top[" << i << "] reshape done"
+                          << " bytes_before=" << bytes_before
+                          << " bytes_after=" << bytes_after
+                          << " reshape_time=" << top_reshape_us << "us";
+    } else {
+      // N >= kLogAggregateThreshold: skip per-top timing and log,
+      // compute total_alloc_bytes once from batch size.
+      top[i]->ReshapeLike(*bottom[0]);
+    }
+  }
+  // For large N, compute total_alloc_bytes once
+  if (num_top >= kLogAggregateThreshold) {
+    total_alloc_bytes = num_top * count * static_cast<int64_t>(sizeof(float));
   }
 
   auto t_reshape_end = std::chrono::high_resolution_clock::now();
@@ -166,13 +188,16 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
     if (!data_now_shared) { all_shared = false; ++not_shared_count; }
 
-    CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW): top[" << i
-                        << "] data_shared=" << (data_now_shared ? "yes" : "no")
-                        << " diff_shared=" << (diff_now_shared ? "yes" : "no")
-                        << " was_data_shared=" << (data_was_shared ? "yes" : "no")
-                        << " was_diff_shared=" << (diff_was_shared ? "yes" : "no")
-                        << " data_ptr=" << static_cast<const void*>(top[i]->cpu_data())
-                        << " bottom_ptr=" << static_cast<const void*>(bottom_data);
+    // Phase 3.0: per-top log aggregation — skip when N >= threshold
+    if (num_top < kLogAggregateThreshold) {
+      CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW): top[" << i
+                          << "] data_shared=" << (data_now_shared ? "yes" : "no")
+                          << " diff_shared=" << (diff_now_shared ? "yes" : "no")
+                          << " was_data_shared=" << (data_was_shared ? "yes" : "no")
+                          << " was_diff_shared=" << (diff_was_shared ? "yes" : "no")
+                          << " data_ptr=" << static_cast<const void*>(top[i]->cpu_data())
+                          << " bottom_ptr=" << static_cast<const void*>(bottom_data);
+    }
   }
 
   auto t_share_end = std::chrono::high_resolution_clock::now();
