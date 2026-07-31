@@ -147,9 +147,78 @@ int Net::AppendBottom(const caffe::NetParameter& param, int layer_id,
   const std::string& blob_name = layer_param.bottom(bottom_id);
   CAFFE_FFI_NET_LOG << "AppendBottom: layer[" << layer_id << "]='" << layer_param.name()
                     << "', bottom[" << bottom_id << "]='" << blob_name << "'";
+  if (available_blobs->find(blob_name) == available_blobs->end()) {
+    // Build detailed diagnostic: list all available blobs, all consumed blobs,
+    // and suggest fixes for common errors.
+    std::ostringstream available_ss;
+    bool first = true;
+    for (const auto& name : *available_blobs) {
+      if (!first) available_ss << ", ";
+      first = false;
+      available_ss << "'" << name << "'";
+    }
+    // List all known blob names (including consumed ones)
+    std::ostringstream all_blobs_ss;
+    first = true;
+    for (const auto& kv : *blob_name_to_idx) {
+      if (!first) all_blobs_ss << ", ";
+      first = false;
+      bool is_avail = available_blobs->count(kv.first) > 0;
+      all_blobs_ss << "'" << kv.first << "'"
+                   << (is_avail ? " [available]" : " [consumed]");
+    }
+    // List previously processed layers (so user can see ordering)
+    std::ostringstream prev_layers_ss;
+    for (int prev = 0; prev < layer_id; ++prev) {
+      if (prev > 0) prev_layers_ss << " -> ";
+      prev_layers_ss << param.layer(prev).name() << "(" << param.layer(prev).type() << ")";
+    }
+    // Check if this blob name appears as a top of a future layer (wrong order)
+    std::ostringstream future_producers_ss;
+    for (int future = layer_id + 1; future < param.layer_size(); ++future) {
+      for (int t = 0; t < param.layer(future).top_size(); ++t) {
+        if (param.layer(future).top(t) == blob_name) {
+          if (future_producers_ss.tellp() > 0) future_producers_ss << ", ";
+          future_producers_ss << "layer[" << future << "]='" << param.layer(future).name()
+                              << "'(" << param.layer(future).type() << ")";
+        }
+      }
+    }
+    // Check if this blob is consumed by a previous layer (needs Split)
+    std::ostringstream previous_consumers_ss;
+    for (int prev = 0; prev < layer_id; ++prev) {
+      for (int b = 0; b < param.layer(prev).bottom_size(); ++b) {
+        if (param.layer(prev).bottom(b) == blob_name) {
+          if (previous_consumers_ss.tellp() > 0) previous_consumers_ss << ", ";
+          previous_consumers_ss << "layer[" << prev << "]='" << param.layer(prev).name()
+                                << "'(" << param.layer(prev).type() << ")";
+        }
+      }
+    }
+
+    CAFFE_FFI_LOG_ERROR() << "[BLOB-NOT-FOUND] layer[" << layer_id << "]='" << layer_param.name()
+                          << "'(" << layer_param.type() << ") bottom[" << bottom_id << "]='"
+                          << blob_name << "' not available."
+                          << "\n  *** Currently available blobs (" << available_blobs->size() << "): "
+                          << available_ss.str()
+                          << "\n  *** All known blobs: " << all_blobs_ss.str()
+                          << "\n  *** Layer processing order so far: " << prev_layers_ss.str()
+                          << "\n  *** Previous consumers of '" << blob_name << "': "
+                          << (previous_consumers_ss.tellp() > 0 ? previous_consumers_ss.str() : "none")
+                          << "\n  *** Future producers of '" << blob_name << "': "
+                          << (future_producers_ss.tellp() > 0 ? future_producers_ss.str() : "none")
+                          << "\n  *** Common causes:"
+                          << "\n      1) FORGOT EXPLICIT SPLIT: caffe-ffi requires explicit Split layers when a blob"
+                          << "\n         is consumed by multiple layers (no implicit Split like native Caffe)."
+                          << "\n         Add: layer { name:'split' type:'Split' bottom:'" << blob_name << "'"
+                          << "\n              top:'consumer1_in' top:'consumer2_in' } and use the split tops."
+                          << "\n      2) LAYER ORDERING: The layer producing '" << blob_name << "' comes after this layer."
+                          << "\n         Move the producer layer before this layer in the prototxt."
+                          << "\n      3) TYPO: Check for misspelled blob name.";
+  }
   CAFFE_FFI_CHECK_KEY(available_blobs->find(blob_name) != available_blobs->end())
       << "Unknown bottom blob '" << blob_name << "' (layer '" << layer_param.name()
-      << "', bottom index " << bottom_id << ")";
+      << "', bottom index " << bottom_id << "). See [BLOB-NOT-FOUND] above.";
   int blob_idx = (*blob_name_to_idx)[blob_name];
   bottom_vecs_[layer_id][bottom_id] = blobs_[blob_idx].get();
   available_blobs->erase(blob_name);

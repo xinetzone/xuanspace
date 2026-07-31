@@ -47,12 +47,69 @@ void EltwiseLayer::LayerSetUp(const std::vector<Blob*>& bottom,
 
 void EltwiseLayer::Reshape(const std::vector<Blob*>& bottom,
                             const std::vector<Blob*>& top) {
+  // Helper lambda to format a blob's shape as "(d0, d1, ..., dn)"
+  auto shape_str = [](const Blob* b) -> std::string {
+    std::ostringstream oss;
+    oss << "(";
+    for (int i = 0; i < b->num_axes(); ++i) {
+      if (i > 0) oss << ", ";
+      oss << b->shape(i);
+    }
+    oss << ")";
+    return oss.str();
+  };
+
   for (size_t i = 1; i < bottom.size(); ++i) {
-    CAFFE_FFI_CHECK_VALUE_EQ(bottom[i]->num_axes(), bottom[0]->num_axes())
-        << "All bottom blobs must have the same number of axes.";
+    // Check number of axes first
+    if (bottom[i]->num_axes() != bottom[0]->num_axes()) {
+      std::ostringstream available_shapes;
+      for (size_t k = 0; k < bottom.size(); ++k) {
+        if (k > 0) available_shapes << "; ";
+        available_shapes << "bottom[" << k << "] shape=" << shape_str(bottom[k])
+                         << " ndim=" << bottom[k]->num_axes();
+      }
+      CAFFE_FFI_LOG_ERROR() << "[ELTWISE-SHAPE-MISMATCH] layer='" << this->name()
+                            << "' op=" << (op_ == SUM ? "SUM" : op_ == PROD ? "PROD" : "MAX")
+                            << " axis_count_mismatch: bottom[0] has " << bottom[0]->num_axes()
+                            << " axes but bottom[" << i << "] has " << bottom[i]->num_axes()
+                            << " axes."
+                            << " All bottom shapes: " << available_shapes.str()
+                            << " HINT: caffe-ffi Eltwise requires EXACT shape match (no broadcasting)."
+                            << " If you intended broadcasting (e.g. PE (1,S,D) + input (N,S,D)),"
+                            << " pre-broadcast the smaller tensor to match the larger shape in numpy"
+                            << " before feeding to the network, or use Bias/Scale layers for"
+                            << " per-channel/per-dimension operations.";
+      CAFFE_FFI_CHECK_VALUE_EQ(bottom[i]->num_axes(), bottom[0]->num_axes())
+          << "All bottom blobs must have the same number of axes (layer '"
+          << this->name() << "'). See [ELTWISE-SHAPE-MISMATCH] above.";
+    }
+    // Check each axis dimension
     for (int j = 0; j < bottom[0]->num_axes(); ++j) {
-      CAFFE_FFI_CHECK_VALUE_EQ(bottom[i]->shape(j), bottom[0]->shape(j))
-          << "All bottom blobs must have the same shape.";
+      if (bottom[i]->shape(j) != bottom[0]->shape(j)) {
+        std::ostringstream dim_detail;
+        for (int k = 0; k < bottom[0]->num_axes(); ++k) {
+          if (k > 0) dim_detail << ", ";
+          dim_detail << "axis " << k << ": bottom[0]=" << bottom[0]->shape(k)
+                     << " bottom[" << i << "]=" << bottom[i]->shape(k);
+          if (bottom[i]->shape(k) != bottom[0]->shape(k)) {
+            dim_detail << " [MISMATCH]";
+          }
+        }
+        CAFFE_FFI_LOG_ERROR() << "[ELTWISE-SHAPE-MISMATCH] layer='" << this->name()
+                              << "' op=" << (op_ == SUM ? "SUM" : op_ == PROD ? "PROD" : "MAX")
+                              << " dimension_mismatch at axis=" << j
+                              << ": bottom[0].shape(" << j << ")=" << bottom[0]->shape(j)
+                              << " but bottom[" << i << "].shape(" << j << ")=" << bottom[i]->shape(j)
+                              << ". bottom[0]=" << shape_str(bottom[0])
+                              << " bottom[" << i << "]=" << shape_str(bottom[i])
+                              << ". All axis details: " << dim_detail.str()
+                              << " HINT: caffe-ffi Eltwise requires EXACT shape match (no broadcasting)."
+                              << " If one dimension is 1 and you want numpy-style broadcasting,"
+                              << " pre-broadcast the smaller tensor in numpy before feeding to the network.";
+        CAFFE_FFI_CHECK_VALUE_EQ(bottom[i]->shape(j), bottom[0]->shape(j))
+            << "All bottom blobs must have the same shape (layer '" << this->name()
+            << "', axis " << j << "). See [ELTWISE-SHAPE-MISMATCH] above.";
+      }
     }
   }
   top[0]->ReshapeLike(*bottom[0]);

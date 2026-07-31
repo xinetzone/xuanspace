@@ -448,7 +448,18 @@ _P3B_TEST_CLASSES = {
     "TestScaleBiasEltwiseCombination",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES
+_P3C_TEST_CLASSES = {
+    "TestReLULayers", "TestSigmoidLayers", "TestTanHLayers",
+    "TestELULayers", "TestPReLULayers",
+    "TestInnerProductLayers", "TestSoftmaxLayers",
+    "TestFlattenLayers", "TestReshapeLayers",
+    "TestActivationIPCombination",
+    "TestPositionalEncoding", "TestSelfAttentionComponents",
+    "TestScaledDotProductAttention", "TestMultiHeadProjection",
+    "TestTransformerEncoderBlock",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES | _P3C_TEST_CLASSES
 
 
 @pytest.fixture(autouse=True)

@@ -1,7 +1,9 @@
 #include "caffe_ffi/layers/sigmoid_layer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -37,9 +39,32 @@ void SigmoidLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float* top_data = top[0]->cpu_mutable_data();
   const int64_t count = bottom[0]->count();
   CAFFE_FFI_LAYER_LOG << "Sigmoid Forward_cpu: count=" << count;
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float in_min = std::numeric_limits<float>::max();
+  float in_max = -std::numeric_limits<float>::max();
+  float out_min = std::numeric_limits<float>::max();
+  float out_max = -std::numeric_limits<float>::max();
+
   for (int64_t i = 0; i < count; ++i) {
-    top_data[i] = 1.0f / (1.0f + std::exp(-bottom_data[i]));
+    float x = bottom_data[i];
+    float y = 1.0f / (1.0f + std::exp(-x));
+    top_data[i] = y;
+    in_min = std::min(in_min, x);
+    in_max = std::max(in_max, x);
+    out_min = std::min(out_min, y);
+    out_max = std::max(out_max, y);
   }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
+                       << " Sigmoid forward: count=" << count
+                       << " in=[" << in_min << ", " << in_max << "]"
+                       << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
 }
 
 REGISTER_LAYER_CLASS(Sigmoid);
