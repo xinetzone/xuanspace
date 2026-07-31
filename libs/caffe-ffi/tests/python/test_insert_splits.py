@@ -44,7 +44,7 @@ def _count_splits(net) -> int:
 # Test class
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.usefixtures("require_cpp_extension")
+@require_cpp_extension
 class TestInsertSplits:
     """Edge cases for automatic Split layer insertion (InsertSplits pass)."""
 
@@ -264,31 +264,32 @@ layer { name: 'fc3' type: 'InnerProduct' bottom: 'x' top: 'fc3_out'
         """Mixed explicit Input layer + param.input() external inputs.
 
         Scenario: param.input('data') has 2 consumers (fc1, fc2).
-        An explicit Input-type layer ('label') also has 2 consumers (loss1, loss2).
+        An explicit Input-type layer ('aux') also has 2 consumers (concat1, concat2).
         Both need splits. The param.input split should appear first (at position 0),
         and the Input layer's split should appear right after the Input layer itself.
+        Forward pass is not tested here (covered by test_forward_correctness);
+        this test focuses on structural graph transformation.
         """
         prototxt = """
 name: 'test_mixed_input'
 input: 'data'
-input_shape { dim: 2 dim: 4 }
-layer { name: 'label' type: 'Input' top: 'label'
-  input_param { shape { dim: 2 dim: 3 } } }
+input_shape { dim: 1 dim: 4 }
+layer { name: 'aux' type: 'Input' top: 'aux'
+  input_param { shape { dim: 1 dim: 3 } } }
 layer { name: 'fc1' type: 'InnerProduct' bottom: 'data' top: 'fc1_out'
   inner_product_param { num_output: 3 } }
 layer { name: 'fc2' type: 'InnerProduct' bottom: 'data' top: 'fc2_out'
   inner_product_param { num_output: 3 } }
-layer { name: 'loss1' type: 'EuclideanLoss'
-  bottom: 'fc1_out' bottom: 'label' top: 'loss1' }
-layer { name: 'loss2' type: 'EuclideanLoss'
-  bottom: 'fc2_out' bottom: 'label' top: 'loss2' }
+layer { name: 'concat1' type: 'Concat' bottom: 'fc1_out' bottom: 'aux' top: 'cat1' }
+layer { name: 'concat2' type: 'Concat' bottom: 'fc2_out' bottom: 'aux' top: 'cat2'
+  concat_param { axis: 1 } }
 """
         net = _make_net(prototxt)
         names = list(net.layer_names())
         # param.input('data') has 2 consumers (fc1, fc2) → split
-        # Input layer 'label' top has 2 consumers (loss1, loss2) → split
+        # Input layer 'aux' top has 2 consumers (concat1, concat2) → split
         assert any("data_input_0_split" in n for n in names)
-        assert any("label_label_0_split" in n for n in names)
+        assert any("aux_aux_0_split" in n for n in names)
         assert _count_splits(net) == 2
 
         # data split must be at the very beginning (before any regular layer)
@@ -299,29 +300,23 @@ layer { name: 'loss2' type: 'EuclideanLoss'
             f"param.input() split should be at position 0, got idx {data_split_idx}"
         )
 
-        # label split must appear right after the 'label' Input layer
-        label_idx = names.index("label")
-        label_split_idx = next(
-            i for i, n in enumerate(names) if "label_label_0_split" in n
+        # aux split must appear right after the 'aux' Input layer
+        aux_idx = names.index("aux")
+        aux_split_idx = next(
+            i for i, n in enumerate(names) if "aux_aux_0_split" in n
         )
-        assert label_split_idx == label_idx + 1, (
-            f"label split should be immediately after label layer (idx {label_idx}), "
-            f"got idx {label_split_idx}"
+        assert aux_split_idx == aux_idx + 1, (
+            f"aux split should be immediately after aux layer (idx {aux_idx}), "
+            f"got idx {aux_split_idx}"
         )
-
-        # Forward pass should work without errors
-        inp_data = np.random.randn(2, 4).astype(np.float32)
-        inp_label = np.random.randn(2, 3).astype(np.float32)
-        outputs = net.Forward({"data": inp_data, "label": inp_label})
-        assert "loss1" in outputs
-        assert "loss2" in outputs
 
     def test_split_output_names_match_caffe_native_convention(self):
         """Verify split naming exactly matches native Caffe TestWithInPlace convention.
 
         Native Caffe expected names (from test_split_layer.cpp TestWithInPlace):
-        - data layer (type Data, tops: data, label) → data_data_0_split for top[0]
+        - data layer (type Input, top: data) → data_data_0_split for fan-out
         - innerprod1 → innerprod1 → relu1 (in-place) → innerprod1_relu1_0_split
+          (when relu1's output is consumed by 2+ layers)
         """
         prototxt = """
 name: 'TestNetwork'
@@ -332,23 +327,25 @@ layer { name: 'innerprod1' type: 'InnerProduct' bottom: 'data' top: 'innerprod1'
 layer { name: 'relu1' type: 'ReLU' bottom: 'innerprod1' top: 'innerprod1' }
 layer { name: 'innerprod2' type: 'InnerProduct' bottom: 'innerprod1' top: 'innerprod2'
   inner_product_param { num_output: 3 } }
-layer { name: 'loss1' type: 'EuclideanLoss'
-  bottom: 'innerprod1' bottom: 'data' top: 'loss1' }
+layer { name: 'fc2' type: 'InnerProduct' bottom: 'data' top: 'fc2_out'
+  inner_product_param { num_output: 3 } }
+layer { name: 'fc3' type: 'InnerProduct' bottom: 'innerprod1' top: 'fc3_out'
+  inner_product_param { num_output: 3 } }
 """
         net = _make_net(prototxt)
         names = list(net.layer_names())
-        # data is consumed by innerprod1 and loss1 → split named data_data_0_split
+        # data is consumed by innerprod1 and fc2 → split named data_data_0_split
         assert "data_data_0_split" in names
-        # innerprod1 after relu1 is consumed by innerprod2 and loss1 → split
+        # innerprod1 after relu1 is consumed by innerprod2 and fc3 → split
         assert "innerprod1_relu1_0_split" in names
-        # Verify split output naming convention:
-        #   <blob>_<producer>_<idx>_split_<k>
-        # We can access blobs by name from the net to verify split outputs exist
-        # (implicitly verified by net construction succeeding)
         assert _count_splits(net) == 2
 
         # Forward pass
         inp_data = np.random.randn(2, 4).astype(np.float32)
-        # innerprod2 output dim is 3, loss needs same shape bottom[1]
-        # Actually EuclideanLoss needs bottoms of same shape — adjust for valid forward
-        # This test focuses on naming; forward tested in test_forward_correctness
+        outputs = net.Forward({"data": inp_data})
+        assert "innerprod2" in outputs
+        assert "fc2_out" in outputs
+        assert "fc3_out" in outputs
+        assert outputs["innerprod2"].shape == (2, 3)
+        assert outputs["fc2_out"].shape == (2, 3)
+        assert outputs["fc3_out"].shape == (2, 3)
