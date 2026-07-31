@@ -300,15 +300,67 @@ void InsertSplits(const caffe::NetParameter& in_param, caffe::NetParameter* out_
     // input_splits.size() positions, then insert splits at positions 0..n-1.
     int existing = out_param->layer_size();
     int n_ext = static_cast<int>(input_splits.size());
+
+    // --- Log: layer order BEFORE moving external input splits to front ---
+    CAFFE_FFI_SPLIT_LOG << "  Pass2b MOVE: shifting " << n_ext
+                       << " external-input splits to front"
+                       << " (existing layers=" << existing << ")";
+    {
+      std::ostringstream before_ss;
+      before_ss << "  Pass2b BEFORE: [";
+      for (int i = 0; i < existing; ++i) {
+        if (i > 0) before_ss << ", ";
+        before_ss << i << ":'" << out_param->layer(i).name() << "'";
+      }
+      before_ss << "]";
+      CAFFE_FFI_SPLIT_LOG << before_ss.str();
+    }
+    {
+      std::ostringstream splits_ss;
+      splits_ss << "  Pass2b SPLITS to insert (in order): [";
+      for (int k = 0; k < n_ext; ++k) {
+        if (k > 0) splits_ss << ", ";
+        splits_ss << k << ":'" << input_splits[k].name() << "'";
+      }
+      splits_ss << "]";
+      CAFFE_FFI_SPLIT_LOG << splits_ss.str();
+    }
+
+    // Step 1: append empty slots to make room
+    CAFFE_FFI_SPLIT_LOG << "  Pass2b Step1: add " << n_ext << " empty slots (size "
+                       << existing << " -> " << (existing + n_ext) << ")";
     for (int k = 0; k < n_ext; ++k) {
       out_param->add_layer();
     }
+
+    // Step 2: shift existing layers right by n_ext positions (copy from back to front)
+    CAFFE_FFI_SPLIT_LOG << "  Pass2b Step2: shift " << existing
+                       << " existing layers right by " << n_ext << " positions";
     for (int i = existing - 1; i >= 0; --i) {
       out_param->mutable_layer(i + n_ext)->CopyFrom(out_param->layer(i));
     }
+
+    // Step 3: write external input splits at positions 0..n_ext-1
+    CAFFE_FFI_SPLIT_LOG << "  Pass2b Step3: write " << n_ext
+                       << " splits at positions 0.." << (n_ext - 1);
     for (int k = 0; k < n_ext; ++k) {
       out_param->mutable_layer(k)->CopyFrom(input_splits[k]);
     }
+
+    // --- Log: layer order AFTER moving ---
+    {
+      std::ostringstream after_ss;
+      after_ss << "  Pass2b AFTER: [";
+      int total = out_param->layer_size();
+      for (int i = 0; i < total; ++i) {
+        if (i > 0) after_ss << ", ";
+        after_ss << i << ":'" << out_param->layer(i).name() << "'";
+      }
+      after_ss << "]";
+      CAFFE_FFI_SPLIT_LOG << after_ss.str();
+    }
+    CAFFE_FFI_SPLIT_LOG << "  Pass2b MOVE DONE: splits now at head, total layers="
+                       << out_param->layer_size();
   }
 
   // === Final verification and summary ===

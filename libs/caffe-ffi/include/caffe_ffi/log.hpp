@@ -107,9 +107,10 @@ class Logger {
 #define CAFFE_FFI_NET_LOG       CAFFE_FFI_LOG_DEBUG() << "[NET] "
 #define CAFFE_FFI_LAYER_LOG     CAFFE_FFI_LOG_DEBUG() << "[LAYER] "
 #define CAFFE_FFI_BLOB_LOG      CAFFE_FFI_LOG_DEBUG() << "[BLOB] "
-// SPLIT_INSERT log: INFO level so graph transformations are visible
-// when debug logging is enabled (level <= INFO=2), without requiring
-// full DEBUG (level=1) which is very verbose.
-#define CAFFE_FFI_SPLIT_LOG     CAFFE_FFI_LOG_INFO()  << "[SPLIT-INSERT] "
+// SPLIT_INSERT log: WARN level so graph transformations are always visible
+// during network initialization (InsertSplits runs once at Net init).
+// Unlike per-forward-pass DEBUG logs which are extremely verbose,
+// graph transformation is a rare structural event worth surfacing by default.
+#define CAFFE_FFI_SPLIT_LOG     CAFFE_FFI_LOG_WARN()  << "[SPLIT-INSERT] "
 
 #endif  // CAFFE_FFI_LOG_HPP_
