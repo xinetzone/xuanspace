@@ -41,11 +41,73 @@ caffe-ffi 是基于 tvm-ffi 原生对象系统的 Caffe 深度学习框架绑定
 - **Ninja**: >= 1.11
 - **编译器**: C++17 兼容（GCC 9+, Clang 12+, MSVC 2026）
 - **BLAS**: OpenBLAS 或其他 BLAS 实现
-- **可选**: Conda（推荐用于环境管理）
+- **Protobuf**: >= 7.4（Docker 镜像中已预装）
+- **可选**: Conda（推荐用于环境管理）、Docker（推荐用于构建验证）
 
-## 安装方式
+## 🐳 快速开始：Docker 构建验证（推荐）
 
-### 开发模式安装（推荐）
+> **Docker 是构建验证的黄金标准**——提供一致的编译器版本（GCC 14.3.0）、Protobuf 版本（7.x）和隔离的构建环境，完全规避 Windows MSVC 预览版 Bug、conda 环境穿透、跨平台路径冲突等问题。
+>
+> 详细方法论见 [Docker 作为规范构建环境](../../../../.agents/docs/retrospective/patterns/methodology-patterns/governance-strategy/docker-canonical-build-environment.md)。
+
+### 前置条件
+
+- 已安装 [caffe-ffi-jupyter Docker 镜像](../../../../apps/caffe-ffi-jupyter/README.md)
+- WSL2 或 Linux 环境下 Docker 可用
+
+### 一键构建并运行 C++ 测试
+
+```bash
+# 在 WSL/Linux 终端中，从 SpecWeave 根目录执行
+cd /path/to/SpecWeave
+docker run --rm \
+  -v "$(pwd):/SpecWeave" \
+  -v caffe-ffi-workspace:/workspace \
+  caffe-ffi-jupyter:latest \
+  bash -c "cp /SpecWeave/apps/caffe-ffi-jupyter/scripts/test-cpp-tests.sh /workspace/ && bash /workspace/test-cpp-tests.sh"
+```
+
+这会自动完成：环境检查 → CMake 配置 → C++ 编译 → 链接 → 运行全部测试套件，并输出每个测试套件的通过率。
+
+### 使用已运行的容器（交互式开发）
+
+```bash
+# 如果容器已通过 docker compose 启动
+docker exec -it caffe-ffi-jupyter bash
+
+# 在容器内运行测试
+test-cpp-tests.sh
+
+# 或手动构建
+source /opt/conda/etc/profile.d/conda.sh
+conda activate caffe-ffi
+cmake -S /SpecWeave/projects/xuanspace/libs/caffe-ffi \
+      -B /workspace/caffe-ffi-cpp-build \
+      -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCAFFE_FFI_BUILD_TESTS=ON -DTVM_FFI_USE_LIBBACKTRACE=OFF
+cmake --build /workspace/caffe-ffi-cpp-build -j$(nproc)
+cd /workspace/caffe-ffi-cpp-build
+LD_LIBRARY_PATH=/opt/conda/envs/caffe-ffi/lib:$(pwd):$(pwd)/lib ./caffe_ffi_tests
+```
+
+### Docker 环境规格
+
+| 组件 | 版本 |
+|------|------|
+| 操作系统 | Ubuntu (conda-forge gcc 14.3.0) |
+| Python | 3.14 |
+| GCC | 14.3.0 (conda-forge, 稳定版) |
+| CMake | 4.4.1 |
+| Ninja | 1.13.2 |
+| Protobuf (libprotoc) | 35.1 |
+| Python protobuf | 7.35.1 |
+| numpy | 2.5.1 |
+
+## 本地安装方式
+
+> ⚠️ 本地安装适合日常开发，但**最终构建验证请使用 Docker**（黄金标准）。
+
+### 开发模式安装
 
 ```bash
 # 步骤1：先安装 tvm-ffi (editable模式)
@@ -106,17 +168,65 @@ cmake --build --preset default
 pip install --no-build-isolation -e .
 ```
 
-#### 4. 常见问题
+#### 4. 构建失败排查指南
+
+遇到构建失败时，**按 L0→L1→L2 三层顺序排查**，顺序不可颠倒（环境层问题30秒验证，工具链层2分钟，最后才深入项目代码）。
+
+> **完整方法论文档**：[构建失败分层排查法](../../../../.agents/docs/retrospective/patterns/code-patterns/build-failure-layered-triage.md)
+> **黄金标准**：本地环境问题无法快速定位时，**直接使用 Docker 验证**（5分钟内得到可信结果）。
+> 参见 [Docker 作为规范构建环境](../../../../.agents/docs/retrospective/patterns/methodology-patterns/governance-strategy/docker-canonical-build-environment.md)。
+
+**L0 环境层（30秒快速检查）**：
+
+| 检查项 | 命令 | 判定标准 |
+|--------|------|----------|
+| 编译器版本是否稳定版 | MSVC: `cl 2>&1`；GCC: `gcc --version` | 含 Preview/Insiders/svn/trunk/RC → 换稳定版或 WSL |
+| MSVC 环境变量初始化 | `echo $env:INCLUDE`（PowerShell） | 为空 → 使用 Developer PowerShell 或运行 `vcvarsall.bat` |
+| 关键工具在 PATH 中 | `where cl.exe` / `which gcc && which protoc` | 命令不存在或路径错误 → 修复环境变量 |
+
+**L1 工具链层（2分钟检查）**：
+
+| 检查项 | 命令 | 判定标准 |
+|--------|------|----------|
+| protoc 与 libprotobuf 版本一致 | `protoc --version` + 检查 `Protobuf_VERSION` in CMakeCache | 版本不一致 → 统一版本，清理 build 目录 |
+| 跨环境 build 目录隔离 | WSL中检查CMakeCache路径格式 | 含 `/mnt/d/` 在Windows构建，或 `D:/` 在WSL构建 → `rm -rf build` 新建独立目录 |
+| Windows conda PATH 不穿透到 WSL | WSL中 `which protoc` 不应指向 `/mnt/c/Users/.../anaconda3/` | 穿透到Windows路径 → 使用干净shell或conda环境隔离 |
+
+**L2 项目层（仅当 L0+L1 全通过后）**：
+- 阅读完整 CMake configure 输出，查找 WARNING/NOT FOUND
+- 只看编译器输出的**第一个** error，忽略后续级联错误
+- 使用 `ninja -j1 -v` 单线程编译获取完整错误信息
+- 对比已知可工作的环境/分支，使用 git bisect 定位引入问题的提交
+
+**常见具体问题**：
 
 **BLAS/OpenBLAS 未找到**：`DetectBLAS.cmake` 已针对 Windows conda 做平台适配（`Library/include/openblas` 路径、`libopenblas.lib` 库名）。若仍出现检测失败：
 - 确认已激活正确的 conda 环境：`conda activate caffe-ffi-dev`
 - 手动安装 OpenBLAS：`conda install -c conda-forge libopenblas`
 - 若使用非默认环境名，设置 `CONDA_PREFIX` 或在 CMake 配置时指定 `-DCMAKE_PREFIX_PATH=<env_path>`
 
+**Protobuf 版本不兼容（caffe.pb.h 编译错误）**：
+- 确保 protoc 与链接的 libprotobuf 来自同一安装（推荐 conda-forge libprotobuf >= 7.0.0）
+- WSL 中禁止使用 Windows conda 的 protoc.exe（会导致版本不匹配）
+- 详细指南见 [WSL2 构建环境配置指南](docs/setup/WSL2_BUILD_SETUP_GUIDE.md)
+- 变更说明见 [Protobuf 兼容性改动说明](docs/setup/PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md)
+
 **KMP_DUPLICATE_LIB_OK**：Windows 上多个组件可能各自包含 OpenMP 运行时，设置此环境变量避免冲突：
 
 ```powershell
 $env:KMP_DUPLICATE_LIB_OK = "TRUE"
+```
+
+**MSVC C1041 PDB 锁定错误**：这是 MSVC 预览版（19.50 Insiders）的已知 Bug，`/FS` 标志无法解决。**不要反复清理/重试**，直接使用 Docker（推荐）或切换到稳定版 MSVC / WSL 环境构建。
+
+```bash
+# 使用 Docker 一键规避所有 MSVC 环境问题
+cd /path/to/SpecWeave
+docker run --rm \
+  -v "$(pwd):/SpecWeave" \
+  -v caffe-ffi-workspace:/workspace \
+  caffe-ffi-jupyter:latest \
+  bash -c "bash /SpecWeave/apps/caffe-ffi-jupyter/scripts/test-cpp-tests.sh"
 ```
 
 ## WSL 环境开发指南
@@ -169,9 +279,11 @@ conda activate caffe-ffi-dev
 export KMP_DUPLICATE_LIB_OK=TRUE
 ```
 
-### 使用 Docker（推荐，基于 jupyter-ssh-base）
+### 使用 Docker（⭐ 首选方案）
 
-项目提供完整的 Docker 开发环境，基于 `apps/caffe-ffi-jupyter`，内置 SSH + Jupyter 双服务，支持 Python 3.14+。
+项目提供完整的 Docker 开发环境，基于 `apps/caffe-ffi-jupyter`，内置 SSH + Jupyter 双服务，支持 Python 3.14+，编译器和依赖版本完全固定。**这是构建验证的黄金标准**，推荐所有团队成员使用。
+
+> **完整方法论**：[Docker 作为规范构建环境](../../../../.agents/docs/retrospective/patterns/methodology-patterns/governance-strategy/docker-canonical-build-environment.md)
 
 #### 快速部署（WSL 环境）
 
@@ -422,6 +534,23 @@ scripts\conda_build.bat           # 配置 + 构建 + 安装 + 测试
 ```
 
 ## 运行测试
+
+### 🐳 Docker 中运行测试（推荐）
+
+```bash
+# 一键运行 C++ 和 Python 测试（黄金标准环境）
+cd /path/to/SpecWeave
+docker run --rm \
+  -v "$(pwd):/SpecWeave" \
+  -v caffe-ffi-workspace:/workspace \
+  caffe-ffi-jupyter:latest \
+  bash -c "bash /SpecWeave/apps/caffe-ffi-jupyter/scripts/test-cpp-tests.sh"
+
+# 或在已运行的容器中
+docker exec -it caffe-ffi-jupyter test-cpp-tests.sh
+```
+
+### 本地运行测试
 
 ```bash
 # 运行所有 Python 测试
