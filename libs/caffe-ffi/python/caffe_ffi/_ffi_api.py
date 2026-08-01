@@ -89,24 +89,27 @@ def _try_init_tvm_ffi():
                     pass
             tvm_ffi.load_module(str(_lib_path))
             _init_logger.debug("Loaded caffe-ffi native library from %s", _lib_path)
+            _ffi_available = True
+            return True
         else:
             _init_logger.warning(
                 "caffe-ffi native library not found. "
                 "Searched build/Release, build/, build-cmake/, build-wheel/Release, and package directories. "
                 "Falling back to Python-only mode. Build the C++ extension for full functionality."
             )
-        
-        _ffi_available = True
-        return True
+            _ffi_available = False
+            return False
     except ImportError as e:
         _init_logger.warning(
             "Failed to import tvm_ffi: %s. Falling back to Python-only mode.", e
         )
+        _ffi_available = False
         return False
     except Exception as e:
         _init_logger.warning(
             "Failed to load caffe-ffi native library: %s. Falling back to Python-only mode.", e
         )
+        _ffi_available = False
         return False
 
 

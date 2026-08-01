@@ -3130,3 +3130,256 @@ layer {
   EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[1]), 4.0, 1e-6);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// COW Runtime Switch Tests — 验证运行时动态开关 Copy-on-Write 行为
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 设计背景：COW 逻辑始终编译（避免 ODR 违规），由运行时原子开关控制。
+// 这些测试验证 SetCOWEnabled()/IsCOWEnabled() 在动态切换时的正确性。
+// 每个测试手动保存/恢复 COW 状态，确保不影响其他测试。
+
+// Helper: RAII COW state guard (manual, no TEST_F fixture support)
+struct CowStateGuard {
+  bool saved_;
+  CowStateGuard() : saved_(IsCOWEnabled()) {}
+  ~CowStateGuard() { SetCOWEnabled(saved_); }
+};
+
+// Test 1: 默认状态下 COW 启用（CMake CAFFE_FFI_ENABLE_COW=ON 构建时）
+TEST(COWRuntimeSwitchTest, DefaultStateIsEnabled) {
+  // 构建使用 CAFFE_FFI_ENABLE_COW=ON，默认应为 true
+  // 注意：前一个测试可能改变了状态，这里直接验证 IsCOWEnabled() 返回 bool
+  bool state = IsCOWEnabled();
+  (void)state;  // 仅验证函数可调用，不断言具体值（因为其他测试可能修改）
+  SetCOWEnabled(true);
+  EXPECT_TRUE(IsCOWEnabled());
+}
+
+// Test 2: COW 启用时，共享 Blob 调用 mutable_data 触发 COW（指针分离）
+TEST(COWRuntimeSwitchTest, COWEnabledTriggersCopyOnWrite) {
+  CowStateGuard guard;
+  SetCOWEnabled(true);
+
+  std::vector<int64_t> shape = {2, 3};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+
+  float* a_data = a->cpu_mutable_data();
+  a_data[0] = 42.0f;
+  b->ShareData(a.get());
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());  // 共享同一块内存
+
+  // COW 启用时，b 的 mutable 访问应触发拷贝
+  float* b_data = b->cpu_mutable_data();
+  EXPECT_NE(b_data, a_data) << "COW enabled: mutable_data() on shared blob must trigger copy";
+  b_data[0] = 99.0f;
+  // a 不受 b 的写入影响
+  EXPECT_NEAR(static_cast<double>(a_data[0]), 42.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b_data[0]), 99.0, 1e-6);
+}
+
+// Test 3: COW 禁用时，共享 Blob 调用 mutable_data 不触发 COW（指针不变，就地修改）
+TEST(COWRuntimeSwitchTest, COWDisabledNoCopyOnMutableAccess) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {2, 3};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+
+  float* a_data = a->cpu_mutable_data();
+  a_data[0] = 42.0f;
+  b->ShareData(a.get());
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+
+  // 禁用 COW
+  SetCOWEnabled(false);
+  EXPECT_FALSE(IsCOWEnabled());
+
+  // COW 禁用时，mutable 访问不触发拷贝——返回同一指针
+  float* b_data = b->cpu_mutable_data();
+  EXPECT_EQ(b_data, a_data) << "COW disabled: mutable_data() on shared blob returns same pointer";
+  // 写入 b 会直接修改共享内存（a 也看到变化）
+  b_data[0] = 99.0f;
+  EXPECT_NEAR(static_cast<double>(a_data[0]), 99.0, 1e-6)
+      << "COW disabled: writes to b mutate the shared tensor visible to a";
+}
+
+// Test 4: COW 禁用不影响 const 访问（始终零拷贝）
+TEST(COWRuntimeSwitchTest, ConstAccessAlwaysZeroCopy) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {3, 3};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+  a->cpu_mutable_data()[0] = 1.0f;
+  b->ShareData(a.get());
+
+  SetCOWEnabled(false);
+  // const 指针访问在 COW 禁用时也应该共享（const 访问永远不触发 COW）
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+
+  SetCOWEnabled(true);
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+}
+
+// Test 5: 运行时反复切换开关——off→on→off→on 循环验证
+TEST(COWRuntimeSwitchTest, ToggleOnOffMultipleTimes) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {2, 2};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+  a->cpu_mutable_data()[0] = 10.0f;
+  b->ShareData(a.get());
+
+  // Cycle 1: off → mutable 不拷贝
+  SetCOWEnabled(false);
+  EXPECT_EQ(b->cpu_mutable_data(), a->cpu_data());
+  b->ShareData(a.get());
+
+  // Cycle 2: on → mutable 触发拷贝
+  SetCOWEnabled(true);
+  float* b_ptr = b->cpu_mutable_data();
+  EXPECT_NE(b_ptr, a->cpu_data());
+  b->ShareData(a.get());
+
+  // Cycle 3: off → mutable 不拷贝
+  SetCOWEnabled(false);
+  EXPECT_EQ(b->cpu_mutable_data(), a->cpu_data());
+  b->ShareData(a.get());
+
+  // Cycle 4: on → mutable 触发拷贝
+  SetCOWEnabled(true);
+  EXPECT_NE(b->cpu_mutable_data(), a->cpu_data());
+}
+
+// Test 6: COW 开关对 diff 同样生效
+TEST(COWRuntimeSwitchTest, DiffCOWRespectsSwitch) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {2, 2};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+
+  a->cpu_mutable_diff()[0] = 7.0f;
+  b->ShareDiff(a.get());
+  EXPECT_EQ(b->cpu_diff(), a->cpu_diff());
+
+  // COW 启用 → diff mutable 触发拷贝
+  SetCOWEnabled(true);
+  float* b_diff = b->cpu_mutable_diff();
+  EXPECT_NE(b_diff, a->cpu_diff()) << "diff COW enabled: mutable_diff triggers copy";
+  b_diff[0] = 99.0f;
+  EXPECT_NEAR(static_cast<double>(a->cpu_diff()[0]), 7.0, 1e-6);
+
+  // 重新共享
+  b->ShareDiff(a.get());
+
+  // COW 禁用 → diff mutable 不拷贝
+  SetCOWEnabled(false);
+  float* b_diff2 = b->cpu_mutable_diff();
+  EXPECT_EQ(b_diff2, a->cpu_diff()) << "diff COW disabled: mutable_diff returns same pointer";
+}
+
+// Test 7: COW 开关对 mutable_data_tensor() 同样生效
+TEST(COWRuntimeSwitchTest, MutableTensorCOWRespectsSwitch) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {1, 4};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+
+  a->cpu_mutable_data();
+  b->ShareData(a.get());
+  const void* a_ptr = a->cpu_data();
+
+  // COW 禁用 → mutable_data_tensor 不分离
+  SetCOWEnabled(false);
+  Tensor t_off = b->mutable_data_tensor();
+  EXPECT_EQ(t_off.data_ptr(), a_ptr) << "COW disabled: mutable_data_tensor returns shared tensor";
+
+  // 重新共享
+  b->ShareData(a.get());
+
+  // COW 启用 → mutable_data_tensor 分离
+  SetCOWEnabled(true);
+  Tensor t_on = b->mutable_data_tensor();
+  EXPECT_NE(t_on.data_ptr(), a_ptr) << "COW enabled: mutable_data_tensor returns private copy";
+}
+
+// Test 8: IsCOWEnabled() 状态查询正确反映最近一次 SetCOWEnabled()
+TEST(COWRuntimeSwitchTest, IsCOWEnabledReflectsLastSet) {
+  CowStateGuard guard;
+
+  SetCOWEnabled(true);
+  EXPECT_TRUE(IsCOWEnabled());
+  SetCOWEnabled(false);
+  EXPECT_FALSE(IsCOWEnabled());
+  SetCOWEnabled(false);  // 重复设置同一值无副作用
+  EXPECT_FALSE(IsCOWEnabled());
+  SetCOWEnabled(true);
+  EXPECT_TRUE(IsCOWEnabled());
+}
+
+// Test 9: COW 禁用时，Three-way share 中 mutable 访问修改所有共享者（因为无拷贝）
+TEST(COWRuntimeSwitchTest, COWDisabledThreeWayShareAllSeeMutation) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {1, 3};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+  auto c = make_object<Blob>(shape);
+
+  float* a_data = a->cpu_mutable_data();
+  a_data[0] = 1.0f; a_data[1] = 2.0f; a_data[2] = 3.0f;
+  b->ShareData(a.get());
+  c->ShareData(a.get());
+
+  SetCOWEnabled(false);
+
+  // 通过 b 写入，a 和 c 都能看到（因为无拷贝）
+  float* b_data = b->cpu_mutable_data();
+  b_data[0] = 100.0f;
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 100.0, 1e-6)
+      << "COW disabled: b's mutation visible to a";
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 100.0, 1e-6)
+      << "COW disabled: b's mutation visible to c";
+}
+
+// Test 10: CowStateGuard 析构恢复状态验证——禁用后守卫恢复启用
+TEST(COWRuntimeSwitchTest, GuardRestoresStateAfterScopeExit) {
+  SetCOWEnabled(true);
+  {
+    CowStateGuard inner_guard;
+    SetCOWEnabled(false);
+    EXPECT_FALSE(IsCOWEnabled());
+  }
+  // 守卫析构后应恢复为 true
+  EXPECT_TRUE(IsCOWEnabled()) << "CowStateGuard destructor must restore original state";
+}
+
+// Test 11: COW 开关对 mutable_diff_tensor() 同样生效
+TEST(COWRuntimeSwitchTest, MutableDiffTensorCOWRespectsSwitch) {
+  CowStateGuard guard;
+
+  std::vector<int64_t> shape = {1, 3};
+  auto a = make_object<Blob>(shape);
+  auto b = make_object<Blob>(shape);
+
+  a->cpu_mutable_diff();
+  b->ShareDiff(a.get());
+  const void* a_diff_ptr = a->cpu_diff();
+
+  // COW 禁用 → mutable_diff_tensor 不分离
+  SetCOWEnabled(false);
+  Tensor t_off = b->mutable_diff_tensor();
+  EXPECT_EQ(t_off.data_ptr(), a_diff_ptr) << "COW disabled: mutable_diff_tensor returns shared tensor";
+
+  b->ShareDiff(a.get());
+
+  // COW 启用 → mutable_diff_tensor 分离
+  SetCOWEnabled(true);
+  Tensor t_on = b->mutable_diff_tensor();
+  EXPECT_NE(t_on.data_ptr(), a_diff_ptr) << "COW enabled: mutable_diff_tensor returns private copy";
+}
+

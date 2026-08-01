@@ -51,12 +51,15 @@ caffe_ffi_configure_target(_caffe_ffi VISIBILITY PUBLIC)
 target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_EXPORTS)
 message(STATUS "[caffe_ffi] _caffe_ffi DLL: CAFFE_FFI_EXPORTS enabled (data symbol export)")
 
-# COW Phase 2 compile-time switch (PUBLIC because cpu_mutable_data() is inline in blob.hpp)
+# COW Phase 2: COW logic is now always compiled in (runtime-controlled via SetCOWEnabled()).
+# The CAFFE_FFI_ENABLE_COW compile definition is retained for backward compatibility
+# with external consumers that may check for it, but no longer gates any code.
+# See blob.hpp SetCOWEnabled() documentation for design rationale (ODR safety).
 if(CAFFE_FFI_ENABLE_COW)
   target_compile_definitions(_caffe_ffi PUBLIC CAFFE_FFI_ENABLE_COW)
-  message(STATUS "[caffe_ffi] COW optimization: ENABLED (Phase 2)")
+  message(STATUS "[caffe_ffi] COW optimization: ENABLED (runtime-controlled, always compiled)")
 else()
-  message(STATUS "[caffe_ffi] COW optimization: DISABLED")
+  message(STATUS "[caffe_ffi] COW optimization: DISABLED (COW code compiled but runtime switch OFF by default)")
 endif()
 
 # COW Phase 3 compile-time switch (batch refcount, lazy reshape) — PUBLIC for header inlines

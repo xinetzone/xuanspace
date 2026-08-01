@@ -17,7 +17,10 @@ per-test execution duration measurement.  Run directly via plain Python:
 """
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+import textwrap
 import time
 import unittest
 from pathlib import Path
@@ -30,9 +33,10 @@ def _setup_path() -> None:
     _python_dir = _project_root / "python"
     if _python_dir.is_dir() and str(_python_dir) not in sys.path:
         sys.path.insert(0, str(_python_dir))
+    return _project_root
 
 
-_setup_path()
+_project_root = _setup_path()
 
 import numpy as np
 
@@ -224,6 +228,98 @@ class TestModuleAPI(unittest.TestCase):
         caffe_ffi.enable_debug_logging(caffe_ffi.LOG_LEVEL_INFO)
         caffe_ffi.disable_debug_logging()
         self.assertEqual(caffe_ffi.get_log_level(), caffe_ffi.LOG_LEVEL_WARN)
+
+    def test_python_only_fallback_when_native_lib_missing(self):
+        """Regression test: import must not crash when _caffe_ffi.so is absent.
+
+        Bug history: _try_init_tvm_ffi() set _ffi_available=True even when
+        _lib_path was None, causing ValueError: Cannot find object type index
+        for caffe_ffi.Blob during class decoration.
+
+        Strategy: create a clean subprocess where caffe_ffi is importable only
+        from a temp-copied package directory that has no native .so files.
+        We must also strip scikit-build-core's editable install finder from
+        sys.meta_path and the real source path from sys.path, because the
+        package is installed in editable mode during development.
+        """
+        import tempfile, shutil
+
+        python_dir = _project_root / "python"
+        pkg_dir = python_dir / "caffe_ffi"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_python = Path(tmpdir) / "python"
+            tmp_pkg = tmp_python / "caffe_ffi"
+            shutil.copytree(
+                pkg_dir, tmp_pkg,
+                ignore=shutil.ignore_patterns("*.so", "*.pyd", "*.dll",
+                                              "*.pyc", "__pycache__"),
+            )
+
+            child_code = textwrap.dedent(f"""
+                import sys, os
+
+                # Step 1: Remove editable install finders from meta_path BEFORE
+                # any caffe_ffi import. scikit-build-core installs a
+                # ScikitBuildRedirectingFinder that bypasses sys.path.
+                for f in list(sys.meta_path):
+                    _cls_name = type(f).__name__
+                    if 'editable' in _cls_name.lower() or 'redirecting' in _cls_name.lower():
+                        sys.meta_path.remove(f)
+
+                # Step 2: Remove the real source tree from sys.path.
+                # .pth files (e.g. _editable_skbc_caffe_ffi.pth) add it at startup.
+                _real = {str(python_dir)!r}
+                _proj = {str(_project_root)!r}
+                for p in list(sys.path):
+                    if p == _real or p.startswith(_real + os.sep) or p == _proj:
+                        sys.path.remove(p)
+
+                # Step 3: Insert our temp package directory at the front.
+                sys.path.insert(0, {str(tmp_python)!r})
+
+                # Step 4: Clear any already-cached caffe_ffi modules (shouldn't
+                # be any at this point, but be safe).
+                for mod in list(sys.modules.keys()):
+                    if 'caffe_ffi' in mod:
+                        del sys.modules[mod]
+
+                import caffe_ffi
+                from caffe_ffi import Blob, Net
+
+                assert not caffe_ffi.is_available(), (
+                    f"Expected is_available()=False without native lib, got True")
+                assert caffe_ffi._ffi_api.lib_path() is None, (
+                    f"Expected lib_path()=None without native lib, "
+                    f"got {{caffe_ffi._ffi_api.lib_path()}}")
+
+                # Python-only mode: Blob/Net must be constructible without crash
+                b = Blob([2, 3])
+                assert b.shape == (2, 3), f"Expected (2,3), got {{b.shape}}"
+                assert b.count() == 6
+                b.fill(1.0)
+                import numpy as np
+                np.testing.assert_allclose(b.data_tensor, 1.0, rtol=1e-5)
+
+                n = Net()
+                assert n.name == ""
+                assert len(n.blobs_array()) == 0
+
+                print("REGRESSION_OK: python-only fallback works correctly")
+            """)
+
+            result = subprocess.run(
+                [sys.executable, "-c", child_code],
+                capture_output=True, text=True, timeout=30,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1",
+                     "CAFFE_FFI_DISABLE_BACKTRACE": "1"},
+            )
+            self.assertEqual(
+                result.returncode, 0,
+                f"Subprocess failed (exit {result.returncode}).\n"
+                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
+            self.assertIn("REGRESSION_OK", result.stdout)
 
 
 # ─── Blob native API tests ──────────────────────────────────────────

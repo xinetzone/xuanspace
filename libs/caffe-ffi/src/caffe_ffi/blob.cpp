@@ -21,10 +21,15 @@ namespace {
 std::atomic<int64_t> g_live_blob_count{0};
 std::atomic<int64_t> g_next_blob_id{1};
 
-// Runtime COW switch (default: enabled)
-// Guarded by compile-time CAFFE_FFI_ENABLE_COW; when the CMake option is OFF,
-// all COW logic is elided at compile time.
+// Runtime COW switch.
+// COW logic is always compiled in (for ODR safety of inline accessors in blob.hpp).
+// The initial state is controlled by the CMake option CAFFE_FFI_ENABLE_COW (default ON).
+// Can be toggled at any time via SetCOWEnabled()/IsCOWEnabled().
+#ifdef CAFFE_FFI_ENABLE_COW
 std::atomic<bool> g_cow_enabled{true};
+#else
+std::atomic<bool> g_cow_enabled{false};
+#endif
 
 std::string ShapeToString(ShapeView shape) {
   std::ostringstream oss;
@@ -192,9 +197,7 @@ Tensor Blob::diff_tensor() const {
 }
 
 Tensor Blob::mutable_data_tensor() {
-#ifdef CAFFE_FFI_ENABLE_COW
   if (is_lazy_allocated_) {
-    // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
     auto sv = ShapeView(shape_only_.data(), shape_only_.size());
     data_tensor_ = NewCPUTensor(sv);
     diff_tensor_ = NewCPUTensor(sv);
@@ -209,8 +212,7 @@ Tensor Blob::mutable_data_tensor() {
                       << " nbytes=" << TensorNBytes(data_tensor_);
     return data_tensor_;
   }
-#endif
-  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 2) {
+  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
     int refcount = data_tensor_.use_count();
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
@@ -232,9 +234,7 @@ Tensor Blob::mutable_data_tensor() {
 }
 
 Tensor Blob::mutable_diff_tensor() {
-#ifdef CAFFE_FFI_ENABLE_COW
   if (is_lazy_allocated_) {
-    // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
     auto sv = ShapeView(shape_only_.data(), shape_only_.size());
     data_tensor_ = NewCPUTensor(sv);
     diff_tensor_ = NewCPUTensor(sv);
@@ -249,7 +249,6 @@ Tensor Blob::mutable_diff_tensor() {
                       << " nbytes=" << TensorNBytes(diff_tensor_);
     return diff_tensor_;
   }
-#endif
   if (!diff_tensor_.defined() && data_tensor_.defined()) {
     diff_tensor_ = NewCPUTensor(
         ShapeView(data_tensor_.shape().data(),
@@ -261,7 +260,7 @@ Tensor Blob::mutable_diff_tensor() {
                       << " mutable_diff_tensor() allocated diff to match data shape"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
   }
-  if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 2) {
+  if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
     int refcount = diff_tensor_.use_count();
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));

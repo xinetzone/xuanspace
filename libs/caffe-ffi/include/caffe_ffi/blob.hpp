@@ -25,15 +25,43 @@ int64_t LiveBlobCount();
 /**
  * @brief Runtime COW enable/disable switch (Phase 2).
  *
- * When COW is disabled at runtime, cpu_mutable_data()/cpu_mutable_diff()
- * still trigger COW if the data is shared -- this is the safety default.
- * When disabled, the COW logic is bypassed and the raw pointer is returned
- * (same as Phase 1 behavior). This is useful for emergency rollback or
- * performance comparison.
+ * <h3>Design: Runtime-controlled, always-compiled COW</h3>
  *
- * The compile-time switch CAFFE_FFI_ENABLE_COW (CMake option) controls
- * whether the COW code is compiled at all. When OFF, all COW methods
- * become no-ops at compile time.
+ * COW (Copy-on-Write) logic is <b>always compiled in</b> and controlled at runtime
+ * via SetCOWEnabled()/IsCOWEnabled(). This design was chosen to prevent
+ * <a href="https://en.cppreference.com/w/cpp/language/definition">ODR (One Definition Rule)</a>
+ * violations that can occur when inline functions in public headers are guarded by
+ * preprocessor macros (\c #ifdef) that may not be consistently defined across all
+ * translation units.
+ *
+ * <h3>COW Semantics</h3>
+ * <ul>
+ *   <li>After <tt>ShareData(a)</tt> / <tt>ShareDiff(a)</tt>, blobs share the same
+ *       underlying tensor memory (zero-copy).</li>
+ *   <li>When any shared blob calls a mutable accessor (cpu_mutable_data(),
+ *       cpu_mutable_diff(), mutable_data_tensor(), mutable_diff_tensor()), COW
+ *       triggers: the caller receives a private copy (memcpy), other sharers
+ *       continue to see the original data.</li>
+ *   <li>COW triggers when <tt>tensor.use_count() > 1</tt> (i.e., more than one
+ *       reference to the tensor exists).</li>
+ *   <li>Const accessors (cpu_data(), cpu_diff()) never trigger COW and remain
+ *       zero-copy even for shared blobs.</li>
+ * </ul>
+ *
+ * <h3>Runtime Switch Usage</h3>
+ * <pre>{@code
+ * // Disable COW for performance benchmarking or emergency rollback
+ * caffe_ffi::SetCOWEnabled(false);
+ * assert(caffe_ffi::IsCOWEnabled() == false);
+ *
+ * // Re-enable COW (default state is enabled)
+ * caffe_ffi::SetCOWEnabled(true);
+ * }</pre>
+ *
+ * @note The CMake option \c CAFFE_FFI_ENABLE_COW is retained for backward
+ *       compatibility but no longer controls code compilation. COW is always
+ *       compiled; the CMake option may be used in the future to set the default
+ *       initial state of the runtime switch.
  */
 void SetCOWEnabled(bool enabled);
 bool IsCOWEnabled();
@@ -170,9 +198,7 @@ class Blob : public Object {
    * use cpu_data() const instead.
    */
   float* cpu_mutable_data() {
-#ifdef CAFFE_FFI_ENABLE_COW
     if (is_lazy_allocated_) {
-      // Phase 3.1: Lazy blob -- allocate both data and diff tensors now (first write).
       auto sv = ShapeView(shape_only_.data(), shape_only_.size());
       data_tensor_ = NewCPUTensor(sv);
       diff_tensor_ = NewCPUTensor(sv);
@@ -187,7 +213,7 @@ class Blob : public Object {
                         << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       return static_cast<float*>(data_tensor_.data_ptr());
     }
-    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 2) {
+    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
       const void* old_ptr = data_tensor_.data_ptr();
@@ -196,7 +222,7 @@ class Blob : public Object {
                     static_cast<size_t>(data_tensor_.ndim())));
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       data_tensor_ = new_tensor;
-      data_shared_ = false;  // COW broke sharing, now private owner
+      data_shared_ = false;
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_data() unshared data"
                         << " refcount=" << refcount
@@ -204,7 +230,6 @@ class Blob : public Object {
                         << " new_ptr=" << data_tensor_.data_ptr()
                         << " nbytes=" << nbytes;
     }
-#endif
     return static_cast<float*>(data_tensor_.data_ptr());
   }
   /**
@@ -215,9 +240,7 @@ class Blob : public Object {
    * returning the mutable pointer. Use this when you intend to mutate the diff.
    */
   float* cpu_mutable_diff() {
-#ifdef CAFFE_FFI_ENABLE_COW
     if (is_lazy_allocated_) {
-      // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
       auto sv = ShapeView(shape_only_.data(), shape_only_.size());
       data_tensor_ = NewCPUTensor(sv);
       diff_tensor_ = NewCPUTensor(sv);
@@ -232,25 +255,21 @@ class Blob : public Object {
                         << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       return static_cast<float*>(diff_tensor_.data_ptr());
     }
-#endif
     if (!diff_tensor_.defined()) {
-      // Diff tensor not yet allocated (e.g. after cpu_mutable_data allocated only data)
-      // -- allocate diff matching data shape.
       if (data_tensor_.defined()) {
         diff_tensor_ = NewCPUTensor(
             ShapeView(data_tensor_.shape().data(),
                       static_cast<size_t>(data_tensor_.ndim())));
         caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
                        static_cast<float*>(diff_tensor_.data_ptr()));
-        diff_shared_ = false;  // newly allocated, private
+        diff_shared_ = false;
         CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
                           << " cpu_mutable_diff() allocated diff to match data shape"
                           << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       }
       return static_cast<float*>(diff_tensor_.data_ptr());
     }
-#ifdef CAFFE_FFI_ENABLE_COW
-    if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 2) {
+    if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
       int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = diff_tensor_.use_count();
       const void* old_ptr = diff_tensor_.data_ptr();
@@ -259,7 +278,7 @@ class Blob : public Object {
                     static_cast<size_t>(diff_tensor_.ndim())));
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       diff_tensor_ = new_tensor;
-      diff_shared_ = false;  // COW broke sharing, now private owner
+      diff_shared_ = false;
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_diff() unshared diff"
                         << " refcount=" << refcount
@@ -267,7 +286,6 @@ class Blob : public Object {
                         << " new_ptr=" << diff_tensor_.data_ptr()
                         << " nbytes=" << nbytes;
     }
-#endif
     return static_cast<float*>(diff_tensor_.data_ptr());
   }
 
@@ -358,10 +376,14 @@ class Blob : public Object {
   bool IsDiffShared() const {
     return diff_shared_ && diff_tensor_.defined() && diff_tensor_.use_count() > 1;
   }
-  /** @brief Get data tensor refcount (0 if undefined). */
-  int DataRefCount() const { return data_tensor_.defined() ? data_tensor_.use_count() : 0; }
-  /** @brief Get diff tensor refcount (0 if undefined). */
-  int DiffRefCount() const { return diff_tensor_.defined() ? diff_tensor_.use_count() : 0; }
+  /** @brief Get data tensor refcount (0 if undefined or zero-element). */
+  int DataRefCount() const {
+    return (data_tensor_.defined() && data_tensor_.numel() > 0) ? data_tensor_.use_count() : 0;
+  }
+  /** @brief Get diff tensor refcount (0 if undefined or zero-element). */
+  int DiffRefCount() const {
+    return (diff_tensor_.defined() && diff_tensor_.numel() > 0) ? diff_tensor_.use_count() : 0;
+  }
 
   /**
    * @brief Explicitly force Copy-on-Write for data tensor.

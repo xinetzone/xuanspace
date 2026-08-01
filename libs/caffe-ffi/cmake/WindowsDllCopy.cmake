@@ -224,8 +224,10 @@ if(MSVC)
 
   function(caffe_ffi_copy_protobuf_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_protobuf_dlls")
-    # Search conda env dirs first (most reliable), then Protobuf_DIR-derived paths
-    set(_protobuf_dll_dirs ${_caffe_ffi_conda_dll_dirs} "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin")
+    # Search Protobuf_DIR-derived paths first (fallback), then conda env dirs (highest
+    # priority — copy_if_different executes in order, so last writer wins; conda must be
+    # last to overwrite stale DLLs from other search paths).
+    set(_protobuf_dll_dirs "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin" ${_caffe_ffi_conda_dll_dirs})
     foreach(_dll_dir ${_protobuf_dll_dirs})
       file(GLOB _protobuf_dlls "${_dll_dir}/libprotobuf*.dll" "${_dll_dir}/libprotoc*.dll" "${_dll_dir}/zlib*.dll")
       foreach(_dll ${_protobuf_dlls})
@@ -243,9 +245,7 @@ if(MSVC)
 
   function(caffe_ffi_copy_abseil_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_abseil_dlls")
-    get_filename_component(_absl_dir "${Protobuf_DIR}" DIRECTORY)
-    # Search conda env dirs first, then Protobuf_DIR-derived paths
-    set(_absl_dll_dirs ${_caffe_ffi_conda_dll_dirs} "${_absl_dir}/bin" "${_absl_dir}/../bin")
+    set(_absl_dll_dirs "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin" ${_caffe_ffi_conda_dll_dirs})
     foreach(_dll_dir ${_absl_dll_dirs})
       file(GLOB _absl_dlls "${_dll_dir}/absl_*.dll" "${_dll_dir}/abseil*.dll")
       foreach(_dll ${_absl_dlls})
@@ -263,9 +263,7 @@ if(MSVC)
 
   function(caffe_ffi_copy_utf8_dlls target_name)
     _caffe_ffi_validate_copy_target("${target_name}" "caffe_ffi_copy_utf8_dlls")
-    get_filename_component(_absl_dir "${Protobuf_DIR}" DIRECTORY)
-    # Search conda env dirs first, then Protobuf_DIR-derived paths
-    set(_utf8_dirs ${_caffe_ffi_conda_dll_dirs} "${_absl_dir}/bin" "${_absl_dir}/../bin")
+    set(_utf8_dirs "${Protobuf_DIR}/../../../bin" "${Protobuf_DIR}/../../bin" ${_caffe_ffi_conda_dll_dirs})
     foreach(_dll_dir ${_utf8_dirs})
       file(GLOB _utf8_dlls "${_dll_dir}/utf8_range*.dll" "${_dll_dir}/utf8_validity*.dll")
       foreach(_dll ${_utf8_dlls})
