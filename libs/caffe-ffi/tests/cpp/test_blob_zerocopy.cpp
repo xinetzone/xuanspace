@@ -80,6 +80,9 @@ TEST(ZeroCopyTest, ShareDataPreservesShape) {
 }
 
 TEST(ZeroCopyTest, ShareDataMutationVisibleToBoth) {
+  // COW semantics: ShareData shares memory for const reads, but any
+  // cpu_mutable_data() call triggers copy-on-write, isolating the writer.
+  // Pre-COW: const reads see the same pointer; post-COW: mutations are isolated.
   std::vector<int64_t> shape = {8};
   auto a = make_object<Blob>(shape);
   auto b = make_object<Blob>(shape);
@@ -87,13 +90,21 @@ TEST(ZeroCopyTest, ShareDataMutationVisibleToBoth) {
   a->cpu_mutable_data()[0] = 42.0f;
   b->ShareData(a.get());
 
-  // Mutate via b, read via a (same memory)
-  b->cpu_mutable_data()[1] = 99.0f;
-  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_data()[1]), 99.0, 1e-6);
+  // Before any mutable access, const reads share the same memory
+  EXPECT_EQ(b->cpu_data(), a->cpu_data());
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 42.0, 1e-6);
 
-  // Mutate via a, read via b
+  // Mutate via b triggers COW: b gets private copy, a is unaffected
+  b->cpu_mutable_data()[1] = 99.0f;
+  EXPECT_NE(b->cpu_data(), a->cpu_data());
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[1]), 99.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[1]), 0.0, 1e-6);  // a unchanged
+
+  // a now has refcount=1 (b already COW'd away), so mutable access on a
+  // does NOT trigger COW; a mutates its own buffer, b is unaffected
   a->cpu_mutable_data()[2] = 7.0f;
-  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_data()[2]), 7.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[2]), 7.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[2]), 0.0, 1e-6);  // b unchanged
 }
 
 TEST(ZeroCopyTest, SharesDataWithFalseForDifferentBlobs) {
@@ -165,11 +176,15 @@ TEST(ZeroCopyTest, RefcountingDestinationOutlivesSource) {
 }
 
 TEST(ZeroCopyTest, ShareDataMultipleTimesIdempotent) {
+  // COW semantics: multiple ShareData calls from same source are idempotent
+  // (all share same pointer for const reads). Mutable access on any alias
+  // triggers COW isolation for that alias only.
   std::vector<int64_t> shape = {4};
   auto a = make_object<Blob>(shape);
   auto b = make_object<Blob>(shape);
   auto c = make_object<Blob>(shape);
 
+  a->cpu_mutable_data()[0] = 1.0f;
   b->ShareData(a.get());
   c->ShareData(a.get());
 
@@ -177,11 +192,15 @@ TEST(ZeroCopyTest, ShareDataMultipleTimesIdempotent) {
   EXPECT_TRUE(c->SharesDataWith(a.get()));
   EXPECT_TRUE(b->SharesDataWith(c.get()));
   EXPECT_EQ(b->cpu_data(), c->cpu_data());
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);
 
-  // Writes through any alias are visible everywhere
-  b->cpu_mutable_data()[0] = 1.0f;
-  EXPECT_NEAR(static_cast<double>(c->cpu_mutable_data()[0]), 1.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_data()[0]), 1.0, 1e-6);
+  // Mutating b triggers COW: b gets private copy, a and c remain shared
+  b->cpu_mutable_data()[0] = 99.0f;
+  EXPECT_FALSE(b->SharesDataWith(a.get()));
+  EXPECT_TRUE(c->SharesDataWith(a.get()));  // c still shares with a
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 99.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[0]), 1.0, 1e-6);  // c unchanged
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);  // a unchanged
 }
 
 // ── Phase 2 COW: Blob-level unit tests ──
@@ -458,11 +477,14 @@ TEST(ShareDataRefCount, ShareDataAfterCOW) {
   c->ShareData(b.get());
   EXPECT_TRUE(c->SharesDataWith(b.get()));
   EXPECT_FALSE(c->SharesDataWith(a.get()));
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[1]), 2.0, 1e-6);  // c sees b's data via const
 
-  // C 通过 B 写入 → B 可见，A 不可见
+  // C mutable access triggers COW: c gets private copy, b is unaffected
   c->cpu_mutable_data()[1] = 888.0f;
-  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_data()[1]), 888.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_data()[1]), 2.0, 1e-6);
+  EXPECT_FALSE(c->SharesDataWith(b.get()));  // c COW'd away from b
+  EXPECT_NEAR(static_cast<double>(c->cpu_data()[1]), 888.0, 1e-6);  // c has new value
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[1]), 2.0, 1e-6);    // b unchanged
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[1]), 2.0, 1e-6);    // a unchanged
 }
 
 /// 场景 6：链中段 Reshape（A→B→C，Reshape B，验证 A 和 C 仍共享）
