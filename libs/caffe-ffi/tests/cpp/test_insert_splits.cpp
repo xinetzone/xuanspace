@@ -124,7 +124,7 @@ layer {
 }
 )";
 
-// Two consumers AND data feeds two branches — tests both external input split
+// Two consumers AND data feeds two branches -- tests both external input split
 // AND in-place split simultaneously.
 static const char* kDataAndInplaceSplitProto = R"(
 name: "DataAndInplaceNet"
@@ -174,7 +174,7 @@ layer {
 }
 )";
 
-// Linear chain (no fan-out) — zero splits expected
+// Linear chain (no fan-out) -- zero splits expected
 static const char* kLinearChainProto = R"(
 name: "LinearNet"
 input: "data"
@@ -201,7 +201,7 @@ layer {
 }
 )";
 
-// Single-consumer blob — zero splits
+// Single-consumer blob -- zero splits
 static const char* kSingleConsumerProto = R"(
 name: "SingleNet"
 input: "data"
@@ -215,7 +215,7 @@ layer {
 }
 )";
 
-// Input layer (modern style) with 3 consumers — 1 split after Input layer
+// Input layer (modern style) with 3 consumers -- 1 split after Input layer
 static const char* kInputLayerThreeConsumerProto = R"(
 name: "InputLayerNet"
 layer {
@@ -247,7 +247,7 @@ layer {
 }
 )";
 
-// Explicit Split layer (idempotency test) — no additional splits added
+// Explicit Split layer (idempotency test) -- no additional splits added
 static const char* kExplicitSplitProto = R"(
 name: "ExplicitSplitNet"
 input: "data"
@@ -318,7 +318,7 @@ input: "data"
 input_shape { dim: 1 dim: 4 }
 )";
 
-// Unknown bottom blob — should throw
+// Unknown bottom blob -- should throw
 static const char* kBadRefProto = R"(
 name: "BadNet"
 input: "data"

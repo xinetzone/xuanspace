@@ -111,7 +111,7 @@ TEST(ZeroCopyTest, ReshapeBreaksShare) {
   dst->ShareData(src.get());
   EXPECT_TRUE(dst->SharesDataWith(src.get()));
 
-  // Reshape dst to a different shape — must allocate new private memory,
+  // Reshape dst to a different shape -- must allocate new private memory,
   // breaking the share.
   dst->Reshape(std::vector<int64_t>{6, 8});
   EXPECT_FALSE(dst->SharesDataWith(src.get()));
@@ -792,7 +792,7 @@ layer {
 }
 
 TEST(ZeroCopyTest, SplitN2COWZeroCopyShare) {
-  // N=2: COW Phase 2 — tops share data with bottom after Forward (zero-copy).
+  // N=2: COW Phase 2 -- tops share data with bottom after Forward (zero-copy).
   // The actual copy happens only when cpu_mutable_data() is called on a top.
   std::string prototxt = R"(
 name: "test_split_n2_cow"
@@ -891,7 +891,7 @@ TEST(ZeroCopyTest, LiveBlobCountStableAcrossShareData) {
     auto b = make_object<Blob>(std::vector<int64_t>{8});
     EXPECT_EQ(LiveBlobCount(), before + 2);
     b->ShareData(a.get());
-    // ShareData does not create or destroy Blobs — count unchanged
+    // ShareData does not create or destroy Blobs -- count unchanged
     EXPECT_EQ(LiveBlobCount(), before + 2);
   }
   EXPECT_EQ(LiveBlobCount(), before);
@@ -993,7 +993,7 @@ layer {
 
   int64_t live_count_before = LiveBlobCount();
 
-  // Forward 10 次 — 不应创建新 Blob 或泄漏 refcount
+  // Forward 10 次 -- 不应创建新 Blob 或泄漏 refcount
   for (int i = 0; i < 10; ++i) {
     net->Forward();
     // 每次 Forward 后，N=1 top 应仍与 bottom 共享数据
@@ -1277,7 +1277,7 @@ TEST(OwnerCOWTest, OwnerMutableDataTriggersCOWWhenShared) {
   const float* borrower1_ptr_before = borrower1->cpu_data();
   const float* owner_ptr_before = owner->cpu_data();
 
-  // Owner 调用 cpu_mutable_data() —— 因为有 borrowers 共享，应触发 COW
+  // Owner 调用 cpu_mutable_data() ---- 因为有 borrowers 共享，应触发 COW
   float* owner_mut = owner->cpu_mutable_data();
 
   // Owner 获得新的私有 buffer（与 borrowers 断开）
@@ -1585,7 +1585,7 @@ layer {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// P1: COW Integration Tests — End-to-end Split → In-place → Backward
+// P1: COW Integration Tests -- End-to-end Split → In-place → Backward
 // ═══════════════════════════════════════════════════════════════════════
 //
 // These tests verify COW behavior in realistic network topologies:
@@ -1985,7 +1985,7 @@ layer {
   auto dropped = net->blob_by_name("dropped");
 
   // Dropout in inference mode is identity copy (no mutation of shared buffer
-  // from the layer's perspective — but the impl copies data anyway).
+  // from the layer's perspective -- but the impl copies data anyway).
   // What matters: data is correct.
   const float* rd = raw->cpu_data();
   const float* dd = dropped->cpu_data();
@@ -2063,7 +2063,7 @@ layer {
   EXPECT_NEAR(static_cast<double>(ad[2]), static_cast<double>(elu_fwd(0.0f)),  1e-5);
   EXPECT_NEAR(static_cast<double>(ad[3]), static_cast<double>(elu_fwd(-2.0f)), 1e-5);
 
-  // Write diffs and Backward — raw gets 0, act gets 1
+  // Write diffs and Backward -- raw gets 0, act gets 1
   float* raw_diff = raw->cpu_mutable_diff();
   float* act_diff = act->cpu_mutable_diff();
   for (int64_t i = 0; i < data->count(); ++i) {
@@ -2088,7 +2088,7 @@ layer {
   }
 }
 
-// ── Test 8: Forward-Backward cycle isolation — COW doesn't corrupt diff buffer ──
+// ── Test 8: Forward-Backward cycle isolation -- COW doesn't corrupt diff buffer ──
 // After Forward (which COWs data), the diff buffers must still be properly
 // shareable and COW'd independently. Writing diff on one branch must not
 // corrupt sibling diffs.
@@ -2373,7 +2373,7 @@ layer {
   EXPECT_NEAR(static_cast<double>(dd[5]), static_cast<double>(neg_two_thirds_div2), 1e-5);
 }
 
-/// Test 3: Backward with ignore_label — ignored samples must have zero gradient
+/// Test 3: Backward with ignore_label -- ignored samples must have zero gradient
 TEST(SoftmaxWithLossTest, BackwardIgnoreLabel) {
   std::string prototxt = R"(
 name: "softmax_loss_ignore"
@@ -2487,7 +2487,7 @@ layer {
   EXPECT_GT(static_cast<double>(dd[2]), 0.0);
 }
 
-/// Test 5: Probability-only mode (no label input) — forward outputs probabilities
+/// Test 5: Probability-only mode (no label input) -- forward outputs probabilities
 /// backward zeros out gradient (no loss signal)
 TEST(SoftmaxWithLossTest, ProbabilityOnlyMode) {
   std::string prototxt = R"(
@@ -2808,5 +2808,270 @@ layer {
   EXPECT_EQ(pooled->count(), 2);  // 2 channels, 1x1 output per channel
   EXPECT_NEAR(static_cast<double>(out[0]), 4.0, 1e-6);
   EXPECT_NEAR(static_cast<double>(out[1]), 40.0, 1e-6);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Slice Layer Zero-Copy Tests (single-output scenario)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 验证Slice层在单输出（top.size() == 1）场景下的零拷贝优化：
+//   - Reshape阶段ShareData/ShareDiff指针参数正确性
+//   - Forward阶段跳过数据复制
+//   - Backward阶段跳过梯度复制
+//   - 多轮Forward/Backward无refcount泄漏
+
+/// Test 1: Slice N=1 单输出零拷贝——data和diff指针直接共享
+TEST(SliceLayerZeroCopyTest, SingleOutputSharesDataAndDiff) {
+  std::string prototxt = R"(
+name: "slice_single_output"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 3
+input_dim: 4
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "output"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  net->Forward();
+
+  auto bottom = net->blob_by_name("data");
+  auto top = net->blob_by_name("output");
+
+  EXPECT_TRUE(bottom);
+  EXPECT_TRUE(top);
+
+  // N=1零拷贝：top必须与bottom共享data和diff指针
+  EXPECT_TRUE(top->SharesDataWith(bottom.get()));
+  EXPECT_TRUE(top->SharesDiffWith(bottom.get()));
+  EXPECT_EQ(top->cpu_data(), bottom->cpu_data());
+  EXPECT_EQ(top->cpu_diff(), bottom->cpu_diff());
+
+  // 形状必须完全一致
+  EXPECT_EQ(top->count(), bottom->count());
+  EXPECT_EQ(top->num_axes(), bottom->num_axes());
+  for (int i = 0; i < bottom->num_axes(); ++i) {
+    EXPECT_EQ(top->shape(i), bottom->shape(i));
+  }
+}
+
+/// Test 2: Slice N=1 单输出——Forward后数据正确性验证
+TEST(SliceLayerZeroCopyTest, SingleOutputDataCorrectness) {
+  std::string prototxt = R"(
+name: "slice_single_output_data"
+input: "data"
+input_dim: 2
+input_dim: 3
+input_dim: 4
+input_dim: 5
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "output"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  // 写入已知数据
+  auto data = net->blob_by_name("data");
+  float* data_ptr = data->cpu_mutable_data();
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data_ptr[i] = static_cast<float>(i) * 0.01f;
+  }
+
+  net->Forward();
+
+  auto output = net->blob_by_name("output");
+
+  // 零拷贝共享：指针必须相同
+  EXPECT_TRUE(output->SharesDataWith(data.get()));
+  EXPECT_EQ(output->cpu_data(), data->cpu_data());
+
+  // 通过output读取数据必须与写入一致
+  for (int64_t i = 0; i < data->count(); ++i) {
+    EXPECT_NEAR(static_cast<double>(output->cpu_data()[i]),
+                static_cast<double>(i) * 0.01, 1e-6)
+        << "Data mismatch at index " << i;
+  }
+}
+
+/// Test 3: Slice N=1 单输出——Backward梯度直通
+TEST(SliceLayerZeroCopyTest, SingleOutputGradientPassthrough) {
+  std::string prototxt = R"(
+name: "slice_single_output_bwd"
+input: "data"
+input_dim: 1
+input_dim: 1
+input_dim: 2
+input_dim: 3
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "output"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data = net->blob_by_name("data");
+  auto output = net->blob_by_name("output");
+
+  // 初始化Forward数据
+  for (int64_t i = 0; i < data->count(); ++i) {
+    data->cpu_mutable_data()[i] = static_cast<float>(i + 1);
+  }
+
+  net->Forward();
+
+  // 验证零拷贝
+  EXPECT_TRUE(output->SharesDiffWith(data.get()));
+
+  // 设置输出梯度（模拟上游梯度）
+  float expected_dy[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f};
+  float* out_diff = output->cpu_mutable_diff();
+  for (int64_t i = 0; i < output->count() && i < 6; ++i) {
+    out_diff[i] = expected_dy[i];
+  }
+
+  net->Backward();
+
+  // N=1梯度直通：data_diff必须等于output_diff
+  const float* data_diff = data->cpu_diff();
+  for (int64_t i = 0; i < data->count() && i < 6; ++i) {
+    EXPECT_NEAR(static_cast<double>(data_diff[i]),
+                static_cast<double>(expected_dy[i]), 1e-6)
+        << "Gradient mismatch at index " << i;
+  }
+}
+
+/// Test 4: Slice N=1 单输出——指定axis切片仍零拷贝（N=1时不实际切片）
+TEST(SliceLayerZeroCopyTest, SingleOutputWithAxisStillShares) {
+  std::string prototxt = R"(
+name: "slice_single_output_axis"
+input: "data"
+input_dim: 1
+input_dim: 4
+input_dim: 2
+input_dim: 2
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "output"
+  slice_param { axis: 1 }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data = net->blob_by_name("data");
+  data->cpu_mutable_data()[0] = 42.0f;
+
+  net->Forward();
+
+  auto output = net->blob_by_name("output");
+
+  // 即使指定了axis，单输出时形状与输入一致，仍零拷贝
+  EXPECT_TRUE(output->SharesDataWith(data.get()));
+  EXPECT_EQ(output->cpu_data(), data->cpu_data());
+  EXPECT_EQ(output->shape(1), data->shape(1));  // axis=1维度未被切分
+  EXPECT_NEAR(static_cast<double>(output->cpu_data()[0]), 42.0, 1e-6);
+}
+
+/// Test 5: Slice N=1 单输出——多轮Forward/Backward无refcount泄漏
+TEST(SliceLayerZeroCopyTest, RepeatedForwardBackwardNoLeak) {
+  std::string prototxt = R"(
+name: "slice_repeated_fwd_bwd"
+input: "data"
+input_dim: 1
+input_dim: 2
+input_dim: 2
+input_dim: 2
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "output"
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+  auto data = net->blob_by_name("data");
+  auto output = net->blob_by_name("output");
+
+  // 写入初始数据
+  data->cpu_mutable_data()[0] = 100.0f;
+
+  int64_t live_count_before = LiveBlobCount();
+
+  // 执行10轮Forward/Backward循环
+  for (int iter = 0; iter < 10; ++iter) {
+    net->Forward();
+    EXPECT_TRUE(output->SharesDataWith(data.get()));
+    EXPECT_EQ(output->cpu_data(), data->cpu_data());
+
+    // 设置梯度并Backward
+    output->cpu_mutable_diff()[0] = static_cast<float>(iter + 1) * 0.1f;
+    net->Backward();
+
+    // 数据始终正确
+    EXPECT_NEAR(static_cast<double>(output->cpu_data()[0]), 100.0, 1e-6);
+  }
+
+  // Blob数量稳定（无refcount泄漏导致的额外Blob创建）
+  EXPECT_EQ(LiveBlobCount(), live_count_before);
+}
+
+/// Test 6: Slice N=2 多输出——验证不零拷贝（对比测试）
+TEST(SliceLayerZeroCopyTest, MultiOutputDoesNotShareData) {
+  std::string prototxt = R"(
+name: "slice_multi_output"
+input: "data"
+input_dim: 1
+input_dim: 4
+input_dim: 1
+input_dim: 1
+layer {
+  name: "slice"
+  type: "Slice"
+  bottom: "data"
+  top: "out_a"
+  top: "out_b"
+  slice_param { axis: 1 slice_point: 2 }
+}
+)";
+
+  ObjectPtr<Net> net = make_object<Net>(ReadNetParamsFromTextString(prototxt));
+
+  auto data = net->blob_by_name("data");
+  float* dptr = data->cpu_mutable_data();
+  dptr[0] = 1.0f; dptr[1] = 2.0f; dptr[2] = 3.0f; dptr[3] = 4.0f;
+
+  net->Forward();
+
+  auto out_a = net->blob_by_name("out_a");
+  auto out_b = net->blob_by_name("out_b");
+
+  // 多输出场景：不共享data指针（需要实际切片复制）
+  EXPECT_FALSE(out_a->SharesDataWith(data.get()));
+  EXPECT_FALSE(out_b->SharesDataWith(data.get()));
+  EXPECT_NE(out_a->cpu_data(), data->cpu_data());
+  EXPECT_NE(out_b->cpu_data(), data->cpu_data());
+
+  // 但切片数据必须正确
+  EXPECT_EQ(out_a->count(), 2);
+  EXPECT_EQ(out_b->count(), 2);
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[0]), 1.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[1]), 2.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[0]), 3.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[1]), 4.0, 1e-6);
 }
 

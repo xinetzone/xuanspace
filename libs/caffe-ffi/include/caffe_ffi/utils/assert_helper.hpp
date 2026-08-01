@@ -24,16 +24,17 @@
  * and is safe in all contexts (if/else without braces, loops, etc.).
  *
  * Two tiers of macros:
- *   1. CAFFE_FFI_CHECK_*  — for production code (always active, throws on failure)
- *   2. EXPECT_*/ASSERT_*  — for test code (defined in test_harness.hpp)
+ *   1. CAFFE_FFI_CHECK_*  -- for production code (always active, throws on failure)
+ *   2. EXPECT_* / ASSERT_*  -- for test code (defined in test_harness.hpp)
  *
- * Usage for defining new assertion macros:
+ * Usage for defining new assertion macros (example pattern, do not copy-paste
+ * the backslashes as they are for macro continuation in real code):
  *
- *   #define MY_CHECK(cond) \
- *     [&]() -> ::caffe_ffi::utils::AssertHelper { \
- *       if (cond) return ::caffe_ffi::utils::AssertHelper(false); \
- *       return ::caffe_ffi::utils::AssertHelper(true, \
- *         std::string("MY_CHECK failed at ") + __FILE__ + ":" + std::to_string(__LINE__)); \
+ *   #define MY_CHECK(cond)
+ *     [&]() -> ::caffe_ffi::utils::AssertHelper {
+ *       if (cond) return ::caffe_ffi::utils::AssertHelper(false);
+ *       return ::caffe_ffi::utils::AssertHelper(true,
+ *         std::string("MY_CHECK failed at ") + __FILE__ + ":" + std::to_string(__LINE__));
  *     }()
  */
 

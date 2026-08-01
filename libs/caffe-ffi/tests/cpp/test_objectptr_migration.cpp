@@ -131,7 +131,7 @@ TEST(ObjectPtrMigration, CopyConstructorSharesPointerAndData) {
 }
 
 /// 验证 ObjectPtr 拷贝后，原始对象析构不会导致悬空指针
-/// 这是侵入式 refcount 相比 shared_ptr 的核心优势——
+/// 这是侵入式 refcount 相比 shared_ptr 的核心优势----
 /// 注意：ObjectPtr 不可从裸指针直接构造（构造函数为 private），
 /// 需通过拷贝已有 ObjectPtr 来共享所有权
 TEST(ObjectPtrMigration, CopySurvivesSourceDestruction) {

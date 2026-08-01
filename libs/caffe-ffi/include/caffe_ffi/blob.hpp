@@ -26,7 +26,7 @@ int64_t LiveBlobCount();
  * @brief Runtime COW enable/disable switch (Phase 2).
  *
  * When COW is disabled at runtime, cpu_mutable_data()/cpu_mutable_diff()
- * still trigger COW if the data is shared — this is the safety default.
+ * still trigger COW if the data is shared -- this is the safety default.
  * When disabled, the COW logic is bypassed and the raw pointer is returned
  * (same as Phase 1 behavior). This is useful for emergency rollback or
  * performance comparison.
@@ -162,7 +162,7 @@ class Blob : public Object {
    * If the data tensor is shared (use_count > 1, e.g. after ShareData for N>=2
    * Split fan-out), this call triggers Copy-on-Write: the shared tensor is cloned
    * into a private copy before returning the mutable pointer. This follows the
-   * PAT-001 "explicit break semantics" pattern — calling cpu_mutable_data()
+   * PAT-001 "explicit break semantics" pattern -- calling cpu_mutable_data()
    * explicitly signals write intent and breaks sharing.
    *
    * This method guarantees the returned pointer points to private (unshared)
@@ -172,7 +172,7 @@ class Blob : public Object {
   float* cpu_mutable_data() {
 #ifdef CAFFE_FFI_ENABLE_COW
     if (is_lazy_allocated_) {
-      // Phase 3.1: Lazy blob — allocate both data and diff tensors now (first write).
+      // Phase 3.1: Lazy blob -- allocate both data and diff tensors now (first write).
       auto sv = ShapeView(shape_only_.data(), shape_only_.size());
       data_tensor_ = NewCPUTensor(sv);
       diff_tensor_ = NewCPUTensor(sv);
@@ -217,7 +217,7 @@ class Blob : public Object {
   float* cpu_mutable_diff() {
 #ifdef CAFFE_FFI_ENABLE_COW
     if (is_lazy_allocated_) {
-      // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+      // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
       auto sv = ShapeView(shape_only_.data(), shape_only_.size());
       data_tensor_ = NewCPUTensor(sv);
       diff_tensor_ = NewCPUTensor(sv);
@@ -235,7 +235,7 @@ class Blob : public Object {
 #endif
     if (!diff_tensor_.defined()) {
       // Diff tensor not yet allocated (e.g. after cpu_mutable_data allocated only data)
-      // — allocate diff matching data shape.
+      // -- allocate diff matching data shape.
       if (data_tensor_.defined()) {
         diff_tensor_ = NewCPUTensor(
             ShapeView(data_tensor_.shape().data(),
@@ -331,7 +331,7 @@ class Blob : public Object {
    * from O(N) atomic ops to O(1) atomic op + O(N) raw pointer writes for
    * large fan-out scenarios (N >= BATCH_SHARE_THRESHOLD).
    *
-   * @note Prototype API — guarded by CAFFE_FFI_ENABLE_COW_PHASE3 compile-time flag.
+   * @note Prototype API -- guarded by CAFFE_FFI_ENABLE_COW_PHASE3 compile-time flag.
    *       Requires TVM FFI Object header layout knowledge (single Object* at offset 0
    *       in ObjectPtr). Safe on MSVC/GCC/Clang where ObjectPtr is standard-layout
    *       with a single pointer member.

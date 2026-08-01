@@ -67,7 +67,7 @@ std::string FormatBytes(int64_t bytes) {
 /**
  * @brief Clone a tensor by allocating a new CPU tensor and copying data.
  *
- * This is the single memcpy point for COW — all unshare operations
+ * This is the single memcpy point for COW -- all unshare operations
  * go through this function to ensure consistent logging and auditing.
  */
 Tensor CloneTensor(const Tensor& src) {
@@ -194,7 +194,7 @@ Tensor Blob::diff_tensor() const {
 Tensor Blob::mutable_data_tensor() {
 #ifdef CAFFE_FFI_ENABLE_COW
   if (is_lazy_allocated_) {
-    // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+    // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
     auto sv = ShapeView(shape_only_.data(), shape_only_.size());
     data_tensor_ = NewCPUTensor(sv);
     diff_tensor_ = NewCPUTensor(sv);
@@ -234,7 +234,7 @@ Tensor Blob::mutable_data_tensor() {
 Tensor Blob::mutable_diff_tensor() {
 #ifdef CAFFE_FFI_ENABLE_COW
   if (is_lazy_allocated_) {
-    // Phase 3.1: Lazy blob — allocate both data and diff tensors now.
+    // Phase 3.1: Lazy blob -- allocate both data and diff tensors now.
     auto sv = ShapeView(shape_only_.data(), shape_only_.size());
     data_tensor_ = NewCPUTensor(sv);
     diff_tensor_ = NewCPUTensor(sv);

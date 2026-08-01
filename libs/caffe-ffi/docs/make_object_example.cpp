@@ -68,7 +68,7 @@ class Weight : public Object {
   /// 获取裸数据指针（只读）
   const float* data() const { return data_; }
 
-  /// 获取裸数据指针（可写）—— 如果支持 COW，这里会触发克隆
+  /// 获取裸数据指针（可写）---- 如果支持 COW，这里会触发克隆
   float* mutable_data() { return data_; }
 
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("myproject.Weight", Weight, Object);

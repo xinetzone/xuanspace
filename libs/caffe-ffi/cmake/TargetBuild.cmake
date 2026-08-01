@@ -51,17 +51,17 @@ caffe_ffi_configure_target(_caffe_ffi VISIBILITY PUBLIC)
 target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_EXPORTS)
 message(STATUS "[caffe_ffi] _caffe_ffi DLL: CAFFE_FFI_EXPORTS enabled (data symbol export)")
 
-# COW Phase 2 compile-time switch
+# COW Phase 2 compile-time switch (PUBLIC because cpu_mutable_data() is inline in blob.hpp)
 if(CAFFE_FFI_ENABLE_COW)
-  target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_ENABLE_COW)
+  target_compile_definitions(_caffe_ffi PUBLIC CAFFE_FFI_ENABLE_COW)
   message(STATUS "[caffe_ffi] COW optimization: ENABLED (Phase 2)")
 else()
   message(STATUS "[caffe_ffi] COW optimization: DISABLED")
 endif()
 
-# COW Phase 3 compile-time switch (batch refcount, lazy reshape)
+# COW Phase 3 compile-time switch (batch refcount, lazy reshape) — PUBLIC for header inlines
 if(CAFFE_FFI_ENABLE_COW_PHASE3)
-  target_compile_definitions(_caffe_ffi PRIVATE CAFFE_FFI_ENABLE_COW_PHASE3)
+  target_compile_definitions(_caffe_ffi PUBLIC CAFFE_FFI_ENABLE_COW_PHASE3)
   message(STATUS "[caffe_ffi] COW Phase 3 batch optimizations: ENABLED")
 else()
   message(STATUS "[caffe_ffi] COW Phase 3 batch optimizations: DISABLED")

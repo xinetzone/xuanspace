@@ -31,14 +31,14 @@ constexpr int kLogAggregateThreshold = 32;
 /// a shared reference.
 ///
 /// N=16 is chosen because:
-///   - N=16 produces 16 × 1KB = 16KB allocation overhead — negligible
+///   - N=16 produces 16 × 1KB = 16KB allocation overhead -- negligible
 ///   - N=16 ≈ 2× typical CNN fan-out (1-8), above which lazy pays off
 ///   - Aligns with kLogAggregateThreshold (32) as a "medium" tier
 ///
 /// Three-tier layering (kLazyReshapeThreshold=16, kLogAggregateThreshold=32):
-///   N<16:  Phase 2 — per-top ReshapeLike with timing and per-top log
-///   16≤N<32: Phase 3.1 — SetShapeOnly (no allocation), no per-top log
-///   N≥32: Phase 3.0+3.1 — SetShapeOnly (no allocation), [SPLIT-PERF] summary
+///   N<16:  Phase 2 -- per-top ReshapeLike with timing and per-top log
+///   16≤N<32: Phase 3.1 -- SetShapeOnly (no allocation), no per-top log
+///   N≥32: Phase 3.0+3.1 -- SetShapeOnly (no allocation), [SPLIT-PERF] summary
 ///          shows lazy_reshape=yes, total_alloc_bytes=0, log_aggregated=yes
 constexpr int kLazyReshapeThreshold = 16;
 
@@ -104,7 +104,7 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
   for (int i = 0; i < num_top; ++i) {
 #ifdef CAFFE_FFI_ENABLE_COW_PHASE3
     if (num_top >= kLazyReshapeThreshold) {
-      // Phase 3.1: Lazy allocation — store shape only, no memory allocation.
+      // Phase 3.1: Lazy allocation -- store shape only, no memory allocation.
       // Forward() will replace the lazy tensor with ShareData().
       auto bottom_shape = bottom[0]->shape();
       top[i]->SetShapeOnly(ShapeView(bottom_shape.data(), bottom_shape.size()));
@@ -176,7 +176,7 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
   if (num_top == 1) {
     // Phase 1 N=1 zero-copy shortcut: share data/diff tensors directly (refcount)
-    // instead of allocating + memcpy. Safe because N=1 means no fan-out —
+    // instead of allocating + memcpy. Safe because N=1 means no fan-out --
     // the single top is semantically an identity view of the bottom.
     // Subsequent Reshape() on top[0] will break the share (allocate private copy).
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -256,7 +256,7 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
     if (!data_now_shared) { all_shared = false; ++not_shared_count; }
 
-    // Phase 3.0: per-top log aggregation — skip when N >= threshold
+    // Phase 3.0: per-top log aggregation -- skip when N >= threshold
     if (num_top < kLogAggregateThreshold) {
       CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW): top[" << i
                           << "] data_shared=" << (data_now_shared ? "yes" : "no")

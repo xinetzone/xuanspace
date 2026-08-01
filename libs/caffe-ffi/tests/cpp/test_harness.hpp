@@ -12,12 +12,13 @@
  *
  * The AssertHelper class and comparison primitives are provided by
  * <caffe_ffi/utils/assert_helper.hpp> (shared with production CHECK macros).
- * This header adds test-only EXPECT_*/ASSERT_* macros and the test registry.
+ * This header adds test-only EXPECT_* / ASSERT_* macros and the test registry.
  */
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
