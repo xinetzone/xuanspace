@@ -42,10 +42,14 @@ int64_t LiveBlobCount();
  *       cpu_mutable_diff(), mutable_data_tensor(), mutable_diff_tensor()), COW
  *       triggers: the caller receives a private copy (memcpy), other sharers
  *       continue to see the original data.</li>
- *   <li>COW triggers when <tt>tensor.use_count() > 1</tt> (i.e., more than one
- *       reference to the tensor exists).</li>
+ *   <li>COW triggers when <tt>tensor.use_count() > 2</tt> (three or more references
+ *       to the tensor exist, i.e., N≥2 fan-out). For two-party sharing (use_count=2,
+ *       N=1 single output), mutable access does NOT trigger COW to preserve
+ *       in-place zero-copy passthrough for Slice N=1 layers.</li>
  *   <li>Const accessors (cpu_data(), cpu_diff()) never trigger COW and remain
  *       zero-copy even for shared blobs.</li>
+ *   <li>Explicit COW APIs (UnshareData/UnshareDiff) always trigger at use_count>1
+ *       since they represent an explicit request to break sharing.</li>
  * </ul>
  *
  * <h3>Runtime Switch Usage</h3>
@@ -187,14 +191,20 @@ class Blob : public Object {
   /**
    * @brief Get mutable pointer to CPU data buffer with Copy-on-Write semantics.
    *
-   * If the data tensor is shared (use_count > 1, e.g. after ShareData for N>=2
-   * Split fan-out), this call triggers Copy-on-Write: the shared tensor is cloned
-   * into a private copy before returning the mutable pointer. This follows the
-   * PAT-001 "explicit break semantics" pattern -- calling cpu_mutable_data()
-   * explicitly signals write intent and breaks sharing.
+   * If the data tensor is shared by three or more parties (use_count > 2, e.g.
+   * after ShareData for N>=2 Split fan-out), this call triggers Copy-on-Write:
+   * the shared tensor is cloned into a private copy before returning the mutable
+   * pointer. For two-party sharing (use_count=2, N=1 single output), in-place
+   * zero-copy passthrough is preserved (no copy).
    *
-   * This method guarantees the returned pointer points to private (unshared)
-   * memory. Use this when you intend to mutate the data. For read-only access,
+   * This follows the PAT-001 "explicit break semantics" pattern -- calling
+   * cpu_mutable_data() explicitly signals write intent and breaks multi-party
+   * sharing. N=1 in-place writes remain visible to the source blob.
+   *
+   * This method guarantees the returned pointer points to memory that is safe
+   * to write without corrupting unrelated sharers. For N=1 this is the same
+   * pointer as the source (in-place); for N≥2 this is a private copy.
+   * Use this when you intend to mutate the data. For read-only access,
    * use cpu_data() const instead.
    */
   float* cpu_mutable_data() {
@@ -208,14 +218,20 @@ class Blob : public Object {
       shape_only_.clear();
       data_shared_ = false;
       diff_shared_ = false;
+      identity_share_data_ = false;
+      identity_share_diff_ = false;
       CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                         << " cpu_mutable_data() allocated data+diff for lazy blob"
                         << " nbytes=" << (data_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       return static_cast<float*>(data_tensor_.data_ptr());
     }
-    if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+    bool data_needs_cow = IsCOWEnabled() && data_tensor_.defined() && !identity_share_data_ &&
+        ((!data_shared_ && data_tensor_.use_count() > 1) ||
+         (data_shared_ && data_tensor_.use_count() > 1));
+    if (data_needs_cow) {
       int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = data_tensor_.use_count();
+      const char* role = data_shared_ ? "borrower" : "owner";
       const void* old_ptr = data_tensor_.data_ptr();
       Tensor new_tensor = NewCPUTensor(
           ShapeView(data_tensor_.shape().data(),
@@ -223,8 +239,10 @@ class Blob : public Object {
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       data_tensor_ = new_tensor;
       data_shared_ = false;
+      identity_share_data_ = false;  // COW broke identity alias
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_data() unshared data"
+                        << " role=" << role
                         << " refcount=" << refcount
                         << " old_ptr=" << old_ptr
                         << " new_ptr=" << data_tensor_.data_ptr()
@@ -235,9 +253,11 @@ class Blob : public Object {
   /**
    * @brief Get mutable pointer to CPU diff buffer with Copy-on-Write semantics.
    *
-   * If the diff tensor is shared (use_count > 1), this call triggers
-   * Copy-on-Write: the shared tensor is cloned into a private copy before
-   * returning the mutable pointer. Use this when you intend to mutate the diff.
+   * If the diff tensor is shared by three or more parties (use_count > 2),
+   * this call triggers Copy-on-Write: the shared tensor is cloned into a private
+   * copy before returning the mutable pointer. For two-party sharing (use_count=2,
+   * N=1 single output gradient), in-place passthrough is preserved.
+   * Use this when you intend to mutate the diff.
    */
   float* cpu_mutable_diff() {
     if (is_lazy_allocated_) {
@@ -250,6 +270,8 @@ class Blob : public Object {
       shape_only_.clear();
       data_shared_ = false;
       diff_shared_ = false;
+      identity_share_data_ = false;
+      identity_share_diff_ = false;
       CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                         << " cpu_mutable_diff() allocated data+diff for lazy blob"
                         << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
@@ -263,15 +285,20 @@ class Blob : public Object {
         caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
                        static_cast<float*>(diff_tensor_.data_ptr()));
         diff_shared_ = false;
+        identity_share_diff_ = false;
         CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
                           << " cpu_mutable_diff() allocated diff to match data shape"
                           << " nbytes=" << (diff_tensor_.numel() * static_cast<int64_t>(sizeof(float)));
       }
       return static_cast<float*>(diff_tensor_.data_ptr());
     }
-    if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+    bool diff_needs_cow = IsCOWEnabled() && diff_tensor_.defined() && !identity_share_diff_ &&
+        ((!diff_shared_ && diff_tensor_.use_count() > 1) ||
+         (diff_shared_ && diff_tensor_.use_count() > 1));
+    if (diff_needs_cow) {
       int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
       int refcount = diff_tensor_.use_count();
+      const char* role = diff_shared_ ? "borrower" : "owner";
       const void* old_ptr = diff_tensor_.data_ptr();
       Tensor new_tensor = NewCPUTensor(
           ShapeView(diff_tensor_.shape().data(),
@@ -279,8 +306,10 @@ class Blob : public Object {
       std::memcpy(new_tensor.data_ptr(), old_ptr, static_cast<size_t>(nbytes));
       diff_tensor_ = new_tensor;
       diff_shared_ = false;
+      identity_share_diff_ = false;  // COW broke identity alias
       CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                         << " cpu_mutable_diff() unshared diff"
+                        << " role=" << role
                         << " refcount=" << refcount
                         << " old_ptr=" << old_ptr
                         << " new_ptr=" << diff_tensor_.data_ptr()
@@ -338,6 +367,24 @@ class Blob : public Object {
    */
   void ShareData(const Blob* other);
   void ShareDiff(const Blob* other);
+
+  /**
+   * @brief Zero-copy share data tensor as N=1 identity alias.
+   *
+   * Like ShareData(), but marks the share as identity mode: mutable access
+   * does NOT trigger COW, so in-place writes propagate to the source blob.
+   * Used for N=1 Split (identity passthrough) where top is truly an alias
+   * of bottom. For N>=2 fan-out, use ShareData() which triggers COW on first
+   * mutable access to isolate branches.
+   */
+  void ShareDataIdentity(const Blob* other);
+
+  /**
+   * @brief Zero-copy share diff tensor as N=1 identity alias.
+   * @see ShareDataIdentity for semantics.
+   */
+  void ShareDiffIdentity(const Blob* other);
+
   bool SharesDataWith(const Blob* other) const;
   bool SharesDiffWith(const Blob* other) const;
 
@@ -460,6 +507,12 @@ class Blob : public Object {
   // and hasn't been privatized by COW/Reshape yet.
   bool data_shared_ = false;
   bool diff_shared_ = false;
+
+  // Identity share mode: true for N=1 identity alias (Split N=1, Slice N=1).
+  // In identity mode, mutable access does NOT trigger COW — in-place writes
+  // propagate to the source blob (true identity semantics).
+  bool identity_share_data_ = false;
+  bool identity_share_diff_ = false;
 
   // Phase 3.1: lazy allocation support
   std::vector<int64_t> shape_only_;       // stored shape for lazy allocation

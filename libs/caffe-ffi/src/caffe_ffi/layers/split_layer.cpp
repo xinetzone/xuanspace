@@ -175,14 +175,16 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " bottom_ptr=" << static_cast<const void*>(bottom_data);
 
   if (num_top == 1) {
-    // Phase 1 N=1 zero-copy shortcut: share data/diff tensors directly (refcount)
-    // instead of allocating + memcpy. Safe because N=1 means no fan-out --
-    // the single top is semantically an identity view of the bottom.
-    // Subsequent Reshape() on top[0] will break the share (allocate private copy).
+    // Phase 1 N=1 zero-copy identity shortcut: top[0] is truly an alias of bottom[0].
+    // Uses ShareDataIdentity/ShareDiffIdentity (not the COW-sharing variants) so that
+    // mutable access on top[0] does NOT trigger COW -- in-place writes propagate
+    // directly to bottom[0], which is the correct N=1 rename/passthrough semantic.
+    // For N>=2 fan-out, Forward uses ShareData/ShareDiff (COW mode) which triggers
+    // COW on first mutable access to isolate branches.
     auto t0 = std::chrono::high_resolution_clock::now();
     bool was_shared = top[0]->SharesDataWith(bottom[0]);
-    top[0]->ShareData(bottom[0]);
-    top[0]->ShareDiff(bottom[0]);
+    top[0]->ShareDataIdentity(bottom[0]);
+    top[0]->ShareDiffIdentity(bottom[0]);
     auto t1 = std::chrono::high_resolution_clock::now();
     double share_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
     bool now_shared = top[0]->SharesDataWith(bottom[0]);
@@ -297,15 +299,20 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " num_top=" << num_top
                       << " nbytes=" << nbytes;
 
-  // Get a writable pointer to bottom diff. COW triggers automatically if bottom's
-  // diff is still shared with any top (non-COW'd borrowers), ensuring bottom gets
-  // a private accumulation buffer that cannot alias with any top's diff pointer.
-  float* bottom_diff = bottom[0]->cpu_mutable_diff();
-
   if (num_top == 1) {
-    // N=1 zero-copy backward: copy the single top's diff to bottom.
-    // After downstream ReLU/Conv backward calls cpu_mutable_diff() on top[0],
-    // top[0] has COW'd to a private buffer with valid gradients. Copy them down.
+    // N=1 identity backward: top[0] and bottom[0] share the same diff buffer
+    // (ShareDiffIdentity in Forward set identity mode, so mutable access did
+    // not trigger COW). No accumulation needed -- gradients written to top[0]
+    // by downstream layers are already visible in bottom[0].
+    if (top[0]->SharesDiffWith(bottom[0])) {
+      CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
+                           << " Backward(N=1 IDENTITY): count=" << count
+                           << " memcpy_bytes=0B (identity alias, no copy needed)"
+                           << " shared_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
+      return;
+    }
+    // Fallback: COW already happened (e.g. non-in-place downstream), copy diff down.
+    float* bottom_diff = bottom[0]->cpu_mutable_diff();
     const float* top_diff = top[0]->cpu_diff();
     if (top_diff != bottom_diff) {
       caffe_copy_fp32(static_cast<size_t>(count), top_diff, bottom_diff);
@@ -317,6 +324,11 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
                          << " bottom_ptr=" << static_cast<const void*>(bottom_diff);
     return;
   }
+
+  // N≥2: Get a writable pointer to bottom diff. COW triggers automatically if bottom's
+  // diff is still shared with any top (non-COW'd borrowers), ensuring bottom gets
+  // a private accumulation buffer that cannot alias with any top's diff pointer.
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();
 
   // N≥2 gradient accumulation: initialize bottom diff with first top's gradients,
   // then axpy remaining tops' gradients into bottom. This implements the standard

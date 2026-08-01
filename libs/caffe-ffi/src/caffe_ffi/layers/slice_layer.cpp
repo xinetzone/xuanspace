@@ -96,8 +96,11 @@ void SliceLayer::Reshape(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << ss.str();
 
   if (top.size() == 1) {
-    top[0]->ShareData(bottom[0]);
-    top[0]->ShareDiff(bottom[0]);
+    // N=1 Slice is identity/passthrough (same as N=1 Split).
+    // Use Identity share so mutable access on top[0] does NOT trigger COW --
+    // in-place writes propagate directly to bottom[0].
+    top[0]->ShareDataIdentity(bottom[0]);
+    top[0]->ShareDiffIdentity(bottom[0]);
   }
 }
 
@@ -159,9 +162,13 @@ void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
   if (top.size() == 1) {
-    // N=1 zero-copy backward: after upstream calls cpu_mutable_diff() on top[0],
-    // top[0] may have COW'd to a private diff buffer. If pointers differ, copy
-    // top's diff down to bottom; if they still alias, no copy needed.
+    // N=1 identity backward: if diff is still shared (identity alias), gradients
+    // written to top[0] are already visible in bottom[0] -- zero-copy passthrough.
+    if (top[0]->SharesDiffWith(bottom[0])) {
+      CAFFE_FFI_LAYER_LOG << "Slice Backward(N=1 IDENTITY): zero-copy passthrough, no copy needed";
+      return;
+    }
+    // Fallback: COW already happened, copy diff down.
     float* bottom_diff = bottom[0]->cpu_mutable_diff();
     const float* top_diff = top[0]->cpu_diff();
     if (top_diff != bottom_diff) {

@@ -207,19 +207,27 @@ Tensor Blob::mutable_data_tensor() {
     shape_only_.clear();
     data_shared_ = false;
     diff_shared_ = false;
+    identity_share_data_ = false;
+    identity_share_diff_ = false;
     CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                       << " mutable_data_tensor() allocated data+diff for lazy blob"
                       << " nbytes=" << TensorNBytes(data_tensor_);
     return data_tensor_;
   }
-  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+  bool data_needs_cow = IsCOWEnabled() && data_tensor_.defined() && !identity_share_data_ &&
+      ((!data_shared_ && data_tensor_.use_count() > 1) ||
+       (data_shared_ && data_tensor_.use_count() > 1));
+  if (data_needs_cow) {
     int refcount = data_tensor_.use_count();
+    const char* role = data_shared_ ? "borrower" : "owner";
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     data_tensor_ = CloneTensor(data_tensor_);
     data_shared_ = false;  // COW broke sharing, now private owner
+    identity_share_data_ = false;  // COW broke identity alias
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " mutable_data_tensor() COW"
+                      << " role=" << role
                       << " refcount=" << refcount
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << data_tensor_.data_ptr()
@@ -244,6 +252,8 @@ Tensor Blob::mutable_diff_tensor() {
     shape_only_.clear();
     data_shared_ = false;
     diff_shared_ = false;
+    identity_share_data_ = false;
+    identity_share_diff_ = false;
     CAFFE_FFI_MEM_LOG << "[LAZY] Blob#" << id_
                       << " mutable_diff_tensor() allocated data+diff for lazy blob"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
@@ -256,18 +266,25 @@ Tensor Blob::mutable_diff_tensor() {
     caffe_set_fp32(static_cast<size_t>(data_tensor_.numel()), 0.0f,
                    static_cast<float*>(diff_tensor_.data_ptr()));
     diff_shared_ = false;  // newly allocated, private
+    identity_share_diff_ = false;
     CAFFE_FFI_MEM_LOG << "[MEM] Blob#" << id_
                       << " mutable_diff_tensor() allocated diff to match data shape"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
   }
-  if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+  bool diff_needs_cow = IsCOWEnabled() && diff_tensor_.defined() && !identity_share_diff_ &&
+      ((!diff_shared_ && diff_tensor_.use_count() > 1) ||
+       (diff_shared_ && diff_tensor_.use_count() > 1));
+  if (diff_needs_cow) {
     int refcount = diff_tensor_.use_count();
+    const char* role = diff_shared_ ? "borrower" : "owner";
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     diff_tensor_ = CloneTensor(diff_tensor_);
     diff_shared_ = false;  // COW broke sharing, now private owner
+    identity_share_diff_ = false;  // COW broke identity alias
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " mutable_diff_tensor() COW"
+                      << " role=" << role
                       << " refcount=" << refcount
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << diff_tensor_.data_ptr()
@@ -301,6 +318,12 @@ void Blob::ShareData(const Blob* other) {
   shape_only_.clear();
   data_tensor_ = other->data_tensor_;
   data_shared_ = true;  // borrowed via ShareData
+  identity_share_data_ = false;  // default: COW-sharing mode (not identity alias)
+}
+
+void Blob::ShareDataIdentity(const Blob* other) {
+  ShareData(other);
+  identity_share_data_ = true;  // N=1 identity alias: mutable does not trigger COW
 }
 
 void Blob::ShareDiff(const Blob* other) {
@@ -342,6 +365,12 @@ void Blob::ShareDiff(const Blob* other) {
 
   diff_tensor_ = other->diff_tensor_;
   diff_shared_ = true;  // borrowed via ShareDiff
+  identity_share_diff_ = false;  // default: COW-sharing mode (not identity alias)
+}
+
+void Blob::ShareDiffIdentity(const Blob* other) {
+  ShareDiff(other);
+  identity_share_diff_ = true;  // N=1 identity alias: mutable does not trigger COW
 }
 
 bool Blob::SharesDataWith(const Blob* other) const {
@@ -410,6 +439,7 @@ void* Blob::UnshareData() {
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     data_tensor_ = CloneTensor(data_tensor_);
     data_shared_ = false;  // explicitly unshared, now private
+    identity_share_data_ = false;
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " UnshareData() explicit COW"
                       << " refcount=" << refcount
@@ -427,6 +457,7 @@ void* Blob::UnshareDiff() {
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
     diff_tensor_ = CloneTensor(diff_tensor_);
     diff_shared_ = false;  // explicitly unshared, now private
+    identity_share_diff_ = false;
     CAFFE_FFI_MEM_LOG << "[COW] Blob#" << id_
                       << " UnshareDiff() explicit COW"
                       << " refcount=" << refcount
@@ -466,6 +497,8 @@ void Blob::Reshape(ShapeView shape) {
     shape_only_.clear();
     data_shared_ = false;
     diff_shared_ = false;
+    identity_share_data_ = false;
+    identity_share_diff_ = false;
 
     int64_t new_total_nbytes = new_count * sizeof(float) * 2;
     int64_t net_delta = new_total_nbytes - old_nbytes;
@@ -555,6 +588,8 @@ void Blob::SetShapeOnly(ShapeView shape) {
   is_lazy_allocated_ = true;
   data_shared_ = false;
   diff_shared_ = false;
+  identity_share_data_ = false;
+  identity_share_diff_ = false;
 
   // Compute count for log
   int64_t total_count = 1;

@@ -5,10 +5,12 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include <tvm/ffi/memory.h>
 
+#include "caffe/proto/caffe.pb.h"
 #include "caffe_ffi/fill.hpp"
 #include "caffe_ffi/layer_factory.hpp"
 #include "caffe_ffi/error.hpp"
@@ -61,10 +63,55 @@ void InnerProductLayer::LayerSetUp(const std::vector<Blob*>& bottom,
     this->blobs_[0] = make_object<Blob>(weight_shape);
     CAFFE_FFI_LAYER_LOG << "InnerProduct: created weight blob shape=["
                         << weight_shape[0] << ", " << weight_shape[1] << "]";
+
+    // Apply weight_filler if specified
+    const auto& ip_param = this->layer_param_.inner_product_param();
+    if (ip_param.has_weight_filler()) {
+      const caffe::FillerParameter& filler = ip_param.weight_filler();
+      const std::string filler_type = filler.type();
+      float weight_value = 0.0f;
+      if (filler_type == "constant") {
+        weight_value = filler.value();
+      } else if (filler_type == "xavier" || filler_type == "gaussian" || filler_type == "msra") {
+        // For non-constant fillers, use a simple default of 1.0 for now
+        // (full implementation can add proper fan-in/fan-out initialization later)
+        weight_value = 1.0f;
+        CAFFE_FFI_LOG_WARN() << "[IP-FILLER] filler type '" << filler_type
+                             << "' not fully implemented, using constant 1.0 for weights";
+      } else {
+        weight_value = 0.0f;
+      }
+      caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), weight_value,
+                     this->blobs_[0]->cpu_mutable_data());
+      CAFFE_FFI_LAYER_LOG << "InnerProduct: applied weight_filler type='" << filler_type
+                          << "' value=" << weight_value;
+    } else {
+      // Default: initialize weights to zero
+      caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f,
+                     this->blobs_[0]->cpu_mutable_data());
+    }
+
     if (bias_term_) {
       std::vector<int64_t> bias_shape = {N_};
       this->blobs_[1] = make_object<Blob>(bias_shape);
       CAFFE_FFI_LAYER_LOG << "InnerProduct: created bias blob shape=[" << N_ << "]";
+
+      // Apply bias_filler if specified
+      float bias_value = 0.0f;
+      if (ip_param.has_bias_filler()) {
+        const caffe::FillerParameter& filler = ip_param.bias_filler();
+        const std::string filler_type = filler.type();
+        if (filler_type == "constant") {
+          bias_value = filler.value();
+        }
+        caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), bias_value,
+                       this->blobs_[1]->cpu_mutable_data());
+        CAFFE_FFI_LAYER_LOG << "InnerProduct: applied bias_filler type='" << filler_type
+                            << "' value=" << bias_value;
+      } else {
+        caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f,
+                       this->blobs_[1]->cpu_mutable_data());
+      }
     }
   }
   this->param_propagate_down_.resize(this->blobs_.size(), true);
