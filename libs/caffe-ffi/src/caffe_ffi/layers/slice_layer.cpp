@@ -159,7 +159,16 @@ void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
   if (top.size() == 1) {
-    CAFFE_FFI_LAYER_LOG << "Slice Backward: single top, shared diff, no copy needed";
+    // N=1 zero-copy backward: after upstream calls cpu_mutable_diff() on top[0],
+    // top[0] may have COW'd to a private diff buffer. If pointers differ, copy
+    // top's diff down to bottom; if they still alias, no copy needed.
+    float* bottom_diff = bottom[0]->cpu_mutable_diff();
+    const float* top_diff = top[0]->cpu_diff();
+    if (top_diff != bottom_diff) {
+      caffe_copy_fp32(static_cast<size_t>(bottom[0]->count()), top_diff, bottom_diff);
+    }
+    CAFFE_FFI_LAYER_LOG << "Slice Backward(N=1): "
+                        << (top_diff != bottom_diff ? "copied diff (COW detected)" : "zero-copy passthrough");
     return;
   }
 

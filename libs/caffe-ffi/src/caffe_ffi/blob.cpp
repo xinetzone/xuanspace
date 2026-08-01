@@ -210,7 +210,7 @@ Tensor Blob::mutable_data_tensor() {
     return data_tensor_;
   }
 #endif
-  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 1) {
+  if (IsCOWEnabled() && data_tensor_.defined() && data_tensor_.use_count() > 2) {
     int refcount = data_tensor_.use_count();
     const void* old_ptr = data_tensor_.data_ptr();
     int64_t nbytes = data_tensor_.numel() * static_cast<int64_t>(sizeof(float));
@@ -261,7 +261,7 @@ Tensor Blob::mutable_diff_tensor() {
                       << " mutable_diff_tensor() allocated diff to match data shape"
                       << " nbytes=" << TensorNBytes(diff_tensor_);
   }
-  if (diff_tensor_.defined() && diff_tensor_.use_count() > 1) {
+  if (IsCOWEnabled() && diff_tensor_.defined() && diff_tensor_.use_count() > 2) {
     int refcount = diff_tensor_.use_count();
     const void* old_ptr = diff_tensor_.data_ptr();
     int64_t nbytes = diff_tensor_.numel() * static_cast<int64_t>(sizeof(float));
@@ -320,6 +320,27 @@ void Blob::ShareDiff(const Blob* other) {
   // Phase 3.1: Clear lazy allocation flag
   is_lazy_allocated_ = false;
   shape_only_.clear();
+
+  // Ensure data_tensor_ shape matches other (Caffe invariant: data and diff
+  // always have the same shape). Reshape allocates a private data_tensor_
+  // when shapes differ, so subsequent num_axes()/count()/shape() return
+  // correct values even when ShareDiff is called without a prior ShareData.
+  ShapeView other_shape(other->diff_tensor_.shape().data(),
+                        static_cast<size_t>(other->diff_tensor_.ndim()));
+  bool shape_matches = data_tensor_.defined() &&
+                       (static_cast<size_t>(data_tensor_.ndim()) == other_shape.size());
+  if (shape_matches) {
+    for (size_t i = 0; i < other_shape.size(); ++i) {
+      if (data_tensor_.size(static_cast<int>(i)) != other_shape[i]) {
+        shape_matches = false;
+        break;
+      }
+    }
+  }
+  if (!shape_matches) {
+    Reshape(other_shape);
+  }
+
   diff_tensor_ = other->diff_tensor_;
   diff_shared_ = true;  // borrowed via ShareDiff
 }

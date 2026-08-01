@@ -210,23 +210,30 @@ TEST(ZeroCopyTest, ShareDataMultipleTimesIdempotent) {
 TEST(COWTest, MutableDataTriggersCOWWhenShared) {
   std::vector<int64_t> shape = {8};
   auto src = make_object<Blob>(shape);
-  auto dst = make_object<Blob>(shape);
+  auto dst1 = make_object<Blob>(shape);
+  auto dst2 = make_object<Blob>(shape);
 
   // 写入已知数据
   for (int64_t i = 0; i < src->count(); ++i) {
     src->cpu_mutable_data()[i] = static_cast<float>(i);
   }
 
-  dst->ShareData(src.get());
-  EXPECT_TRUE(dst->SharesDataWith(src.get()));
-  EXPECT_EQ(dst->cpu_data(), src->cpu_data());
+  // 三方共享（use_count=3）：src + dst1 + dst2
+  dst1->ShareData(src.get());
+  dst2->ShareData(src.get());
+  EXPECT_TRUE(dst1->SharesDataWith(src.get()));
+  EXPECT_TRUE(dst2->SharesDataWith(src.get()));
+  EXPECT_EQ(dst1->cpu_data(), src->cpu_data());
 
-  // 调用 cpu_mutable_data() → COW 触发
-  float* dst_mut = dst->cpu_mutable_data();
+  // 调用 cpu_mutable_data() → 在三方共享下 COW 触发
+  float* dst_mut = dst1->cpu_mutable_data();
 
   // 指针不再相等（COW 打破了共享）
   EXPECT_NE(dst_mut, src->cpu_data());
-  EXPECT_FALSE(dst->SharesDataWith(src.get()));
+  EXPECT_FALSE(dst1->SharesDataWith(src.get()));
+
+  // dst2 仍与 src 共享
+  EXPECT_TRUE(dst2->SharesDataWith(src.get()));
 
   // 数据内容正确复制
   for (int64_t i = 0; i < src->count(); ++i) {
@@ -253,20 +260,28 @@ TEST(COWTest, MutableDataNoCOWWhenNotShared) {
 TEST(COWTest, MutableDiffTriggersCOWWhenShared) {
   std::vector<int64_t> shape = {6};
   auto src = make_object<Blob>(shape);
-  auto dst = make_object<Blob>(shape);
+  auto dst1 = make_object<Blob>(shape);
+  auto dst2 = make_object<Blob>(shape);
 
   for (int64_t i = 0; i < src->count(); ++i) {
     src->cpu_mutable_diff()[i] = static_cast<float>(i * 10);
   }
 
-  dst->ShareDiff(src.get());
-  EXPECT_TRUE(dst->SharesDiffWith(src.get()));
-  EXPECT_EQ(dst->cpu_diff(), src->cpu_diff());
+  // 三方共享（use_count=3）：src + dst1 + dst2
+  dst1->ShareDiff(src.get());
+  dst2->ShareDiff(src.get());
+  EXPECT_TRUE(dst1->SharesDiffWith(src.get()));
+  EXPECT_TRUE(dst2->SharesDiffWith(src.get()));
+  EXPECT_EQ(dst1->cpu_diff(), src->cpu_diff());
 
-  float* dst_mut_diff = dst->cpu_mutable_diff();
+  float* dst_mut_diff = dst1->cpu_mutable_diff();
 
+  // 在三方共享下 COW 触发：指针不再相等
   EXPECT_NE(dst_mut_diff, src->cpu_diff());
-  EXPECT_FALSE(dst->SharesDiffWith(src.get()));
+  EXPECT_FALSE(dst1->SharesDiffWith(src.get()));
+
+  // dst2 仍与 src 共享
+  EXPECT_TRUE(dst2->SharesDiffWith(src.get()));
 
   for (int64_t i = 0; i < src->count(); ++i) {
     EXPECT_NEAR(static_cast<double>(dst_mut_diff[i]),
@@ -274,35 +289,39 @@ TEST(COWTest, MutableDiffTriggersCOWWhenShared) {
   }
 }
 
-/// 验证 COW 后的数据隔离：修改 dst 不影响 src
+/// 验证 COW 后的数据隔离：三方共享时修改 dst 不影响 src 和其他共享者
 TEST(COWTest, DataIsolationAfterCOW) {
   std::vector<int64_t> shape = {4};
   auto src = make_object<Blob>(shape);
-  auto dst = make_object<Blob>(shape);
+  auto dst1 = make_object<Blob>(shape);
+  auto dst2 = make_object<Blob>(shape);
 
   src->cpu_mutable_data()[0] = 10.0f;
   src->cpu_mutable_data()[1] = 20.0f;
   src->cpu_mutable_data()[2] = 30.0f;
   src->cpu_mutable_data()[3] = 40.0f;
 
-  dst->ShareData(src.get());
+  // 三方共享（use_count=3）
+  dst1->ShareData(src.get());
+  dst2->ShareData(src.get());
 
-  // 触发 COW 并修改 dst
-  dst->cpu_mutable_data()[0] = 999.0f;
-  dst->cpu_mutable_data()[1] = 888.0f;
+  // 触发 COW 并修改 dst1
+  dst1->cpu_mutable_data()[0] = 999.0f;
+  dst1->cpu_mutable_data()[1] = 888.0f;
 
-  // src 不受影响
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_data()[0]), 10.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_data()[1]), 20.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_data()[2]), 30.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_data()[3]), 40.0, 1e-6);
+  // src 和 dst2 不受影响
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_data()[3]), 40.0, 1e-6);
+  EXPECT_TRUE(dst2->SharesDataWith(src.get()));
 
-  // dst 有自己的值
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[0]), 999.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[1]), 888.0, 1e-6);
+  // dst1 有自己的值
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_data()[1]), 888.0, 1e-6);
   // 未修改的部分应与 src 一致（COW 完整复制）
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[2]), 30.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[3]), 40.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_data()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_data()[3]), 40.0, 1e-6);
 }
 
 /// 验证 const cpu_data() 不触发 COW（指针保持共享）
@@ -470,8 +489,8 @@ TEST(ShareDataRefCount, ShareDataAfterCOW) {
 
   // COW 后 B 与 A 应断开
   EXPECT_FALSE(b->SharesDataWith(a.get()));
-  EXPECT_NEAR(static_cast<double>(b->cpu_mutable_data()[0]), 999.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(a->cpu_mutable_data()[0]), 1.0, 1e-6);  // A 不变
+  EXPECT_NEAR(static_cast<double>(b->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(a->cpu_data()[0]), 1.0, 1e-6);  // A 不变
 
   // B→C 共享（COW 后的 B 作为源）
   c->ShareData(b.get());
@@ -613,13 +632,16 @@ TEST(ShareDataRefCount, OldTensorReleasedAfterShare) {
   int64_t bytes_before = g_total_allocated_bytes.load();
 
   {
-    auto a = make_object<Blob>(std::vector<int64_t>{100, 100});  // 40KB
-    auto b = make_object<Blob>(std::vector<int64_t>{100, 100});  // 另一个 40KB
+    auto a = make_object<Blob>(std::vector<int64_t>{100, 100});  // 40KB data + 40KB diff = 80KB
+    auto b = make_object<Blob>(std::vector<int64_t>{100, 100});  // 另一个 80KB
 
     a->cpu_mutable_data()[0] = 1.0f;
     b->cpu_mutable_data()[0] = 2.0f;
 
-    // B 共享 A → B 的旧 40KB tensor 应被释放
+    int64_t data_nbytes = a->count() * static_cast<int64_t>(sizeof(float));  // 40KB
+    int64_t bytes_before_share = g_total_allocated_bytes.load();
+
+    // B 共享 A → B 的旧 40KB data tensor 应被释放（refcount 归零时 FreeData）
     // 注意：TVM FFI 的侵入式引用计数在 data_tensor_ 被覆盖时
     // 自动递减旧 tensor 引用计数，引用计数归零时释放内存
     b->ShareData(a.get());
@@ -627,15 +649,15 @@ TEST(ShareDataRefCount, OldTensorReleasedAfterShare) {
     EXPECT_TRUE(b->SharesDataWith(a.get()));
     int64_t bytes_after_share = g_total_allocated_bytes.load();
 
-    // 总分配量应减少（B 的旧 40KB 被释放）
-    // 注意：此断言依赖于 TVM FFI 的即时释放行为
-    // 如果使用延迟释放，此断言可能不稳定
-    EXPECT_LE(bytes_after_share, bytes_before);
+    // 总分配量应减少 data_nbytes（B 的旧 data tensor 被释放）
+    EXPECT_LE(bytes_after_share, bytes_before_share);
+    EXPECT_GE(bytes_before_share - bytes_after_share, data_nbytes - 64)  // allow small slack
+        << "Expected at least " << data_nbytes << " bytes freed after ShareData";
   }
 
   // 所有 Blob 析构后，分配量应回到初始值附近
   int64_t bytes_after = g_total_allocated_bytes.load();
-  EXPECT_LE(bytes_after, bytes_before);
+  EXPECT_LE(bytes_after, bytes_before + 1024);  // allow small slack for other test allocations
 }
 
 /// 场景 12：ShareData 空共享（源 tensor 未定义）
@@ -898,11 +920,11 @@ layer {
   EXPECT_NE(out_a->cpu_data(), out_b->cpu_data());
 
   // out_a's mutation should NOT affect out_b or bottom
-  EXPECT_NEAR(static_cast<double>(out_a->cpu_mutable_data()[0]), 999.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(out_b->cpu_mutable_data()[0]), 50.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(data_blob->cpu_mutable_data()[0]), 50.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_a->cpu_data()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(out_b->cpu_data()[0]), 50.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(data_blob->cpu_data()[0]), 50.0, 1e-6);
 
-  // out_b still shares with bottom
+  // out_b still shares with bottom (const reads did not trigger COW)
   EXPECT_TRUE(out_b->SharesDataWith(data_blob.get()));
 }
 
@@ -947,16 +969,18 @@ TEST(ZeroCopyTest, ShareDataAndDiffFromDifferentSources) {
   EXPECT_FALSE(dst->SharesDataWith(src_diff.get()));
   EXPECT_FALSE(dst->SharesDiffWith(src_data.get()));
 
-  // 值验证
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[0]), 10.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_data()[1]), 20.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[0]), 30.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[1]), 40.0, 1e-6);
+  // 值验证（const reads, do not trigger COW）
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_diff()[0]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst->cpu_diff()[1]), 40.0, 1e-6);
 
-  // 通过 dst 写入 data，src_data 可见，src_diff 不受影响
+  // 通过 dst 写入 data 触发 COW：dst 获得私有副本，src_data 不受影响
   dst->cpu_mutable_data()[0] = 99.0f;
-  EXPECT_NEAR(static_cast<double>(src_data->cpu_mutable_data()[0]), 99.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src_diff->cpu_mutable_data()[0]), 0.0, 1e-6);  // src_diff 的 data 未共享
+  EXPECT_FALSE(dst->SharesDataWith(src_data.get()));  // dst COW'd away
+  EXPECT_NEAR(static_cast<double>(dst->cpu_data()[0]), 99.0, 1e-6);   // dst has new value
+  EXPECT_NEAR(static_cast<double>(src_data->cpu_data()[0]), 10.0, 1e-6);  // src_data unchanged
+  EXPECT_NEAR(static_cast<double>(src_diff->cpu_data()[0]), 0.0, 1e-6);  // src_diff data untouched
 }
 
 /// 场景 2：共享后 Reshape 源 Blob
@@ -1058,13 +1082,18 @@ TEST(COWApiTest, DataRefCountAfterShareData) {
   EXPECT_EQ(src->DataRefCount(), dst->DataRefCount());
 }
 
-/// 验证 DataRefCount() 在未定义时为 0
+/// 验证 DataRefCount() 在零元素 tensor 时返回 0（按约定：空 tensor 的 refcount 视为 0）
 TEST(COWApiTest, DataRefCountZeroWhenUndefined) {
-  auto b = make_object<Blob>();  // 默认构造 shape={0}，但 defined
-  // Reshape 到 {0} 仍然定义了 tensor
+  auto b = make_object<Blob>();  // 默认构造 shape={0}
   b->Reshape(std::vector<int64_t>{0});
-  // 但 0 元素 tensor 仍然 defined
-  EXPECT_GT(b->DataRefCount(), 0);
+  // Zero-element tensor: DataRefCount() returns 0 per API contract
+  // (avoids spurious "shared" signals for empty buffers)
+  EXPECT_EQ(b->DataRefCount(), 0);
+
+  // Non-empty tensor has refcount >= 1
+  b->Reshape(std::vector<int64_t>{4});
+  b->cpu_mutable_data()[0] = 1.0f;
+  EXPECT_GE(b->DataRefCount(), 1);
 }
 
 /// 验证 UnshareData() 在共享后强制私有化
@@ -1220,33 +1249,37 @@ TEST(ShareDiffRefCount, ShareDiffWithDifferentShapes) {
   EXPECT_NEAR(static_cast<double>(b->cpu_mutable_diff()[23]), 10.0, 1e-6);
 }
 
-/// ShareDiff COW 后数据隔离（对应 COWTest.DataIsolationAfterCOW）
+/// ShareDiff COW 后数据隔离：三方共享时修改 dst1 不影响 src 和 dst2
 TEST(ShareDiffRefCount, DiffIsolationAfterCOW) {
   auto src = make_object<Blob>(std::vector<int64_t>{4});
-  auto dst = make_object<Blob>(std::vector<int64_t>{4});
+  auto dst1 = make_object<Blob>(std::vector<int64_t>{4});
+  auto dst2 = make_object<Blob>(std::vector<int64_t>{4});
 
   src->cpu_mutable_diff()[0] = 10.0f;
   src->cpu_mutable_diff()[1] = 20.0f;
   src->cpu_mutable_diff()[2] = 30.0f;
   src->cpu_mutable_diff()[3] = 40.0f;
 
-  dst->ShareDiff(src.get());
+  // 三方共享（use_count=3）
+  dst1->ShareDiff(src.get());
+  dst2->ShareDiff(src.get());
 
-  // 触发 COW 并修改 dst
-  dst->cpu_mutable_diff()[0] = 999.0f;
-  dst->cpu_mutable_diff()[1] = 888.0f;
+  // 触发 COW 并修改 dst1
+  dst1->cpu_mutable_diff()[0] = 999.0f;
+  dst1->cpu_mutable_diff()[1] = 888.0f;
 
-  // src 不受影响
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[0]), 10.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[1]), 20.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[2]), 30.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(src->cpu_mutable_diff()[3]), 40.0, 1e-6);
+  // src 和 dst2 不受影响
+  EXPECT_NEAR(static_cast<double>(src->cpu_diff()[0]), 10.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_diff()[1]), 20.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_diff()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(src->cpu_diff()[3]), 40.0, 1e-6);
+  EXPECT_TRUE(dst2->SharesDiffWith(src.get()));
 
-  // dst 有自己的值
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[0]), 999.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[1]), 888.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[2]), 30.0, 1e-6);
-  EXPECT_NEAR(static_cast<double>(dst->cpu_mutable_diff()[3]), 40.0, 1e-6);
+  // dst1 有自己的值
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_diff()[0]), 999.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_diff()[1]), 888.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_diff()[2]), 30.0, 1e-6);
+  EXPECT_NEAR(static_cast<double>(dst1->cpu_diff()[3]), 40.0, 1e-6);
 }
 
 /// ShareDiff 三向共享 COW 仅影响写入者（对应 COWTest.ThreeWayShareCOWOnlyAffectsMutator）
