@@ -251,7 +251,7 @@ Protobuf移除repeated字段的set_*单值setter，本质上是API收敛：
 | SliceLayerZeroCopyTest专项测试 | 🟡 中 | ✅ 已完成（6个用例） |
 | 变更说明文档（PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md） | 🟡 中 | ✅ 已完成 |
 | CI增加多版本Protobuf构建矩阵 | 🟢 低 | 📋 待规划 |
-| Layer零拷贝实现checklist更新 | 🟢 低 | 📋 待规划 |
+| Layer零拷贝实现checklist更新 | 🟢 低 | ✅ 已完成（新增G章节8个检查项 + Layer实现四步法口诀） |
 
 ---
 

@@ -1,12 +1,13 @@
 ---
 title: "零拷贝优化常见错误检查清单（新入职工程师版）"
-date: 2026-07-31
+date: 2026-08-01
 category: onboarding
 audience: new-engineer
-source: ffi-intrusive-refcount-zerocopy code-pattern (2026-07-31)
+source: ffi-intrusive-refcount-zerocopy code-pattern (2026-07-31) + BUILD_COMPATIBILITY_FIXES retrospective (2026-08-01)
 related:
   - ffi-intrusive-refcount-zerocopy.md
   - SHARED_PTR_TO_INTRUSIVE_REFCOUNT_MIGRATION.md
+  - BUILD_COMPATIBILITY_FIXES_RETROSPECTIVE_20260801.md
 ---
 
 # 零拷贝优化常见错误检查清单（新入职工程师版）
@@ -80,11 +81,30 @@ related:
 
 ---
 
+## G. Layer 零拷贝实现类（新增层必查）
+
+> **触发场景**：实现新的 Layer 或修改现有 Layer 的 Forward/Backward 时，如果层满足"输入输出形状一致且层本身不修改数据"的条件，应考虑 N=1 零拷贝直通优化。
+
+| # | 检查项 | 常见错误 | 正确做法 |
+|---|--------|---------|---------|
+| G1 | **先决策：该层是否适用单输出零拷贝？** | 对所有层都强行加零拷贝，导致语义错误或数据污染 | 参照决策表：✅ Split/Identity/Flatten/Reshape（仅形状变换）/Slice(N=1)；❌ Slice(N≥2)/Crop/Pooling/卷积（输出形状变化）；❌ ReLU/Sigmoid等激活（in-place会修改数据，走COW而非零拷贝直通） |
+| G2 | **ShareData/ShareDiff 参数是否传指针而非引用？** | `top[0]->ShareData(*bottom[0])` 传入解引用的 `Blob&`，编译报 "no overloaded function takes 1 arguments" | 函数签名是 `void ShareData(const Blob* other)`，必须传 `bottom[0]`（`Blob*` 类型）；ObjectPtr 用 `.get()`：`ShareDiff(other.get())` |
+| G3 | **N=1 时 Forward 是否直接 return 跳过计算？** | 即使 N=1 也走完 memcpy 或计算路径，浪费性能 | N=1 判断在 Reshape 中完成并建立共享后，Forward_cpu/Forward_gpu 直接 `return;` 不做任何计算；Backward 同理 |
+| G4 | **Data 和 Diff 是否成对共享？** | 只 ShareData 忘记 ShareDiff，导致前向零拷贝但反向梯度仍 memcpy | `top[0]->ShareData(bottom[0])` 必须配对 `top[0]->ShareDiff(bottom[0])` |
+| G5 | **是否验证了 N≥2 场景走 memcpy 而非共享？** | 不小心让 N≥2 也走了 ShareData，多个输出共享同一缓冲区后互相污染 | N=1 和 N≥2 必须分支处理：N=1 走零拷贝直通，N≥2 走原有 memcpy/计算路径 |
+| G6 | **C 风格注释中是否有 `*/` 导致提前终止？** | 在 `/* ... */` 注释中写 `EXPECT_*/ASSERT_*` 这类宏名，`*/` 提前关闭注释导致后续 `#include` 被误判为代码 | 注释中宏名间加空格：`EXPECT_* / ASSERT_*`；涉及宏、指针运算的注释优先用 C++ `//` 单行注释 |
+| G7 | **单元测试是否覆盖零拷贝验证？** | 只验证数值正确性，不验证指针共享和 COW 隔离 | 测试必须包含：① N=1 时 `top[0]->SharesDataWith(bottom[0])` 返回 true、`cpu_data()` 指针相等；② N≥2 时指针不相等；③ COW 场景：mutable 访问后指针不再相等，其他共享者值不受影响；④ 多轮 Forward/Backward 无 blob 泄漏（LiveBlobCount 稳定） |
+| G8 | **in-place 层是否区分零拷贝直通和 COW？** | 把激活层（如 ReLU）的 in-place 操作当成零拷贝直通 | 激活层 in-place 是 COW 语义：const 读取共享，mutable 访问触发复制；零拷贝直通仅适用于层本身不修改数据的 identity 类操作 |
+
+---
+
 ## 快速自检口诀
 
 > **三查一保**：查非空、查已分配、查成对（Data+Diff）；保生命周期（源不短于目标）。
 >
 > **零拷贝三原则**：句柄赋值别 memcpy、指针比较不用 ==、N≥2 写入要 COW。
+>
+> **Layer实现四步法**：一决策（是否适用零拷贝）→ 二传参（指针别传引用）→ 三分支（N=1直通/N≥2复制）→ 四验证（指针相等+COW隔离+无泄漏）。
 
 ---
 
