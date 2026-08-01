@@ -495,4 +495,4 @@ assert data_split_idx < weight_split_idx  # 声明顺序：data在weight前
 | `tests/python/test_split_concat_bench.py` | Split/Concat嵌套性能基准范本 | §7 |
 | `tests/python/test_p3c_activations_ip.py` | 浮点数饱和测试范本 | §3 |
 | `tests/python/test_cow.py` | COW机制+refcount测试 | - |
-| `docs/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解+辅助函数索引 | §4 |
+| `docs/plans/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解+辅助函数索引 | §4 |

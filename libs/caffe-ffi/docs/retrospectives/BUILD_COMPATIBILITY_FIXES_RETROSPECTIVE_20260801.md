@@ -30,7 +30,7 @@
 | `tests/cpp/test_deconv_layer.cpp` | 修改 | `set_pad()`/`set_stride()` → `add_pad()`/`add_stride()` Protobuf API适配 |
 | `tests/cpp/test_neuron_layers.cpp` | 新增 | NeuronLayer基类及5个激活层（ReLU/Sigmoid/TanH/ELU/PReLU）单元测试 |
 | `tests/cpp/test_blob_zerocopy.cpp` | 修改 | 新增SliceLayerZeroCopyTest专项测试套件（6个用例）；修正COW测试期望 |
-| `docs/PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md` | 新增 | 本次修复的详细变更说明文档 |
+| `docs/setup/PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md` | 新增 | 本次修复的详细变更说明文档 |
 
 ### 1.3 关键提交记录
 
