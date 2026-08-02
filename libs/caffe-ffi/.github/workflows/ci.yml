@@ -313,3 +313,7 @@ jobs:
 
       - name: Check code formatting
         run: ruff format --check python/ tests/ scripts/
+
+      # ── C¹ kink protection static check ──
+      - name: Check C¹ kink protection in activation gradient tests
+        run: python scripts/check_c1_kink_protection.py tests/python/ -v
