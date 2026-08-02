@@ -91,7 +91,7 @@ def compare_gradients(
     max_rel = float(rel_err.max()) if rel_err.size > 0 else 0.0
 
     flat_idx = int(diff.argmax()) if diff.size > 0 else 0
-    worst_idx = np.unravel_index(flat_idx, a.shape)
+    worst_idx = tuple(int(i) for i in np.unravel_index(flat_idx, a.shape))
     a_val = float(a.flat[flat_idx]) if a.size > 0 else 0.0
     n_val = float(n.flat[flat_idx]) if n.size > 0 else 0.0
 
@@ -212,13 +212,16 @@ def numerical_gradient(
     Returns:
         Numerical gradient as float32 numpy array (same shape as parameter).
     """
-    # Snapshot original parameter once, use a mutable working copy
+    # Snapshot original parameter once, use mutable working copies (float64 + float32)
     original = get_param().astype(np.float64).copy()
-    working = original.copy()  # single mutable copy, reused across iterations
+    original_f32 = original.astype(np.float32)
+    working = original.copy()       # single float64 mutable copy for perturbation math
+    working_f32 = original_f32.copy()  # single float32 copy sent to set_param
     grad = np.zeros_like(original, dtype=np.float64)
     flat_param = original.ravel()
     flat_grad = grad.ravel()
     flat_working = working.ravel()
+    flat_working_f32 = working_f32.ravel()
     total = flat_param.size
     dy64 = dy.astype(np.float64)
 
@@ -235,23 +238,27 @@ def numerical_gradient(
     try:
         for i in range(total):
             orig_val = flat_param[i]
+            orig_val_f32 = flat_working_f32[i]
 
-            # +h: perturb only element i in working copy
+            # +h: perturb only element i in both working copies
             flat_working[i] = orig_val + h
-            set_param(working.astype(np.float32))
+            flat_working_f32[i] = orig_val_f32 + np.float32(h)
+            set_param(working_f32)
             out_p = forward_fn().astype(np.float64)
             loss_p = float(np.sum(dy64 * out_p))
 
             # -h: perturb only element i
             flat_working[i] = orig_val - h
-            set_param(working.astype(np.float32))
+            flat_working_f32[i] = orig_val_f32 - np.float32(h)
+            set_param(working_f32)
             out_m = forward_fn().astype(np.float64)
             loss_m = float(np.sum(dy64 * out_m))
 
             flat_grad[i] = (loss_p - loss_m) / (2.0 * h)
 
-            # Restore working copy element for next iteration
+            # Restore working copies for next iteration
             flat_working[i] = orig_val
+            flat_working_f32[i] = orig_val_f32
 
             if verbose and (total >= 100) and ((i + 1) % max(1, total // 10) == 0 or i == total - 1):
                 elapsed = time.perf_counter() - t0
@@ -262,7 +269,7 @@ def numerical_gradient(
                 )
     finally:
         # Restore original parameter
-        set_param(original.astype(np.float32))
+        set_param(original_f32)
         if gc_was_enabled:
             gc.enable()
 
@@ -354,11 +361,11 @@ def numerical_grad_for_input(
     if name is None:
         name = f"input:{input_name}"
 
-    current_x = input_x.copy()
+    # Work directly on a mutable copy (avoid repeated copies in numerical_gradient)
+    current_x = input_x.astype(np.float32).copy()
 
     def _forward():
-        nonlocal current_x
-        out = net.forward({input_name: current_x.astype(np.float32)})
+        out = net.forward({input_name: current_x})
         return out[output_name]
 
     def _get():
@@ -366,7 +373,8 @@ def numerical_grad_for_input(
 
     def _set(arr):
         nonlocal current_x
-        current_x = arr.copy()
+        # Copy in-place to avoid reallocating; arr is float32 working_f32
+        np.copyto(current_x, arr)
 
     return numerical_gradient(
         _forward, _get, _set, dy, h=h, name=name, verbose=verbose,

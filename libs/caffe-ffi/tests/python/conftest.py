@@ -543,6 +543,18 @@ _P3C_TEST_CLASSES = {
     # Activation backward tests (test_activation_backward.py)
     "TestReLUGradient", "TestSigmoidGradient", "TestTanHGradient",
     "TestELUGradient", "TestPReLUGradient", "TestActivationPerfLogs",
+    # Conv backward tests (test_conv_backward.py)
+    "TestConvBackward1x1", "TestConvBackward3x3", "TestConvBackwardDilation",
+    "TestConvBackwardGroups", "TestConvBackwardInvariants",
+    # InnerProduct backward tests (test_inner_product_backward.py)
+    "TestInnerProductBackward", "TestInnerProductBackwardNCHW",
+    "TestInnerProductBackwardTranspose", "TestInnerProductBackwardIdentity",
+    # BatchNorm backward tests (test_batch_norm_backward.py)
+    "TestBatchNormBackward", "TestBatchNormBackwardMultiChannel",
+    "TestBatchNormBackwardScaleFactor",
+    # ELU kink stability tests (test_elu_kink_stability.py)
+    "TestELUKinkContinuity", "TestELUKinkNumericalGradient",
+    "TestELUAlpha1Smooth", "TestELUSaturatedRegime",
 }
 
 _P3D_TEST_CLASSES = {
