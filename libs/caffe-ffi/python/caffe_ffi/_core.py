@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
@@ -12,10 +13,20 @@ from . import _ffi_api
 
 _logger = logging.getLogger("caffe_ffi.core")
 
+# Tracks which stub-mode warnings have been issued to avoid spam
+_stub_warned: set[str] = set()
+
+_STUB_MODE_MSG = (
+    "caffe_ffi C++ extension is not available; running in Python-only stub mode. "
+    "Forward/Backward will return empty/zero results unless a pure-Python implementation "
+    "is monkey-patched. Install the compiled extension (pip install -e .) for real computation."
+)
+
 
 def _import_tvm_ffi():
     try:
         import tvm_ffi
+
         return tvm_ffi
     except ImportError:
         return None
@@ -23,6 +34,10 @@ def _import_tvm_ffi():
 
 _tvm_ffi = _import_tvm_ffi()
 _NATIVE_MODE = _ffi_api.is_available() and _tvm_ffi is not None
+
+if not _NATIVE_MODE:
+    warnings.warn(_STUB_MODE_MSG, RuntimeWarning, stacklevel=2)
+    _stub_warned.add("import")
 
 if _NATIVE_MODE:
     _Object = _tvm_ffi.Object
@@ -37,6 +52,7 @@ else:
 def _noop_decorator(type_key):
     def decorator(cls):
         return cls
+
     return decorator
 
 
@@ -55,13 +71,14 @@ def _native_method(obj, name: str):
         raise RuntimeError(f"Native method '{name}' not available in Python-only mode")
     # Search through MRO for the method in C++ type info
     for cls in type(obj).__mro__:
-        info = getattr(cls, '__tvm_ffi_type_info__', None)
+        info = getattr(cls, "__tvm_ffi_type_info__", None)
         if info is not None:
             for m in info.methods:
                 if m.name == name:
                     bound = m.func
                     if not m.is_static:
                         import types
+
                         bound = types.MethodType(m.func, obj)
                     return bound
     raise AttributeError(f"Native method '{name}' not found on {type(obj).__name__}")
@@ -80,7 +97,7 @@ class Blob(_Object):
         Initial shape of the blob. If None, creates an empty blob (shape ()).
     """
 
-    __slots__ = ('__dict__',)
+    __slots__ = ("__dict__",)
 
     def __init__(self, shape: Optional[List[int]] = None, handle=None):
         if _NATIVE_MODE and handle is None:
@@ -88,7 +105,7 @@ class Blob(_Object):
             self.__init_handle_by_constructor__(ctor)
             if shape is not None:
                 _logger.info("Blob created via native constructor, reshaping to %s", list(shape))
-                _native_method(self, 'Reshape')(list(shape))
+                _native_method(self, "Reshape")(list(shape))
             else:
                 _logger.info("Blob created via native constructor (empty shape)")
         elif _NATIVE_MODE and handle is not None:
@@ -138,7 +155,7 @@ class Blob(_Object):
     @property
     def shape(self) -> tuple:
         if self._is_native:
-            return tuple(_native_method(self, 'shape')())
+            return tuple(_native_method(self, "shape")())
         return tuple(self._py_shape)
 
     @property
@@ -178,7 +195,7 @@ class Blob(_Object):
             old_shape = ()
         _logger.info("Blob.Reshape: %s -> %s", old_shape, list(shape))
         if self._is_native:
-            _native_method(self, 'Reshape')(list(shape))
+            _native_method(self, "Reshape")(list(shape))
         else:
             shape_list = list(shape)
             self._py_data = np.zeros(shape_list, dtype=np.float32)
@@ -188,13 +205,13 @@ class Blob(_Object):
     @property
     def name(self) -> str:
         if self._is_native:
-            return str(_native_method(self, 'name')())
-        return getattr(self, '_py_name', '')
+            return str(_native_method(self, "name")())
+        return getattr(self, "_py_name", "")
 
     @name.setter
     def name(self, value: str) -> None:
         if self._is_native:
-            _native_method(self, 'set_name')(str(value))
+            _native_method(self, "set_name")(str(value))
         else:
             self._py_name = value
 
@@ -217,14 +234,14 @@ class Blob(_Object):
     def mutable_data_tensor(self) -> np.ndarray:
         """Get mutable data tensor with COW trigger, returns numpy array for write access."""
         if self._is_native:
-            tensor = _native_method(self, 'mutable_data_tensor')()
+            tensor = _native_method(self, "mutable_data_tensor")()
             return self._tensor_to_numpy(tensor, self)
         return self._py_data
 
     def mutable_diff_tensor(self) -> np.ndarray:
         """Get mutable diff tensor with COW trigger, returns numpy array for write access."""
         if self._is_native:
-            tensor = _native_method(self, 'mutable_diff_tensor')()
+            tensor = _native_method(self, "mutable_diff_tensor")()
             return self._tensor_to_numpy(tensor, self)
         return self._py_diff
 
@@ -237,8 +254,7 @@ class Blob(_Object):
     def data(self, value: np.ndarray) -> None:
         """Set data from numpy array."""
         arr = np.asarray(value, dtype=np.float32)
-        _logger.info("Blob.data setter: shape=%s -> %s, dtype=%s",
-                     self.shape, arr.shape, arr.dtype)
+        _logger.info("Blob.data setter: shape=%s -> %s, dtype=%s", self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
         self.data_tensor[:] = arr
@@ -252,8 +268,7 @@ class Blob(_Object):
     def diff(self, value: np.ndarray) -> None:
         """Set diff from numpy array."""
         arr = np.asarray(value, dtype=np.float32)
-        _logger.info("Blob.diff setter: shape=%s -> %s, dtype=%s",
-                     self.shape, arr.shape, arr.dtype)
+        _logger.info("Blob.diff setter: shape=%s -> %s, dtype=%s", self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
         self.diff_tensor[:] = arr
@@ -288,8 +303,12 @@ class Blob(_Object):
             _logger.info("Blob.copy_from: shape=%s <- Blob(shape=%s)", self.shape, other.shape)
         else:
             other_data = np.asarray(other, dtype=np.float32)
-            _logger.info("Blob.copy_from: shape=%s <- ndarray(shape=%s, dtype=%s)",
-                         self.shape, other_data.shape, other_data.dtype)
+            _logger.info(
+                "Blob.copy_from: shape=%s <- ndarray(shape=%s, dtype=%s)",
+                self.shape,
+                other_data.shape,
+                other_data.dtype,
+            )
         if tuple(other_data.shape) != self.shape:
             self.Reshape(list(other_data.shape))
         self.data_tensor[:] = other_data
@@ -298,8 +317,7 @@ class Blob(_Object):
     def from_numpy(self, arr: np.ndarray, set_diff: bool = False) -> Blob:
         """Reshape blob and set data from numpy array."""
         arr = np.asarray(arr, dtype=np.float32)
-        _logger.info("Blob.from_numpy: shape=%s, dtype=%s, set_diff=%s",
-                     arr.shape, arr.dtype, set_diff)
+        _logger.info("Blob.from_numpy: shape=%s, dtype=%s, set_diff=%s", arr.shape, arr.dtype, set_diff)
         self.Reshape(list(arr.shape))
         if set_diff:
             self.diff = arr
@@ -313,7 +331,7 @@ class Blob(_Object):
 
     def get_data(self) -> List[float]:
         if self._is_native:
-            return list(_native_method(self, 'get_data')())
+            return list(_native_method(self, "get_data")())
         return self._py_data.flatten().tolist()
 
     def set_data(self, data) -> None:
@@ -327,14 +345,14 @@ class Blob(_Object):
             if data.shape != expected_shape:
                 data = data.reshape(expected_shape)
             _logger.info("Blob.set_data (native): shape=%s, dtype=%s", data.shape, data.dtype)
-            _native_method(self, 'set_data')(data)
+            _native_method(self, "set_data")(data)
         else:
             _logger.info("Blob.set_data (python): shape=%s", self._py_shape)
             self._py_data = np.array(data, dtype=np.float32).reshape(self._py_shape)
 
     def get_diff(self) -> List[float]:
         if self._is_native:
-            return list(_native_method(self, 'get_diff')())
+            return list(_native_method(self, "get_diff")())
         return self._py_diff.flatten().tolist()
 
     def set_diff(self, diff) -> None:
@@ -347,7 +365,7 @@ class Blob(_Object):
             if diff.shape != expected_shape:
                 diff = diff.reshape(expected_shape)
             _logger.info("Blob.set_diff (native): shape=%s, dtype=%s", diff.shape, diff.dtype)
-            _native_method(self, 'set_diff')(diff)
+            _native_method(self, "set_diff")(diff)
         else:
             _logger.info("Blob.set_diff (python): shape=%s", self._py_shape)
             self._py_diff = np.array(diff, dtype=np.float32).reshape(self._py_shape)
@@ -355,7 +373,7 @@ class Blob(_Object):
     @property
     def construction_backtrace(self) -> str:
         if self._is_native:
-            return str(_native_method(self, 'construction_backtrace')())
+            return str(_native_method(self, "construction_backtrace")())
         return "(backtrace not available: Python-only mode)"
 
     def __repr__(self) -> str:
@@ -370,7 +388,7 @@ class Layer(_Object):
     Each layer has a type, name, and parameter blobs (weights/biases).
     """
 
-    __slots__ = ('__dict__',)
+    __slots__ = ("__dict__",)
 
     def __init__(self, handle=None):
         if not _NATIVE_MODE:
@@ -385,20 +403,20 @@ class Layer(_Object):
     @property
     def type(self) -> str:
         if self._is_native:
-            return str(_native_method(self, 'type')())
-        return getattr(self, '_py_type_str', '')
+            return str(_native_method(self, "type")())
+        return getattr(self, "_py_type_str", "")
 
     @property
     def name(self) -> str:
         if self._is_native:
-            return str(_native_method(self, 'name')())
-        return getattr(self, '_py_name', '')
+            return str(_native_method(self, "name")())
+        return getattr(self, "_py_name", "")
 
     @property
     def blobs(self) -> List[Blob]:
         if self._is_native:
-            return list(_native_method(self, 'blobs_array')())
-        return list(getattr(self, '_py_blobs', []))
+            return list(_native_method(self, "blobs_array")())
+        return list(getattr(self, "_py_blobs", []))
 
     def __repr__(self) -> str:
         name = self.name
@@ -420,7 +438,7 @@ class Net(_Object):
         Path to a .prototxt file, or a prototxt string defining the network.
     """
 
-    __slots__ = ('__dict__',)
+    __slots__ = ("__dict__",)
 
     def __init__(self, param: Optional[Union[str, os.PathLike]] = None, handle=None):
         if _NATIVE_MODE and handle is None and param is not None:
@@ -439,7 +457,7 @@ class Net(_Object):
             self._py_init(param)
 
     def _py_init(self, param=None):
-        self._py_name = getattr(param, 'name', '') if param else ''
+        self._py_name = getattr(param, "name", "") if param else ""
         self._py_blobs = {}
         self._py_layers = {}
         self._py_blob_list = []
@@ -456,8 +474,8 @@ class Net(_Object):
     @property
     def name(self) -> str:
         if self._is_native:
-            return str(_native_method(self, 'name')())
-        return getattr(self, '_py_name', '')
+            return str(_native_method(self, "name")())
+        return getattr(self, "_py_name", "")
 
     def Forward(self, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Blob]:
         if inputs is None:
@@ -478,12 +496,21 @@ class Net(_Object):
                     input_map[k] = np.array(v, dtype=np.float32)
                 else:
                     input_map[k] = np.array(v, dtype=np.float32)
-            result = _native_method(self, 'Forward')(input_map)
+            result = _native_method(self, "Forward")(input_map)
             return {str(k): v for k, v in result.items()}
         return self._py_forward(inputs)
 
     def _py_forward(self, inputs):
-        return {}
+        """Python stub for Forward() — always raises since C++ Forward is not available.
+
+        This method is only called when the C++ extension is not loaded. Code that needs
+        forward computation in pure-Python mode should override _forward_pure_python instead.
+        """
+        raise RuntimeError(
+            "Net.Forward() requires the C++ extension (_caffe_ffi), which is not available. "
+            "Use Net.forward() with a monkey-patched _forward_pure_python for pure-Python testing, "
+            "or install the compiled extension (pip install -e .) for real computation."
+        )
 
     def forward(self, input_dict: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, np.ndarray]:
         """Run forward pass and return output blobs as numpy arrays.
@@ -548,87 +575,96 @@ class Net(_Object):
                     # Make sure diff is allocated and write diff values
                     diff_t = blob.mutable_diff_tensor()
                     diff_t[:] = arr.reshape(diff_t.shape)
-            _native_method(self, 'Backward')()
+            _native_method(self, "Backward")()
         else:
             self._py_backward(output_diffs)
 
     def _py_backward(self, output_diffs=None):
-        """Pure Python backward stub (no-op for non-native mode)."""
-        pass
+        """Pure Python backward stub — raises since backward is not implemented in stub mode.
+
+        Backward computation requires the C++ extension. If you need backward in pure-Python
+        tests, monkey-patch this method on the Net instance.
+        """
+        raise RuntimeError(
+            "Net.backward() requires the C++ extension (_caffe_ffi), which is not available. "
+            "Backward pass is not implemented in Python-only stub mode. "
+            "Install the compiled extension (pip install -e .) for real gradient computation, "
+            "or monkey-patch _py_backward for pure-Python testing."
+        )
 
     def blobs_array(self) -> List[Blob]:
         if self._is_native:
-            return list(_native_method(self, 'blobs_array')())
-        return list(getattr(self, '_py_blob_list', []))
+            return list(_native_method(self, "blobs_array")())
+        return list(getattr(self, "_py_blob_list", []))
 
     def layers_array(self) -> List[Layer]:
         if self._is_native:
-            return list(_native_method(self, 'layers_array')())
-        return list(getattr(self, '_py_layer_list', []))
+            return list(_native_method(self, "layers_array")())
+        return list(getattr(self, "_py_layer_list", []))
 
     def input_blobs_array(self) -> List[Blob]:
         if self._is_native:
-            return list(_native_method(self, 'input_blobs_array')())
-        return list(getattr(self, '_py_input_blobs', []))
+            return list(_native_method(self, "input_blobs_array")())
+        return list(getattr(self, "_py_input_blobs", []))
 
     def output_blobs_array(self) -> List[Blob]:
         if self._is_native:
-            return list(_native_method(self, 'output_blobs_array')())
-        return list(getattr(self, '_py_output_blobs', []))
+            return list(_native_method(self, "output_blobs_array")())
+        return list(getattr(self, "_py_output_blobs", []))
 
     def blob_names(self) -> List[str]:
         if self._is_native:
-            return [str(n) for n in _native_method(self, 'blob_names')()]
-        return list(getattr(self, '_py_blobs', {}).keys())
+            return [str(n) for n in _native_method(self, "blob_names")()]
+        return list(getattr(self, "_py_blobs", {}).keys())
 
     def layer_names(self) -> List[str]:
         if self._is_native:
-            return [str(n) for n in _native_method(self, 'layer_names')()]
-        return list(getattr(self, '_py_layers', {}).keys())
+            return [str(n) for n in _native_method(self, "layer_names")()]
+        return list(getattr(self, "_py_layers", {}).keys())
 
     def input_blob_names(self) -> List[str]:
         if self._is_native:
-            return [str(n) for n in _native_method(self, 'input_blob_names')()]
-        return list(getattr(self, '_py_input_blob_names', []))
+            return [str(n) for n in _native_method(self, "input_blob_names")()]
+        return list(getattr(self, "_py_input_blob_names", []))
 
     def output_blob_names(self) -> List[str]:
         if self._is_native:
-            return [str(n) for n in _native_method(self, 'output_blob_names')()]
-        return list(getattr(self, '_py_output_blob_names', []))
+            return [str(n) for n in _native_method(self, "output_blob_names")()]
+        return list(getattr(self, "_py_output_blob_names", []))
 
     def blob_by_name(self, name: str) -> Blob:
         if self._is_native:
-            return _native_method(self, 'blob_by_name')(str(name))
-        if name in getattr(self, '_py_blobs', {}):
+            return _native_method(self, "blob_by_name")(str(name))
+        if name in getattr(self, "_py_blobs", {}):
             return self._py_blobs[name]
         raise KeyError(f"Blob '{name}' not found")
 
     def layer_by_name(self, name: str) -> Layer:
         if self._is_native:
-            return _native_method(self, 'layer_by_name')(str(name))
-        if name in getattr(self, '_py_layers', {}):
+            return _native_method(self, "layer_by_name")(str(name))
+        if name in getattr(self, "_py_layers", {}):
             return self._py_layers[name]
         raise KeyError(f"Layer '{name}' not found")
 
     def has_blob(self, name: str) -> bool:
         if self._is_native:
-            return bool(_native_method(self, 'has_blob')(str(name)))
-        return name in getattr(self, '_py_blobs', {})
+            return bool(_native_method(self, "has_blob")(str(name)))
+        return name in getattr(self, "_py_blobs", {})
 
     def has_layer(self, name: str) -> bool:
         if self._is_native:
-            return bool(_native_method(self, 'has_layer')(str(name)))
-        return name in getattr(self, '_py_layers', {})
+            return bool(_native_method(self, "has_layer")(str(name)))
+        return name in getattr(self, "_py_layers", {})
 
     def num_inputs(self) -> int:
         if self._is_native:
-            return int(_native_method(self, 'num_inputs')())
-        return len(getattr(self, '_py_input_blobs', []))
+            return int(_native_method(self, "num_inputs")())
+        return len(getattr(self, "_py_input_blobs", []))
 
     def num_outputs(self) -> int:
         if self._is_native:
-            return int(_native_method(self, 'num_outputs')())
-        return len(getattr(self, '_py_output_blobs', []))
+            return int(_native_method(self, "num_outputs")())
+        return len(getattr(self, "_py_output_blobs", []))
 
     @property
     def blobs_dict(self) -> Dict[str, Blob]:
@@ -656,7 +692,7 @@ class Net(_Object):
 
     def CopyTrainedLayersFrom(self, trained_filename: Union[str, Path]) -> None:
         if self._is_native:
-            _native_method(self, 'CopyTrainedLayersFrom')(str(trained_filename))
+            _native_method(self, "CopyTrainedLayersFrom")(str(trained_filename))
         else:
             self._copy_from_pure_python(trained_filename)
 
@@ -666,6 +702,7 @@ class Net(_Object):
 
     def _copy_from_pure_python(self, trained_filename):
         from .io import read_net_from_binary
+
         trained_net_param = read_net_from_binary(trained_filename)
         trained_layer_map = {layer.name: layer for layer in trained_net_param.layer}
         for layer in self.layers_array():
@@ -678,11 +715,15 @@ class Net(_Object):
             for j in range(num_blobs_to_copy):
                 source_blob_proto = source_layer.blobs[j]
                 target_blob = target_blobs[j]
-                if source_blob_proto.HasField('shape') and source_blob_proto.shape.dim:
+                if source_blob_proto.HasField("shape") and source_blob_proto.shape.dim:
                     dims = list(source_blob_proto.shape.dim)
                 else:
-                    dims = [source_blob_proto.num, source_blob_proto.channels,
-                           source_blob_proto.height, source_blob_proto.width]
+                    dims = [
+                        source_blob_proto.num,
+                        source_blob_proto.channels,
+                        source_blob_proto.height,
+                        source_blob_proto.width,
+                    ]
                     dims = [d for d in dims if d != 0]
                 data_list = None
                 if source_blob_proto.data:
@@ -697,11 +738,41 @@ class Net(_Object):
                     target_blob.data = np.array(data_list, dtype=np.float32).reshape(target_blob.shape)
 
     def _forward_pure_python(self, input_dict):
+        """Pure Python forward stub.
+
+        Copies input arrays to matching blobs and returns output blob data.
+        This default implementation does NOT perform actual layer computation —
+        it returns whatever data is already in the registered output blobs (zeros by default).
+        For real computation, either use the C++ extension or monkey-patch this method.
+        """
         for name, arr in input_dict.items():
-            if name in getattr(self, '_py_blobs', {}):
+            if name in getattr(self, "_py_blobs", {}):
                 self._py_blobs[name].from_numpy(arr)
+
+        py_output_blobs = getattr(self, "_py_output_blobs", [])
+        py_layers = getattr(self, "_py_layers", {})
+
+        if not py_output_blobs and not py_layers:
+            raise RuntimeError(
+                "Net.forward() in Python-only stub mode: no layers or output blobs are configured. "
+                "The C++ extension (_caffe_ffi) is not available, so prototxt parsing and layer "
+                "computation cannot be performed. Either install the compiled extension "
+                "(pip install -e .), or manually configure blobs/layers and override "
+                "_forward_pure_python for pure-Python testing."
+            )
+
+        if "forward_stub" not in _stub_warned:
+            _stub_warned.add("forward_stub")
+            warnings.warn(
+                "Net.forward() running in Python-only stub mode: no actual layer computation "
+                "is performed; output blobs return their current data (zeros unless explicitly set). "
+                "Install the C++ extension for real computation, or monkey-patch _forward_pure_python.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         result = {}
-        for blob in getattr(self, '_py_output_blobs', []):
+        for blob in py_output_blobs:
             result[blob.name] = blob.data
         return result
 
