@@ -233,10 +233,12 @@ class TestReLUGradient:
         np.testing.assert_allclose(dx_analytic, dx_numeric, rtol=1e-3, atol=1e-4)
 
     def test_relu_numerical_gradient_mixed_signs(self):
-        """Numerical check with both positive and negative x."""
-        net = self._make_net(negative_slope=0.1)  # leaky relu avoids kink at 0 discontinuity
+        """Numerical check with both positive and negative x (LeakyReLU, avoids kink region)."""
+        net = self._make_net(negative_slope=0.1)  # leaky relu is C¹-discontinuous at x=0
         rng = np.random.RandomState(13)
         x = rng.randn(1, 1, 3, 4).astype(np.float32) * 2.0
+        # Push near-zero points away from the C¹ kink to prevent finite-difference straddling
+        x = np.where(x > 0, np.maximum(x, 2*EPS), np.minimum(x, -2*EPS))
         dy = rng.randn(*x.shape).astype(np.float32)
         net.forward({"data": x})
         net.backward({"out": dy})
@@ -560,7 +562,7 @@ class TestPReLUGradient:
         assert abs(float(dx.flat[4]) - 1.0) < 1e-6
 
     def test_prelu_shared_numerical_gradient(self):
-        """Numerical gradient check for PReLU shared."""
+        """Numerical gradient check for PReLU shared (avoids C¹ kink at x=0)."""
         net = Net(_make_prelu_prototxt(channel_shared=True, filler=0.25))
         rng = np.random.RandomState(99)
         # Use small shape for speed; (2,3,4,5)=120 is okay but slow for numeric
@@ -585,6 +587,10 @@ class TestPReLUGradient:
         """)
         net_small = Net(small_proto)
         x = rng.randn(1, 1, 2, 3).astype(np.float32) * 1.5
+        # PReLU is C¹-discontinuous at x=0 (derivative jumps from slope to 1);
+        # push near-zero points away to prevent finite-difference straddling the kink
+        h = EPS
+        x = np.where(x > 0, np.maximum(x, 2*h), np.minimum(x, -2*h))
         dy = rng.randn(*x.shape).astype(np.float32)
         net_small.forward({"data": x})
         net_small.backward({"out": dy})
@@ -593,7 +599,6 @@ class TestPReLUGradient:
         # Numerical grad
         dx_numeric = np.zeros_like(x, dtype=np.float64)
         flat_x = x.ravel()
-        h = EPS
         for i in range(flat_x.size):
             orig = flat_x[i]
             xp = x.copy(); xp.ravel()[i] = orig + h

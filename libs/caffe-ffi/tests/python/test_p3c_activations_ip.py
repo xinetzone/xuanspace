@@ -281,7 +281,7 @@ class TestSigmoidLayers:
     """Tests for the Sigmoid layer's forward computation."""
 
     def test_sigmoid_known_values(self, ptrace):
-        """Sigmoid at known points: sigmoid(0)=0.5, sigmoid(100)≈1, sigmoid(-100)≈0."""
+        """Sigmoid at known points: sigmoid(0)=0.5, sigmoid(±100) saturates to exact 0/1 in float32."""
         prototxt = """name: "sigmoid_known"
 layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 1 dim: 1 dim: 1 dim: 5 } } }
 layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
@@ -293,8 +293,10 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
             out = net.forward({"data": inp})
         result = out["out"]
         assert result[0, 0, 0, 2] == pytest.approx(0.5, abs=1e-6)
-        assert result[0, 0, 0, 0] < 1e-30  # sigmoid(-100) ≈ 0
-        assert result[0, 0, 0, 4] > 1.0 - 1e-7  # sigmoid(100) ≈ 1
+        # In float32, sigmoid(-100) = 1/(1+exp(100)) = 1/inf = exactly 0.0
+        assert result[0, 0, 0, 0] == 0.0, f"sigmoid(-100) should be exactly 0.0 in float32, got {result[0,0,0,0]}"
+        # In float32, sigmoid(100) = 1/(1+exp(-100)) ≈ 1-3.7e-44, rounds to exactly 1.0
+        assert result[0, 0, 0, 4] == 1.0, f"sigmoid(100) should be exactly 1.0 in float32, got {result[0,0,0,4]}"
         assert result[0, 0, 0, 1] == pytest.approx(1.0 / (1.0 + np.e), rel=1e-5)
         assert result[0, 0, 0, 3] == pytest.approx(np.e / (1.0 + np.e), rel=1e-5)
 
