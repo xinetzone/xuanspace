@@ -29,6 +29,13 @@ if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
 from caffe_ffi import _ffi_api
+from caffe_ffi import set_log_level, LOG_LEVEL_ERROR
+
+# Suppress noisy C++ InsertSplits debug messages (logged at WARN level)
+# during test runs.  Set CAFFE_FFI_CPP_LOG_LEVEL=<0-4> to override.
+# 0=TRACE, 1=DEBUG, 2=INFO, 3=WARN (default), 4=ERROR (suppress InsertSplits).
+_cpp_log_level = int(os.environ.get("CAFFE_FFI_CPP_LOG_LEVEL", str(LOG_LEVEL_ERROR)))
+set_log_level(_cpp_log_level)
 
 # ─── Performance tracing infrastructure ────────────────────────────
 
@@ -36,11 +43,27 @@ _perf_logger = logging.getLogger("caffe_ffi.test.perf")
 _csv_writer = None
 _csv_file = None
 _csv_path = None
+_csv_flush_interval = 20  # flush every N rows to reduce I/O overhead
+_csv_row_count = 0
+
+
+import atexit
+
+
+@atexit.register
+def _flush_csv_on_exit():
+    """Ensure CSV is flushed when Python exits."""
+    global _csv_file
+    if _csv_file is not None:
+        try:
+            _csv_file.flush()
+        except Exception:
+            pass
 
 
 def _ensure_csv():
     """Initialize CSV file for performance logging (lazy, on first write)."""
-    global _csv_writer, _csv_file, _csv_path
+    global _csv_writer, _csv_file, _csv_path, _csv_row_count
     if _csv_writer is not None:
         return
     _temp_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +78,16 @@ def _ensure_csv():
         "cow_events", "cow_bytes", "cow_saved_bytes",
         "extra_fields"
     ])
+    _csv_row_count = 0
     _csv_file.flush()
+
+
+def _maybe_flush_csv(force: bool = False):
+    """Flush CSV buffer periodically."""
+    global _csv_row_count
+    _csv_row_count += 1
+    if force or _csv_row_count % _csv_flush_interval == 0:
+        _csv_file.flush()
 
 
 def _write_csv_row(test_class: str, test_name: str, operation: str,
@@ -74,7 +106,7 @@ def _write_csv_row(test_class: str, test_name: str, operation: str,
         cow_events, cow_bytes, cow_saved_bytes,
         extra,
     ])
-    _csv_file.flush()
+    _maybe_flush_csv(force=(operation == "END"))
 
 
 def _write_cow_csv_row(test_class: str, test_name: str, operation: str,
@@ -93,7 +125,7 @@ def _write_cow_csv_row(test_class: str, test_name: str, operation: str,
         1, copy_bytes, 0,  # cow_events=1, cow_bytes, cow_saved_bytes
         f"blob_id={blob_id} refcount_before={refcount_before} copy_bytes={copy_bytes} copy_us={copy_us:.1f} {extra}",
     ])
-    _csv_file.flush()
+    _maybe_flush_csv()
 
 
 def cow_snapshot(blob) -> dict:
@@ -125,13 +157,28 @@ if not _perf_logger.handlers:
 _perf_logger.setLevel(logging.INFO)
 
 
-def _mem_bytes_blobs():
-    """Return (total_allocated_bytes, live_blob_count) after aggressive GC."""
+def _mem_bytes_blobs(gc_mode: str = "quick"):
+    """Return (total_allocated_bytes, live_blob_count) after GC.
+
+    Args:
+        gc_mode: GC strategy controlling overhead vs accuracy tradeoff.
+            - "quick":  single gen0 collect (~1-2ms).  Catches most short-lived
+                        Blob wrappers; sufficient for per-block leak detection.
+            - "full":   3 rounds of gen0+gen1+gen2 (~150ms).  Use only at
+                        session/class boundaries or when precise leak detection
+                        is needed.
+            - "off":    no GC; reads counters directly (~μs).  Use only inside
+                        tight benchmark loops where GC would skew measurements.
+    """
     from caffe_ffi import total_allocated_bytes, live_blob_count
-    for _ in range(3):
+    if gc_mode == "full":
+        for _ in range(3):
+            gc.collect(0)
+            gc.collect(1)
+            gc.collect(2)
+    elif gc_mode == "quick":
         gc.collect(0)
-        gc.collect(1)
-        gc.collect(2)
+    # "off": skip GC entirely
     return total_allocated_bytes(), live_blob_count()
 
 
@@ -198,8 +245,9 @@ _current_test_context = {"cls": "", "name": ""}
 
 
 @contextmanager
-def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
-    """Context manager that measures wall-clock time, memory delta, and RSS peak for a block.
+def perf_trace(label: str, verbose: bool = True, *,
+               gc_mode: str | None = None, rss_peak: bool = False) -> Iterator[dict]:
+    """Context manager that measures wall-clock time, memory delta, and RSS for a block.
 
     Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
     'input_size'); these are appended to the exit log line and CSV.
@@ -208,26 +256,37 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
     message, and traceback before being re-raised. The caller may set
     info['expected_error']=True to indicate the error is expected (e.g. boundary testing).
 
+    Args:
+        label: Human-readable label for the traced block.
+        verbose: If True, log a PERF line to stderr.
+        gc_mode: GC strategy for memory counters ("quick"|"full"|"off").
+            Defaults to CAFFE_FFI_PERF_GC_MODE env var or "quick".
+        rss_peak: If True, spawn a background thread to sample RSS peak (adds
+            ~1-2ms overhead).  Default False (before/after RSS only, ~5μs).
+
     Logged metrics:
         Δtime  - wall-clock elapsed time in ms
         Δmem   - caffe-ffi Blob allocated bytes delta (after GC)
         Δblobs - live Blob count delta (after GC, leak detection)
-        RSS    - process RSS before/after/peak (in MB)
+        RSS    - process RSS before/after (and peak if rss_peak=True) in MB
 
     Usage:
         with perf_trace("Net(prototxt)") as t:
             net = Net(prototxt)
             t['layers'] = len(net.layers_array())
-        # Logs: [PERF] Net(prototxt) ... Δtime=12.3ms Δmem=+4096B Δblobs=+5 RSS=42.1→43.2MB peak=43.5MB layers=5
+        # Logs: [PERF] Net(prototxt) ... Δtime=12.3ms Δmem=+4096B Δblobs=+5 RSS=42.1→43.2MB layers=5
     """
-    mem_before, blobs_before = _mem_bytes_blobs()
+    _gc = gc_mode or os.environ.get("CAFFE_FFI_PERF_GC_MODE", "quick")
+    mem_before, blobs_before = _mem_bytes_blobs(gc_mode=_gc)
     rss_before = _get_rss_bytes()
     t0 = time.perf_counter()
     info: dict = {}
     exc_info = None
     exc_tb_str = None
-    sampler = _RSSPeakSampler(interval_ms=0.5)
-    sampler.__enter__()
+    sampler = None
+    if rss_peak:
+        sampler = _RSSPeakSampler(interval_ms=10)
+        sampler.__enter__()
     try:
         yield info
     except BaseException as e:
@@ -237,10 +296,15 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
         raise
     finally:
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
-        sampler.__exit__()
-        rss_peak = sampler.peak_bytes
+        if sampler is not None:
+            sampler.__exit__()
+            rss_peak_val = sampler.peak_bytes
+        else:
+            rss_peak_val = rss_before
         rss_after = _get_rss_bytes()
-        mem_after, blobs_after = _mem_bytes_blobs()
+        if rss_after > rss_peak_val:
+            rss_peak_val = rss_after
+        mem_after, blobs_after = _mem_bytes_blobs(gc_mode=_gc)
         delta_mem = mem_after - mem_before
         delta_blobs = blobs_after - blobs_before
         delta_rss = rss_after - rss_before
@@ -254,8 +318,11 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
         if verbose:
             mem_str = _fmt_bytes(delta_mem)
             blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
-            rss_str = (f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB "
-                       f"peak={rss_peak/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}")
+            if rss_peak:
+                rss_str = (f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB "
+                           f"peak={rss_peak_val/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}")
+            else:
+                rss_str = f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}"
             if exc_info is not None:
                 status = "EXC" if not info.get("expected_error") else "EXP"
                 _perf_logger.info(
@@ -274,14 +341,14 @@ def perf_trace(label: str, verbose: bool = True) -> Iterator[dict]:
         _write_csv_row(
             _current_test_context["cls"], _current_test_context["name"],
             label, elapsed_ms, delta_mem, delta_blobs, extra_str,
-            rss_before=rss_before, rss_after=rss_after, rss_peak=rss_peak,
+            rss_before=rss_before, rss_after=rss_after, rss_peak=rss_peak_val,
         )
         info["elapsed_ms"] = elapsed_ms
         info["delta_mem"] = delta_mem
         info["delta_blobs"] = delta_blobs
         info["rss_before"] = rss_before
         info["rss_after"] = rss_after
-        info["rss_peak"] = rss_peak
+        info["rss_peak"] = rss_peak_val
         info["delta_rss"] = delta_rss
 
 # Configure memory stress test logger to output INFO logs during test runs
@@ -304,9 +371,25 @@ _previous_test_passed = True
 
 
 def _current_mem_state():
+    """Return (total_allocated_bytes, live_blob_count) for leak detection.
+
+    Uses a GC strategy controlled by CAFFE_FFI_LEAKCHECK_GC env var:
+      - "full" (default for leak checking): 2 rounds gen0+1+2 (~100ms).
+        This is sufficient for cross-test leak detection while keeping
+        overhead manageable.
+      - "quick": single gen0 collect (~1-2ms).  Fastest but may miss
+        leaks from long-lived objects with cross-generational cycles.
+      - "off": no GC; read counters directly (~μs).  For raw perf runs.
+    """
     from caffe_ffi import total_allocated_bytes, live_blob_count
-    # Aggressive GC: collect across all generations repeatedly until counts stabilize
-    for _ in range(5):
+    mode = os.environ.get("CAFFE_FFI_LEAKCHECK_GC", "full")
+    if mode == "off":
+        return (total_allocated_bytes(), live_blob_count())
+    if mode == "quick":
+        gc.collect(0)
+        return (total_allocated_bytes(), live_blob_count())
+    # "full": 2 rounds of gen0+1+2 (reduced from 5 rounds which added ~250ms/test)
+    for _ in range(2):
         gc.collect(0)
         gc.collect(1)
         gc.collect(2)
@@ -472,7 +555,7 @@ _PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _
 
 @pytest.fixture(autouse=True)
 def _test_timing_log(request):
-    """Autouse fixture: log timing + memory delta for every P1/P2 test case."""
+    """Autouse fixture: log timing + memory delta for every P1/P2/P3 test case."""
     test_name = request.node.name
     cls_name = request.cls.__name__ if request.cls else ""
     is_perf = cls_name in _PERF_TEST_CLASSES
@@ -483,7 +566,10 @@ def _test_timing_log(request):
     _current_test_context["cls"] = cls_name
     _current_test_context["name"] = test_name
 
-    mem_before, blobs_before = _mem_bytes_blobs()
+    # BEGIN: light GC (quick) to establish baseline; full GC is too expensive
+    # per-test and is reserved for session-level leak checks.
+    _gc_mode = os.environ.get("CAFFE_FFI_PERF_GC_MODE", "quick")
+    mem_before, blobs_before = _mem_bytes_blobs(gc_mode=_gc_mode)
     rss_before = _get_rss_bytes()
     t0 = time.perf_counter()
     _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d rss=%.1fMB",
@@ -493,7 +579,7 @@ def _test_timing_log(request):
                    rss_before=rss_before)
     yield
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
-    mem_after, blobs_after = _mem_bytes_blobs()
+    mem_after, blobs_after = _mem_bytes_blobs(gc_mode=_gc_mode)
     rss_after = _get_rss_bytes()
     delta_mem = mem_after - mem_before
     delta_blobs = blobs_after - blobs_before
