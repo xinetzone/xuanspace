@@ -462,7 +462,12 @@ _P3C_TEST_CLASSES = {
     "TestELUGradient", "TestPReLUGradient", "TestActivationPerfLogs",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES | _P3C_TEST_CLASSES
+_P3D_TEST_CLASSES = {
+    "TestSliceLayers", "TestCropLayers", "TestLRNLayers",
+    "TestDeconvolutionLayers", "TestSliceConcatRoundtrip",
+}
+
+_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES | _P3C_TEST_CLASSES | _P3D_TEST_CLASSES
 
 
 @pytest.fixture(autouse=True)
