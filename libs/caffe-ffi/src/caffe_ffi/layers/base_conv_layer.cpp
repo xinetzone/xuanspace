@@ -103,11 +103,46 @@ void BaseConvolutionLayer::LayerSetUp(const std::vector<Blob*>& bottom,
     this->blobs_.resize(1);
   }
   this->blobs_[0] = make_object<Blob>(weight_shape);
+
+  // Apply weight_filler if specified
+  float weight_value = 0.0f;
+  if (conv_param.has_weight_filler()) {
+    const caffe::FillerParameter& filler = conv_param.weight_filler();
+    const std::string filler_type = filler.type();
+    if (filler_type == "constant") {
+      weight_value = filler.value();
+    } else if (filler_type == "xavier" || filler_type == "gaussian" || filler_type == "msra") {
+      weight_value = 1.0f;
+      CAFFE_FFI_LOG_WARN() << "[CONV-FILLER] filler type '" << filler_type
+                           << "' not fully implemented, using constant 1.0 for weights";
+    } else {
+      weight_value = 0.0f;
+    }
+    CAFFE_FFI_LAYER_LOG << "BaseConvolution: applied weight_filler type='" << filler_type
+                        << "' value=" << weight_value;
+  }
+  caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), weight_value,
+                 this->blobs_[0]->cpu_mutable_data());
+
   if (bias_term_) {
     std::vector<int64_t> bias_shape{num_output_};
     this->blobs_[1] = make_object<Blob>(bias_shape);
-    caffe_set_fp32(static_cast<size_t>(blobs_[1]->count()), 0.F, blobs_[1]->cpu_mutable_data());
+    float bias_value = 0.0f;
+    if (conv_param.has_bias_filler()) {
+      const caffe::FillerParameter& filler = conv_param.bias_filler();
+      const std::string filler_type = filler.type();
+      if (filler_type == "constant") {
+        bias_value = filler.value();
+      }
+      CAFFE_FFI_LAYER_LOG << "BaseConvolution: applied bias_filler type='" << filler_type
+                          << "' value=" << bias_value;
+    }
+    caffe_set_fp32(static_cast<size_t>(blobs_[1]->count()), bias_value, blobs_[1]->cpu_mutable_data());
   }
+  // CRITICAL: initialize param_propagate_down_ to match blobs_ size.
+  // Without this, Backward_cpu accesses param_propagate_down_[0]/[1] out-of-bounds,
+  // causing access-violation crashes on the first backward call. All other learnable
+  // layers (InnerProduct, Bias, BatchNorm, PReLU, Scale) do this in LayerSetUp.
   this->param_propagate_down_.resize(this->blobs_.size(), true);
 }
 
