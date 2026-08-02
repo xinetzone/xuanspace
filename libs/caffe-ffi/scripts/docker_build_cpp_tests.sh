@@ -23,8 +23,19 @@ TEST_BIN=$(docker exec "$CONTAINER" bash -c "find $SRC/build_cpp -name 'caffe_ff
 echo "Test binary: $TEST_BIN"
 
 echo ""
-echo "=== Step 4: Run COW/ZeroCopy/OwnerCOW tests ==="
-docker exec "$CONTAINER" bash -c "$TEST_BIN --gtest_filter='*COW*:*ZeroCopy*:*OwnerCOW*:*TwoWay*:*ShareData*:*SplitBackward*' 2>&1"
+echo "=== Step 4: Run all C++ tests (242 tests, ~60ms) ==="
+# Note: caffe-ffi uses a custom header-only test framework (not gtest).
+# It accepts a single substring filter as positional argument (no --gtest_filter).
+# Running full suite since all 242 tests complete in ~60ms total.
+docker exec -w "$SRC/build_cpp" "$CONTAINER" bash -c "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:. && $TEST_BIN 2>&1"
+
+echo ""
+echo "=== Step 5: Run COW/ZeroCopy related tests specifically ==="
+for pattern in "COW" "ZeroCopy" "OwnerCOW" "ShareData" "SplitBackward"; do
+    echo ""
+    echo "--- Filter: $pattern ---"
+    docker exec -w "$SRC/build_cpp" "$CONTAINER" bash -c "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:. && $TEST_BIN $pattern 2>&1" | tail -1
+done
 
 echo ""
 echo "=== DONE ==="
