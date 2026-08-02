@@ -1,9 +1,9 @@
 ---
 id: "testing-guidelines"
-version: "1.1.0"
-date: "2026-07-31"
+version: "1.2.0"
+date: "2026-08-01"
 status: "active"
-source: "Sigmoid saturation precision fix + InsertSplits edge case testing + test helper library extraction (2026-07-31)"
+source: "P3-B milestone (Scale/Bias/Eltwise/Concat/Dropout/SoftmaxWithLoss/Accuracy testing) + Sigmoid saturation precision fix + InsertSplits edge case testing + test helper library extraction"
 ---
 
 # Caffe-FFI 测试用例编写规范
@@ -224,9 +224,132 @@ def test_saturation_behavior(self):
 
 ---
 
-## 4. 图变换测试规范（InsertSplits等Pass）
+## 4. 核心架构约束：Single-Consumer Blob模型（必读！）
 
-### 4.1 Split命名约定（必须与Caffe原生一致）
+> **⚠️ 这是caffe-ffi与标准Caffe最重要的行为差异，也是最容易踩坑的地方。所有测试编写者必须首先理解本节。**
+
+### 4.1 约束说明
+
+caffe-ffi的Net实现采用**严格的Single-Consumer（单消费）Blob模型**：
+
+> 每个blob在被一个layer的bottom引用后，立即从`available_blobs`集合中删除，不能被第二个layer直接消费。
+
+**代码位置**：[src/caffe_ffi/net.cpp#L615](file:///d:/spaces/SpecWeave/projects/xuanspace/libs/caffe-ffi/src/caffe_ffi/net.cpp#L615)
+```cpp
+// AppendBottom函数中：
+available_blobs->erase(blob_name);  // blob被消费后立即从可用集合中移除
+```
+
+**与标准Caffe的差异**：
+
+| 行为 | 标准Caffe | caffe-ffi |
+|------|----------|-----------|
+| 同一bottom blob被多layer引用 | ✅ 隐式共享（Caffe内部自动in-place或copy） | ❌ 立即报错`Unknown bottom blob` |
+| 多消费者blob | 无需任何处理 | **必须显式插入Split层** |
+| 内存模型 | 隐式copy | 零拷贝/COW优化，显式Split |
+
+### 4.2 错误症状
+
+当违反Single-Consumer约束时，会出现以下错误：
+
+```
+Unknown bottom blob '<blob_name>' (layer '<layer_name>', bottom index <idx>). See [BLOB-NOT-FOUND] above.
+```
+
+**P3-B阶段三次触发场景**（均已修复）：
+
+| 场景 | 错误触发点 | 修复方式 |
+|------|----------|---------|
+| 同一net中三个Eltwise操作（SUM/PROD/MAX）共享input | 第二个Eltwise引用`a`时 | 拆分为三个独立net，每个net一个操作 |
+| 分类全链路中score同时喂给Loss和Accuracy | Accuracy引用`score`时 | 添加`split_score`层：score→score_loss/score_acc |
+| 分类全链路中label同时喂给Loss和Accuracy | Accuracy引用`label`时 | 添加`split_label`层：label→label_loss/label_acc |
+
+### 4.3 多消费者场景的正确处理方式
+
+**方式一：独立操作分离Net（推荐用于参数对比测试）**
+
+当需要对同一个输入测试多种操作变体时，为每个操作创建独立的net：
+
+```python
+# ✅ 正确：每个Eltwise操作独立Net
+ops = [
+    ("SUM",  "EltwiseOp_SUM"),
+    ("PROD", "EltwiseOp_PROD"),
+    ("MAX",  "EltwiseOp_MAX"),
+]
+for op_name, op_type in ops:
+    prototxt = f"""
+name: 'test_eltwise_{op_name}'
+input: 'a' input_shape {{ dim: 2 dim: 3 }}
+input: 'b' input_shape {{ dim: 2 dim: 3 }}
+layer {{ name: 'elt' type: 'Eltwise' bottom: 'a' bottom: 'b' top: 'out'
+  eltwise_param {{ operation: {op_type} }} }}
+"""
+    net = make_net(prototxt)
+    out = net.Forward({"a": a, "b": b})["out"]
+    # 验证out
+```
+
+**方式二：显式Split层（组合网络/流水线测试）**
+
+当需要在同一个net中让一个blob被多个layer消费时，**必须显式插入Split层**：
+
+```python
+# ✅ 正确：分类全链路 — score和label都需要Split
+prototxt = """
+name: 'test_classification_pipeline'
+input: 'data'  input_shape { dim: 2 dim: 4 }
+input: 'label' input_shape { dim: 2 }
+layer { name: 'fc' type: 'InnerProduct' bottom: 'data' top: 'score'
+  inner_product_param { num_output: 3 bias_term: false } }
+
+# ⭐ Split score: score → score_loss / score_acc
+layer { name: 'split_score' type: 'Split' bottom: 'score'
+  top: 'score_loss' top: 'score_acc' }
+
+# ⭐ Split label: label → label_loss / label_acc
+layer { name: 'split_label' type: 'Split' bottom: 'label'
+  top: 'label_loss' top: 'label_acc' }
+
+layer { name: 'loss' type: 'SoftmaxWithLoss'
+  bottom: 'score_loss' bottom: 'label_loss' top: 'loss' }
+layer { name: 'acc' type: 'Accuracy'
+  bottom: 'score_acc' bottom: 'label_acc' top: 'accuracy' }
+"""
+net = make_net(prototxt)
+outputs = net.Forward({"data": data, "label": label})
+# outputs包含"loss"和"accuracy"
+```
+
+### 4.4 Split命名约定
+
+Split层命名遵循Caffe原生约定：
+```
+<blob_name>_<producer_name>_<top_idx>_split          # Split层名
+<blob_name>_<producer_name>_<top_idx>_split_<k>      # Split输出名（k从0开始）
+```
+
+- 外部输入（`param.input()`）：producer名为`"input"`
+- 显式Input层：producer名为层自身名称
+- in-place链：producer名为**最后一个**in-place层名
+
+### 4.5 编写网络前的自检清单
+
+在编写prototxt网络定义时，**第一步检查**：
+
+- [ ] 列出所有bottom blob，统计每个blob被多少个layer引用
+- [ ] 检查是否有blob被引用次数 > 1
+- [ ] 如果有多消费者blob：要么拆分为多个独立net（方式一），要么显式添加Split层（方式二）
+- [ ] loss_weight ≠ 0的top也计为一个消费者（loss通道）
+
+> **参考模式**：`explicit-split-multi-consumer` 模式文档
+> [patterns/code-patterns/explicit-split-multi-consumer.md](file:///d:/spaces/SpecWeave/.agents/docs/retrospective/patterns/code-patterns/explicit-split-multi-consumer.md)
+
+---
+
+## 5. 图变换测试规范（InsertSplits等Pass）
+
+### 5.1 Split命名约定（必须与Caffe原生一致）
 
 ```
 <blob_name>_<producer_name>_<top_idx>_split          # Split层名
@@ -238,7 +361,7 @@ def test_saturation_behavior(self):
 - 显式Input层：producer名为层自身名称（如`"data"`）
 - in-place链：producer名为**最后一个**in-place层名
 
-### 4.2 必测的InsertSplits边界场景
+### 5.2 必测的InsertSplits边界场景
 
 | # | 场景 | 关键断言 |
 |---|------|---------|
@@ -261,7 +384,7 @@ def test_saturation_behavior(self):
 | 17 | loss_weight+多downstream | split输出数=downstream数+1（含loss） |
 | 18 | 未知bottom blob引用 | 抛出RuntimeError |
 
-### 4.3 结构性断言模板
+### 5.3 结构性断言模板
 
 使用 `caffe_test_helpers` 中的辅助函数，**禁止**手写 `next(i for i,n in enumerate(names) if ...)` 等重复模式：
 
@@ -311,7 +434,7 @@ def test_something(self):
         assert_finite(v)
 ```
 
-### 4.4 前向验证（结构断言之后必做）
+### 5.4 前向验证（结构断言之后必做）
 
 图变换测试**必须**验证前向传播正确性，不能只做结构检查：
 
@@ -328,9 +451,9 @@ assert outputs["output_blob"].shape == expected_shape
 
 ---
 
-## 5. 数值测试规范
+## 6. 数值测试规范
 
-### 5.1 确定性输入
+### 6.1 确定性输入
 
 测试前向数值正确性时，使用固定种子或手工权重，避免随机初始化导致偶发失败：
 
@@ -341,7 +464,7 @@ W = np.array([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32)
 b = np.array([0.01, 0.02], dtype=np.float32)
 ```
 
-### 5.2 权重注入
+### 6.2 权重注入
 
 ```python
 def test_with_known_weights(self):
@@ -355,7 +478,7 @@ def test_with_known_weights(self):
     # 然后forward验证
 ```
 
-### 5.3 误差容限选择
+### 6.3 误差容限选择
 
 | 场景 | rtol | atol |
 |------|------|------|
@@ -366,9 +489,9 @@ def test_with_known_weights(self):
 
 ---
 
-## 6. 错误路径测试
+## 7. 错误路径测试
 
-### 6.1 必须测试的异常
+### 7.1 必须测试的异常
 
 ```python
 def test_unknown_bottom_raises(self):
@@ -385,7 +508,7 @@ layer { name: 'fc1' type: 'InnerProduct' bottom: 'nonexistent' top: 'out'
         _make_net(prototxt)
 ```
 
-### 6.2 错误消息验证
+### 7.2 错误消息验证
 
 `pytest.raises`的`match`参数应同时匹配：
 1. 错误类型关键词（如"Unknown bottom blob"）
@@ -393,16 +516,16 @@ layer { name: 'fc1' type: 'InnerProduct' bottom: 'nonexistent' top: 'out'
 
 ---
 
-## 7. 性能与内存规范
+## 8. 性能与内存规范
 
-### 7.1 自动泄漏检测
+### 8.1 自动泄漏检测
 
 conftest.py中的autouse fixture会**自动**在测试之间检查Blob泄漏。测试无需手动写泄漏断言，但需注意：
 
 - 测试中不要在模块级/类级变量中持有Blob/Net引用
 - 如果需要故意持有引用（如缓存测试），使用`@pytest.mark.leak_check(False)`跳过检测
 
-### 7.2 perf_trace上下文管理器
+### 8.2 perf_trace上下文管理器
 
 对于性能相关测试，使用`perf_trace`记录Δtime/Δmem/Δblobs：
 
@@ -418,9 +541,9 @@ def test_something(self, ptrace):
 
 ---
 
-## 8. 常见陷阱与反模式
+## 9. 常见陷阱与反模式
 
-### 8.1 ❌ 反模式清单
+### 9.1 ❌ 反模式清单
 
 | 反模式 | 后果 | 正确做法 |
 |--------|------|---------|
@@ -428,12 +551,13 @@ def test_something(self, ptrace):
 | `assert x < 1.0` 对正饱和 | x≥17时float32精确等于1.0 | 区分过渡区(x≤14)和饱和区(x≥17) |
 | 只验证结构不做forward | split命名对但bottom重写错导致计算图断裂 | 结构断言后必须`net.Forward()`验证 |
 | InnerProduct层不设bias_term=false | 随机bias导致数值不稳定 | 结构测试设`bias_term: false` |
-| 多个bottom shape不匹配 | Eltwise/Concat/EuclideanLoss要求shape一致 | 仔细设计dim，Concat时注意axis |
+| 多bottom shape不匹配 | Eltwise/Concat/EuclideanLoss要求shape一致 | 仔细设计dim，Concat时注意axis |
+| **同一blob被多layer消费（无Split）** | `Unknown bottom blob`运行时错误 | 参考§4：多消费者必须显式Split或拆分为独立Net |
 | `git add .` 提交临时文件 | 调试脚本污染仓库 | 显式`git add <files>` |
 | 根目录放test_xxx.py临时测试 | 文件丢失/不被CI发现 | 直接写在`tests/python/`下 |
 | 使用EuclideanLoss验证结构 | 需要label blob且shape必须匹配 | 用Concat/Eltwise替代，或提供正确shape的label |
 
-### 8.2 ✅ Sigmoid饱和修复案例参考
+### 9.2 ✅ Sigmoid饱和修复案例参考
 
 问题：`sigmoid(-88) == 0.0`断言失败，实际值约6e-39。
 
@@ -450,7 +574,7 @@ assert result[0, 0, 0, 0] < 1e-37  # 阈值代替==0
 # x=14验证过渡区不早熟饱和，x=88验证精确==1
 ```
 
-### 8.3 ✅ Split位置修复案例参考
+### 9.3 ✅ Split位置修复案例参考
 
 问题：多个`param.input()`需要split时，split层顺序倒置。
 
@@ -469,13 +593,14 @@ assert data_split_idx < weight_split_idx  # 声明顺序：data在weight前
 
 ---
 
-## 9. 测试提交前检查清单
+## 10. 测试提交前检查清单
 
 - [ ] 文件位于`tests/python/test_*.py`
 - [ ] 测试类使用`@require_cpp_extension`装饰器
 - [ ] 模块docstring列出所有覆盖场景
 - [ ] 每个测试方法有docstring描述意图
 - [ ] 浮点数断言使用阈值/`np.allclose`，无`==0.0`/`==1.0`
+- [ ] 网络定义前已做Single-Consumer检查（§4.5），多消费者blob已显式Split或分离Net
 - [ ] 图变换测试包含结构断言+前向验证
 - [ ] prottxt中InnerProduct/Conv层结构测试设`bias_term: false`
 - [ ] 多bottom层（Eltwise/Concat/Loss）的shape设计匹配
@@ -485,14 +610,16 @@ assert data_split_idx < weight_split_idx  # 声明顺序：data在weight前
 
 ---
 
-## 10. 参考测试文件
+## 11. 参考测试文件
 
 | 文件 | 用途 | 参考章节 |
 |------|------|---------|
-| `tests/python/conftest.py` | fixture定义、perf_trace、泄漏检测 | §1.3, §7 |
-| `tests/python/caffe_test_helpers.py` | ⭐ 通用测试辅助函数（断言/构造/验证） | §4.3, §3 |
-| `tests/python/test_insert_splits.py` | 图变换边界测试范本（使用辅助函数） | §4 |
-| `tests/python/test_split_concat_bench.py` | Split/Concat嵌套性能基准范本 | §7 |
+| `tests/python/conftest.py` | fixture定义、perf_trace、泄漏检测 | §1.3, §8 |
+| `tests/python/caffe_test_helpers.py` | ⭐ 通用测试辅助函数（断言/构造/验证） | §5.3, §3 |
+| `tests/python/test_insert_splits.py` | 图变换边界测试范本（使用辅助函数） | §5 |
+| `tests/python/test_split_concat_bench.py` | Split/Concat嵌套性能基准范本 | §8 |
 | `tests/python/test_p3c_activations_ip.py` | 浮点数饱和测试范本 | §3 |
+| `tests/python/test_p3b_eltwise_scale.py` | ⭐ P3-B阶段测试范本（numpy参考+三层验证+组合网络） | §4, §6 |
+| `tests/python/test_layer_template_three_layer_validation.py` | ⭐ 三层验证法测试模板（可直接复制） | §6 |
 | `tests/python/test_cow.py` | COW机制+refcount测试 | - |
-| `docs/plans/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解+辅助函数索引 | §4 |
+| `docs/plans/INSERT_SPLITS_GRAPH_TRANSFORM.md` | InsertSplits算法详解+辅助函数索引 | §5 |
