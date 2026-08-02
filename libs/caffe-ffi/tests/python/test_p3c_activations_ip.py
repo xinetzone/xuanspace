@@ -779,8 +779,8 @@ layer { name: "th" type: "TanH" bottom: "data" top: "out" }
             out = net.forward({"data": inp})
         result = out["out"]
         assert result[0, 0, 0, 2] == pytest.approx(0.0, abs=1e-6)
-        assert result[0, 0, 0, 4] > 1.0 - 1e-7  # tanh(100) ≈ 1
-        assert result[0, 0, 0, 0] < -1.0 + 1e-7  # tanh(-100) ≈ -1
+        assert result[0, 0, 0, 4] == 1.0, f"tanh(100) should be exactly 1.0 in float32, got {result[0,0,0,4]}"
+        assert result[0, 0, 0, 0] == -1.0, f"tanh(-100) should be exactly -1.0 in float32, got {result[0,0,0,0]}"
         assert result[0, 0, 0, 3] == pytest.approx(np.tanh(1.0), rel=1e-5)
         assert result[0, 0, 0, 1] == pytest.approx(np.tanh(-1.0), rel=1e-5)
 
