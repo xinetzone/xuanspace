@@ -57,12 +57,14 @@ C1_DISCONTINUOUS_PATTERNS: list[tuple[str, re.Pattern, bool]] = [
         True,
     ),
     # ELU with alpha ≠ 1.0 (C¹-discontinuous at x=0 because f'(0⁻)=α≠1=f'(0⁺))
-    # Detects: elu_param { alpha: <not-1> } or _make_net(alpha=<not-1>)
+    # Detects two formats:
+    #   - prototxt: elu_param { alpha: <not-1> }
+    #   - Python kwargs: any_func(..., alpha=<not-1>, ...)
     (
         "ELU(alpha≠1)",
         re.compile(
             r"""(?:elu_param\s*\{[^}]*alpha\s*:\s*(?!1(?:\.0+)?(?![.\d]))(\d+\.?\d*|\.\d+)"""
-            r"""|_make_net\s*\([^)]*alpha\s*=\s*(?!1(?:\.0+)?(?![.\d]))(\d+\.?\d*|\.\d+))""",
+            r"""|[a-zA-Z_]\w*\s*\([^)]*\balpha\s*=\s*(?!1(?:\.0+)?(?![.\d]))(\d+\.?\d*|\.\d+))""",
             re.IGNORECASE | re.DOTALL,
         ),
         True,
