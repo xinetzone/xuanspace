@@ -16,6 +16,7 @@ import pytest
 
 from caffe_ffi import Net
 from .conftest import require_cpp_extension
+from .caffe_test_helpers import avoid_c1_discontinuity
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -237,8 +238,7 @@ class TestReLUGradient:
         net = self._make_net(negative_slope=0.1)  # leaky relu is C¹-discontinuous at x=0
         rng = np.random.RandomState(13)
         x = rng.randn(1, 1, 3, 4).astype(np.float32) * 2.0
-        # Push near-zero points away from the C¹ kink to prevent finite-difference straddling
-        x = np.where(x > 0, np.maximum(x, 2*EPS), np.minimum(x, -2*EPS))
+        x = avoid_c1_discontinuity(x, h=EPS)  # push near-zero points away from C¹ kink
         dy = rng.randn(*x.shape).astype(np.float32)
         net.forward({"data": x})
         net.backward({"out": dy})
@@ -590,7 +590,7 @@ class TestPReLUGradient:
         # PReLU is C¹-discontinuous at x=0 (derivative jumps from slope to 1);
         # push near-zero points away to prevent finite-difference straddling the kink
         h = EPS
-        x = np.where(x > 0, np.maximum(x, 2*h), np.minimum(x, -2*h))
+        x = avoid_c1_discontinuity(x, h=h)
         dy = rng.randn(*x.shape).astype(np.float32)
         net_small.forward({"data": x})
         net_small.backward({"out": dy})

@@ -277,3 +277,66 @@ def assert_sigmoid_transition(arr: np.ndarray, label: str = "sigmoid") -> None:
     assert_finite(arr, label)
     assert np.all(arr > 0.0), f"{label} has values <= 0 in transition zone"
     assert np.all(arr < 1.0), f"{label} has values >= 1 in transition zone"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Numerical gradient stability helpers
+# ──────────────────────────────────────────────────────────────────────
+
+def avoid_c1_discontinuity(
+    x: np.ndarray,
+    h: float = 1e-3,
+    kink_points: float | tuple[float, ...] = 0.0,
+    margin: float = 2.0,
+) -> np.ndarray:
+    """Push values near C¹-discontinuity kinks away to prevent finite-difference straddling.
+
+    For piecewise activation functions with C¹-discontinuous kinks (e.g., ReLU, LeakyReLU,
+    PReLU at x=0), central differences with step *h* that straddle the kink produce O(h)
+    truncation error instead of O(h²), causing numerical gradient checks to fail.
+
+    This helper clamps all points within ``margin * h`` of any kink point to exactly
+    ``margin * h`` away (on the same side as the original value), ensuring that the
+    x±h perturbation never crosses the kink.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Input array (modified in-place if copy is not needed; a copy is returned
+        regardless).
+    h : float
+        Finite-difference step size used for the numerical gradient check.
+    kink_points : float or tuple of floats
+        Location(s) of the C¹-discontinuous kink(s). For most neuron layers this is
+        simply ``0.0``.
+    margin : float
+        Safety margin in units of *h*. Values closer than ``margin * h`` to a kink
+        are pushed away. Default is ``2.0``, which guarantees x-h and x+h stay on
+        the same side of the kink.
+
+    Returns
+    -------
+    np.ndarray
+        Array with near-kink points pushed away. Same shape and dtype as *x*.
+
+    Notes
+    -----
+    - For C¹-continuous kinks (e.g., ELU with alpha=1 at x=0), this helper is
+      **not** needed—instead, relax ``rtol`` to ~5e-3 to accommodate the O(h)
+      second-derivative error across the C¹ kink.
+    - This helper is idempotent: applying it twice produces the same result.
+    """
+    result = x.copy()
+    threshold = margin * h
+    if isinstance(kink_points, (int, float)):
+        kinks = (float(kink_points),)
+    else:
+        kinks = tuple(float(k) for k in kink_points)
+    for kink in kinks:
+        # Points on the positive side of the kink (>= kink, but near it)
+        pos_mask = (result >= kink) & (result < kink + threshold)
+        result[pos_mask] = kink + threshold
+        # Points on the negative side of the kink (< kink, but near it)
+        neg_mask = (result < kink) & (result > kink - threshold)
+        result[neg_mask] = kink - threshold
+    return result
