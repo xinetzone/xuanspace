@@ -457,6 +457,9 @@ _P3C_TEST_CLASSES = {
     "TestPositionalEncoding", "TestSelfAttentionComponents",
     "TestScaledDotProductAttention", "TestMultiHeadProjection",
     "TestTransformerEncoderBlock",
+    # Activation backward tests (test_activation_backward.py)
+    "TestReLUGradient", "TestSigmoidGradient", "TestTanHGradient",
+    "TestELUGradient", "TestPReLUGradient", "TestActivationPerfLogs",
 }
 
 _PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES | _P3C_TEST_CLASSES

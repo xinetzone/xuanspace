@@ -13,6 +13,7 @@ import re
 import pytest
 import numpy as np
 import caffe_ffi
+from .conftest import require_cpp_extension
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ def _count_split_perf_lines(log_output: str) -> int:
 
 # ── Test Cases ────────────────────────────────────────────────────────
 
+@require_cpp_extension
 class TestLogAggregationN100:
     """Verify Phase 3.0 log aggregation for N=100 Split."""
 
@@ -180,6 +182,7 @@ class TestLogAggregationN100:
             np.testing.assert_array_equal(out1[key], out2[key])
 
 
+@require_cpp_extension
 class TestLogAggregationBoundary:
     """Verify boundary behavior around kLogAggregateThreshold=32."""
 
@@ -233,6 +236,7 @@ class TestLogAggregationBoundary:
             )
 
 
+@require_cpp_extension
 class TestLogAggregationCorrectness:
     """Verify log aggregation does not affect functional correctness."""
 

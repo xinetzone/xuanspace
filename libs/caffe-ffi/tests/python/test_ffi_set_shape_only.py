@@ -10,6 +10,7 @@ import numpy as np
 try:
     import caffe_ffi
     from caffe_ffi import Blob
+    from .conftest import require_cpp_extension
 except ImportError:
     pytest.skip("caffe_ffi not installed", allow_module_level=True)
 
@@ -212,6 +213,7 @@ class TestSetShapeOnlyLifecycle:
 # TestSetShapeOnlySplitIntegration — Split 层集成测试（基于 Net/prototxt）
 # ============================================================================
 
+@require_cpp_extension
 class TestSetShapeOnlySplitIntegration:
     """验证 Split 层在 Phase 3.1 下正确使用 SetShapeOnly（通过 Net API）。"""
 
