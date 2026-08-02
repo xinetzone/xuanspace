@@ -108,6 +108,7 @@ void BaseConvolutionLayer::LayerSetUp(const std::vector<Blob*>& bottom,
     this->blobs_[1] = make_object<Blob>(bias_shape);
     caffe_set_fp32(static_cast<size_t>(blobs_[1]->count()), 0.F, blobs_[1]->cpu_mutable_data());
   }
+  this->param_propagate_down_.resize(this->blobs_.size(), true);
 }
 
 void BaseConvolutionLayer::Reshape(const std::vector<Blob*>& bottom,
