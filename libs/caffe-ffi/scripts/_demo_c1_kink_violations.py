@@ -2,6 +2,10 @@
 """
 模拟违规案例测试：验证 check_c1_kink_protection.py 能否正确捕获并报错。
 
+覆盖两类检查：
+1. C¹拐点防护（C¹ kink protection）：C¹不连续激活函数的数值梯度测试
+2. ULP饱和违规（ULP saturation）：float32饱和区断言精度超过ULP限制
+
 测试策略：
 1. 在 tests/python/ 下创建带有 _violation_demo_ 前缀的临时测试文件
 2. 每个文件模拟一种典型违规场景或正确场景
@@ -52,13 +56,18 @@ def cleanup():
             p.unlink()
 
 
-def test_case(name: str, filename: str, content: str, expect_fail: bool, required_substrings: list[str] | None = None):
+def test_case(
+    name: str,
+    filename: str,
+    content: str,
+    expect_fail: bool,
+    required_substrings: list[str] | None = None,
+):
     """执行单个测试案例。"""
     path = create_demo(filename, content)
     exit_code, output = run_check(path)
     detected_violation = exit_code != 0
 
-    # 检查结果
     passed = True
     reasons = []
 
@@ -69,7 +78,6 @@ def test_case(name: str, filename: str, content: str, expect_fail: bool, require
         passed = False
         reasons.append("预期通过但检查报告了违规（误报）")
 
-    # 检查必需的输出子串
     if required_substrings:
         for substr in required_substrings:
             if substr not in output:
@@ -79,14 +87,12 @@ def test_case(name: str, filename: str, content: str, expect_fail: bool, require
     status = "PASS" if passed else "FAIL"
     RESULTS.append((name, passed, "; ".join(reasons) if reasons else "符合预期"))
 
-    # 打印详细信息
     print(f"  [{status}] {name}")
     if not passed:
         print(f"         原因: {'; '.join(reasons)}")
         print(f"         退出码: {exit_code}, 预期: {'非0' if expect_fail else '0'}")
-        # 打印输出的关键行
         for line in output.splitlines():
-            if "FAIL" in line or "FAIL" in line or "violation" in line.lower() or "missing" in line.lower():
+            if any(kw in line.lower() for kw in ("fail", "violation", "missing", "error")):
                 print(f"         输出: {line.strip()}")
 
 
@@ -112,14 +118,13 @@ VIOLATION_CASES = [
             ''')
             rng = np.random.RandomState(42)
             x = rng.randn(1, 1, 3, 4).astype(np.float32) * 2.0
-            # ❌ 没有调用 avoid_c1_discontinuity！
             dy = np.ones_like(x)
             dx_num = _num_grad(net, x, dy)
         """,
         True,
         ["LeakyReLU", "missing C¹ kink protection"],
     ),
-    # ── V2: PReLU 数值梯度无防护（prototxt方式）──
+    # ── V2: PReLU 数值梯度无防护 ──
     (
         "V2: PReLU 数值梯度缺少拐点防护（prototxt方式）",
         "v2_prelu_unprotected.py",
@@ -137,7 +142,6 @@ VIOLATION_CASES = [
             net = Net(proto)
             rng = np.random.RandomState(99)
             x = rng.randn(1, 1, 2, 3).astype(np.float32) * 1.5
-            # ❌ 没有调用 avoid_c1_discontinuity！
             dy = rng.randn(*x.shape).astype(np.float32)
             dx_num = _num_grad(net, x, dy)
         """,
@@ -155,7 +159,6 @@ VIOLATION_CASES = [
             net = _make_elu_net(alpha=0.5)
             rng = np.random.RandomState(55)
             x = rng.randn(1, 1, 3, 4).astype(np.float32) * 2.0
-            # ❌ ELU alpha=0.5 是C¹不连续的，没有调用 avoid_c1_discontinuity！
             dy = rng.randn(*x.shape).astype(np.float32)
             dx_num = _num_grad(net, x, dy)
         """,
@@ -178,7 +181,6 @@ VIOLATION_CASES = [
             rng = np.random.RandomState(7)
             x = rng.randn(1, 1, 2, 2).astype(np.float32) * 2.0
             h = 1e-3
-            # ❌ 手动中心差分但没有拐点防护
             dx = np.zeros_like(x)
             for i in range(x.size):
                 xp = x.copy(); xp.flat[i] += h
@@ -190,21 +192,85 @@ VIOLATION_CASES = [
         True,
         ["LeakyReLU"],
     ),
-    # ── V5: LeakyReLU（alternative param format: negative_slope=0.3）──
+    # ── V5: LeakyReLU 内联negative_slope参数无防护 ──
     (
         "V5: LeakyReLU 内联negative_slope参数无防护",
         "v5_inline_slope_unprotected.py",
         """
         import numpy as np
-        # 直接设置negative_slope=0.3（非prototxt块格式）
         def test_leaky_inline():
             net = make_net(negative_slope=0.3)
             x = np.random.randn(1,1,3,4).astype(np.float32) * 2.0
-            # ❌ 无防护
             dx_n = _num_grad(net, x, dy)
         """,
         True,
         ["LeakyReLU", "missing"],
+    ),
+    # ── V6: ULP违规 - sigmoid > 1 - 1e-10 要求过紧精度 ──
+    (
+        "V6: ULP违规 sigmoid(80) > 1-1e-10（sub-ULP gap）",
+        "v6_ulp_tight_gap.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_bad_ulp_sigmoid():
+            assert _sigmoid(np.float32(80.0)) > 1.0 - 1e-10
+        """,
+        True,
+        ["ULP saturation violation", "1e-10", "half-ULP"],
+    ),
+    # ── V7: ULP违规 - tanh(100) >= 1 - 1e-15 ──
+    (
+        "V7: ULP违规 tanh(100) >= 1-1e-15（极端sub-ULP gap）",
+        "v7_ulp_tanh_tight.py",
+        """
+        import numpy as np
+        def test_bad_ulp_tanh():
+            assert np.tanh(np.float32(100.0)) >= 1 - 1e-15
+        """,
+        True,
+        ["ULP saturation violation", "1e-15"],
+    ),
+    # ── V8: ULP违规 - sigmoid(80) != 1.0 在饱和区永远False ──
+    (
+        "V8: ULP违规 sigmoid(80) != 1.0（饱和区不等断言永假）",
+        "v8_ulp_neq_one.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_bad_ulp_neq_one():
+            assert _sigmoid(np.float32(80.0)) != 1.0
+        """,
+        True,
+        ["ULP saturation violation", "!= 1.0"],
+    ),
+    # ── V9: ULP违规 - tanh(100) != 1.0 ──
+    (
+        "V9: ULP违规 tanh(100) != 1.0",
+        "v9_ulp_tanh_neq.py",
+        """
+        import numpy as np
+        def test_bad_ulp_tanh_neq():
+            assert np.tanh(np.float32(100.0)) != 1.0
+        """,
+        True,
+        ["ULP saturation violation", "tanh", "!= 1.0"],
+    ),
+    # ── V10: ULP违规 - sigmoid(-100) != 0.0 在深负饱和区 ──
+    (
+        "V10: ULP违规 sigmoid(-100) != 0.0（exp溢出为inf精确为零）",
+        "v10_ulp_neq_zero.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_bad_ulp_neq_zero():
+            assert _sigmoid(np.float32(-100.0)) != 0.0
+        """,
+        True,
+        ["ULP saturation violation", "!= 0.0", "-88.73"],
     ),
 ]
 
@@ -227,7 +293,7 @@ PASS_CASES = [
             ''')
             EPS = 1e-3
             x = np.random.randn(1,1,3,4).astype(np.float32) * 2.0
-            x = avoid_c1_discontinuity(x, h=EPS)  # ✅ 正确防护
+            x = avoid_c1_discontinuity(x, h=EPS)
             dx_num = _num_grad(net, x, dy)
         """,
         False,
@@ -242,15 +308,14 @@ PASS_CASES = [
         def test_prelu_ok():
             x = rng.randn(1,1,2,3).astype(np.float32) * 1.5
             h = 1e-3
-            x = avoid_c1_discontinuity(x, h=h)  # ✅
-            # PReLU layer + numerical grad
+            x = avoid_c1_discontinuity(x, h=h)
             proto = 'layer { type: \"PReLU\" }'
             dx_num = _num_grad(net, x, dy)
         """,
         False,
         None,
     ),
-    # ── P3: 豁免注释（故意跨拐点测试误差特性）──
+    # ── P3: c1-kink-ok 豁免注释 ──
     (
         "P3: c1-kink-ok 豁免注释",
         "p3_suppressed.py",
@@ -260,12 +325,12 @@ PASS_CASES = [
         def test_intentional_kink_crossing():
             proto = 'layer { type: \"ReLU\" relu_param { negative_slope: 0.1 } }'
             x = np.array([0.0, 0.0005, -0.0005], dtype=np.float32)
-            dx_num = _num_grad(net, x, dy)  # 故意在拐点处采样
+            dx_num = _num_grad(net, x, dy)
         """,
         False,
         None,
     ),
-    # ── P4: Sigmoid（C^∞光滑，无数值梯度问题）──
+    # ── P4: Sigmoid（C^∞光滑，无数值梯度拐点问题）──
     (
         "P4: Sigmoid（C^∞光滑函数，无需拐点防护）",
         "p4_sigmoid_smooth.py",
@@ -274,7 +339,7 @@ PASS_CASES = [
         def test_sigmoid_grad():
             proto = 'layer { type: \"Sigmoid\" }'
             x = np.random.randn(1,1,3,4).astype(np.float32) * 1.5
-            dx_num = _num_grad(net, x, dy)  # ✅ Sigmoid是光滑函数，无需防护
+            dx_num = _num_grad(net, x, dy)
         """,
         False,
         None,
@@ -287,26 +352,25 @@ PASS_CASES = [
         def test_tanh_grad():
             proto = 'layer { type: \"TanH\" }'
             x = rng.randn(1,1,3,4).astype(np.float32) * 2.0
-            dx_num = _num_grad(net, x, dy)  # ✅
+            dx_num = _num_grad(net, x, dy)
         """,
         False,
         None,
     ),
-    # ── P6: ELU(alpha=1.0) C¹连续，放宽rtol即可（但检查脚本只检测C¹不连续，此处自动通过）──
+    # ── P6: ELU(alpha=1.0) C¹连续 ──
     (
         "P6: ELU(alpha=1) C¹连续（检查脚本不要求avoid，用户自行放宽rtol）",
         "p6_elu_alpha1.py",
         """
         def test_elu_c1_continuous():
-            proto = 'layer { type: \"ELU\" }'  # 默认alpha=1
+            proto = 'layer { type: \"ELU\" }'
             x = rng.randn(1,1,3,4).astype(np.float32) * 2.0
-            dx_num = _num_grad(net, x, dy)  # ✅ ELU(alpha=1)是C¹连续的，无需avoid
-            # 注意：用户需要自行设置 rtol=5e-3
+            dx_num = _num_grad(net, x, dy)
         """,
         False,
         None,
     ),
-    # ── P7: PReLU 仅有analytic gradient测试无数值梯度 ──
+    # ── P7: PReLU 仅有analytic gradient ──
     (
         "P7: PReLU 仅analytic gradient（无数值梯度检查）",
         "p7_prelu_analytic_only.py",
@@ -315,20 +379,89 @@ PASS_CASES = [
             proto = 'layer { type: \"PReLU\" }'
             net.forward({'data': x})
             net.backward({'out': dy})
-            dx = net.blob_by_name('data').diff  # ✅ 只有analytic，无数值梯度
+            dx = net.blob_by_name('data').diff
         """,
         False,
         None,
     ),
-    # ── P8: 标准ReLU(negative_slope=0) 偏移策略（仅警告不报错）──
+    # ── P8: 标准ReLU 偏移策略（仅警告不报错）──
     (
         "P8: 标准ReLU 偏移到全正（无数值梯度跨拐点风险）",
         "p8_relu_offset.py",
         """
         def test_relu_positive():
-            proto = 'layer { type: \"ReLU\" }'  # 默认negative_slope=0
-            x = rng.randn(1,1,3,4).astype(np.float32) * 2.0 + 1.0  # 全正偏移
-            dx_num = _num_grad(net, x, dy)  # ✅ 偏移到全正，不跨拐点
+            proto = 'layer { type: \"ReLU\" }'
+            x = rng.randn(1,1,3,4).astype(np.float32) * 2.0 + 1.0
+            dx_num = _num_grad(net, x, dy)
+        """,
+        False,
+        None,
+    ),
+    # ── P9: ULP正确 - sigmoid(80) == 1.0 精确饱和断言 ──
+    (
+        "P9: ULP正确 sigmoid(80) == 1.0（精确饱和断言方式）",
+        "p9_ulp_exact_eq.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_good_exact_sat():
+            assert _sigmoid(np.float32(80.0)) == 1.0
+        """,
+        False,
+        None,
+    ),
+    # ── P10: ULP正确 - sigmoid(10) > 0.9999 宽松不等式（非饱和输入）──
+    (
+        "P10: ULP正确 sigmoid(10) > 0.9999（安全宽松间隙，非饱和输入）",
+        "p10_ulp_loose.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_good_loose():
+            assert _sigmoid(np.float32(10.0)) > 0.9999
+        """,
+        False,
+        None,
+    ),
+    # ── P11: ULP正确 - tanh(5) > 0.999 非饱和区宽松断言 ──
+    (
+        "P11: ULP正确 tanh(5) > 0.999（非饱和区）",
+        "p11_ulp_tanh_loose.py",
+        """
+        import numpy as np
+        def test_good_tanh_loose():
+            assert np.tanh(np.float32(5.0)) > 0.999
+        """,
+        False,
+        None,
+    ),
+    # ── P12: ULP豁免 - ulp-ok行内注释 ──
+    (
+        "P12: ULP豁免 ulp-ok行内注释",
+        "p12_ulp_suppressed_inline.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_suppressed_inline():
+            assert _sigmoid(np.float32(80.0)) > 1.0 - 1e-10  # ulp-ok: float64 reference path
+        """,
+        False,
+        None,
+    ),
+    # ── P13: ULP豁免 - ulp-ok上一行注释 ──
+    (
+        "P13: ULP豁免 ulp-ok上一行注释",
+        "p13_ulp_suppressed_above.py",
+        """
+        import numpy as np
+        def _sigmoid(x):
+            return np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-x)))
+        def test_suppressed_above():
+            # ulp-ok: intentional precision check for analytic derivation
+            assert _sigmoid(np.float32(80.0)) > 1.0 - 1e-12
         """,
         False,
         None,
@@ -343,11 +476,11 @@ PASS_CASES = [
 
 def main():
     print("=" * 70)
-    print("  C¹ Kink Protection Check — Violation Detection Demo")
+    print("  Numerical Testing Safety Check — Violation Detection Demo")
+    print("  (C¹ Kink Protection + ULP Saturation)")
     print("=" * 70)
     print()
 
-    # 确认检查脚本存在
     if not CHECK_SCRIPT.exists():
         print(f"ERROR: 检查脚本不存在: {CHECK_SCRIPT}")
         return 1
@@ -380,12 +513,15 @@ def main():
     if failed == 0:
         print(c_green(f"  ✅ 全部 {total} 个测试通过（{passed} passed, 0 failed）！"))
         print("  检查脚本能够正确：")
-        print("    • 检测到无防护的LeakyReLU/PReLU/ELU(α≠1)数值梯度测试")
-        print("    • 识别手动中心差分循环中的违规")
+        print("    • 检测无防护的LeakyReLU/PReLU/ELU(α≠1)数值梯度测试（C¹拐点）")
+        print("    • 识别手动中心差分循环中的C¹违规")
+        print("    • 检测sigmoid/tanh饱和区sub-ULP精度断言（> 1-1e-10等）")
+        print("    • 检测饱和区 !=1.0 / !=0.0 恒假断言")
         print("    • 放行正确使用avoid_c1_discontinuity的测试")
-        print("    •  honoring豁免注释(# c1-kink-ok)")
-        print("    •  不误报Sigmoid/TanH等C^∞光滑函数")
-        print("    •  不误报无数值梯度的analytic-only测试")
+        print("    • honoring c1-kink-ok / ulp-ok 豁免注释")
+        print("    • 不误报Sigmoid/TanH等C^∞光滑函数的梯度测试")
+        print("    • 不误报==1.0精确饱和、>0.9999宽松不等式等正确断言")
+        print("    • 不误报无数值梯度的analytic-only测试")
     else:
         print(c_red(f"  ❌ {failed}/{total} 个测试失败："))
         for name, p, reason in RESULTS:
@@ -394,7 +530,6 @@ def main():
     print("=" * 70)
     print()
 
-    # ── 清理 ──
     cleanup()
     print("临时文件已清理。")
 
@@ -417,4 +552,4 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     finally:
-        cleanup()  # 确保即使异常也清理
+        cleanup()
