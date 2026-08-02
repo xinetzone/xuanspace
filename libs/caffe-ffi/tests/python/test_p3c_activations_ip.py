@@ -178,6 +178,7 @@ def _make_net(prototxt: str):
 # ReLU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestReLULayers:
     """Tests for the ReLU layer's forward computation (including Leaky ReLU)."""
 
@@ -275,6 +276,7 @@ layer { name: "relu" type: "ReLU" bottom: "data" top: "out" relu_param { negativ
 # Sigmoid Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestSigmoidLayers:
     """Tests for the Sigmoid layer's forward computation."""
 
@@ -331,12 +333,13 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         """Sigmoid saturation behavior in float32.
 
         In IEEE754 float32:
-        - sigmoid(88) = 1/(1+exp(-88)) ≈ 1.0 exactly, because exp(-88)≈6e-39
-          is far below ULP(1.0)≈1.2e-7, so 1+6e-39 rounds to 1.0.
-        - sigmoid(-88) = 1/(1+exp(88)) ≈ 6.1e-39, which is a representable
-          subnormal float32 (min subnormal ≈ 1.4e-45), so it is NOT exactly 0.0.
-          It is however extremely small (effectively zero for all practical purposes).
-        - sigmoid(±80) is very close but not at the extreme (≈1.8e-35 / 1-1.8e-35).
+        - ULP(1.0) ≈ 1.2e-7, so sigmoid(x) rounds to exactly 1.0 when
+          1-sigmoid(x) ≈ exp(-x) < ULP/2 ≈ 6e-8, i.e. x > ~16.6.
+        - sigmoid(88) = 1/(1+exp(-88)) ≈ 1.0 exactly (exp(-88)≈6e-39 ≪ ULP/2).
+        - sigmoid(80) = 1/(1+exp(-80)) ≈ 1.0 exactly too (exp(-80)≈1.8e-35 ≪ ULP/2).
+        - sigmoid(-88) = 1/(1+exp(88)) ≈ 6.1e-39, a representable subnormal
+          float32 (min subnormal ≈ 1.4e-45), NOT exactly 0.0 but effectively zero.
+        - sigmoid(-80) ≈ 1.8e-35, also a subnormal, NOT exactly 0.0.
         """
         prototxt = """name: "sigmoid_sat"
 layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 1 dim: 1 dim: 1 dim: 4 } } }
@@ -344,7 +347,7 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
 """
         with ptrace("Net(sigmoid saturation)"):
             net = _make_net(prototxt)
-        # Test saturation points
+        # Test saturation points: all |x|>=20 are well past float32 saturation threshold
         inp = np.array([[[[-88.0, -80.0, 80.0, 88.0]]]], dtype=np.float32)
         with ptrace("sigmoid saturation forward"):
             out = net.forward({"data": inp})
@@ -353,11 +356,16 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         assert result[0, 0, 0, 0] < 1e-37, (
             f"sigmoid(-88) should be < 1e-37 (effectively zero), got {result[0,0,0,0]}"
         )
+        # sigmoid(-80) ≈ 1.8e-35 in float32 (subnormal, not exactly 0)
+        assert result[0, 0, 0, 1] < 1e-30, (
+            f"sigmoid(-80) should be < 1e-30 (effectively zero), got {result[0,0,0,1]}"
+        )
+        # sigmoid(80) is exactly 1.0 in float32 (exp(-80)≈1.8e-35 ≪ ULP(1.0)/2≈6e-8)
+        assert result[0, 0, 0, 2] == 1.0, (
+            f"sigmoid(80) should be exactly 1.0 in float32, got {result[0,0,0,2]}"
+        )
         # sigmoid(88) is exactly 1.0 in float32
         assert result[0, 0, 0, 3] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result[0,0,0,3]}"
-        # Near-saturation: sigmoid(±80) is very close but NOT at the extreme
-        assert 0.0 < result[0, 0, 0, 1] < 1e-30, f"sigmoid(-80) should be < 1e-30, got {result[0,0,0,1]}"
-        assert result[0, 0, 0, 2] > 1.0 - 1e-30, f"sigmoid(80) should be > 1-1e-30, got {result[0,0,0,2]}"
         # No NaN or Inf
         assert not np.any(np.isnan(result))
         assert not np.any(np.isinf(result))
@@ -480,6 +488,7 @@ def sigmoid_grad_np(x):
     return (y * (1.0 - y)).astype(np.float32)
 
 
+@require_cpp_extension
 class TestSigmoidBackward:
     """Tests for Sigmoid backward pass: gradient correctness and saturation counter.
 
@@ -753,6 +762,7 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
 # TanH Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestTanHLayers:
     """Tests for the TanH layer's forward computation."""
 
@@ -843,6 +853,7 @@ layer { name: "th" type: "TanH" bottom: "data" top: "out" }
 # ELU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestELULayers:
     """Tests for the ELU layer's forward computation."""
 
@@ -944,6 +955,7 @@ layer { name: "elu" type: "ELU" bottom: "data" top: "out" elu_param { alpha: 1.0
 # PReLU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestPReLULayers:
     """Tests for the PReLU layer's forward computation."""
 
@@ -1058,6 +1070,7 @@ layer { name: "prelu" type: "PReLU" bottom: "data" top: "out" }
 # InnerProduct (Fully Connected) Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestInnerProductLayers:
     """Tests for the InnerProduct (Fully Connected) layer's forward computation."""
 
@@ -1210,6 +1223,7 @@ layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "out"
 # Softmax Layer Tests (standalone, separate from SoftmaxWithLoss)
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestSoftmaxLayers:
     """Tests for the standalone Softmax layer's forward computation."""
 
@@ -1311,6 +1325,7 @@ layer { name: "sm" type: "Softmax" bottom: "data" top: "out" }
 # Flatten Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestFlattenLayers:
     """Tests for the Flatten layer's forward computation."""
 
@@ -1414,6 +1429,7 @@ layer { name: "flat" type: "Flatten" bottom: "data" top: "out" }
 # Reshape Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestReshapeLayers:
     """Tests for the Reshape layer's forward computation."""
 
@@ -1516,6 +1532,7 @@ layer { name: "rsh" type: "Reshape" bottom: "data" top: "out"
 # Combination / Pipeline Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestActivationIPCombination:
     """Integration tests: MLP-style pipelines combining IP + Activation + Softmax."""
 

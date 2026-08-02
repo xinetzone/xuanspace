@@ -109,6 +109,7 @@ def _make_net(prototxt: str):
 # Positional Encoding Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestPositionalEncoding:
     """Tests for Positional Encoding using Eltwise SUM and Bias layers."""
 
@@ -257,6 +258,7 @@ layer {{
 # Self-Attention Component Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestSelfAttentionComponents:
     """Tests for individual Self-Attention building blocks (2D operations)."""
 
@@ -464,6 +466,7 @@ layer {{
 # Scaled Dot-Product Attention (End-to-End)
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestScaledDotProductAttention:
     """End-to-end Scaled Dot-Product Attention tests.
 
@@ -574,6 +577,7 @@ layer {{
 # Multi-Head Projection Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestMultiHeadProjection:
     """Tests for multi-head attention via multiple InnerProduct + Concat."""
 
@@ -643,6 +647,7 @@ layer {{
 # Transformer Encoder Block Integration Test
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestTransformerEncoderBlock:
     """Integration test for a simplified Transformer encoder block (2D flattened).
 

@@ -181,6 +181,7 @@ def _make_net(prototxt: str):
 # Scale Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestScaleLayers:
     """Tests for the Scale layer's forward computation."""
 
@@ -312,6 +313,7 @@ layer {{ name: "scale" type: "Scale" bottom: "data" top: "out" scale_param {{ bi
 # Bias Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestBiasLayers:
     """Tests for the Bias layer's forward computation."""
 
@@ -433,6 +435,7 @@ layer {{ name: "bias" type: "Bias" bottom: "data" top: "out" }}
 # Eltwise Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestEltwiseLayers:
     """Tests for the Eltwise layer's forward computation (SUM/PROD/MAX)."""
 
@@ -597,6 +600,7 @@ layer { name: "ew" type: "Eltwise" bottom: "a" bottom: "b" top: "out"
 # Concat Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestConcatLayers:
     """Tests for the Concat layer's forward computation."""
 
@@ -720,6 +724,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
 # Dropout Layer Tests (inference mode = identity)
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestDropoutLayers:
     """Tests for the Dropout layer's forward computation (inference mode)."""
 
@@ -815,6 +820,7 @@ layer { name: "drop" type: "Dropout" bottom: "data" top: "out"
 # SoftmaxWithLoss Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestSoftmaxWithLossLayers:
     """Tests for the SoftmaxWithLoss layer's forward computation."""
 
@@ -944,6 +950,7 @@ layer {{ name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top
 # Accuracy Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestAccuracyLayers:
     """Tests for the Accuracy layer's forward computation."""
 
@@ -1113,6 +1120,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
 # Combined Pipeline Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@require_cpp_extension
 class TestScaleBiasEltwiseCombination:
     """Combined pipeline tests with Scale/Bias/Eltwise layers."""
 

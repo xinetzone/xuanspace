@@ -449,7 +449,7 @@ _P3B_TEST_CLASSES = {
 }
 
 _P3C_TEST_CLASSES = {
-    "TestReLULayers", "TestSigmoidLayers", "TestTanHLayers",
+    "TestReLULayers", "TestSigmoidLayers", "TestSigmoidBackward", "TestTanHLayers",
     "TestELULayers", "TestPReLULayers",
     "TestInnerProductLayers", "TestSoftmaxLayers",
     "TestFlattenLayers", "TestReshapeLayers",
