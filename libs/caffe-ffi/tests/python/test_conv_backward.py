@@ -2,15 +2,19 @@
 
 Covers:
   1. Analytical gradient correctness (numpy reference vs caffe-ffi computed dX/dW/db)
-  2. Numerical gradient check (central finite differences)
+  2. Numerical gradient check (central finite differences via _grad_check_utils)
   3. Known-value verification (1x1 identity conv, hand-computed)
   4. 1x1 conv backward (no padding/stride)
   5. 3x3 conv with padding and stride
-  6. Bias gradient correctness
-  7. Group convolution backward
-  8. Zero dy → zero gradients
-  9. Shape/dtype/finite/determinism checks
- 10. Forward output preserved after backward
+  6. 3x3 conv with dilation=2 (atrous convolution)
+  7. Stride=2 numerical gradient check
+  8. Bias gradient correctness
+  9. Group convolution backward (analytical + numerical)
+  10. No-bias configuration
+  11. Zero dy → zero gradients
+  12. Shape/dtype/finite/determinism checks
+  13. Forward output preserved after backward
+  14. Detailed gradient diagnostic logging on mismatch
 
 Mathematical reference:
   Forward: Y = conv2d(X, W) + b   (im2col + GEMM)
@@ -29,6 +33,12 @@ import pytest
 from caffe_ffi import Net
 from .conftest import require_cpp_extension
 from ._numpy_conv_reference import conv_forward, conv_backward
+from ._grad_check_utils import (
+    assert_grad_close,
+    compare_gradients,
+    numerical_grad_for_blob,
+    numerical_grad_for_input,
+)
 
 EPS_NUMERICAL = 1e-3
 
@@ -95,8 +105,9 @@ def _set_conv_weights(net, W, b=None):
         conv_layer.blobs[1].from_numpy(b.reshape(-1).astype(np.float32))
 
 
-def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, groups=1):
-    """Run forward then backward, return (dX, dW, db)."""
+def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, groups=1,
+                       log_label=""):
+    """Run forward then backward, return (dX, dW, db) with optional diagnostic logging."""
     _set_conv_weights(net, W, b)
     net.forward({"data": x.astype(np.float32)})
     net.backward({"conv": dy.astype(np.float32)})
@@ -106,52 +117,6 @@ def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, group
     if b is not None and len(net.layer_by_name("conv").blobs) >= 2:
         db = net.layer_by_name("conv").blobs[1].diff
     return dX, dW, db
-
-
-# ---------------------------------------------------------------------------
-# Numerical gradient helpers
-# ---------------------------------------------------------------------------
-
-def _num_grad_x(net, x, W, b, dy, pad=0, stride=1, h=EPS_NUMERICAL):
-    """Numerical gradient dX via central differences."""
-    grad = np.zeros_like(x, dtype=np.float64)
-    for i in range(x.size):
-        xp = x.copy(); xp.flat[i] += h
-        xm = x.copy(); xm.flat[i] -= h
-        _set_conv_weights(net, W, b)
-        yp = net.forward({"data": xp.astype(np.float32)})["conv"]
-        _set_conv_weights(net, W, b)
-        ym = net.forward({"data": xm.astype(np.float32)})["conv"]
-        grad.flat[i] = float(np.sum(dy.astype(np.float64) * (yp.astype(np.float64) - ym.astype(np.float64)))) / (2 * h)
-    return grad.astype(np.float32)
-
-
-def _num_grad_W(net, x, W, b, dy, pad=0, stride=1, h=EPS_NUMERICAL):
-    """Numerical gradient dW via central differences."""
-    grad = np.zeros_like(W, dtype=np.float64)
-    for i in range(W.size):
-        Wp = W.copy(); Wp.flat[i] += h
-        Wm = W.copy(); Wm.flat[i] -= h
-        _set_conv_weights(net, Wp, b)
-        yp = net.forward({"data": x.astype(np.float32)})["conv"]
-        _set_conv_weights(net, Wm, b)
-        ym = net.forward({"data": x.astype(np.float32)})["conv"]
-        grad.flat[i] = float(np.sum(dy.astype(np.float64) * (yp.astype(np.float64) - ym.astype(np.float64)))) / (2 * h)
-    return grad.astype(np.float32)
-
-
-def _num_grad_b(net, x, W, b, dy, pad=0, stride=1, h=EPS_NUMERICAL):
-    """Numerical gradient db via central differences."""
-    grad = np.zeros_like(b, dtype=np.float64)
-    for i in range(b.size):
-        bp = b.copy(); bp.flat[i] += h
-        bm = b.copy(); bm.flat[i] -= h
-        _set_conv_weights(net, W, bp)
-        yp = net.forward({"data": x.astype(np.float32)})["conv"]
-        _set_conv_weights(net, W, bm)
-        ym = net.forward({"data": x.astype(np.float32)})["conv"]
-        grad.flat[i] = float(np.sum(dy.astype(np.float64) * (yp.astype(np.float64) - ym.astype(np.float64)))) / (2 * h)
-    return grad.astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -173,52 +138,91 @@ class TestConvBackward1x1:
         dy = np.ones((N, Co, H, W_dim), dtype=np.float32)
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b)
-        # dX = dy @ W = dy @ I = dy = ones
         np.testing.assert_allclose(dX, dy, rtol=1e-5)
-        # db = sum(dy over spatial+batch) = N*H*W = 4 for each channel
         np.testing.assert_allclose(db, np.full(Co, 4.0, dtype=np.float32), rtol=1e-5)
-        # dW = sum over n: dy_n^T @ col_n; for 1x1 col_n = X_n reshaped (Ci, H*W)
-        # dy_n is (Co, H*W) all ones, X_n is (Ci, H*W) -> dW_g = dy_n @ X_n^T = (Co, Ci)
-        # dW[co, ci] = sum over h,w of dy[co,h,w] * x[ci,h,w]
-        # ch0 sum = 1+2+3+4 = 10; ch1 sum = 5+6+7+8 = 26
         expected_dW = np.array([[[[10.0]], [[26.0]]],
                                 [[[10.0]], [[26.0]]]], dtype=np.float32)
         np.testing.assert_allclose(dW, expected_dW, rtol=1e-5)
 
     def test_conv1x1_analytical_dx_dw_db(self):
-        """1x1 conv: caffe-ffi gradients vs numpy reference."""
-        np.random.seed(111)
+        """1x1 conv: caffe-ffi gradients vs numpy reference (detailed logging)."""
+        rng = np.random.RandomState(111)
         N, Ci, H, W_dim, Co = 2, 3, 3, 3, 4
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
-        W = np.random.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
-        b = np.random.randn(Co).astype(np.float32) * 0.1
-        y = conv_forward(x, W, b, stride=1, pad=0)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.3
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
+        W = rng.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, stride=1, pad=0)
 
-        np.testing.assert_allclose(dX, dX_ref, rtol=1e-4, atol=1e-5)
-        np.testing.assert_allclose(dW, dW_ref, rtol=1e-4, atol=1e-5)
-        np.testing.assert_allclose(db, db_ref, rtol=1e-4, atol=1e-5)
+        assert_grad_close(dX, dX_ref, name="dX (1x1 conv)", rtol=1e-4, atol=1e-5)
+        assert_grad_close(dW, dW_ref, name="dW (1x1 conv)", rtol=1e-4, atol=1e-5)
+        assert_grad_close(db, db_ref, name="db (1x1 conv)", rtol=1e-4, atol=1e-5)
 
     def test_conv1x1_no_bias(self):
         """1x1 conv without bias: caffe-ffi dX/dW vs numpy reference."""
-        np.random.seed(222)
+        rng = np.random.RandomState(222)
         N, Ci, H, W_dim, Co = 2, 3, 2, 2, 5
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=False)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
-        W = np.random.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
-        y = conv_forward(x, W, b=None, stride=1, pad=0)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.3
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
+        W = rng.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b=None)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=None, stride=1, pad=0)
 
-        assert db is None or db.size == 0, "No bias blob expected"
-        np.testing.assert_allclose(dX, dX_ref, rtol=1e-4, atol=1e-5)
-        np.testing.assert_allclose(dW, dW_ref, rtol=1e-4, atol=1e-5)
+        assert db is None, "No bias blob expected when bias_term=false"
+        assert_grad_close(dX, dX_ref, name="dX (1x1 no-bias)", rtol=1e-4, atol=1e-5)
+        assert_grad_close(dW, dW_ref, name="dW (1x1 no-bias)", rtol=1e-4, atol=1e-5)
+
+    def test_conv1x1_numerical_dx(self):
+        """1x1 conv: numerical gradient check for dX (small tensor)."""
+        rng = np.random.RandomState(1111)
+        N, Ci, H, W_dim, Co = 1, 2, 2, 2, 2  # 8 input elements
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
+        W = rng.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
+
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (1x1, num)",
+        )
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (1x1)", rtol=1e-2, atol=1e-3)
+
+    def test_conv1x1_numerical_dw_db(self):
+        """1x1 conv: numerical gradient check for dW and db."""
+        rng = np.random.RandomState(1112)
+        N, Ci, H, W_dim, Co = 1, 2, 1, 2, 2  # W: 8 elements, b: 2
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
+        W = rng.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
+
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dw_analytic = net.layer_by_name("conv").blobs[0].diff
+        db_analytic = net.layer_by_name("conv").blobs[1].diff
+
+        dw_numeric = numerical_grad_for_blob(
+            net, "conv", 0, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="dW (1x1, num)",
+        )
+        db_numeric = numerical_grad_for_blob(
+            net, "conv", 1, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="db (1x1, num)",
+        )
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (1x1)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(db_analytic, db_numeric, name="db (1x1)", rtol=1e-3, atol=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -231,63 +235,122 @@ class TestConvBackward3x3:
 
     def test_conv3x3_pad1_analytical(self):
         """3x3 conv pad=1 stride=1: analytical dX/dW/db vs numpy reference."""
-        np.random.seed(333)
+        rng = np.random.RandomState(333)
         N, Ci, H, W_dim, Co = 1, 2, 4, 4, 2
         Kh = Kw = 3
         pad = 1
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
-        W = np.random.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
-        y = conv_forward(x, W, b, pad=pad)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.3
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad)
 
-        np.testing.assert_allclose(dX, dX_ref, rtol=1e-3, atol=1e-4)
-        np.testing.assert_allclose(dW, dW_ref, rtol=1e-3, atol=1e-4)
-        np.testing.assert_allclose(db, db_ref, rtol=1e-3, atol=1e-4)
+        assert_grad_close(dX, dX_ref, name="dX (3x3 pad=1)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(dW, dW_ref, name="dW (3x3 pad=1)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(db, db_ref, name="db (3x3 pad=1)", rtol=1e-3, atol=1e-4)
 
     def test_conv3x3_stride2_analytical(self):
         """3x3 conv pad=1 stride=2: analytical dX/dW vs numpy reference."""
-        np.random.seed(444)
+        rng = np.random.RandomState(444)
         N, Ci, H, W_dim, Co = 1, 1, 4, 4, 1
         Kh = Kw = 3
         pad = 1
         stride = 2
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, stride=stride, bias=False)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
-        W = np.random.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
         y = conv_forward(x, W, b=None, pad=pad, stride=stride)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.3
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.3
 
-        dX, dW, db = _run_conv_backward(net, x, dy, W, b=None, pad=pad, stride=stride)
+        dX, dW, _ = _run_conv_backward(net, x, dy, W, b=None, pad=pad, stride=stride)
         dX_ref, dW_ref, _ = conv_backward(dy, x, W, b=None, pad=pad, stride=stride)
 
-        np.testing.assert_allclose(dX, dX_ref, rtol=5e-3, atol=5e-4)
-        np.testing.assert_allclose(dW, dW_ref, rtol=5e-3, atol=5e-4)
+        assert_grad_close(dX, dX_ref, name="dX (3x3 stride=2)", rtol=5e-3, atol=5e-4)
+        assert_grad_close(dW, dW_ref, name="dW (3x3 stride=2)", rtol=5e-3, atol=5e-4)
 
     def test_conv3x3_numerical_dx(self):
         """3x3 pad=1 stride=1: numerical gradient check for dX on tiny tensor."""
-        np.random.seed(555)
+        rng = np.random.RandomState(555)
         N, Ci, H, W_dim, Co = 1, 1, 3, 3, 1  # 9 input elements
         Kh = Kw = 3
         pad = 1
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
-        W = np.random.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
         y = conv_forward(x, W, b, pad=pad)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.2
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
 
-        dX_analytic, _, _ = _run_conv_backward(net, x, dy, W, b, pad=pad)
-        dX_numeric = _num_grad_x(net, x, W, b, dy, pad=pad)
-        np.testing.assert_allclose(dX_analytic, dX_numeric, rtol=1e-2, atol=1e-3)
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (3x3 pad=1, num)",
+        )
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (3x3 pad=1)", rtol=1e-2, atol=1e-3)
+
+    def test_conv3x3_stride2_numerical_dx(self):
+        """3x3 pad=1 stride=2: numerical gradient for dX (tiny tensor)."""
+        rng = np.random.RandomState(556)
+        N, Ci, H, W_dim, Co = 1, 1, 4, 4, 1
+        Kh = Kw = 3
+        pad = 1
+        stride = 2
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, stride=stride, bias=True)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        y = conv_forward(x, W, b, pad=pad, stride=stride)
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
+
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (stride=2, num)",
+        )
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (stride=2)", rtol=2e-2, atol=2e-3)
 
 
 # ---------------------------------------------------------------------------
-# Test Class 3: Group convolution
+# Test Class 3: Dilated convolution (atrous)
+# ---------------------------------------------------------------------------
+
+@require_cpp_extension
+class TestConvBackwardDilation:
+    """Dilated (atrous) convolution backward tests."""
+
+    def test_conv_dilation2_analytical(self):
+        """3x3 dilation=2 pad=2 (same output size as 'same'): analytical dX/dW/db."""
+        rng = np.random.RandomState(2000)
+        N, Ci, H, W_dim, Co = 1, 1, 5, 5, 1
+        Kh = Kw = 3
+        pad = 2
+        dilation = 2
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, dilation=dilation, bias=True)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        y = conv_forward(x, W, b, pad=pad, dilation=dilation)
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.3
+
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, dilation=dilation)
+        dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, dilation=dilation)
+
+        assert_grad_close(dX, dX_ref, name="dX (dilation=2)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(dW, dW_ref, name="dW (dilation=2)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(db, db_ref, name="db (dilation=2)", rtol=1e-3, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test Class 4: Group convolution
 # ---------------------------------------------------------------------------
 
 @require_cpp_extension
@@ -296,45 +359,70 @@ class TestConvBackwardGroups:
 
     def test_conv_groups2_analytical(self):
         """groups=2, 1x1 per group: analytical dX/dW vs numpy reference."""
-        np.random.seed(666)
+        rng = np.random.RandomState(666)
         N, Ci, H, W_dim, Co = 1, 4, 2, 2, 4
         groups = 2
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, groups=groups, bias=False)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
-        W = np.random.randn(Co, Ci // groups, 1, 1).astype(np.float32) * 0.2
-        y = conv_forward(x, W, b=None, groups=groups)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.3
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci // groups, 1, 1).astype(np.float32) * 0.2
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
 
         dX, dW, _ = _run_conv_backward(net, x, dy, W, b=None, groups=groups)
         dX_ref, dW_ref, _ = conv_backward(dy, x, W, b=None, groups=groups)
 
-        np.testing.assert_allclose(dX, dX_ref, rtol=1e-4, atol=1e-5)
-        np.testing.assert_allclose(dW, dW_ref, rtol=1e-4, atol=1e-5)
+        assert_grad_close(dX, dX_ref, name="dX (groups=2, 1x1)", rtol=1e-4, atol=1e-5)
+        assert_grad_close(dW, dW_ref, name="dW (groups=2, 1x1)", rtol=1e-4, atol=1e-5)
 
     def test_conv_groups2_3x3_analytical(self):
         """groups=2, 3x3 pad=1: analytical dX/dW vs numpy reference."""
-        np.random.seed(777)
+        rng = np.random.RandomState(777)
         N, Ci, H, W_dim, Co = 1, 2, 3, 3, 2
         groups = 2
         Kh = Kw = 3
         pad = 1
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, groups=groups, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
-        W = np.random.randn(Co, Ci // groups, Kh, Kw).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
-        y = conv_forward(x, W, b=b, pad=pad, groups=groups)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.2
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
+        W = rng.randn(Co, Ci // groups, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.2
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, groups=groups)
 
-        np.testing.assert_allclose(dX, dX_ref, rtol=5e-3, atol=5e-4)
-        np.testing.assert_allclose(dW, dW_ref, rtol=5e-3, atol=5e-4)
-        np.testing.assert_allclose(db, db_ref, rtol=1e-3, atol=1e-4)
+        assert_grad_close(dX, dX_ref, name="dX (groups=2, 3x3)", rtol=5e-3, atol=5e-4)
+        assert_grad_close(dW, dW_ref, name="dW (groups=2, 3x3)", rtol=5e-3, atol=5e-4)
+        assert_grad_close(db, db_ref, name="db (groups=2, 3x3)", rtol=1e-3, atol=1e-4)
+
+    def test_conv_groups2_numerical(self):
+        """groups=2, 1x1: numerical gradient for dX/dW on tiny tensor."""
+        rng = np.random.RandomState(667)
+        N, Ci, H, W_dim, Co = 1, 2, 2, 2, 2
+        groups = 2
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, groups=groups, bias=True)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
+        W = rng.randn(Co, Ci // groups, 1, 1).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.3
+
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+        dw_analytic = net.layer_by_name("conv").blobs[0].diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (groups=2, num)",
+        )
+        dw_numeric = numerical_grad_for_blob(
+            net, "conv", 0, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="dW (groups=2, num)",
+        )
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2)", rtol=1e-2, atol=1e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (groups=2)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
-# Test Class 4: Common invariants
+# Test Class 5: Common invariants
 # ---------------------------------------------------------------------------
 
 @require_cpp_extension
@@ -345,9 +433,10 @@ class TestConvBackwardInvariants:
         """Zero upstream gradient → zero dX, dW, db."""
         N, Ci, H, W_dim, Co = 2, 2, 3, 3, 2
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=3, pad=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32)
-        W = np.random.randn(Co, Ci, 3, 3).astype(np.float32) * 0.3
-        b = np.random.randn(Co).astype(np.float32) * 0.1
+        rng = np.random.RandomState(3000)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32)
+        W = rng.randn(Co, Ci, 3, 3).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
         dy = np.zeros((N, Co, H, W_dim), dtype=np.float32)
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=1)
@@ -359,53 +448,53 @@ class TestConvBackwardInvariants:
         """dX matches input shape, dW matches weight shape, db matches Co."""
         N, Ci, H, W_dim, Co = 1, 2, 3, 3, 4
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=3, pad=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32)
-        W = np.random.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
+        rng = np.random.RandomState(3001)
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32)
+        W = rng.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
         b = np.zeros(Co, dtype=np.float32)
         y = conv_forward(x, W, b, pad=1)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.2
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=1)
-        assert dX.shape == x.shape
-        assert dW.shape == W.shape
-        assert db.shape == (Co,)
+        assert dX.shape == x.shape, f"dX shape {dX.shape} != x shape {x.shape}"
+        assert dW.shape == W.shape, f"dW shape {dW.shape} != W shape {W.shape}"
+        assert db.shape == (Co,), f"db shape {db.shape} != ({Co},)"
         assert dX.dtype == np.float32
         assert dW.dtype == np.float32
         assert db.dtype == np.float32
-        assert np.all(np.isfinite(dX))
-        assert np.all(np.isfinite(dW))
-        assert np.all(np.isfinite(db))
+        assert np.all(np.isfinite(dX)), "dX contains NaN/Inf"
+        assert np.all(np.isfinite(dW)), "dW contains NaN/Inf"
+        assert np.all(np.isfinite(db)), "db contains NaN/Inf"
 
     def test_conv_backward_deterministic(self):
-        """Same inputs → same dX/dW/db across calls."""
-        np.random.seed(888)
+        """Same inputs → same dX/dW/db across repeated calls."""
+        rng = np.random.RandomState(888)
         N, Ci, H, W_dim, Co = 1, 2, 3, 3, 2
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=3, pad=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
-        W = np.random.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
         y = conv_forward(x, W, b, pad=1)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.2
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
 
-        dX1, dW1, db1 = _run_conv_backward(net, x, dy, W, b, pad=1)
-        dX2, dW2, db2 = _run_conv_backward(net, x, dy, W, b, pad=1)
-        dX3, dW3, db3 = _run_conv_backward(net, x, dy, W, b, pad=1)
-        np.testing.assert_array_equal(dX1, dX2)
-        np.testing.assert_array_equal(dX1, dX3)
-        np.testing.assert_array_equal(dW1, dW2)
-        np.testing.assert_array_equal(dW1, dW3)
-        np.testing.assert_array_equal(db1, db2)
-        np.testing.assert_array_equal(db1, db3)
+        results = []
+        for _ in range(3):
+            dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=1)
+            results.append((dX.copy(), dW.copy(), db.copy()))
+        for i in range(1, 3):
+            np.testing.assert_array_equal(results[0][0], results[i][0])
+            np.testing.assert_array_equal(results[0][1], results[i][1])
+            np.testing.assert_array_equal(results[0][2], results[i][2])
 
     def test_conv_backward_preserves_forward(self):
         """Backward does not corrupt forward output."""
-        np.random.seed(999)
+        rng = np.random.RandomState(999)
         N, Ci, H, W_dim, Co = 1, 2, 3, 3, 2
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=3, pad=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
-        W = np.random.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
-        dy = np.random.randn(N, Co, H, W_dim).astype(np.float32) * 0.2
+        x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(Co, Ci, 3, 3).astype(np.float32) * 0.2
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        dy = rng.randn(N, Co, H, W_dim).astype(np.float32) * 0.2
 
         _set_conv_weights(net, W, b)
         y_before = net.forward({"data": x})["conv"].copy()
@@ -413,19 +502,63 @@ class TestConvBackwardInvariants:
         y_after = net.blob_by_name("conv").data
         np.testing.assert_array_equal(y_before, y_after)
 
-    def test_conv_numerical_dw_db(self):
-        """1x1 conv: numerical gradient check for dW and db."""
-        np.random.seed(1010)
-        N, Ci, H, W_dim, Co = 1, 2, 1, 2, 2  # very small for numerical speed
-        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
-        x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
-        W = np.random.randn(Co, Ci, 1, 1).astype(np.float32) * 0.2
-        b = np.random.randn(Co).astype(np.float32) * 0.1
-        y = conv_forward(x, W, b)
-        dy = np.random.randn(*y.shape).astype(np.float32) * 0.2
+    def test_conv_batch_gradient_accumulation(self):
+        """Verify gradients accumulate correctly over batch dimension (N>1).
 
-        _, dW_a, db_a = _run_conv_backward(net, x, dy, W, b)
-        dW_n = _num_grad_W(net, x, W, b, dy)
-        db_n = _num_grad_b(net, x, W, b, dy)
-        np.testing.assert_allclose(dW_a, dW_n, rtol=1e-3, atol=1e-4)
-        np.testing.assert_allclose(db_a, db_n, rtol=1e-3, atol=1e-4)
+        dW and db should be summed over N samples.
+        Compare N=2 against running N=1 twice and summing manually.
+        """
+        rng = np.random.RandomState(4000)
+        Ci, H, W_dim, Co = 1, 3, 3, 1
+        Kh = Kw = 3
+        pad = 1
+
+        # Single sample networks
+        net1 = _make_conv_net(1, Ci, H, W_dim, Co, Kh=Kh, pad=pad, bias=True)
+        net2 = _make_conv_net(1, Ci, H, W_dim, Co, Kh=Kh, pad=pad, bias=True)
+        # Batch network
+        net_batch = _make_conv_net(2, Ci, H, W_dim, Co, Kh=Kh, pad=pad, bias=True)
+
+        W = rng.randn(Co, Ci, Kh, Kw).astype(np.float32) * 0.3
+        b = rng.randn(Co).astype(np.float32) * 0.1
+        x1 = rng.randn(1, Ci, H, W_dim).astype(np.float32) * 0.5
+        x2 = rng.randn(1, Ci, H, W_dim).astype(np.float32) * 0.5
+        dy1 = rng.randn(1, Co, H, W_dim).astype(np.float32) * 0.3
+        dy2 = rng.randn(1, Co, H, W_dim).astype(np.float32) * 0.3
+
+        # Run single samples
+        _set_conv_weights(net1, W, b)
+        net1.forward({"data": x1})
+        net1.backward({"conv": dy1})
+        dW1 = net1.layer_by_name("conv").blobs[0].diff.copy()
+        db1 = net1.layer_by_name("conv").blobs[1].diff.copy()
+        dX1 = net1.blob_by_name("data").diff.copy()
+
+        _set_conv_weights(net2, W, b)
+        net2.forward({"data": x2})
+        net2.backward({"conv": dy2})
+        dW2 = net2.layer_by_name("conv").blobs[0].diff.copy()
+        db2 = net2.layer_by_name("conv").blobs[1].diff.copy()
+        dX2 = net2.blob_by_name("data").diff.copy()
+
+        # Run batch
+        x_batch = np.concatenate([x1, x2], axis=0)
+        dy_batch = np.concatenate([dy1, dy2], axis=0)
+        _set_conv_weights(net_batch, W, b)
+        net_batch.forward({"data": x_batch})
+        net_batch.backward({"conv": dy_batch})
+        dW_batch = net_batch.layer_by_name("conv").blobs[0].diff
+        db_batch = net_batch.layer_by_name("conv").blobs[1].diff
+        dX_batch = net_batch.blob_by_name("data").diff
+
+        # dW and db should be SUM over batch
+        dW_sum = dW1 + dW2
+        db_sum = db1 + db2
+        assert_grad_close(dW_batch, dW_sum, name="dW (batch accum)", rtol=1e-5, atol=1e-6,
+                          verbose=False)
+        assert_grad_close(db_batch, db_sum, name="db (batch accum)", rtol=1e-5, atol=1e-6,
+                          verbose=False)
+        # dX should be concatenation of per-sample dX
+        dX_expected = np.concatenate([dX1, dX2], axis=0)
+        assert_grad_close(dX_batch, dX_expected, name="dX (batch accum)", rtol=1e-5, atol=1e-6,
+                          verbose=False)
