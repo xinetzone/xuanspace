@@ -124,6 +124,69 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " time=" << elapsed_us << "us";
 }
 
+void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                const std::vector<bool>& propagate_down,
+                                const std::vector<Blob*>& bottom) {
+  const float* top_diff = top[0]->cpu_diff();
+  const int num_bottoms = static_cast<int>(bottom.size());
+  const int64_t total_concat = top[0]->shape(concat_axis_);
+
+  CAFFE_FFI_LAYER_LOG << "Concat Backward_cpu: num_bottoms=" << num_bottoms
+                      << " concat_axis=" << concat_axis_
+                      << " outer_count=" << outer_count_
+                      << " inner_count=" << inner_count_
+                      << " total_concat=" << total_concat;
+
+  // Check if any bottom needs gradient
+  bool any_propagate = false;
+  for (int j = 0; j < num_bottoms; ++j) {
+    if (propagate_down[j]) { any_propagate = true; break; }
+  }
+  if (!any_propagate) {
+    CAFFE_FFI_LAYER_LOG << "Concat Backward_cpu: no gradients needed, skipping";
+    return;
+  }
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+
+  // Backward is the reverse of Forward: copy slices from top_diff to each bottom_diff
+  // Forward: bottom[i] data → top at (n*total_concat + offset_i) * inner_count_
+  // Backward: top_diff at that offset → bottom[i] diff
+  for (int i = 0; i < num_bottoms; ++i) {
+    if (!propagate_down[i]) continue;
+    float* bottom_diff = bottom[i]->cpu_mutable_diff();
+    const int64_t concat_dim = bottom[i]->shape(concat_axis_);
+    const int64_t copy_size = concat_dim * inner_count_;
+    const int64_t offset_concat = concat_offsets_[i];
+
+    for (int64_t n = 0; n < outer_count_; ++n) {
+      const int64_t src_offset = (n * total_concat + offset_concat) * inner_count_;
+      const int64_t dst_offset = n * copy_size;
+      std::memcpy(bottom_diff + dst_offset, top_diff + src_offset,
+                  sizeof(float) * copy_size);
+    }
+
+    // Value range tracking for this bottom's diff
+    const int64_t bottom_count = bottom[i]->count();
+    for (int64_t j = 0; j < bottom_count; ++j) {
+      dx_min = std::min(dx_min, bottom_diff[j]);
+      dx_max = std::max(dx_max, bottom_diff[j]);
+    }
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[CONCAT-PERF] " << this->name()
+                       << " Concat backward: num_bottoms=" << num_bottoms
+                       << " concat_axis=" << concat_axis_
+                       << " dx=[" << dx_min << ", " << dx_max << "]"
+                       << " time=" << elapsed_us << "us";
+}
+
 REGISTER_LAYER_CLASS(Concat);
 
 }  // namespace caffe_ffi
