@@ -53,6 +53,15 @@ void FlattenLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                    bottom[0]->cpu_data(), top[0]->cpu_mutable_data());
 }
 
+void FlattenLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) return;
+  CAFFE_FFI_LAYER_LOG << "Flatten Backward: count=" << top[0]->count() << " (copy)";
+  caffe_copy_fp32(static_cast<size_t>(top[0]->count()),
+                   top[0]->cpu_diff(), bottom[0]->cpu_mutable_diff());
+}
+
 REGISTER_LAYER_CLASS(Flatten);
 
 }  // namespace caffe_ffi

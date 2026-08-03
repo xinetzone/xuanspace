@@ -26,6 +26,9 @@ class AccuracyLayer : public Layer {
 
  protected:
   void Forward_cpu(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  void Backward_cpu(const std::vector<Blob*>& top,
+                    const std::vector<bool>& propagate_down,
+                    const std::vector<Blob*>& bottom) override;
 
   int label_axis_, outer_num_, inner_num_;
   int top_k_;

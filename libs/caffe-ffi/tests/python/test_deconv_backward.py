@@ -12,11 +12,12 @@ Covers:
   6. Forward output preserved after backward
 
 Mathematical reference (1x1 deconv):
-  Forward:   y = W^T @ x + b   (per spatial position; W shape (Ci, Co, 1, 1))
+  Deconv weight shape is (Ci, Co, Kh, Kw) — input channels first (opposite of Conv).
+  Forward:   y[n,co] = sum_ci W[ci,co] * x[n,ci]  =>  y_flat = x_flat @ W2d
   Backward:
-    dW = x_flat^T @ dy_flat    (accumulated over batch*spatial)
+    dW = x_flat^T @ dy_flat    (Ci, Co) — accumulated over batch*spatial
     db = sum(dy over N*Ho*Wo)
-    dX = dy_flat @ W           (per spatial position)
+    dX[n,ci] = sum_co W[ci,co] * dy[n,co]  =>  dx_flat = dy_flat @ W2d.T
 
 For general kernels, Deconv backward uses transposed GEMM + col2im/im2col
 (already implemented in C++); numerical gradient tests verify correctness
@@ -68,7 +69,7 @@ def deconv1x1_backward_np(x, dy, weight, bias=None):
     dW_flat = x_flat.T @ dy_flat  # (Ci, Co)
     dW = dW_flat.reshape(Ci, Co, 1, 1).astype(np.float32)
 
-    dx_flat = dy_flat @ W2d  # (N*H*W, Ci)
+    dx_flat = dy_flat @ W2d.T  # (N*H*W, Ci)
     dX = dx_flat.reshape(N, H, W, Ci).transpose(0, 3, 1, 2).astype(np.float32)
 
     db = None

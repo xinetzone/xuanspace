@@ -25,6 +25,9 @@ class ReshapeLayer : public Layer {
 
  protected:
   void Forward_cpu(const std::vector<Blob*>& bottom, const std::vector<Blob*>& top) override;
+  void Backward_cpu(const std::vector<Blob*>& top,
+                    const std::vector<bool>& propagate_down,
+                    const std::vector<Blob*>& bottom) override;
 
   std::vector<int64_t> inferred_shape_;
   int axis_;

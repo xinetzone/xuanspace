@@ -132,4 +132,15 @@ void AccuracyLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
 REGISTER_LAYER_CLASS(Accuracy);
 
+void AccuracyLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                  const std::vector<bool>& propagate_down,
+                                  const std::vector<Blob*>& bottom) {
+  for (int i = 0; i < static_cast<int>(bottom.size()); ++i) {
+    if (propagate_down[i] && bottom[i]->count() > 0) {
+      caffe_set_fp32(static_cast<size_t>(bottom[i]->count()), 0.0f,
+                     bottom[i]->cpu_mutable_diff());
+    }
+  }
+}
+
 }  // namespace caffe_ffi

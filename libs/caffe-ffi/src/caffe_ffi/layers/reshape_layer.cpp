@@ -127,6 +127,19 @@ void ReshapeLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   }
 }
 
+void ReshapeLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) return;
+  const float* top_diff = top[0]->cpu_diff();
+  const int64_t count = top[0]->count();
+  CAFFE_FFI_LAYER_LOG << "Reshape Backward: count=" << count
+                      << " inplace=" << (bottom[0] == top[0] ? "true" : "false");
+  if (bottom[0] != top[0]) {
+    std::memcpy(bottom[0]->cpu_mutable_diff(), top_diff, sizeof(float) * count);
+  }
+}
+
 REGISTER_LAYER_CLASS(Reshape);
 
 }  // namespace caffe_ffi

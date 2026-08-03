@@ -7,6 +7,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 #include <tvm/ffi/memory.h>
 #include <google/protobuf/text_format.h>
@@ -723,6 +724,30 @@ void Net::BackwardFromTo(int start, int end) {
   CAFFE_FFI_CHECK_INDEX_GE(end, 0);
   CAFFE_FFI_CHECK_INDEX_LT(start, static_cast<int>(layers_.size()));
   CAFFE_FFI_NET_LOG << "BackwardFromTo: layers[" << start << ".." << end << "] (reverse)";
+
+  // Zero out non-output blob diffs before backward pass to prevent gradient
+  // accumulation across iterations. Output blobs (e.g. loss) have their diffs
+  // set by the caller BEFORE Backward is called and must NOT be zeroed here.
+  // This is critical for Split layers when a blob has multiple consumers
+  // (e.g. loss + accuracy): non-loss branches have uninitialized/old diffs
+  // that would otherwise corrupt gradients via accumulation.
+  std::unordered_set<int> output_idx_set(
+      net_output_blob_indices_.begin(), net_output_blob_indices_.end());
+  for (int i = 0; i < static_cast<int>(blobs_.size()); ++i) {
+    if (output_idx_set.count(i)) continue;  // preserve caller-set output diffs
+    auto& blob = blobs_[i];
+    if (blob->count() > 0) {
+      caffe_set_fp32(static_cast<size_t>(blob->count()), 0.0f, blob->cpu_mutable_diff());
+    }
+  }
+  for (auto& layer : layers_) {
+    for (auto& param : layer->blobs()) {
+      if (param->count() > 0) {
+        caffe_set_fp32(static_cast<size_t>(param->count()), 0.0f, param->cpu_mutable_diff());
+      }
+    }
+  }
+
   // Backward traversal: from last layer to first
   for (int i = start; i >= end; --i) {
     // For MVP backward support: propagate gradients down to all bottom blobs.

@@ -143,11 +143,11 @@ def _make_sml_net(N, C, H=1, W=1, axis=1, ignore_label=None):
 def _run_sml_backward(net, x, label, loss_weight=1.0):
     """Run forward then backward, return (loss, dX)."""
     out = net.forward({"data": x.astype(np.float32), "label": label.astype(np.float32)})
-    loss = out["loss"]
+    loss = float(out["loss"].flat[0])
     # Set upstream gradient (loss_weight) for the scalar loss output
     net.backward({"loss": np.array([loss_weight], dtype=np.float32)})
     dX = net.blob_by_name("data").diff
-    return float(loss), dX
+    return loss, dX
 
 
 # ---------------------------------------------------------------------------
@@ -177,13 +177,13 @@ def _num_grad_dx(net, x, label, loss_weight=1.0, h=EPS_NUMERICAL, ignore_label=N
         xp = x_work.copy()
         xp.ravel()[i] = orig + np.float32(h)
         out_p = net.forward({"data": xp, "label": label_f32})
-        loss_p = float(out_p["loss"].item() * loss_weight
+        loss_p = float(out_p["loss"].flat[0] * loss_weight)
 
         # -h
         xm = x_work.copy()
         xm.ravel()[i] = orig - np.float32(h)
         out_m = net.forward({"data": xm, "label": label_f32})
-        loss_m = float(out_m["loss"].item() * loss_weight
+        loss_m = float(out_m["loss"].flat[0] * loss_weight)
 
         flat_grad[i] = (loss_p - loss_m) / (2.0 * h)
 
@@ -361,10 +361,10 @@ class TestSoftmaxWithLossBackward:
         label = np.random.randint(0, C, size=(N, 1, 1, 1)).astype(np.float32)
 
         out1 = net.forward({"data": x, "label": label})
-        loss1 = float(out1["loss"].item()
+        loss1 = float(out1["loss"].flat[0])
         net.backward({"loss": np.array([1.0], dtype=np.float32)})
         out2 = net.forward({"data": x, "label": label})
-        loss2 = float(out2["loss"].item()
+        loss2 = float(out2["loss"].flat[0])
 
         np.testing.assert_allclose(loss1, loss2, rtol=1e-6)
 
