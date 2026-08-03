@@ -139,6 +139,79 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " time=" << elapsed_us << "us";
 }
 
+void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) {
+    CAFFE_FFI_LAYER_LOG << "Softmax Backward_cpu: propagate_down[0]=false, skipping";
+    return;
+  }
+
+  const float* top_diff = top[0]->cpu_diff();
+  const float* top_data = top[0]->cpu_data();
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();
+  const int channels = static_cast<int>(bottom[0]->shape(softmax_axis_));
+  const int dim = channels * inner_num_;
+  const int64_t count = bottom[0]->count();
+
+  CAFFE_FFI_LAYER_LOG << "Softmax Backward_cpu: outer_num=" << outer_num_
+                      << " channels=" << channels
+                      << " inner_num=" << inner_num_
+                      << " axis=" << softmax_axis_
+                      << " count=" << count;
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  // Softmax Jacobian-vector product:
+  //   y_i = exp(x_i) / sum_j exp(x_j)
+  //   J_{ij} = dy_i/dx_j = y_i * (delta_{ij} - y_j)
+  //   dx_i = sum_j (dy_j * J_{ji}) = y_i * (dy_i - sum_j(dy_j * y_j))
+  //         = y_i * (dy_i - dot),  where dot = dy · y per (outer, inner) position
+  //
+  // Data layout: index = i*dim + j*inner_num_ + k
+  //   i: outer index (batch), j: channel (softmax axis), k: inner (spatial)
+
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+  double sum_sq = 0.0;
+
+  for (int i = 0; i < outer_num_; ++i) {
+    const float* top_diff_i = top_diff + i * dim;
+    const float* top_data_i = top_data + i * dim;
+    float* bottom_diff_i = bottom_diff + i * dim;
+
+    for (int k = 0; k < inner_num_; ++k) {
+      // Compute dot = sum_j(dy_j * y_j) for this (i, k) position
+      float dot = 0.0f;
+      for (int j = 0; j < channels; ++j) {
+        dot += top_diff_i[j * inner_num_ + k] * top_data_i[j * inner_num_ + k];
+      }
+      // Compute dx_j = y_j * (dy_j - dot)
+      for (int j = 0; j < channels; ++j) {
+        float yj = top_data_i[j * inner_num_ + k];
+        float dyj = top_diff_i[j * inner_num_ + k];
+        float val = yj * (dyj - dot);
+        bottom_diff_i[j * inner_num_ + k] = val;
+        dx_min = std::min(dx_min, val);
+        dx_max = std::max(dx_max, val);
+        sum_sq += static_cast<double>(val) * static_cast<double>(val);
+      }
+    }
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+  float grad_norm = static_cast<float>(std::sqrt(sum_sq));
+
+  CAFFE_FFI_LOG_INFO() << "[SOFTMAX-PERF] " << this->name()
+                       << " Softmax backward: outer_num=" << outer_num_
+                       << " channels=" << channels
+                       << " inner_num=" << inner_num_
+                       << " dx=[" << dx_min << ", " << dx_max << "]"
+                       << " grad_l2norm=" << grad_norm
+                       << " time=" << elapsed_us << "us";
+}
+
 REGISTER_LAYER_CLASS(Softmax);
 
 }  // namespace caffe_ffi
