@@ -177,13 +177,13 @@ def _num_grad_dx(net, x, label, loss_weight=1.0, h=EPS_NUMERICAL, ignore_label=N
         xp = x_work.copy()
         xp.ravel()[i] = orig + np.float32(h)
         out_p = net.forward({"data": xp, "label": label_f32})
-        loss_p = float(out_p["loss"]) * loss_weight
+        loss_p = float(out_p["loss"].item() * loss_weight
 
         # -h
         xm = x_work.copy()
         xm.ravel()[i] = orig - np.float32(h)
         out_m = net.forward({"data": xm, "label": label_f32})
-        loss_m = float(out_m["loss"]) * loss_weight
+        loss_m = float(out_m["loss"].item() * loss_weight
 
         flat_grad[i] = (loss_p - loss_m) / (2.0 * h)
 
@@ -361,10 +361,10 @@ class TestSoftmaxWithLossBackward:
         label = np.random.randint(0, C, size=(N, 1, 1, 1)).astype(np.float32)
 
         out1 = net.forward({"data": x, "label": label})
-        loss1 = float(out1["loss"])
+        loss1 = float(out1["loss"].item()
         net.backward({"loss": np.array([1.0], dtype=np.float32)})
         out2 = net.forward({"data": x, "label": label})
-        loss2 = float(out2["loss"])
+        loss2 = float(out2["loss"].item()
 
         np.testing.assert_allclose(loss1, loss2, rtol=1e-6)
 
