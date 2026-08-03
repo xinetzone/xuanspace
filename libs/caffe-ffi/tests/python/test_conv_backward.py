@@ -10,11 +10,12 @@ Covers:
   7. Stride=2 numerical gradient check
   8. Bias gradient correctness
   9. Group convolution backward (analytical + numerical)
-  10. No-bias configuration
-  11. Zero dy → zero gradients
-  12. Shape/dtype/finite/determinism checks
-  13. Forward output preserved after backward
-  14. Detailed gradient diagnostic logging on mismatch
+  10. Depthwise convolution backward (groups=C, 3x3+pad+stride, analytical + numerical)
+  11. No-bias configuration
+  12. Zero dy → zero gradients
+  13. Shape/dtype/finite/determinism checks
+  14. Forward output preserved after backward
+  15. Detailed gradient diagnostic logging on mismatch (cos_sim/norm_ratio/3x3 neighborhood/per-channel)
 
 Mathematical reference:
   Forward: Y = conv2d(X, W) + b   (im2col + GEMM)
@@ -22,6 +23,7 @@ Mathematical reference:
     dW = im2col(X)^T @ dy_flat  (accumulated over batch)
     dX = col2im(W^T @ dy_flat)
     db = sum(dy over N, Ho, Wo)
+  Depthwise (groups=C): each channel has its own 1-channel filter, no cross-talk.
 """
 from __future__ import annotations
 
@@ -782,6 +784,232 @@ class TestConvBackwardGroups:
 
 # ---------------------------------------------------------------------------
 # Test Class 5: Common invariants
+# ---------------------------------------------------------------------------
+
+_dw_logger = logging.getLogger("caffe_ffi.test.depthwise_conv")
+if not _dw_logger.handlers:
+    _dwh = logging.StreamHandler()
+    _dwh.setFormatter(logging.Formatter("%(asctime)s [DEPTHWISE-CONV] %(message)s", datefmt="%H:%M:%S"))
+    _dw_logger.addHandler(_dwh)
+    _dw_logger.propagate = False
+_dw_logger.setLevel(logging.INFO)
+
+
+def _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C, name=""):
+    """Per-channel gradient diagnostic for Depthwise Conv (groups=C, Ci/g=Co/g=1).
+
+    In depthwise convolution each channel is fully independent, so per-channel
+    error breakdown immediately isolates which channel(s) have bugs.
+    """
+    Co, Ci_per_g, Kh, Kw = dW.shape
+    _dw_logger.info(
+        "=== Depthwise diagnostic [%s]: C=%d dX=%s dW=%s  Ci/g=%d Co/g=%d Kh=%d Kw=%d ===",
+        name, C, dX.shape, dW.shape, Ci_per_g, Co // C, Kh, Kw,
+    )
+    for c in range(C):
+        dx_ch = dX[:, c]
+        dx_ch_ref = dX_ref[:, c]
+        dx_err = float(np.abs(dx_ch - dx_ch_ref).max())
+        dw_ch = dW[c, 0]  # (Kh, Kw) since Ci/g=1
+        dw_ch_ref = dW_ref[c, 0]
+        dw_err = float(np.abs(dw_ch - dw_ch_ref).max())
+        db_str = ""
+        if db is not None and db_ref is not None:
+            db_err = float(abs(db[c] - db_ref[c]))
+            db_str = f"  db_err={db_err:.2e}"
+        _dw_logger.info(
+            "  ch %d: dX_max_err=%.2e  dW_max_err=%.2e  dW_range=[%.3g,%.3g]%s",
+            c, dx_err, dw_err,
+            float(dw_ch.min()), float(dw_ch.max()),
+            db_str,
+        )
+
+
+@require_cpp_extension
+class TestConvBackwardDepthwise:
+    """Depthwise convolution backward tests (groups=Ci=Co, each channel independent).
+
+    Depthwise conv is a special case of GroupConv where groups=C and each group
+    has exactly 1 input and 1 output channel.  Common in MobileNet-family
+    architectures.  These tests use 3x3 kernels with padding/stride (the
+    practically relevant configuration) and include both analytical (numpy ref)
+    and numerical (central-difference) gradient verification.
+    """
+
+    def test_depthwise_3x3_pad1_analytical(self):
+        """Depthwise 3x3 pad=1 stride=1: analytical dX/dW/db vs numpy reference (per-channel log)."""
+        rng = np.random.RandomState(800)
+        N, C, H, W_dim = 1, 4, 3, 3
+        groups = C
+        Kh = Kw = 3
+        pad = 1
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=True)
+        x = rng.randn(N, C, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(C, 1, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(C).astype(np.float32) * 0.1
+        y = conv_forward(x, W, b, pad=pad, groups=groups)
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.3
+
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups,
+                                         log_label="depthwise_3x3_pad1")
+        dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, groups=groups)
+
+        _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C,
+                                   name="depthwise 3x3 pad=1 analytical")
+
+        assert_grad_close(dX, dX_ref, name="dX (depthwise 3x3 pad=1)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(dW, dW_ref, name="dW (depthwise 3x3 pad=1)", rtol=1e-3, atol=1e-4)
+        assert_grad_close(db, db_ref, name="db (depthwise 3x3 pad=1)", rtol=1e-3, atol=1e-4)
+
+    def test_depthwise_3x3_pad1_stride2_numerical(self):
+        """Depthwise 3x3 pad=1 stride=2: numerical gradient for dX/dW/db (small tensor)."""
+        rng = np.random.RandomState(801)
+        N, C, H, W_dim = 1, 3, 4, 4
+        groups = C
+        Kh = Kw = 3
+        pad = 1
+        stride = 2
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, stride=stride,
+                             groups=groups, bias=True)
+        x = rng.randn(N, C, H, W_dim).astype(np.float32) * 0.2
+        W = rng.randn(C, 1, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(C).astype(np.float32) * 0.1
+        y = conv_forward(x, W, b, pad=pad, stride=stride, groups=groups)
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
+
+        _set_conv_weights(net, W, b)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+        dw_analytic = net.layer_by_name("conv").blobs[0].diff
+        db_analytic = net.layer_by_name("conv").blobs[1].diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (depthwise s=2, num)",
+        )
+        dw_numeric = numerical_grad_for_blob(
+            net, "conv", 0, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="dW (depthwise s=2, num)",
+        )
+        db_numeric = numerical_grad_for_blob(
+            net, "conv", 1, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="db (depthwise s=2, num)",
+        )
+
+        _dw_logger.info(
+            "test_depthwise_3x3_s2: input=%s output=%s W=%s (W elements=%d dX elements=%d)",
+            x.shape, y.shape, W.shape, W.size, x.size,
+        )
+
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise s=2)",
+                          rtol=2e-2, atol=2e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise s=2)",
+                          rtol=2e-2, atol=2e-3)
+        assert_grad_close(db_analytic, db_numeric, name="db (depthwise s=2)",
+                          rtol=1e-2, atol=1e-3)
+
+    def test_depthwise_3x3_numerical_dx_dw(self):
+        """Depthwise 3x3 pad=1 stride=1: numerical gradient for dX and dW on tiny tensor."""
+        rng = np.random.RandomState(802)
+        N, C, H, W_dim = 1, 2, 3, 3
+        groups = C
+        Kh = Kw = 3
+        pad = 1
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=False)
+        x = rng.randn(N, C, H, W_dim).astype(np.float32) * 0.2
+        W = rng.randn(C, 1, Kh, Kw).astype(np.float32) * 0.2
+        y = conv_forward(x, W, b=None, pad=pad, groups=groups)
+        dy = rng.randn(*y.shape).astype(np.float32) * 0.2
+
+        _set_conv_weights(net, W, None)
+        net.forward({"data": x})
+        net.backward({"conv": dy})
+        dx_analytic = net.blob_by_name("data").diff
+        dw_analytic = net.layer_by_name("conv").blobs[0].diff
+
+        dx_numeric = numerical_grad_for_input(
+            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (depthwise 3x3, num)",
+        )
+        dw_numeric = numerical_grad_for_blob(
+            net, "conv", 0, {"data": x}, "conv", dy,
+            h=EPS_NUMERICAL, name="dW (depthwise 3x3, num)",
+        )
+
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise 3x3)",
+                          rtol=2e-2, atol=2e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise 3x3)",
+                          rtol=2e-2, atol=2e-3)
+
+    def test_depthwise_known_identity(self):
+        """Depthwise 3x3 pad=1 with W=identity-center (1 at center, 0 elsewhere), b=0.
+
+        With W[c,0,1,1]=1 for each channel and 0 elsewhere, forward Y_c = X_c
+        (centered 3x3 kernel extracts center element which equals input when pad=1
+        keeps output size same).
+        Backward: dX = dy (W^T @ dy with identity kernel = dy),
+                  dW = X^T @ dy (cross-correlation between x and dy per channel),
+                  db = sum(dy over spatial dims).
+        """
+        N, C, H, W_dim = 1, 2, 3, 3
+        groups = C
+        Kh = Kw = 3
+        pad = 1
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=True,
+                             weight_value=0.0, bias_value=0.0)
+        # Identity kernel: 1 at center position (Kh//2, Kw//2) = (1,1)
+        W = np.zeros((C, 1, Kh, Kw), dtype=np.float32)
+        W[:, 0, 1, 1] = 1.0
+        b = np.zeros(C, dtype=np.float32)
+        x = np.array([[[[1,2,3],[4,5,6],[7,8,9]],
+                       [[9,8,7],[6,5,4],[3,2,1]]]], dtype=np.float32)
+        dy = np.ones((N, C, H, W_dim), dtype=np.float32)
+
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups,
+                                         log_label="depthwise_identity")
+
+        # dX should equal dy (identity kernel backward = dy)
+        np.testing.assert_allclose(dX, dy, rtol=1e-5)
+        # db = sum over H*W = 9 per channel
+        np.testing.assert_allclose(db, np.full(C, 9.0, dtype=np.float32), rtol=1e-5)
+        # dW per channel: correlation with dy=ones → dW[c,0,i,j] = sum of X[c] at position (i,j)
+        # over all spatial locations where kernel (i,j) overlaps input
+        # For pad=1 stride=1 Kh=3, the 3x3 dW sums all x values
+        for c in range(C):
+            expected_dw_c = np.zeros((Kh, Kw), dtype=np.float32)
+            xc = x[0, c]  # (H, W_dim) = (3,3)
+            for kh in range(Kh):
+                for kw in range(Kw):
+                    s = 0.0
+                    for oh in range(H):
+                        for ow in range(W_dim):
+                            ih = oh + kh - pad
+                            iw = ow + kw - pad
+                            if 0 <= ih < H and 0 <= iw < W_dim:
+                                s += float(xc[ih, iw])
+                    expected_dw_c[kh, kw] = s
+            np.testing.assert_allclose(dW[c, 0], expected_dw_c, rtol=1e-5)
+
+    def test_depthwise_zero_dy(self):
+        """Depthwise 3x3 pad=1: zero dy → zero dX, dW, db for all channels."""
+        rng = np.random.RandomState(803)
+        N, C, H, W_dim = 1, 3, 3, 3
+        groups = C
+        Kh = Kw = 3
+        pad = 1
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=True)
+        x = rng.randn(N, C, H, W_dim).astype(np.float32) * 0.3
+        W = rng.randn(C, 1, Kh, Kw).astype(np.float32) * 0.2
+        b = rng.randn(C).astype(np.float32) * 0.1
+        dy = np.zeros((N, C, H, W_dim), dtype=np.float32)
+
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups)
+        np.testing.assert_array_equal(dX, np.zeros_like(dX))
+        np.testing.assert_array_equal(dW, np.zeros_like(dW))
+        np.testing.assert_array_equal(db, np.zeros_like(db))
+
+
+# ---------------------------------------------------------------------------
+# Test Class 6: Common invariants
 # ---------------------------------------------------------------------------
 
 @require_cpp_extension

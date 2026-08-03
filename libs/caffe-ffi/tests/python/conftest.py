@@ -382,7 +382,7 @@ def _current_mem_state():
       - "off": no GC; read counters directly (~μs).  For raw perf runs.
     """
     from caffe_ffi import total_allocated_bytes, live_blob_count
-    mode = os.environ.get("CAFFE_FFI_LEAKCHECK_GC", "full")
+    mode = os.environ.get("CAFFE_FFI_LEAKCHECK_GC", "quick")
     if mode == "off":
         return (total_allocated_bytes(), live_blob_count())
     if mode == "quick":
@@ -545,7 +545,7 @@ _P3C_TEST_CLASSES = {
     "TestELUGradient", "TestPReLUGradient", "TestActivationPerfLogs",
     # Conv backward tests (test_conv_backward.py)
     "TestConvBackward1x1", "TestConvBackward3x3", "TestConvBackwardDilation",
-    "TestConvBackwardGroups", "TestConvBackwardInvariants",
+    "TestConvBackwardGroups", "TestConvBackwardDepthwise", "TestConvBackwardInvariants",
     # InnerProduct backward tests (test_inner_product_backward.py)
     "TestInnerProductBackward", "TestInnerProductBackwardNCHW",
     "TestInnerProductBackwardTranspose", "TestInnerProductBackwardIdentity",
@@ -555,6 +555,15 @@ _P3C_TEST_CLASSES = {
     # ELU kink stability tests (test_elu_kink_stability.py)
     "TestELUKinkContinuity", "TestELUKinkNumericalGradient",
     "TestELUAlpha1Smooth", "TestELUSaturatedRegime",
+    # Pooling backward tests (test_pooling_backward.py)
+    "TestMaxPoolBackward2x2", "TestAvePoolBackward2x2",
+    "TestMaxPoolBackwardOverlapping", "TestAvePoolBackwardOverlapping",
+    "TestGlobalPoolBackward", "TestPoolBackwardDeterminism",
+    # Deconv backward tests (test_deconv_backward.py)
+    "TestDeconvBackward1x1", "TestDeconvBackwardStride2",
+    "TestDeconvBackwardEdgeCases",
+    # SoftmaxWithLoss backward tests (test_softmax_loss_backward.py)
+    "TestSoftmaxWithLossBackward",
 }
 
 _P3D_TEST_CLASSES = {
