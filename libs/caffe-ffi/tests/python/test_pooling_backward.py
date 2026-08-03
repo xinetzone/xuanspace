@@ -45,7 +45,7 @@ EPS_NUMERICAL = 1e-3
 # ---------------------------------------------------------------------------
 
 def pooling_backward_np(dy, x, kernel_size, stride=None, pad=0,
-                        pool_type='MAX', ceil_mode=False, global_pooling=False):
+                        pool_type='MAX', ceil_mode=True, global_pooling=False):
     """Numpy reference for 2D pooling backward (NCHW format).
 
     Args:
@@ -636,32 +636,36 @@ class TestPoolOverlapAccumulation:
             f"Center pixel should accumulate ~1.0 from 9 windows, got {dX[0,0,2,2]}"
 
     def test_ave_boundary_pool_size_correction(self):
-        """AVE pooling边界窗口pool_size小于kernel²时必须用实际大小归一化。"""
-        # 5x5输入,3x3 kernel,stride=2,pad=0 → 输出2x2
-        # 窗口位置:
-        #   ph=0,pw=0: h[0:3],w[0:3] → pool_size=9
-        #   ph=0,pw=1: h[0:3],w[2:5] → pool_size=9
-        #   ph=1,pw=0: h[2:5],w[0:3] → pool_size=9
-        #   ph=1,pw=1: h[2:5],w[2:5] → pool_size=9
-        # 5x5 3x3s2: 所有窗口都是3x3,pool_size=9 (无边界裁剪)
-        # 改用 4x4 输入,3x3 kernel,stride=2,pad=0 → 输出2x2?
-        # floor((4-3)/2)+1 = 1 → 输出1x1 (只有ph=0,pw=0)
-        # 再用 5x4 输入制造不对称边界:
+        """AVE pooling边界窗口pool_size小于kernel²时必须用实际大小归一化（CEIL模式）。"""
+        # C++默认使用CEIL round_mode（Caffe原生默认行为）
+        # 4x5输入,3x3 kernel,stride=2,pad=0 → CEIL输出2x2:
+        #   ph=0,pw=0: h[0:3],w[0:3] → pool_size=9 (完整窗口)
+        #   ph=0,pw=1: h[0:3],w[2:5] → pool_size=9 (完整窗口)
+        #   ph=1,pw=0: h[2:4],w[0:3] → pool_size=6 (边界裁剪: 2行×3列)
+        #   ph=1,pw=1: h[2:4],w[2:5] → pool_size=6 (边界裁剪: 2行×3列)
         N, C, H, W = 1, 1, 4, 5
         net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pad=0, pool='AVE')
         x = np.zeros((N, C, H, W), dtype=np.float32)
-        # 输出尺寸: H_out=floor((4-3)/2)+1=1, W_out=floor((5-3)/2)+1=2
-        dy = np.array([[[[9.0, 9.0]]]], dtype=np.float32)
+        # CEIL模式输出: H_out=ceil((4-3)/2)+1=2, W_out=ceil((5-3)/2)+1=2
+        dy = np.array([[[[9.0, 9.0], [9.0, 9.0]]]], dtype=np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pad=0, pool_type='AVE')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pad=0, pool_type='AVE', ceil_mode=True)
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
-        # 第一个窗口(ph=0,pw=0): 3x3=9个位置,dy=9 → 每个=1.0
-        # 第二个窗口(ph=0,pw=1): h[0:3],w[2:5] → 3x3=9个位置,dy=9 → 每个=1.0
-        # 重叠区域(0:3,2:3) 累加两个窗口贡献 → =2.0
-        overlap_region = dX[0, 0, 0:3, 2:3]
-        np.testing.assert_allclose(overlap_region, 2.0, rtol=1e-5)
+        # 边界窗口(ph=1)pool_size=6: dy=9 → 每个元素=9/6=1.5
+        # 完整窗口(ph=0)pool_size=9: dy=9 → 每个元素=9/9=1.0
+        # 非边界区域(0:2,0:2)只属于(0,0)窗口 → =1.0
+        np.testing.assert_allclose(dX[0, 0, 0:2, 0:2], 1.0, rtol=1e-5)
+        # 非边界区域(0:2,3:5)只属于(0,1)窗口 → =1.0
+        np.testing.assert_allclose(dX[0, 0, 0:2, 3:5], 1.0, rtol=1e-5)
+        # 边界区域(3:4,0:2)只属于(1,0)窗口 → =1.5
+        np.testing.assert_allclose(dX[0, 0, 3:4, 0:2], 1.5, rtol=1e-5)
+        # 边界区域(3:4,3:5)只属于(1,1)窗口 → =1.5
+        np.testing.assert_allclose(dX[0, 0, 3:4, 3:5], 1.5, rtol=1e-5)
+        # 重叠区域(2:3,2:3)属于所有4个窗口 → 1.0+1.0+1.5+1.5=5.0
+        assert abs(dX[0, 0, 2, 2] - 5.0) < 1e-5, \
+            f"Overlap pixel (2,2) should accumulate 5.0 from 4 windows, got {dX[0,0,2,2]}"
 
     def test_max_overlap_same_pixel_wins_multiple_windows(self):
         """MAX pooling重叠: 同一像素是多个窗口winner时梯度应累加。"""
