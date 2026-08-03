@@ -57,6 +57,41 @@ void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " time=" << elapsed_us << "us";
 }
 
+void DropoutLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  if (!propagate_down[0]) {
+    CAFFE_FFI_LAYER_LOG << "Dropout Backward_cpu: propagate_down[0]=false, skipping";
+    return;
+  }
+
+  const float* top_diff = top[0]->cpu_diff();
+  float* bottom_diff = bottom[0]->cpu_mutable_diff();
+  const int64_t count = bottom[0]->count();
+  const float dropout_ratio = this->layer_param_.dropout_param().dropout_ratio();
+  CAFFE_FFI_LAYER_LOG << "Dropout Backward_cpu: count=" << count
+                      << " dropout_ratio=" << dropout_ratio
+                      << " inplace=" << (bottom[0] == top[0] ? "true" : "false")
+                      << " (inference: identity copy)";
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  // In inference mode Dropout is identity (y = x), therefore backward is also identity: dx = dy
+  if (bottom[0] != top[0]) {
+    std::memcpy(bottom_diff, top_diff, sizeof(float) * count);
+  }
+  // else: inplace operation, bottom_diff already points to top_diff memory, no copy needed
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[DROPOUT-PERF] " << this->name()
+                       << " Dropout backward (inference): count=" << count
+                       << " dropout_ratio=" << dropout_ratio
+                       << " inplace=" << (bottom[0] == top[0] ? "true" : "false")
+                       << " time=" << elapsed_us << "us";
+}
+
 REGISTER_LAYER_CLASS(Dropout);
 
 }  // namespace caffe_ffi
