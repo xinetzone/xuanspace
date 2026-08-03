@@ -95,7 +95,24 @@ def compare_gradients(
     a_val = float(a.flat[flat_idx]) if a.size > 0 else 0.0
     n_val = float(n.flat[flat_idx]) if n.size > 0 else 0.0
 
-    passed = bool(np.allclose(a, n, rtol=rtol, atol=atol))
+    # NaN/Inf detection (critical for diagnosing catastrophic failures)
+    a_has_nan = bool(np.any(np.isnan(a)))
+    n_has_nan = bool(np.any(np.isnan(n)))
+    a_has_inf = bool(np.any(np.isinf(a)))
+    n_has_inf = bool(np.any(np.isinf(n)))
+    has_finite_issue = a_has_nan or n_has_nan or a_has_inf or n_has_inf
+
+    # Gradient norms and direction agreement
+    a_norm = float(np.linalg.norm(a))
+    n_norm = float(np.linalg.norm(n))
+    norm_ratio = a_norm / n_norm if n_norm > 1e-12 else float('inf')
+    # Cosine similarity: dot(a,n) / (|a|*|n|)
+    flat_a = a.ravel()
+    flat_n = n.ravel()
+    dot = float(np.dot(flat_a, flat_n))
+    cos_sim = dot / (a_norm * n_norm) if (a_norm > 1e-12 and n_norm > 1e-12) else 0.0
+
+    passed = bool(np.allclose(a, n, rtol=rtol, atol=atol)) and not has_finite_issue
 
     info = {
         "passed": passed,
@@ -107,22 +124,33 @@ def compare_gradients(
         "worst_numerical": n_val,
         "analytic_range": (float(a.min()), float(a.max())),
         "numerical_range": (float(n.min()), float(n.max())),
+        "analytic_l2_norm": a_norm,
+        "numerical_l2_norm": n_norm,
+        "norm_ratio": norm_ratio,
+        "cosine_similarity": cos_sim,
         "shape": a.shape,
         "rtol": rtol,
         "atol": atol,
+        "has_nan": a_has_nan or n_has_nan,
+        "has_inf": a_has_inf or n_has_inf,
     }
 
     if verbose:
+        status = "FAIL" if not passed else "PASS"
+        finite_tag = ""
+        if has_finite_issue:
+            finite_tag = f"  ⚠ NaN/Inf detected (a:nan={a_has_nan},inf={a_has_inf} n:nan={n_has_nan},inf={n_has_inf})"
         _grad_logger.info(
-            "%s: shape=%s  analytic=[%.3g, %.3g]  numerical=[%.3g, %.3g]  "
-            "max|a-n|=%.3g (at %s: a=%.6g n=%.6g)  mean|a-n|=%.3g  "
-            "max_rel=%.3g  rtol=%.0e atol=%.0e  %s",
+            "%s: shape=%s  analytic=[%.3g, %.3g] |a|=%.3g  numerical=[%.3g, %.3g] |n|=%.3g  "
+            "|a|/|n|=%.3g  cos_sim=%.6f  max|a-n|=%.3g (at %s: a=%.6g n=%.6g)  mean|a-n|=%.3g  "
+            "max_rel=%.3g  rtol=%.0e atol=%.0e  %s%s",
             name, a.shape,
-            info["analytic_range"][0], info["analytic_range"][1],
-            info["numerical_range"][0], info["numerical_range"][1],
+            info["analytic_range"][0], info["analytic_range"][1], a_norm,
+            info["numerical_range"][0], info["numerical_range"][1], n_norm,
+            norm_ratio, cos_sim,
             max_abs, worst_idx, a_val, n_val, mean_abs,
             max_rel, rtol, atol,
-            "PASS" if passed else "FAIL",
+            status, finite_tag,
         )
         # Error distribution summary (helps diagnose systematic errors)
         if diff.size > 0:
@@ -136,6 +164,30 @@ def compare_gradients(
                 100.0 * float((diff > atol).mean()),
                 100.0 * float((rel_err > rtol).mean()),
             )
+        # Worst-element neighborhood (for 4D NCHW tensors: show 3x3 spatial patch)
+        if a.ndim == 4 and not passed:
+            n_idx, c_idx, h_idx, w_idx = worst_idx
+            _grad_logger.info(
+                "%s: worst element neighborhood at (n=%d,c=%d,h=%d,w=%d):",
+                name, n_idx, c_idx, h_idx, w_idx,
+            )
+            # Extract 3x3 patch around worst spatial location
+            h_lo = max(0, h_idx - 1)
+            h_hi = min(a.shape[2], h_idx + 2)
+            w_lo = max(0, w_idx - 1)
+            w_hi = min(a.shape[3], w_idx + 2)
+            a_patch = a[n_idx, c_idx, h_lo:h_hi, w_lo:w_hi]
+            n_patch = n[n_idx, c_idx, h_lo:h_hi, w_lo:w_hi]
+            err_patch = np.abs(a_patch - n_patch)
+            for dh in range(a_patch.shape[0]):
+                for dw in range(a_patch.shape[1]):
+                    marker = " << WORST" if (h_lo + dh == h_idx and w_lo + dw == w_idx) else ""
+                    _grad_logger.info(
+                        "    (%d,%d): a=%+.6g  n=%+.6g  |Δ|=%.3g%s",
+                        h_lo + dh, w_lo + dw,
+                        float(a_patch[dh, dw]), float(n_patch[dh, dw]),
+                        float(err_patch[dh, dw]), marker,
+                    )
 
     return info
 
@@ -158,6 +210,9 @@ def assert_grad_close(
         analytic, numerical, name=name, rtol=rtol, atol=atol, verbose=verbose,
     )
     if not info["passed"]:
+        finite_note = ""
+        if info.get("has_nan") or info.get("has_inf"):
+            finite_note = "\n  ⚠ NaN or Inf detected in gradients!"
         msg = (
             f"{name} gradient check FAILED\n"
             f"  shape: {info['shape']}\n"
@@ -166,9 +221,11 @@ def assert_grad_close(
             f"numerical={info['worst_numerical']:.8g})\n"
             f"  mean|a-n| = {info['mean_abs_err']:.6g}\n"
             f"  max_rel_err = {info['max_rel_err']:.6g}\n"
-            f"  analytic range: [{info['analytic_range'][0]:.3g}, {info['analytic_range'][1]:.3g}]\n"
-            f"  numerical range: [{info['numerical_range'][0]:.3g}, {info['numerical_range'][1]:.3g}]\n"
-            f"  rtol={rtol}, atol={atol}"
+            f"  analytic L2 norm = {info['analytic_l2_norm']:.6g}, range=[{info['analytic_range'][0]:.3g}, {info['analytic_range'][1]:.3g}]\n"
+            f"  numerical L2 norm = {info['numerical_l2_norm']:.6g}, range=[{info['numerical_range'][0]:.3g}, {info['numerical_range'][1]:.3g}]\n"
+            f"  norm ratio |a|/|n| = {info['norm_ratio']:.6g}\n"
+            f"  cosine similarity = {info['cosine_similarity']:.8f}\n"
+            f"  rtol={rtol}, atol={atol}{finite_note}"
         )
         raise AssertionError(msg)
 
@@ -227,13 +284,29 @@ def numerical_gradient(
 
     if verbose:
         _grad_logger.info(
-            "numerical_gradient for %s: %d elements, h=%.0e", name, total, h,
+            "numerical_gradient for %s: %d elements, h=%.0e, dy shape=%s",
+            name, total, h, dy64.shape,
         )
 
     gc_was_enabled = gc.isenabled()
     if gc_was_enabled:
         gc.disable()
     t0 = time.perf_counter()
+
+    # Measure baseline loss (at original parameter value) for SNR diagnostics
+    out0 = forward_fn().astype(np.float64)
+    loss0 = float(np.sum(dy64 * out0))
+    dy_norm = float(np.linalg.norm(dy64))
+    out_norm = float(np.linalg.norm(out0))
+    if verbose:
+        _grad_logger.info(
+            "numerical_gradient for %s: baseline loss=%.6g  |dy|=%.3g  |out|=%.3g  dy·out=%.6g",
+            name, loss0, dy_norm, out_norm, loss0,
+        )
+
+    first_loss_p = None
+    first_loss_m = None
+    first_delta = None
 
     try:
         for i in range(total):
@@ -254,7 +327,14 @@ def numerical_gradient(
             out_m = forward_fn().astype(np.float64)
             loss_m = float(np.sum(dy64 * out_m))
 
-            flat_grad[i] = (loss_p - loss_m) / (2.0 * h)
+            delta = loss_p - loss_m
+            flat_grad[i] = delta / (2.0 * h)
+
+            # Capture first element for SNR diagnostics
+            if i == 0:
+                first_loss_p = loss_p
+                first_loss_m = loss_m
+                first_delta = delta
 
             # Restore working copies for next iteration
             flat_working[i] = orig_val
@@ -264,8 +344,9 @@ def numerical_gradient(
                 elapsed = time.perf_counter() - t0
                 eta = elapsed / (i + 1) * (total - i - 1) if i > 0 else 0
                 _grad_logger.info(
-                    "  %s: %d/%d (%.0f%%)  elapsed=%.1fs  ETA=%.1fs",
+                    "  %s: %d/%d (%.0f%%)  elapsed=%.1fs  ETA=%.1fs  |grad|=%.3g",
                     name, i + 1, total, 100.0 * (i + 1) / total, elapsed, eta,
+                    float(np.linalg.norm(flat_grad[:i+1])),
                 )
     finally:
         # Restore original parameter
@@ -274,11 +355,19 @@ def numerical_gradient(
             gc.enable()
 
     elapsed = time.perf_counter() - t0
+    grad_norm = float(np.linalg.norm(grad))
     if verbose:
         _grad_logger.info(
-            "numerical_gradient for %s: done in %.2fs (%.1f elements/s)",
+            "numerical_gradient for %s: done in %.2fs (%.1f elements/s)  |grad|=%.3g",
             name, elapsed, total / elapsed if elapsed > 0 else float("inf"),
+            grad_norm,
         )
+        if first_loss_p is not None and first_loss_m is not None:
+            snr = abs(first_delta) / max(abs(loss0), 1e-12) if total > 0 else 0.0
+            _grad_logger.info(
+                "numerical_gradient for %s: first element signal: L+h=%.8g L-h=%.8g Δ=%.3g (Δ/L0=%.2e)",
+                name, first_loss_p, first_loss_m, first_delta, snr,
+            )
 
     return grad.astype(np.float32)
 
