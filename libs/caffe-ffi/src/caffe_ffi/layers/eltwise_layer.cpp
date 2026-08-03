@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <limits>
 #include <sstream>
 #include <vector>
@@ -116,6 +117,13 @@ void EltwiseLayer::Reshape(const std::vector<Blob*>& bottom,
   }
   top[0]->ReshapeLike(*bottom[0]);
 
+  // Allocate max_idx_ buffer for MAX operation (winner-take-all gradient routing)
+  if (op_ == MAX) {
+    max_idx_.resize(static_cast<size_t>(bottom[0]->count()));
+  } else {
+    max_idx_.clear();
+  }
+
   std::ostringstream input_shape_ss;
   for (int i = 0; i < bottom[0]->num_axes(); ++i) {
     if (i > 0) input_shape_ss << ", ";
@@ -201,11 +209,16 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       const float* bottom0_data = bottom[0]->cpu_data();
       for (int64_t i = 0; i < count; ++i) {
         top_data[i] = bottom0_data[i] * coeffs_[0];
+        max_idx_[i] = 0;
       }
       for (int j = 1; j < num_bottoms; ++j) {
         const float* bj_data = bottom[j]->cpu_data();
         for (int64_t i = 0; i < count; ++i) {
-          top_data[i] = std::max(top_data[i], bj_data[i] * coeffs_[j]);
+          float val = bj_data[i] * coeffs_[j];
+          if (val > top_data[i]) {
+            top_data[i] = val;
+            max_idx_[i] = j;
+          }
         }
       }
       break;
@@ -229,6 +242,128 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " count=" << count
                        << " coeffs=[" << coeff_min << ", " << coeff_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
+                       << " time=" << elapsed_us << "us";
+}
+
+void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
+                                 const std::vector<bool>& propagate_down,
+                                 const std::vector<Blob*>& bottom) {
+  const int64_t count = bottom[0]->count();
+  const float* top_diff = top[0]->cpu_diff();
+  const int num_bottoms = static_cast<int>(bottom.size());
+
+  const char* op_name = "UNKNOWN";
+  switch (op_) {
+    case PROD: op_name = "PROD"; break;
+    case SUM: op_name = "SUM"; break;
+    case MAX: op_name = "MAX"; break;
+  }
+
+  CAFFE_FFI_LAYER_LOG << "Eltwise Backward_cpu: op=" << op_name
+                      << " num_bottoms=" << num_bottoms
+                      << " count=" << count;
+
+  // Check if any bottom needs gradient
+  bool any_propagate = false;
+  for (int j = 0; j < num_bottoms; ++j) {
+    if (propagate_down[j]) { any_propagate = true; break; }
+  }
+  if (!any_propagate) {
+    CAFFE_FFI_LAYER_LOG << "Eltwise Backward_cpu: no gradients needed, skipping";
+    return;
+  }
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  // Initialize bottom_diff pointers and zero them if needed
+  std::vector<float*> bottom_diffs(num_bottoms, nullptr);
+  for (int j = 0; j < num_bottoms; ++j) {
+    if (propagate_down[j]) {
+      bottom_diffs[j] = bottom[j]->cpu_mutable_diff();
+      std::memset(bottom_diffs[j], 0, sizeof(float) * count);
+    }
+  }
+
+  // Value-range tracking for diagnostics
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+
+  switch (op_) {
+    case SUM: {
+      // dX_j = dy * coeffs[j]
+      for (int j = 0; j < num_bottoms; ++j) {
+        if (!propagate_down[j]) continue;
+        float* bj_diff = bottom_diffs[j];
+        const float cj = coeffs_[j];
+        for (int64_t i = 0; i < count; ++i) {
+          float val = top_diff[i] * cj;
+          bj_diff[i] = val;
+          dx_min = std::min(dx_min, val);
+          dx_max = std::max(dx_max, val);
+        }
+      }
+      break;
+    }
+    case PROD: {
+      // dX_j[i] = dy[i] * coeffs[j] * prod_{k≠j}(coeffs[k] * x_k[i])
+      // Compute per-element: for each i, compute the product of other terms
+      for (int64_t i = 0; i < count; ++i) {
+        // Compute product of all terms first
+        float prod_all = 1.0f;
+        for (int k = 0; k < num_bottoms; ++k) {
+          prod_all *= bottom[k]->cpu_data()[i] * coeffs_[k];
+        }
+        const float dy_val = top_diff[i];
+        for (int j = 0; j < num_bottoms; ++j) {
+          if (!propagate_down[j]) continue;
+          float xj = bottom[j]->cpu_data()[i] * coeffs_[j];
+          // dX_j = dy * prod_{k≠j}(...) = dy * prod_all / xj  (when xj ≠ 0)
+          float val;
+          if (xj != 0.0f) {
+            val = dy_val * prod_all / xj;
+          } else {
+            // When xj=0, directly compute product of other terms
+            float prod_others = 1.0f;
+            for (int k = 0; k < num_bottoms; ++k) {
+              if (k != j) {
+                prod_others *= bottom[k]->cpu_data()[i] * coeffs_[k];
+              }
+            }
+            val = dy_val * coeffs_[j] * prod_others;
+          }
+          bottom_diffs[j][i] = val;
+          dx_min = std::min(dx_min, val);
+          dx_max = std::max(dx_max, val);
+        }
+      }
+      break;
+    }
+    case MAX: {
+      // dX_j[i] = dy[i] * coeffs[j] if j is winner, else 0
+      // Winner indices were recorded in max_idx_ during Forward
+      for (int64_t i = 0; i < count; ++i) {
+        int winner = max_idx_[i];
+        if (propagate_down[winner]) {
+          float val = top_diff[i] * coeffs_[winner];
+          bottom_diffs[winner][i] = val;
+          dx_min = std::min(dx_min, val);
+          dx_max = std::max(dx_max, val);
+        }
+      }
+      break;
+    }
+    default:
+      CAFFE_FFI_THROW(RuntimeError) << "Unknown elementwise operation.";
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  CAFFE_FFI_LOG_INFO() << "[ELTWISE-PERF] " << this->name()
+                       << " Eltwise backward: op=" << op_name
+                       << " num_bottoms=" << num_bottoms
+                       << " count=" << count
+                       << " dx=[" << dx_min << ", " << dx_max << "]"
                        << " time=" << elapsed_us << "us";
 }
 
