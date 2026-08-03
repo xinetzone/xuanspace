@@ -492,3 +492,238 @@ class TestPoolBackwardDeterminism:
         net.backward({"pool": dy})
         y_after = net.blob_by_name("pool").data
         np.testing.assert_array_equal(y_before, y_after)
+
+
+# ---------------------------------------------------------------------------
+# Test Class 7: Tie-breaking (平局)专项测试
+# ---------------------------------------------------------------------------
+# 陷阱描述: 当MAX pooling窗口内存在多个相等最大值时,argmax只返回第一个
+#           最大值位置。C++实现必须与numpy参考的平局打破规则一致
+#           (flatten order: row-major,即按行优先遍历的第一个最大值)。
+#           若C++实现用了不同的平局策略(如最后一个最大值),会导致梯度
+#           路由到错误位置,在平局密集的输入(如ReLU后全0/全常数区域)
+#           产生系统性偏差。
+# ---------------------------------------------------------------------------
+
+@require_cpp_extension
+class TestMaxPoolTieBreaking:
+    """MAX pooling平局处理专项测试 — 验证C++与numpy argmax平局规则一致。"""
+
+    def test_tie_2x2_s2_all_equal(self):
+        """窗口内所有值相等: 梯度应路由到第一个(左上角)位置。"""
+        N, C, H, W = 1, 1, 2, 2
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        x = np.full((N, C, H, W), 3.0, dtype=np.float32)
+        dy = np.array([[[[7.0]]]], dtype=np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+
+        # numpy argmax在全相等时返回索引0 → (0,0)位置
+        expected_dx = np.array([[[[7.0, 0.0],
+                                  [0.0, 0.0]]]], dtype=np.float32)
+        np.testing.assert_array_equal(dX, expected_dx)
+
+    def test_tie_2x2_s2_partial_equal(self):
+        """窗口内部分值相等: 梯度路由到第一个最大值位置。"""
+        N, C, H, W = 1, 1, 4, 4
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        # 构造: 左上窗口[[5,5],[5,2]]最大值5,argmax返回0→(0,0)
+        #        右上窗口[[8,8],[3,7]]最大值8,argmax返回0→(0,2)
+        #        左下窗口[[6,4],[3,6]]最大值6,argmax返回0→(2,0)
+        #        右下窗口[[9,9],[9,9]]最大值9,argmax返回0→(2,2)
+        x = np.array([[[[5, 5, 8, 8],
+                        [5, 2, 3, 7],
+                        [6, 4, 9, 9],
+                        [3, 6, 9, 9]]]], dtype=np.float32)
+        dy = np.array([[[[10, 20],
+                         [30, 40]]]], dtype=np.float32)
+
+        y, dX = _run_pool_backward(net, x, dy)
+
+        # 前向输出验证
+        assert y[0, 0, 0, 0] == 5.0
+        assert y[0, 0, 0, 1] == 8.0
+        assert y[0, 0, 1, 0] == 6.0
+        assert y[0, 0, 1, 1] == 9.0
+
+        # 梯度路由位置验证(第一个argmax位置接收梯度)
+        expected_dx = np.array([[[[10,  0, 20,  0],
+                                  [ 0,  0,  0,  0],
+                                  [30,  0, 40,  0],
+                                  [ 0,  0,  0,  0]]]], dtype=np.float32)
+        np.testing.assert_array_equal(dX, expected_dx)
+
+    def test_tie_vs_numpy_reference_random_ties(self):
+        """随机平局输入: C++ dX必须与numpy参考实现完全一致。"""
+        rng = np.random.RandomState(777)
+        N, C, H, W = 2, 2, 4, 4
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+
+        # 构造含平局的输入: 将随机输入量化到{-1,0,1}三值,制造大量平局
+        x = rng.choice([-1.0, 0.0, 1.0], size=(N, C, H, W)).astype(np.float32)
+        dy = rng.randn(N, C, 2, 2).astype(np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type='MAX')
+        np.testing.assert_array_equal(dX, expected_dx)
+
+    def test_tie_deterministic_across_runs(self):
+        """含平局输入的梯度必须确定性可复现。"""
+        N, C, H, W = 1, 1, 4, 4
+        x = np.array([[[[2, 2, 1, 1],
+                        [2, 2, 1, 1],
+                        [3, 3, 0, 0],
+                        [3, 3, 0, 0]]]], dtype=np.float32)
+        dy = np.array([[[[5, 6],
+                         [7, 8]]]], dtype=np.float32)
+
+        dX_runs = []
+        for _ in range(5):
+            net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+            _, dX = _run_pool_backward(net, x, dy)
+            dX_runs.append(dX.copy())
+
+        for i in range(1, 5):
+            np.testing.assert_array_equal(dX_runs[0], dX_runs[i])
+
+
+# ---------------------------------------------------------------------------
+# Test Class 8: Overlap Accumulation (重叠累加)专项测试
+# ---------------------------------------------------------------------------
+# 陷阱描述: 当stride < kernel时,窗口发生重叠。此时:
+#   - AVE pooling: 重叠区域的像素从多个窗口接收梯度贡献,必须累加
+#   - MAX pooling: 若同一像素是多个窗口的winner,其梯度是多个dy之和
+#   - 边界窗口pool_size小于kernel*kernel时,必须用实际pool_size归一化
+# 常见错误:
+#   1. 覆盖而非累加(= 代替 +=),导致重叠区域梯度丢失
+#   2. 边界窗口仍用kernel*kernel归一化而非实际pool_size
+#   3. AVE pooling在stride=1的完全重叠场景中,中心像素梯度远大于边角
+# ---------------------------------------------------------------------------
+
+@require_cpp_extension
+class TestPoolOverlapAccumulation:
+    """Overlap accumulation专项测试 — stride < kernel时梯度累加正确性。"""
+
+    def test_ave_3x3_s1_overlap_accumulation_known_values(self):
+        """AVE 3x3 s1 pad=0 (3x3输入→1x1输出,单窗口,无重叠基础验证)。"""
+        N, C, H, W = 1, 1, 3, 3
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pool='AVE')
+        x = np.zeros((N, C, H, W), dtype=np.float32)
+        dy = np.array([[[[9.0]]]], dtype=np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        # 单窗口,dy=9,平均分到9个位置 → 每个位置=1.0
+        expected_dx = np.ones((N, C, H, W), dtype=np.float32)
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-6)
+
+    def test_ave_3x3_s1_pad1_overlap_center_accumulates_more(self):
+        """AVE 3x3 s1 pad=1 (5x5输入): 中心像素从最多窗口接收梯度。"""
+        N, C, H, W = 1, 1, 5, 5
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='AVE')
+        x = np.zeros((N, C, H, W), dtype=np.float32)
+        # 所有dy=1,验证梯度累加模式:
+        # - 角像素(0,0): 仅属于1个窗口(ph=0,pw=0),贡献=1/4=0.25 (pad导致实际2x2窗口)
+        # - 边像素(0,2): 属于2个窗口(ph=0,pw=1; ph=0,pw=2),贡献=0.25+1/9+...
+        # - 中心像素(2,2): 属于9个窗口(3x3),每个贡献1/9,总贡献=1.0
+        dy = np.ones((N, C, H, W), dtype=np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='AVE')
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
+
+        # 中心像素(2,2)属于9个窗口,每个贡献1/9 → 期望=1.0
+        assert abs(dX[0, 0, 2, 2] - 1.0) < 1e-5, \
+            f"Center pixel should accumulate ~1.0 from 9 windows, got {dX[0,0,2,2]}"
+
+    def test_ave_boundary_pool_size_correction(self):
+        """AVE pooling边界窗口pool_size小于kernel²时必须用实际大小归一化。"""
+        # 5x5输入,3x3 kernel,stride=2,pad=0 → 输出2x2
+        # 窗口位置:
+        #   ph=0,pw=0: h[0:3],w[0:3] → pool_size=9
+        #   ph=0,pw=1: h[0:3],w[2:5] → pool_size=9
+        #   ph=1,pw=0: h[2:5],w[0:3] → pool_size=9
+        #   ph=1,pw=1: h[2:5],w[2:5] → pool_size=9
+        # 5x5 3x3s2: 所有窗口都是3x3,pool_size=9 (无边界裁剪)
+        # 改用 4x4 输入,3x3 kernel,stride=2,pad=0 → 输出2x2?
+        # floor((4-3)/2)+1 = 1 → 输出1x1 (只有ph=0,pw=0)
+        # 再用 5x4 输入制造不对称边界:
+        N, C, H, W = 1, 1, 4, 5
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pad=0, pool='AVE')
+        x = np.zeros((N, C, H, W), dtype=np.float32)
+        # 输出尺寸: H_out=floor((4-3)/2)+1=1, W_out=floor((5-3)/2)+1=2
+        dy = np.array([[[[9.0, 9.0]]]], dtype=np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pad=0, pool_type='AVE')
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
+
+        # 第一个窗口(ph=0,pw=0): 3x3=9个位置,dy=9 → 每个=1.0
+        # 第二个窗口(ph=0,pw=1): h[0:3],w[2:5] → 3x3=9个位置,dy=9 → 每个=1.0
+        # 重叠区域(0:3,2:3) 累加两个窗口贡献 → =2.0
+        overlap_region = dX[0, 0, 0:3, 2:3]
+        np.testing.assert_allclose(overlap_region, 2.0, rtol=1e-5)
+
+    def test_max_overlap_same_pixel_wins_multiple_windows(self):
+        """MAX pooling重叠: 同一像素是多个窗口winner时梯度应累加。"""
+        N, C, H, W = 1, 1, 3, 3
+        # 3x3 s1 pad=0 → 输出1x1 (无重叠)
+        # 用 5x5 s1 pad=0,3x3 kernel → 输出3x3
+        net = _make_pool_net(N, C, 5, 5, kernel_size=3, stride=1, pad=0, pool='MAX')
+        # 中心像素(2,2)=100,周围都是小值 → 中心像素是所有9个窗口(3x3输出)的winner
+        x = np.zeros((N, C, 5, 5), dtype=np.float32)
+        x[0, 0, 2, 2] = 100.0
+        dy = np.ones((N, C, 3, 3), dtype=np.float32)  # 所有dy=1
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=0, pool_type='MAX')
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
+
+        # 中心像素累加了9个窗口的dy=1 → dX[2,2]=9.0
+        assert abs(dX[0, 0, 2, 2] - 9.0) < 1e-5, \
+            f"Center winner should accumulate 9.0 from 9 windows, got {dX[0,0,2,2]}"
+        # 其他位置都是0
+        mask = np.ones((5, 5), dtype=bool)
+        mask[2, 2] = False
+        np.testing.assert_array_equal(dX[0, 0][mask], 0.0)
+
+    def test_ave_stride1_full_overlap_random_vs_numpy(self):
+        """AVE 3x3 s1 pad=1随机输入: C++ dX与numpy参考对比(包含所有重叠+边界情况)。"""
+        rng = np.random.RandomState(888)
+        N, C, H, W = 1, 2, 6, 6
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='AVE')
+        x = rng.randn(N, C, H, W).astype(np.float32)
+        dy = rng.randn(N, C, H, W).astype(np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='AVE')
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
+
+    def test_max_stride1_overlap_random_vs_numpy(self):
+        """MAX 3x3 s1 pad=1随机输入: C++ dX与numpy参考对比(重叠winner累加)。"""
+        rng = np.random.RandomState(999)
+        N, C, H, W = 1, 2, 6, 6
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='MAX')
+        x = rng.randn(N, C, H, W).astype(np.float32) * 2.0
+        dy = rng.randn(N, C, H, W).astype(np.float32)
+
+        _, dX = _run_pool_backward(net, x, dy)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='MAX')
+        np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
+
+    def test_gradient_sum_conservation_ave(self):
+        """AVE pooling梯度和守恒: sum(dX) == sum(dy) (不含pad的情况下)。"""
+        rng = np.random.RandomState(111)
+        for H, W, ks, stride, pad in [
+            (4, 4, 2, 2, 0),   # 非重叠
+            (5, 5, 3, 1, 1),   # 重叠+pad
+            (7, 7, 3, 2, 0),   # 重叠无pad,边界pool_size变化
+        ]:
+            net = _make_pool_net(1, 1, H, W, kernel_size=ks, stride=stride, pad=pad, pool='AVE')
+            x = rng.randn(1, 1, H, W).astype(np.float32)
+            dy = rng.randn(*net.forward({"data": x})["pool"].shape).astype(np.float32)
+            _, dX = _run_pool_backward(net, x, dy)
+            # AVE pooling中,每个dy_i平均分配到pool_size个位置,总和守恒: sum(dX) = sum(dy)
+            np.testing.assert_allclose(
+                dX.sum(), dy.sum(), rtol=1e-4,
+                err_msg=f"AVE gradient sum not conserved for H={H},W={W},ks={ks},s={stride},p={pad}"
+            )

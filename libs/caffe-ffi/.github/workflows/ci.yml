@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    # Nightly build: 2:00 AM UTC daily
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 # Cancel in-flight runs on the same PR/branch
@@ -317,3 +320,187 @@ jobs:
       # ── C¹ kink protection static check ──
       - name: Check C¹ kink protection in activation gradient tests
         run: python scripts/check_c1_kink_protection.py tests/python/ -v
+
+  # ────────────────────────────────────────────────────────────────
+  # Nightly: Extended gradient regression + pooling edge-case tests
+  # ────────────────────────────────────────────────────────────────
+  nightly:
+    name: "Nightly: Gradient Regression & Edge Cases"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ libomp-dev ccache
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "numpy>=2.3" \
+            "protobuf>=7.0.0" \
+            "apache-tvm-ffi>0.1.12" \
+            "pytest>=8.0" \
+            scikit-build-core ninja cmake
+
+      - name: Build and install caffe-ffi
+        env:
+          CMAKE_GENERATOR: Ninja
+          KMP_DUPLICATE_LIB_OK: TRUE
+          SKBUILD_CMAKE_ARGS: >-
+            -DCMAKE_BUILD_TYPE=Release
+            -DCAFFE_CPU_ONLY=ON
+            -DCAFFE_USE_BLAS=OFF
+            -DCAFFE_FFI_BUILD_TESTS=OFF
+            -DCAFFE_FFI_ENABLE_COW=ON
+        run: |
+          pip install --no-build-isolation -e .
+
+      - name: Verify caffe_ffi import
+        run: |
+          python -c "import caffe_ffi; print('caffe_ffi version:', caffe_ffi.__version__)"
+
+      # ── Nightly 1: Pooling tie-breaking & overlap accumulation (11 edge-case tests) ──
+      - name: Run pooling tie-breaking and overlap accumulation tests
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -m pytest tests/python/test_pooling_backward.py \
+            -k "TestMaxPoolTieBreaking or TestPoolOverlapAccumulation" \
+            -v --tb=long
+
+      # ── Nightly 2: CLI smoke test (--help, error codes) ──
+      - name: CLI smoke: --help returns 0
+        run: |
+          python tests/python/grad_regression_cli.py --help > /dev/null
+          echo "PASS: --help exit code=$?"
+
+      - name: CLI smoke: bad prototxt returns 2
+        run: |
+          python tests/python/grad_regression_cli.py \
+            --prototxt /nonexistent.prototxt \
+            --input data --output pool --dims 1 1 4 4 --quiet || RC=$?
+          if [ "$RC" != "2" ]; then echo "FAIL: expected exit 2, got $RC"; exit 1; fi
+          echo "PASS: bad prototxt exit code=$RC"
+
+      - name: CLI smoke: bad ref module returns 2
+        run: |
+          TMPPROTO=$(mktemp)
+          cat > "$TMPPROTO" << 'EOF'
+          name: "test"
+          input: "data"
+          input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 4
+          EOF
+          python tests/python/grad_regression_cli.py \
+            --prototxt "$TMPPROTO" \
+            --input data --output pool --dims 1 1 4 4 \
+            --ref nonexistent:fn --quiet || RC=$?
+          rm -f "$TMPPROTO"
+          if [ "$RC" != "2" ]; then echo "FAIL: expected exit 2, got $RC"; exit 1; fi
+          echo "PASS: bad ref exit code=$RC"
+
+      # ── Nightly 3: CLI regression with reference backward (AVE pool) ──
+      - name: CLI regression: AVE pool vs numpy reference
+        run: |
+          TMPPROTO=$(mktemp --suffix=.prototxt)
+          cat > "$TMPPROTO" << 'EOF'
+          name: "nightly_ave_pool"
+          input: "data"
+          input_dim: 1 input_dim: 1 input_dim: 6 input_dim: 6
+          layer {
+            name: "pool" type: "Pooling" bottom: "data" top: "pool"
+            pooling_param { pool: AVE kernel_size: 2 stride: 2 }
+          }
+          EOF
+          python tests/python/grad_regression_cli.py \
+            --prototxt "$TMPPROTO" \
+            --input data --output pool --dims 1 1 6 6 --seed 42 \
+            --ref tests.python.test_pooling_backward:pooling_backward_np \
+            --kwarg kernel_size=2 --kwarg stride=2 --kwarg pool_type=AVE \
+            --rtol 1e-3 --atol 1e-4 \
+            --json nightly-ave-pool.json
+          rm -f "$TMPPROTO"
+          echo "PASS: AVE pool regression passed"
+
+      # ── Nightly 4: CLI regression with reference backward (MAX pool) ──
+      - name: CLI regression: MAX pool vs numpy reference
+        run: |
+          TMPPROTO=$(mktemp --suffix=.prototxt)
+          cat > "$TMPPROTO" << 'EOF'
+          name: "nightly_max_pool"
+          input: "data"
+          input_dim: 1 input_dim: 1 input_dim: 5 input_dim: 5
+          layer {
+            name: "pool" type: "Pooling" bottom: "data" top: "pool"
+            pooling_param { pool: MAX kernel_size: 3 stride: 2 }
+          }
+          EOF
+          python tests/python/grad_regression_cli.py \
+            --prototxt "$TMPPROTO" \
+            --input data --output pool --dims 1 1 5 5 --seed 123 \
+            --ref tests.python.test_pooling_backward:pooling_backward_np \
+            --kwarg kernel_size=3 --kwarg stride=2 --kwarg pool_type=MAX \
+            --rtol 1e-3 --atol 1e-4 \
+            --json nightly-max-pool.json
+          rm -f "$TMPPROTO"
+          echo "PASS: MAX pool regression passed"
+
+      # ── Nightly 5: CLI numerical gradient cross-validation (multiple seeds) ──
+      - name: CLI numerical gradient: AVE pool multi-seed
+        run: |
+          TMPPROTO=$(mktemp --suffix=.prototxt)
+          cat > "$TMPPROTO" << 'EOF'
+          name: "nightly_numgrad"
+          input: "data"
+          input_dim: 1 input_dim: 1 input_dim: 4 input_dim: 4
+          layer {
+            name: "pool" type: "Pooling" bottom: "data" top: "pool"
+            pooling_param { pool: AVE kernel_size: 2 stride: 2 }
+          }
+          EOF
+          FAILED=0
+          for seed in 0 1 42 123 456; do
+            if ! python tests/python/grad_regression_cli.py \
+              --prototxt "$TMPPROTO" \
+              --input data --output pool --dims 1 1 4 4 --seed $seed \
+              --rtol 1e-3 --atol 1e-4 --numerical-rtol 1e-2 --numerical-atol 1e-3 \
+              --json nightly-numgrad-seed${seed}.json --quiet; then
+              echo "FAIL: numerical grad seed=$seed"
+              FAILED=$((FAILED+1))
+            else
+              echo "PASS: numerical grad seed=$seed"
+            fi
+          done
+          rm -f "$TMPPROTO"
+          if [ $FAILED -gt 0 ]; then echo "$FAILED seed(s) failed"; exit 1; fi
+
+      # ── Nightly 6: Full pooling backward test suite ──
+      - name: Run full pooling backward test suite
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -m pytest tests/python/test_pooling_backward.py -v --tb=long
+
+      # ── Upload nightly JSON results as artifacts ──
+      - name: Upload nightly regression results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-gradient-regression-${{ github.run_id }}
+          path: nightly-*.json
+

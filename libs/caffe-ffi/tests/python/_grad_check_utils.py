@@ -19,6 +19,11 @@ Design choices (P3-B optimization applied):
     in the numerical path (analytical Backward is called once outside).
   - Detailed logging goes to the ``caffe_ffi.test.grad`` logger at INFO level,
     so it appears alongside perf traces without polluting stdout.
+
+Logging levels:
+  - INFO:  progress, summary stats, pass/fail
+  - DEBUG: per-element details, loss values, intermediate computations
+  - WARNING: potential numerical issues (saturated regions, low SNR, kinks)
 """
 from __future__ import annotations
 
@@ -38,7 +43,9 @@ if not _grad_logger.handlers:
     ))
     _grad_logger.addHandler(_h)
     _grad_logger.propagate = False
-_grad_logger.setLevel(logging.INFO)
+# Default to INFO; set CAFFE_FFI_GRAD_LOG=DEBUG for verbose per-element tracing
+_log_level = os.environ.get("CAFFE_FFI_GRAD_LOG", "INFO").upper()
+_grad_logger.setLevel(getattr(logging, _log_level, logging.INFO))
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +121,27 @@ def compare_gradients(
 
     passed = bool(np.allclose(a, n, rtol=rtol, atol=atol)) and not has_finite_issue
 
+    # Detect potential numerical issues for WARNING logs
+    warnings = []
+    # SNR warning: if gradient norm is very small relative to loss scale, numerical gradient may be noisy
+    if a_norm < 1e-8 and n_norm < 1e-8:
+        warnings.append(f"gradient norm near zero (|a|={a_norm:.3g}, |n|={n_norm:.3g}), check for vanishing gradients")
+    # Norm ratio mismatch: if analytic and numerical norms differ by >2x, something is wrong
+    if norm_ratio > 2.0 or (norm_ratio < 0.5 and norm_ratio > 0):
+        warnings.append(f"norm ratio |a|/|n|={norm_ratio:.3g} far from 1.0 (scale mismatch, expected ~1.0)")
+    # Cosine similarity: should be close to 1.0 for correct gradients; <0.99 suggests direction issues
+    if cos_sim < 0.99 and a_norm > 1e-6 and n_norm > 1e-6:
+        warnings.append(f"cosine similarity={cos_sim:.4f} below 0.99 (gradient direction mismatch or noise)")
+    # High relative error in significant fraction of elements
+    high_err_frac = float((rel_err > rtol).mean()) if rel_err.size > 0 else 0.0
+    if high_err_frac > 0.1 and not passed:
+        warnings.append(f"{high_err_frac*100:.1f}% of elements exceed rtol={rtol:.0e} (systematic error, not isolated points)")
+    # Check for saturated regions (exact 0/1 values where gradient might be zero)
+    a_zero_frac = float((np.abs(a) < 1e-12).mean()) if a.size > 0 else 0.0
+    n_zero_frac = float((np.abs(n) < 1e-12).mean()) if n.size > 0 else 0.0
+    if abs(a_zero_frac - n_zero_frac) > 0.1 and max(a_zero_frac, n_zero_frac) > 0.2:
+        warnings.append(f"zero-fraction mismatch: a={a_zero_frac*100:.1f}% vs n={n_zero_frac*100:.1f}% (saturated ReLU/dead neuron issue?)")
+
     info = {
         "passed": passed,
         "max_abs_err": max_abs,
@@ -133,6 +161,8 @@ def compare_gradients(
         "atol": atol,
         "has_nan": a_has_nan or n_has_nan,
         "has_inf": a_has_inf or n_has_inf,
+        "warnings": warnings,
+        "high_error_fraction": high_err_frac,
     }
 
     if verbose:
@@ -188,6 +218,9 @@ def compare_gradients(
                         float(a_patch[dh, dw]), float(n_patch[dh, dw]),
                         float(err_patch[dh, dw]), marker,
                     )
+        # Log warnings if any
+        for w in warnings:
+            _grad_logger.warning("%s: %s", name, w)
 
     return info
 
@@ -308,6 +341,14 @@ def numerical_gradient(
     first_loss_m = None
     first_delta = None
 
+    # Diagnostics accumulators
+    nan_count = 0
+    inf_count = 0
+    zero_delta_count = 0  # delta == 0 exactly (numerical underflow or dead neuron)
+    max_grad_mag = 0.0
+    min_grad_mag = float('inf')
+    kink_suspects = 0  # elements where loss_p == loss_m but param is near a known kink (0 for ReLU/ELU/PReLU)
+
     try:
         for i in range(total):
             orig_val = flat_param[i]
@@ -328,13 +369,37 @@ def numerical_gradient(
             loss_m = float(np.sum(dy64 * out_m))
 
             delta = loss_p - loss_m
-            flat_grad[i] = delta / (2.0 * h)
+            g_i = delta / (2.0 * h)
+            flat_grad[i] = g_i
 
             # Capture first element for SNR diagnostics
             if i == 0:
                 first_loss_p = loss_p
                 first_loss_m = loss_m
                 first_delta = delta
+
+            # Diagnostics: detect numerical issues
+            if np.isnan(g_i):
+                nan_count += 1
+            if np.isinf(g_i):
+                inf_count += 1
+            abs_g = abs(g_i)
+            if abs_g > max_grad_mag:
+                max_grad_mag = abs_g
+            if abs_g > 0 and abs_g < min_grad_mag:
+                min_grad_mag = abs_g
+            if delta == 0.0:
+                zero_delta_count += 1
+                # Check if parameter is near 0 (C¹ kink for ReLU/ELU/PReLU)
+                if abs(orig_val) < h * 2:
+                    kink_suspects += 1
+
+            # Per-element DEBUG logging (for CAFFE_FFI_GRAD_LOG=DEBUG)
+            if _grad_logger.isEnabledFor(logging.DEBUG):
+                _grad_logger.debug(
+                    "  %s[%d]: param=%.8g  L+h=%.10g  L-h=%.10g  Δ=%.3g  grad=%.6g",
+                    name, i, orig_val, loss_p, loss_m, delta, g_i,
+                )
 
             # Restore working copies for next iteration
             flat_working[i] = orig_val
@@ -343,10 +408,11 @@ def numerical_gradient(
             if verbose and (total >= 100) and ((i + 1) % max(1, total // 10) == 0 or i == total - 1):
                 elapsed = time.perf_counter() - t0
                 eta = elapsed / (i + 1) * (total - i - 1) if i > 0 else 0
+                current_grad_norm = float(np.linalg.norm(flat_grad[:i+1]))
                 _grad_logger.info(
                     "  %s: %d/%d (%.0f%%)  elapsed=%.1fs  ETA=%.1fs  |grad|=%.3g",
                     name, i + 1, total, 100.0 * (i + 1) / total, elapsed, eta,
-                    float(np.linalg.norm(flat_grad[:i+1])),
+                    current_grad_norm,
                 )
     finally:
         # Restore original parameter
@@ -356,17 +422,53 @@ def numerical_gradient(
 
     elapsed = time.perf_counter() - t0
     grad_norm = float(np.linalg.norm(grad))
+    nonzero_count = total - zero_delta_count
+
     if verbose:
         _grad_logger.info(
-            "numerical_gradient for %s: done in %.2fs (%.1f elements/s)  |grad|=%.3g",
+            "numerical_gradient for %s: done in %.2fs (%.1f elements/s)  |grad|=%.3g  range=[%.3g, %.3g]",
             name, elapsed, total / elapsed if elapsed > 0 else float("inf"),
-            grad_norm,
+            grad_norm, float(grad.min()), float(grad.max()),
+        )
+        # Diagnostic summary
+        _grad_logger.info(
+            "numerical_gradient for %s: %d/%d nonzero grads (%.1f%%), "
+            "NaN=%d Inf=%d zero_delta=%d kink_suspects=%d  |grad|_max=%.3g |grad|_min_nonzero=%.3g",
+            name, nonzero_count, total, 100.0 * nonzero_count / total if total > 0 else 0,
+            nan_count, inf_count, zero_delta_count, kink_suspects,
+            max_grad_mag, min_grad_mag if min_grad_mag != float('inf') else 0.0,
         )
         if first_loss_p is not None and first_loss_m is not None:
             snr = abs(first_delta) / max(abs(loss0), 1e-12) if total > 0 else 0.0
+            delta_scale = abs(first_delta) / (2.0 * h)
             _grad_logger.info(
-                "numerical_gradient for %s: first element signal: L+h=%.8g L-h=%.8g Δ=%.3g (Δ/L0=%.2e)",
-                name, first_loss_p, first_loss_m, first_delta, snr,
+                "numerical_gradient for %s: first element signal: L+h=%.10g L-h=%.10g Δ=%.3g (Δ/L0=%.2e, grad≈%.6g)",
+                name, first_loss_p, first_loss_m, first_delta, snr, delta_scale,
+            )
+            # Low SNR warning: if delta is near machine epsilon relative to h, numerical gradient is unreliable
+            rel_delta = abs(first_delta) / max(abs(loss0) * h, 1e-30) if abs(loss0) > 0 else float('inf')
+            if rel_delta < 1e-6 and nonzero_count < total * 0.1:
+                _grad_logger.warning(
+                    "%s: LOW SNR detected! Δ/(L0*h)=%.2e is near machine precision. "
+                    "Consider using larger h or checking if output is independent of this parameter.",
+                    name, rel_delta,
+                )
+        # Warn about potential issues
+        if nan_count > 0:
+            _grad_logger.warning("%s: %d NaN gradients detected!", name, nan_count)
+        if inf_count > 0:
+            _grad_logger.warning("%s: %d Inf gradients detected!", name, inf_count)
+        if zero_delta_count > total * 0.5 and total > 10:
+            _grad_logger.warning(
+                "%s: %d/%d elements (%.1f%%) have zero delta — gradient is exactly zero. "
+                "This is expected for dead ReLU neurons, but verify it's not a bug.",
+                name, zero_delta_count, total, 100.0 * zero_delta_count / total,
+            )
+        if kink_suspects > 0:
+            _grad_logger.warning(
+                "%s: %d elements have zero delta near parameter value 0 (possible C¹ kink for ReLU/ELU/PReLU). "
+                "Consider using avoid_c1_discontinuity() to perturb inputs away from kinks.",
+                name, kink_suspects,
             )
 
     return grad.astype(np.float32)
@@ -468,3 +570,147 @@ def numerical_grad_for_input(
     return numerical_gradient(
         _forward, _get, _set, dy, h=h, name=name, verbose=verbose,
     )
+
+
+# ---------------------------------------------------------------------------
+# Regression test: numpy reference vs C++ backward auto-comparison
+# ---------------------------------------------------------------------------
+
+def assert_backward_matches_reference(
+    net,
+    ref_backward_fn,
+    input_name: str,
+    output_name: str,
+    x: np.ndarray,
+    dy: np.ndarray,
+    *,
+    name: Optional[str] = None,
+    rtol: float = 1e-3,
+    atol: float = 1e-4,
+    verbose: bool = True,
+    skip_numerical: bool = False,
+    numerical_h: float = 1e-3,
+    numerical_rtol: float = 1e-2,
+    numerical_atol: float = 1e-3,
+    **ref_kwargs,
+) -> dict:
+    """Assert C++ backward matches numpy reference backward (regression test).
+
+    Runs both C++ analytic backward and numpy reference backward, then
+    optionally also runs a numerical gradient cross-check. Returns a
+    diagnostics dict for programmatic inspection.
+
+    Args:
+        net: caffe_ffi Net instance (already constructed, weights set).
+        ref_backward_fn: Callable ``(dy, x, **ref_kwargs) -> dx_ref`` that
+            computes the expected input gradient in pure numpy. The x passed
+            is the *original* input (same x used for forward), so the ref
+            function can compute argmax/indices needed for MAX-style routing.
+        input_name: Name of the input bottom blob.
+        output_name: Name of the output top blob (for forward result + dy).
+        x: Input tensor numpy array (float32, NCHW).
+        dy: Upstream gradient tensor (float32, same shape as output).
+        name: Human-readable label for logging (defaults to output_name).
+        rtol: Relative tolerance for analytic-vs-reference comparison.
+        atol: Absolute tolerance for analytic-vs-reference comparison.
+        verbose: If True, log diagnostic info.
+        skip_numerical: If True, skip the slow numerical gradient cross-check
+            (useful for quick CI runs; default False runs numerical check).
+        numerical_h: Step size for numerical gradient (only if not skip_numerical).
+        numerical_rtol: Relative tolerance for numerical gradient check.
+        numerical_atol: Absolute tolerance for numerical gradient check.
+        **ref_kwargs: Extra keyword arguments forwarded to ``ref_backward_fn``
+            (e.g. kernel_size, stride, pad, pool_type).
+
+    Returns:
+        Dictionary with keys:
+          - ref_passed: bool – analytic vs numpy reference match
+          - numerical_passed: bool – analytic vs numerical match (or None if skipped)
+          - ref_info: diagnostics dict from compare_gradients (analytic vs ref)
+          - numerical_info: diagnostics dict (analytic vs numerical) or None
+          - dX_cpp: C++ analytic gradient numpy array
+          - dX_ref: numpy reference gradient numpy array
+          - y: forward output numpy array
+
+    Raises:
+        AssertionError: If analytic gradient doesn't match reference within
+            tolerance, or numerical gradient check fails.
+    """
+    if name is None:
+        name = f"backward:{output_name}"
+
+    x_f32 = np.asarray(x, dtype=np.float32)
+    dy_f32 = np.asarray(dy, dtype=np.float32)
+
+    # 1. Run C++ forward + backward
+    out = net.forward({input_name: x_f32})
+    y = out[output_name]
+    net.backward({output_name: dy_f32})
+    dX_cpp = net.blob_by_name(input_name).diff
+
+    # 2. Run numpy reference backward
+    dX_ref = ref_backward_fn(dy_f32, x_f32, **ref_kwargs)
+    dX_ref = np.asarray(dX_ref, dtype=np.float32)
+
+    # 3. Analytic vs reference comparison
+    ref_info = compare_gradients(
+        dX_cpp, dX_ref, name=f"{name} (cpp vs ref)",
+        rtol=rtol, atol=atol, verbose=verbose,
+    )
+
+    if not ref_info["passed"]:
+        msg = (
+            f"{name} BACKWARD REGRESSION FAILED (C++ vs numpy reference)\n"
+            f"  shape: {ref_info['shape']}\n"
+            f"  max|cpp-ref| = {ref_info['max_abs_err']:.6g}  "
+            f"(at {ref_info['worst_idx']}: cpp={ref_info['worst_analytic']:.8g}, "
+            f"ref={ref_info['worst_numerical']:.8g})\n"
+            f"  mean|cpp-ref| = {ref_info['mean_abs_err']:.6g}\n"
+            f"  max_rel_err = {ref_info['max_rel_err']:.6g}\n"
+            f"  cosine similarity = {ref_info['cosine_similarity']:.8f}\n"
+            f"  norm ratio |cpp|/|ref| = {ref_info['norm_ratio']:.6g}\n"
+            f"  rtol={rtol}, atol={atol}"
+        )
+        raise AssertionError(msg)
+
+    # 4. Optional numerical gradient cross-check
+    numerical_info = None
+    if not skip_numerical:
+        numerical_dX = numerical_grad_for_input(
+            net, input_name, x_f32, output_name, dy_f32,
+            h=numerical_h, name=f"{name} (numerical)", verbose=verbose,
+        )
+        numerical_info = compare_gradients(
+            dX_cpp, numerical_dX, name=f"{name} (cpp vs numerical)",
+            rtol=numerical_rtol, atol=numerical_atol, verbose=verbose,
+        )
+        if not numerical_info["passed"]:
+            msg = (
+                f"{name} NUMERICAL GRADIENT CHECK FAILED\n"
+                f"  max|cpp-num| = {numerical_info['max_abs_err']:.6g}\n"
+                f"  cosine similarity = {numerical_info['cosine_similarity']:.8f}\n"
+                f"  rtol={numerical_rtol}, atol={numerical_atol}"
+            )
+            raise AssertionError(msg)
+
+    if verbose:
+        if numerical_info is None:
+            num_status = "SKIP"
+        elif numerical_info["passed"]:
+            num_status = "PASS"
+        else:
+            num_status = "FAIL"
+        _grad_logger.info(
+            "%s: regression check complete — ref=%s numerical=%s",
+            name, "PASS" if ref_info["passed"] else "FAIL", num_status,
+        )
+
+    return {
+        "ref_passed": ref_info["passed"],
+        "numerical_passed": None if numerical_info is None else numerical_info["passed"],
+        "ref_info": ref_info,
+        "numerical_info": numerical_info,
+        "dX_cpp": dX_cpp,
+        "dX_ref": dX_ref,
+        "y": y,
+    }
