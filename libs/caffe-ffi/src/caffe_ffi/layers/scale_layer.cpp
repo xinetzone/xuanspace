@@ -14,6 +14,8 @@
 #include "caffe_ffi/error.hpp"
 #include "caffe_ffi/math_utils.hpp"
 
+#include <cstring>
+
 namespace caffe_ffi {
 
 void ScaleLayer::LayerSetUp(const std::vector<Blob*>& bottom,
@@ -174,6 +176,147 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " scale=[" << s_min << ", " << s_max << "]"
                        << b_str
+                       << " time=" << elapsed_us << "us";
+}
+
+void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
+                               const std::vector<bool>& propagate_down,
+                               const std::vector<Blob*>& bottom) {
+  const float* top_diff = top[0]->cpu_diff();
+  const float* bottom_data = bottom[0]->cpu_data();
+  const float* scale_data = (bottom.size() > 1) ? bottom[1]->cpu_data()
+                           : this->blobs_[0]->cpu_data();
+
+  const bool scale_from_bottom = (bottom.size() > 1);
+  const bool need_dx = propagate_down[0];
+  const bool need_dscale = scale_from_bottom
+      ? propagate_down[1]
+      : (this->blobs_.size() >= 1 && this->param_propagate_down_[0]);
+
+  // Determine bias parameter index: when scale is from bottom[1], bias is blobs_[0] (index 0);
+  // when scale is from blobs_[0], bias is blobs_[1] (index 1).
+  int bias_param_idx = -1;
+  bool need_dbias = false;
+  if (bias_term_ && this->blobs_.size() >= 1) {
+    if (scale_from_bottom && this->blobs_.size() >= 1) {
+      bias_param_idx = 0;
+      need_dbias = this->param_propagate_down_[0];
+    } else if (!scale_from_bottom && this->blobs_.size() >= 2) {
+      bias_param_idx = 1;
+      need_dbias = this->param_propagate_down_[1];
+    }
+  }
+
+  const int count = bottom[0]->count();
+  CAFFE_FFI_LAYER_LOG << "Scale Backward_cpu: count=" << count
+                      << " outer_dim=" << outer_dim_
+                      << " scale_dim=" << scale_dim_
+                      << " inner_dim=" << inner_dim_
+                      << " need_dx=" << need_dx
+                      << " need_dscale=" << need_dscale
+                      << " scale_from_bottom=" << scale_from_bottom
+                      << " need_dbias=" << need_dbias
+                      << " bias_param_idx=" << bias_param_idx;
+
+  if (!need_dx && !need_dscale && !need_dbias) {
+    CAFFE_FFI_LAYER_LOG << "Scale Backward_cpu: no gradients needed, skipping";
+    return;
+  }
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float* bottom_diff = need_dx ? bottom[0]->cpu_mutable_diff() : nullptr;
+  float* scale_diff = nullptr;
+  if (need_dscale) {
+    scale_diff = scale_from_bottom
+        ? bottom[1]->cpu_mutable_diff()
+        : this->blobs_[0]->cpu_mutable_diff();
+    std::memset(scale_diff, 0, sizeof(float) * scale_dim_);
+  }
+  float* bias_diff = nullptr;
+  if (need_dbias) {
+    bias_diff = this->blobs_[bias_param_idx]->cpu_mutable_diff();
+    std::memset(bias_diff, 0, sizeof(float) * scale_dim_);
+  }
+
+  // Value-range tracking for diagnostics
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+  float ds_min = std::numeric_limits<float>::max();
+  float ds_max = -std::numeric_limits<float>::max();
+  float db_min = std::numeric_limits<float>::max();
+  float db_max = -std::numeric_limits<float>::max();
+
+  // Single-pass triple loop: compute dX, d_scale, d_bias simultaneously
+  // Forward: y[n,d,i] = x[n,d,i] * s[d] + b[d]
+  // Backward:
+  //   dX[n,d,i] = dy[n,d,i] * s[d]
+  //   d_scale[d] += dy[n,d,i] * x[n,d,i]   (sum over broadcast dims n,i)
+  //   d_bias[d]  += dy[n,d,i]               (sum over broadcast dims n,i)
+  for (int n = 0; n < outer_dim_; ++n) {
+    for (int d = 0; d < scale_dim_; ++d) {
+      const float factor = scale_data[d];
+      float ds_acc = 0.0f;
+      float db_acc = 0.0f;
+      for (int i = 0; i < inner_dim_; ++i) {
+        const int idx = n * scale_dim_ * inner_dim_ + d * inner_dim_ + i;
+        const float dy_val = top_diff[idx];
+        const float x_val = bottom_data[idx];
+
+        // dX = dy * s
+        if (need_dx) {
+          float dx_val = dy_val * factor;
+          bottom_diff[idx] = dx_val;
+          dx_min = std::min(dx_min, dx_val);
+          dx_max = std::max(dx_max, dx_val);
+        }
+
+        // Accumulate d_scale and d_bias
+        ds_acc += dy_val * x_val;
+        db_acc += dy_val;
+      }
+      if (need_dscale) {
+        scale_diff[d] += ds_acc;
+      }
+      if (need_dbias) {
+        bias_diff[d] += db_acc;
+      }
+    }
+  }
+
+  // Compute scale_diff and bias_diff ranges
+  if (need_dscale) {
+    for (int d = 0; d < scale_dim_; ++d) {
+      ds_min = std::min(ds_min, scale_diff[d]);
+      ds_max = std::max(ds_max, scale_diff[d]);
+    }
+  }
+  if (need_dbias) {
+    for (int d = 0; d < scale_dim_; ++d) {
+      db_min = std::min(db_min, bias_diff[d]);
+      db_max = std::max(db_max, bias_diff[d]);
+    }
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  std::string extra;
+  if (need_dx) {
+    extra += " dx=[" + std::to_string(dx_min) + ", " + std::to_string(dx_max) + "]";
+  }
+  if (need_dscale) {
+    extra += " dscale=[" + std::to_string(ds_min) + ", " + std::to_string(ds_max) + "]";
+  }
+  if (need_dbias) {
+    extra += " dbias=[" + std::to_string(db_min) + ", " + std::to_string(db_max) + "]";
+  }
+
+  CAFFE_FFI_LOG_INFO() << "[SCALE-PERF] " << this->name()
+                       << " Scale backward: outer_dim=" << outer_dim_
+                       << " scale_dim=" << scale_dim_
+                       << " inner_dim=" << inner_dim_
+                       << extra
                        << " time=" << elapsed_us << "us";
 }
 

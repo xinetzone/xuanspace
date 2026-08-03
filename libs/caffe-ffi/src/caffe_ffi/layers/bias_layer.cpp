@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <limits>
 #include <sstream>
 #include <vector>
@@ -178,6 +179,101 @@ void BiasLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " bias=[" << b_min << ", " << b_max << "]"
+                       << " time=" << elapsed_us << "us";
+}
+
+void BiasLayer::Backward_cpu(const std::vector<Blob*>& top,
+                              const std::vector<bool>& propagate_down,
+                              const std::vector<Blob*>& bottom) {
+  const float* top_diff = top[0]->cpu_diff();
+  const int count = static_cast<int>(bottom[0]->count());
+  const bool bias_from_bottom = (bottom.size() > 1);
+  const bool need_dx = propagate_down[0];
+  const bool need_dbias = bias_from_bottom
+      ? propagate_down[1]
+      : (this->blobs_.size() >= 1 && this->param_propagate_down_[0]);
+
+  CAFFE_FFI_LAYER_LOG << "Bias Backward_cpu: count=" << count
+                      << " outer_dim_=" << outer_dim_
+                      << " bias_dim_=" << bias_dim_
+                      << " inner_dim_=" << inner_dim_
+                      << " need_dx=" << need_dx
+                      << " need_dbias=" << need_dbias
+                      << " bias_from_bottom=" << bias_from_bottom;
+
+  if (!need_dx && !need_dbias) {
+    CAFFE_FFI_LAYER_LOG << "Bias Backward_cpu: no gradients needed, skipping";
+    return;
+  }
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  float* bottom_diff = need_dx ? bottom[0]->cpu_mutable_diff() : nullptr;
+  float* bias_diff = nullptr;
+  if (need_dbias) {
+    bias_diff = bias_from_bottom ? bottom[1]->cpu_mutable_diff()
+                                 : this->blobs_[0]->cpu_mutable_diff();
+    std::memset(bias_diff, 0, sizeof(float) * bias_dim_);
+  }
+
+  // Value-range tracking for diagnostics
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+  float db_min = std::numeric_limits<float>::max();
+  float db_max = -std::numeric_limits<float>::max();
+
+  // Single-pass triple loop: compute dX and d_bias simultaneously
+  // Forward: y[n,d,i] = x[n,d,i] + b[d]
+  // Backward:
+  //   dX[n,d,i] = dy[n,d,i]           (∂y/∂x = 1, gradient passes through)
+  //   d_bias[d] += dy[n,d,i]           (∂y/∂b = 1, sum over broadcast dims n,i)
+  for (int n = 0; n < outer_dim_; ++n) {
+    for (int d = 0; d < bias_dim_; ++d) {
+      float db_acc = 0.0f;
+      for (int i = 0; i < inner_dim_; ++i) {
+        const int idx = n * bias_dim_ * inner_dim_ + d * inner_dim_ + i;
+        const float dy_val = top_diff[idx];
+
+        // dX = dy (identity, gradient passes through directly)
+        if (need_dx) {
+          bottom_diff[idx] = dy_val;
+          dx_min = std::min(dx_min, dy_val);
+          dx_max = std::max(dx_max, dy_val);
+        }
+
+        // Accumulate d_bias
+        db_acc += dy_val;
+      }
+      if (need_dbias) {
+        bias_diff[d] += db_acc;
+      }
+    }
+  }
+
+  // Compute bias_diff range
+  if (need_dbias) {
+    for (int d = 0; d < bias_dim_; ++d) {
+      db_min = std::min(db_min, bias_diff[d]);
+      db_max = std::max(db_max, bias_diff[d]);
+    }
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
+
+  std::string extra;
+  if (need_dx) {
+    extra += " dx=[" + std::to_string(dx_min) + ", " + std::to_string(dx_max) + "]";
+  }
+  if (need_dbias) {
+    extra += " dbias=[" + std::to_string(db_min) + ", " + std::to_string(db_max) + "]";
+  }
+
+  CAFFE_FFI_LOG_INFO() << "[BIAS-PERF] " << this->name()
+                       << " Bias backward: outer_dim=" << outer_dim_
+                       << " bias_dim=" << bias_dim_
+                       << " inner_dim=" << inner_dim_
+                       << extra
                        << " time=" << elapsed_us << "us";
 }
 
