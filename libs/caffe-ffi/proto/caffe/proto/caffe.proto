@@ -95,6 +95,7 @@ message LayerParameter {
 
   optional InputParameter input_param = 143;
   optional ReLUParameter relu_param = 123;
+  optional LeakyReLUParameter leaky_relu_param = 157;
   optional InnerProductParameter inner_product_param = 117;
   optional SoftmaxParameter softmax_param = 125;
   optional FlattenParameter flatten_param = 135;
@@ -189,6 +190,12 @@ message ReLUParameter {
     CUDNN = 2;
   }
   optional Engine engine = 2 [default = DEFAULT];
+}
+
+message LeakyReLUParameter {
+  // Slope applied to negative inputs. Matches ReLUParameter.negative_slope
+  // semantics but is a distinct layer type (x=0 is a C¹ kink when slope != 1).
+  optional float negative_slope = 1 [default = 0.01];
 }
 
 message InnerProductParameter {
