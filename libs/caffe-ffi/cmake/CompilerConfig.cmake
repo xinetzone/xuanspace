@@ -88,6 +88,10 @@ function(caffe_ffi_configure_target target_name)
   if(MSVC)
     message(STATUS "[caffe_ffi]   Compile options (MSVC): /W3 /WX /utf-8")
     target_compile_options(${target_name} ${ARG_VISIBILITY} /W3 /WX /utf-8)
+    if(CAFFE_FFI_ENABLE_ASAN)
+      message(STATUS "[caffe_ffi]   ASan: ENABLED (MSVC /fsanitize=address)")
+      target_compile_options(${target_name} ${ARG_VISIBILITY} /fsanitize=address)
+    endif()
   else()
     if(ARG_VISIBILITY STREQUAL "PUBLIC")
       # PUBLIC targets (shared library): export all symbols; let CMake visibility properties control visibility
@@ -102,6 +106,12 @@ function(caffe_ffi_configure_target target_name)
         -Wall -Wextra -Werror -Wno-unused-parameter
         -fvisibility=hidden              # 默认隐藏所有符号，防止 WEAK 符号泄漏
         -fvisibility-inlines-hidden      # 隐藏内联/模板实例化产生的 WEAK 符号
+      )
+    endif()
+    if(CAFFE_FFI_ENABLE_ASAN)
+      message(STATUS "[caffe_ffi]   ASan: ENABLED (GCC/Clang -fsanitize=address -fno-omit-frame-pointer)")
+      target_compile_options(${target_name} ${ARG_VISIBILITY}
+        -fsanitize=address -fno-omit-frame-pointer
       )
     endif()
   endif()
@@ -127,6 +137,14 @@ function(caffe_ffi_configure_target target_name)
     message(STATUS "[caffe_ffi]   Linker flags (GNU): -Wl,--exclude-libs,ALL")
     target_link_options(${target_name} ${ARG_VISIBILITY}
       -Wl,--exclude-libs,ALL
+    )
+  endif()
+
+  # ASan: 链接时附加 AddressSanitizer runtime（非 MSVC 使用 -fsanitize=address）
+  if(CAFFE_FFI_ENABLE_ASAN AND NOT MSVC)
+    message(STATUS "[caffe_ffi]   ASan link: -fsanitize=address")
+    target_link_options(${target_name} ${ARG_VISIBILITY}
+      -fsanitize=address
     )
   endif()
 endfunction()
