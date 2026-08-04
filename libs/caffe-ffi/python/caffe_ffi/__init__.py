@@ -13,6 +13,8 @@ from . import layer
 from . import net
 from . import io
 from . import sequence
+from . import solver
+from . import serialization
 
 from .io import (
     read_net,
@@ -20,6 +22,24 @@ from .io import (
     read_net_from_binary,
     net_from_param,
     net_param_from_string,
+)
+from .serialization import (
+    save_net,
+    load_net,
+    weights_to_dict,
+    dict_to_weights,
+    net_parameter_to_file,
+)
+from .solver import (
+    Optimizer,
+    SGD,
+    Adam,
+    LRScheduler,
+    StepLR,
+    MultiStepLR,
+    ExponentialLR,
+    CosineAnnealingLR,
+    Solver,
 )
 
 _logger = logging.getLogger("caffe_ffi")
@@ -180,11 +200,27 @@ __all__ = [
     "net",
     "io",
     "sequence",
+    "solver",
+    "serialization",
     "read_net",
     "read_net_from_prototxt",
     "read_net_from_binary",
     "net_from_param",
     "net_param_from_string",
+    "save_net",
+    "load_net",
+    "weights_to_dict",
+    "dict_to_weights",
+    "net_parameter_to_file",
+    "Optimizer",
+    "SGD",
+    "Adam",
+    "LRScheduler",
+    "StepLR",
+    "MultiStepLR",
+    "ExponentialLR",
+    "CosineAnnealingLR",
+    "Solver",
     "set_log_level",
     "get_log_level",
     "total_allocated_bytes",
