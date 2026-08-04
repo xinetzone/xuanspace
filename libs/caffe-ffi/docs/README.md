@@ -20,7 +20,8 @@ docs/
 ├── plans/                 # 开发计划与技术规范
 ├── retrospectives/        # 项目复盘报告
 ├── summaries/             # 任务总结与简报
-└── testing/               # 测试指南与规范
+├── testing/               # 测试指南与规范
+└── training/              # 训练指南与API参考（P4 训练工程化）
 ```
 
 ---
@@ -151,6 +152,17 @@ docs/
 | 文档 | 说明 |
 |------|------|
 | [TESTING_GUIDELINES.md](testing/TESTING_GUIDELINES.md) | 测试指南 |
+
+---
+
+## 🏋️ training/ — 训练指南与 API 参考
+
+P4 训练工程化（Solver/优化器/调度器/序列化）使用指南。
+
+| 文档 | 说明 |
+|------|------|
+| [TRAINING_GUIDE.md](training/TRAINING_GUIDE.md) | 训练指南（快速开始/优化器/调度器/Solver/序列化） |
+| [API_REFERENCE.md](training/API_REFERENCE.md) | 训练 API 参考（solver/serialization 模块） |
 
 ---
 
