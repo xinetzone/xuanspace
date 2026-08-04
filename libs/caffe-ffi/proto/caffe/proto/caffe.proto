@@ -122,6 +122,23 @@ message LayerParameter {
   optional InstanceNormParameter instance_norm_param = 159;
   optional MarginRankingParameter margin_ranking_param = 160;
   optional HingeParameter hinge_param = 161;
+  optional ThresholdParameter threshold_param = 162;
+  optional PowerParameter power_param = 163;
+  optional ClipParameter clip_param = 164;
+  optional ExpParameter exp_param = 165;
+  optional LogParameter log_param = 166;
+  optional SwishParameter swish_param = 167;
+  optional MVNParameter mvn_param = 168;
+  optional ReductionParameter reduction_param = 169;
+  optional TileParameter tile_param = 170;
+  optional Im2colParameter im2col_param = 171;
+  optional ArgMaxParameter argmax_param = 172;
+  optional SPPParameter spp_param = 173;
+  optional EmbedParameter embed_param = 174;
+  optional BatchReindexParameter batch_reindex_param = 175;
+  optional FilterParameter filter_param = 176;
+  optional SigmoidCrossEntropyLossParameter sigmoid_cross_entropy_loss_param = 177;
+  optional ParameterParameter parameter_param = 178;
 }
 
 message SigmoidParameter {
@@ -411,4 +428,130 @@ message HingeParameter {
   optional Norm norm = 1 [default = L1];
   // Axis along which the class scores are laid out (default 1 = channel in NCHW).
   optional int32 axis = 2 [default = 1];
+}
+
+// Threshold: y = (x > threshold) ? 1 : 0. x = threshold is mapped to 0.
+message ThresholdParameter {
+  optional float threshold = 1 [default = 0];
+}
+
+// Power: y = (shift + scale * x) ^ power.
+message PowerParameter {
+  optional float power = 1 [default = 1];
+  optional float scale = 2 [default = 1];
+  optional float shift = 3 [default = 0];
+}
+
+// Clip: y = min(max(x, lo), hi). If min/max not set, that bound is unbounded.
+message ClipParameter {
+  optional float min = 1;
+  optional float max = 2;
+}
+
+// Exp: y = base ^ (shift + scale * x). base == -1 means natural e.
+message ExpParameter {
+  optional float base = 1 [default = -1];
+  optional float scale = 2 [default = 1];
+  optional float shift = 3 [default = 0];
+}
+
+// Log: y = log_base(shift + scale * x). base == -1 means natural e.
+message LogParameter {
+  optional float base = 1 [default = -1];
+  optional float scale = 2 [default = 1];
+  optional float shift = 3 [default = 0];
+}
+
+// Swish: y = x * sigmoid(beta * x).
+message SwishParameter {
+  optional float beta = 1 [default = 1];
+}
+
+// MVN: mean/variance normalization over the spatial dims (optionally across channels).
+message MVNParameter {
+  optional bool normalize_variance = 1 [default = true];
+  optional bool across_channels = 2 [default = false];
+  optional float eps = 3 [default = 1e-9];
+}
+
+// Reduction: reduce the blob along `axis` with one of SUM/ASUM/SUMSQ/MEAN,
+// then scale the result by `coeff`.
+message ReductionParameter {
+  enum ReductionOp {
+    SUM = 1;
+    ASUM = 2;
+    SUMSQ = 3;
+    MEAN = 4;
+  }
+  optional ReductionOp operation = 1 [default = SUM];
+  optional int32 axis = 2 [default = 0];
+  optional float coeff = 3 [default = 1];
+}
+
+// Tile: replicate the input `tiles` times along `axis`.
+message TileParameter {
+  optional int32 axis = 1 [default = 1];
+  optional int32 tiles = 2 [default = 1];
+}
+
+// Im2col: standalone im2col transform (kernel/pad/stride/dilation).
+message Im2colParameter {
+  repeated uint32 kernel_size = 1;
+  optional uint32 kernel_h = 11;
+  optional uint32 kernel_w = 12;
+  repeated uint32 pad = 3;
+  optional uint32 pad_h = 9;
+  optional uint32 pad_w = 10;
+  repeated uint32 stride = 4;
+  optional uint32 stride_h = 13;
+  optional uint32 stride_w = 14;
+  repeated uint32 dilation = 5;
+  optional uint32 dilation_h = 15;
+  optional uint32 dilation_w = 16;
+}
+
+// ArgMax: return the indices (and optionally values) of the top_k largest entries.
+message ArgMaxParameter {
+  optional bool out_max_val = 1 [default = true];
+  optional uint32 top_k = 2 [default = 1];
+  optional int32 axis = 3 [default = 1];
+}
+
+// SPP: spatial pyramid pooling (pyramid_height levels, average or max).
+message SPPParameter {
+  enum PoolMethod {
+    MAX = 0;
+    AVE = 1;
+    STOCHASTIC = 2;
+  }
+  optional uint32 pyramid_height = 1;
+  optional PoolMethod pool = 2 [default = MAX];
+}
+
+// Embed: embedding / lookup layer with optional bias.
+message EmbedParameter {
+  optional uint32 num_output = 1;
+  optional uint32 input_dim = 2;
+  optional bool bias_term = 3 [default = true];
+  optional FillerParameter weight_filler = 4;
+  optional FillerParameter bias_filler = 5;
+}
+
+// BatchReindex: reorder the batch dimension according to an index blob.
+message BatchReindexParameter {
+}
+
+// Filter: drop bottom blobs whose names are not listed in top_names.
+message FilterParameter {
+}
+
+// SigmoidCrossEntropy loss: multi-label binary cross-entropy with a numerically
+// stable sigmoid. No dedicated parameters.
+message SigmoidCrossEntropyLossParameter {
+}
+
+// Parameter: a learnable parameter layer exposing a single trainable blob
+// (no bottom, one top). The shape is given by `shape`.
+message ParameterParameter {
+  optional BlobShape shape = 1;
 }
