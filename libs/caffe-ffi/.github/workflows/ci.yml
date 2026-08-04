@@ -122,6 +122,7 @@ jobs:
             -DCAFFE_FFI_ENABLE_DEBUG_LOG=${{ matrix.enable_debug_log }}
             -DCAFFE_FFI_BUILD_TESTS=OFF
             -DCAFFE_FFI_ENABLE_COW=ON
+            -DCAFFE_FFI_ENABLE_COW_PHASE3=ON
           KMP_DUPLICATE_LIB_OK: TRUE
         run: |
           pip install --no-build-isolation -v -e .
@@ -279,7 +280,8 @@ jobs:
             -DCAFFE_USE_BLAS=OFF \
             -DCAFFE_FFI_ENABLE_DEBUG_LOG=ON \
             -DCAFFE_FFI_BUILD_TESTS=ON \
-            -DCAFFE_FFI_ENABLE_COW=ON
+            -DCAFFE_FFI_ENABLE_COW=ON \
+            -DCAFFE_FFI_ENABLE_COW_PHASE3=ON
 
       - name: Build C++ targets
         run: |
@@ -368,6 +370,7 @@ jobs:
             -DCAFFE_USE_BLAS=OFF
             -DCAFFE_FFI_BUILD_TESTS=OFF
             -DCAFFE_FFI_ENABLE_COW=ON
+            -DCAFFE_FFI_ENABLE_COW_PHASE3=ON
         run: |
           pip install --no-build-isolation -e .
 
