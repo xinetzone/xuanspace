@@ -116,6 +116,10 @@ void RecurrentLayer::Backward_cpu(const std::vector<Blob*>& top,
     float* dx_t = bottom_diff + t * N_ * D_;
     BackwardStep(t, x_t, h_prev, dy_t, dx_t, dh_next);
   }
+
+  // Subclass-specific finalization (e.g. LSTM scatter of accumulated packed
+  // weight gradients into blobs_[0] diff, exactly once).
+  BackwardEnd();
 }
 
 }  // namespace caffe_ffi

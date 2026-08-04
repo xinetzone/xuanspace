@@ -42,6 +42,7 @@ class LSTMLayer : public RecurrentLayer {
   void LayerSetUpStep(const std::vector<Blob*>& bottom) override;
   void ReshapeStep() override;
   void BackwardStart() override;
+  void BackwardEnd() override;
   void ForwardStep(int t, const float* x_t, float* h_t) override;
   void BackwardStep(int t, const float* x_t, const float* h_prev,
                     const float* dy_t, float* dx_t, float* dh_next) override;

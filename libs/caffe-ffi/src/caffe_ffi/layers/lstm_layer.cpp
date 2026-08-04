@@ -145,15 +145,18 @@ void LSTMLayer::BackwardStep(int t, const float* x_t, const float* h_prev,
   const float* W_hh = W_hh_->cpu_data();
   const float* cache = lstm_cache_[t]->cpu_data();
   // c_{t-1}: for t==0 use the zeroed h_t_ buffer (c_0 = 0); else the cached c.
-  const float* c_prev =
-      (t == 0) ? h_t_->cpu_data() : lstm_cache_[t - 1]->cpu_data() + kCacheC * H_;
+  // The cache layout is (N, 6H) = [i, f, o, g, c, tanh(c)], so the cell state
+  // of batch i in the previous step sits at i*6H + kCacheC*H_ (NOT i*H_).
+  const float* cache_prev = (t == 0) ? h_t_->cpu_data() : lstm_cache_[t - 1]->cpu_data();
+  const bool c_prev_zero = (t == 0);
   float* dgates = dgates_->cpu_mutable_data();
   float* dc_next = dc_next_->cpu_mutable_data();
 
   // Per-cell gate gradients (following the numpy lstm_backward formula).
   for (int i = 0; i < N_; ++i) {
     const float* cb = cache + i * 6 * H_;
-    const float* cp = c_prev + i * H_;
+    const float* cp =
+        c_prev_zero ? (cache_prev + i * H_) : (cache_prev + i * 6 * H_ + kCacheC * H_);
     const float* dy = dy_t + i * H_;
     const float* dh_in = dh_next + i * H_;
     const float* dc_in = dc_next + i * H_;
@@ -194,14 +197,9 @@ void LSTMLayer::BackwardStep(int t, const float* x_t, const float* h_prev,
   caffe_cpu_gemm_fp32(true, false, 4 * H_, H_, N_, 1.0f, dgates, h_prev, 1.0f,
                       dW_hh_->cpu_mutable_data());
 
-  // Scatter the staged weight gradients into the packed blobs_[0] diff.
-  float* W_diff = this->blobs_[0]->cpu_mutable_diff();
-  const float* dWih = dW_ih_->cpu_data();
-  const float* dWhh = dW_hh_->cpu_data();
-  for (int r = 0; r < 4 * H_; ++r) {
-    for (int c = 0; c < D_; ++c) W_diff[r * (D_ + H_) + c] += dWih[r * D_ + c];
-    for (int c = 0; c < H_; ++c) W_diff[r * (D_ + H_) + D_ + c] += dWhh[r * H_ + c];
-  }
+  // NOTE: the packed-weight scatter (dW_ih_/dW_hh_ -> blobs_[0] diff) is done
+  // once in BackwardEnd(), after the whole BPTT loop, to avoid counting the
+  // accumulated dW_{ih,hh} more than once.
 
   // db (4H) += sum(dgates) over batch.
   float* b_diff = this->blobs_[1]->cpu_mutable_diff();
@@ -215,6 +213,20 @@ void LSTMLayer::BackwardStep(int t, const float* x_t, const float* h_prev,
   caffe_cpu_gemm_fp32(false, false, N_, D_, 4 * H_, 1.0f, dgates, W_ih, 0.0f, dx_t);
   // dh_next = dgates @ W_hh : (N, H) = (N, 4H) @ (4H, H)
   caffe_cpu_gemm_fp32(false, false, N_, H_, 4 * H_, 1.0f, dgates, W_hh, 0.0f, dh_next);
+}
+
+void LSTMLayer::BackwardEnd() {
+  // Scatter the fully-accumulated packed-weight gradients into blobs_[0] diff
+  // exactly once (after the BPTT loop). dW_ih_/dW_hh_ hold the exact sum over
+  // all time steps; scattering inside BackwardStep would add the running sum
+  // T times and over-count by a factor of T.
+  float* W_diff = this->blobs_[0]->cpu_mutable_diff();
+  const float* dWih = dW_ih_->cpu_data();
+  const float* dWhh = dW_hh_->cpu_data();
+  for (int r = 0; r < 4 * H_; ++r) {
+    for (int c = 0; c < D_; ++c) W_diff[r * (D_ + H_) + c] += dWih[r * D_ + c];
+    for (int c = 0; c < H_; ++c) W_diff[r * (D_ + H_) + D_ + c] += dWhh[r * H_ + c];
+  }
 }
 
 REGISTER_LAYER_CLASS(LSTM);

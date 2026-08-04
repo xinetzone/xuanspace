@@ -73,6 +73,10 @@ class RecurrentLayer : public Layer {
                             const float* dy_t, float* dx_t, float* dh_next) = 0;
   // Optional hook to reset internal gradient accumulators before the BPTT loop.
   virtual void BackwardStart() {}
+  // Optional hook to finalize internal gradient accumulators after the BPTT loop.
+  // Used by LSTM to scatter its separately-accumulated packed-weight gradients
+  // into blobs_[0] diff exactly once (avoids T-fold over-counting).
+  virtual void BackwardEnd() {}
 
   // ---- Dimensions ----
   int num_steps_ = 1;  // configured unroll length (recurrent_param().num_steps())
