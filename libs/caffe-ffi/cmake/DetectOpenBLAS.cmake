@@ -111,9 +111,19 @@ function(detect_openblas)
     set(_lib_names libopenblas openblas)
     set(_lib_suffixes lib lib64 Library/lib Library/bin)
   else()
-    set(_include_suffixes include include/openblas)
+    # 注意：Debian/Ubuntu 的多架构（multiarch）系统包把头文件放在
+    # /usr/include/<triplet>/ 下（如 x86_64-linux-gnu/cblas.h），而非直接的
+    # include/ 或 include/openblas/。若不加入该后缀，系统 libopenblas-dev 的
+    # cblas.h 无法被 find_path 命中，DetectOpenBLAS 会误判 BLAS 未找到而回退
+    # 到纯 C++ fallback。此处补上 x86_64-linux-gnu 及 openblas-pthread 子目录。
+    set(_include_suffixes
+      include
+      include/openblas
+      x86_64-linux-gnu
+      x86_64-linux-gnu/openblas-pthread
+    )
     set(_lib_names openblas openblasp openblas.so.0)
-    set(_lib_suffixes lib lib64)
+    set(_lib_suffixes lib lib64 x86_64-linux-gnu)
   endif()
 
   # ── Phase 1: 在提示路径中精确搜索 ──
