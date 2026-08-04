@@ -37,14 +37,27 @@ void BiasLayer::LayerSetUp(const std::vector<Blob*>& bottom,
       bias_shape.push_back(bottom[0]->shape(axis_ + i));
     }
     this->blobs_[0] = make_object<Blob>(bias_shape);
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, this->blobs_[0]->cpu_mutable_data());
+    // Apply bias_param.filler() if specified (default to 0.0, the identity bias).
+    float bias_value = 0.0f;
+    if (param.has_filler()) {
+      const caffe::FillerParameter& filler = param.filler();
+      if (filler.type() == "constant") {
+        bias_value = filler.value();
+      } else {
+        CAFFE_FFI_LOG_WARN() << "[BIAS-FILLER] filler type '" << filler.type()
+                             << "' not implemented, using constant 0.0 for bias";
+      }
+    }
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), bias_value,
+                   this->blobs_[0]->cpu_mutable_data());
 
     std::ostringstream bias_shape_ss;
     for (size_t i = 0; i < bias_shape.size(); ++i) {
       if (i > 0) bias_shape_ss << ", ";
       bias_shape_ss << bias_shape[i];
     }
-    CAFFE_FFI_TENSOR_LOG << "Bias: created bias blob shape=[" << bias_shape_ss.str() << "] (initialized to 0.0)";
+    CAFFE_FFI_TENSOR_LOG << "Bias: created bias blob shape=[" << bias_shape_ss.str()
+                         << "] (filler value=" << bias_value << ")";
   } else if (this->blobs_.size() > 0) {
     CAFFE_FFI_LAYER_LOG << "Bias: using pre-loaded weights, blobs_.size=" << this->blobs_.size();
   } else {
@@ -128,7 +141,6 @@ void BiasLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const float* bias_data = (bottom.size() > 1) ? bottom[1]->cpu_data()
                           : this->blobs_[0]->cpu_data();
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_mutable_data();
   const int count = static_cast<int>(bottom[0]->count());
 
   CAFFE_FFI_LAYER_LOG << "Bias Forward: count=" << count
@@ -136,6 +148,32 @@ void BiasLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " bias_dim_=" << bias_dim_
                       << " inner_dim_=" << inner_dim_
                       << " bias_from_bottom=" << (bottom.size() > 1);
+
+  // TS31-B4 COW promotion: when Bias degenerates to identity (bias all 0.0),
+  // replace the O(n) memcpy with O(1) refcount sharing. The COW clone is
+  // deferred to the first downstream mutable access. NOTE: the identity check
+  // must run BEFORE cpu_mutable_data(), which would otherwise trigger a COW
+  // clone on a shared tensor.
+  const bool inplace = (bottom[0] == top[0]);
+  bool identity = !inplace;
+  if (identity) {
+    for (int i = 0; i < bias_dim_; ++i) {
+      if (bias_data[i] != 0.0f) { identity = false; break; }
+    }
+  }
+  if (identity) {
+    top[0]->ShareData(bottom[0]);
+    cow_identity_ = true;
+    CAFFE_FFI_LOG_INFO() << "[BIAS-COW] " << this->name()
+                         << " Bias forward: IDENTITY (bias=0) -> COW zero-copy"
+                         << " count=" << count
+                         << " shared_ptr=" << static_cast<const void*>(top[0]->cpu_data())
+                         << " bottom_ptr=" << static_cast<const void*>(bottom_data);
+    return;
+  }
+  cow_identity_ = false;
+
+  float* top_data = top[0]->cpu_mutable_data();
 
   auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -206,9 +244,28 @@ void BiasLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
 
+  // TS31-B4 COW promotion: when the forward used the identity short-circuit
+  // (bias=0), the input gradient is a pure identity pass-through (dX = dy).
+  // Reuse the O(1) ShareDiff zero-copy for the *input* gradient instead of an
+  // O(n) memcpy. Note: d_bias is NOT zero in general (it is the sum of dy over
+  // broadcast dims), so it must still be computed below.
+  const bool inplace = (bottom[0] == top[0]);
+  const bool identity_dx = cow_identity_ && need_dx && !inplace;
+  if (identity_dx) {
+    bottom[0]->ShareDiff(top[0]);
+    CAFFE_FFI_LOG_INFO() << "[BIAS-COW] " << this->name()
+                         << " Bias backward: IDENTITY -> COW zero-copy diff (dx=dy)"
+                         << " count=" << count
+                         << " shared_ptr=" << static_cast<const void*>(bottom[0]->cpu_diff())
+                         << " top_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
+  }
+
   auto t_start = std::chrono::high_resolution_clock::now();
 
-  float* bottom_diff = need_dx ? bottom[0]->cpu_mutable_diff() : nullptr;
+  // When identity_dx, bottom's diff is already shared with top's diff
+  // (zero-copy), so we must NOT write to it via cpu_mutable_diff() (which
+  // would trigger a COW unshare). d_bias is still accumulated normally.
+  float* bottom_diff = (need_dx && !identity_dx) ? bottom[0]->cpu_mutable_diff() : nullptr;
   float* bias_diff = nullptr;
   if (need_dbias) {
     bias_diff = bias_from_bottom ? bottom[1]->cpu_mutable_diff()
@@ -234,8 +291,10 @@ void BiasLayer::Backward_cpu(const std::vector<Blob*>& top,
         const int idx = n * bias_dim_ * inner_dim_ + d * inner_dim_ + i;
         const float dy_val = top_diff[idx];
 
-        // dX = dy (identity, gradient passes through directly)
-        if (need_dx) {
+        // dX = dy (identity, gradient passes through directly). When
+        // identity_dx, the gradient is already shared via ShareDiff (zero-copy),
+        // so no write is needed here.
+        if (need_dx && !identity_dx) {
           bottom_diff[idx] = dy_val;
           dx_min = std::min(dx_min, dy_val);
           dx_max = std::max(dx_max, dy_val);

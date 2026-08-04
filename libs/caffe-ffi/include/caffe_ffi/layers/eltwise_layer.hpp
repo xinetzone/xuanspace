@@ -33,6 +33,9 @@ class EltwiseLayer : public Layer {
   EltwiseOp op_;
   std::vector<float> coeffs_;
   std::vector<int> max_idx_;
+  // True when the last Forward used the COW identity short-circuit (single
+  // bottom & coeff == 1), so Backward can zero-copy ShareDiff.
+  bool cow_identity_ = false;
 };
 
 }  // namespace caffe_ffi

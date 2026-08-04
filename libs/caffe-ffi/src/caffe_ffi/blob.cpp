@@ -232,6 +232,15 @@ Tensor Blob::mutable_data_tensor() {
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << data_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
+    CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_
+                         << " mutable_data_tensor() COW clone (data)"
+                         << " role=" << role
+                         << " old_refcount=" << refcount
+                         << " old_ptr=" << old_ptr
+                         << " new_ptr=" << data_tensor_.data_ptr()
+                         << " nbytes=" << nbytes
+                         << " -> data_shared_=" << (data_shared_ ? "true" : "false")
+                         << " (sharing broken, now private owner)";
   }
   if (data_tensor_.defined()) {
     CAFFE_FFI_TENSOR_LOG << "mutable_data_tensor() Blob#" << id_ << " this=" << this
@@ -289,6 +298,15 @@ Tensor Blob::mutable_diff_tensor() {
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << diff_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
+    CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_
+                         << " mutable_diff_tensor() COW clone (diff)"
+                         << " role=" << role
+                         << " old_refcount=" << refcount
+                         << " old_ptr=" << old_ptr
+                         << " new_ptr=" << diff_tensor_.data_ptr()
+                         << " nbytes=" << nbytes
+                         << " -> diff_shared_=" << (diff_shared_ ? "true" : "false")
+                         << " (sharing broken, now private owner)";
   }
   if (diff_tensor_.defined()) {
     CAFFE_FFI_TENSOR_LOG << "mutable_diff_tensor() Blob#" << id_ << " this=" << this
@@ -312,6 +330,12 @@ void Blob::ShareData(const Blob* other) {
                                                              static_cast<size_t>(other->data_tensor_.ndim())))
                     << " nbytes=" << TensorNBytes(other->data_tensor_)
                     << " (zero-copy: refcount shared, no memcpy)";
+
+  CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_ << " ShareData from Blob#" << other->id_
+                       << " old_ptr=" << PtrToString(data_tensor_.defined() ? data_tensor_.data_ptr() : nullptr)
+                       << " new_ptr=" << PtrToString(other->data_tensor_.data_ptr())
+                       << " nbytes=" << TensorNBytes(other->data_tensor_)
+                       << " (zero-copy: refcount shared, no memcpy)";
 
   // Phase 3.1: Clear lazy allocation flag when ShareData replaces the tensor
   is_lazy_allocated_ = false;
@@ -338,6 +362,12 @@ void Blob::ShareDiff(const Blob* other) {
                     << " new_diff_ptr=" << PtrToString(other->diff_tensor_.data_ptr())
                     << " nbytes=" << TensorNBytes(other->diff_tensor_)
                     << " (zero-copy: refcount shared, no memcpy)";
+
+  CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_ << " ShareDiff from Blob#" << other->id_
+                       << " old_ptr=" << PtrToString(diff_tensor_.defined() ? diff_tensor_.data_ptr() : nullptr)
+                       << " new_ptr=" << PtrToString(other->diff_tensor_.data_ptr())
+                       << " nbytes=" << TensorNBytes(other->diff_tensor_)
+                       << " (zero-copy: refcount shared, no memcpy)";
 
   // Phase 3.1: Clear lazy allocation flag
   is_lazy_allocated_ = false;
@@ -446,6 +476,13 @@ void* Blob::UnshareData() {
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << data_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
+    CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_
+                         << " UnshareData() explicit COW clone (data)"
+                         << " old_refcount=" << refcount
+                         << " old_ptr=" << old_ptr
+                         << " new_ptr=" << data_tensor_.data_ptr()
+                         << " nbytes=" << nbytes
+                         << " -> now private owner";
   }
   return data_tensor_.defined() ? data_tensor_.data_ptr() : nullptr;
 }
@@ -464,6 +501,13 @@ void* Blob::UnshareDiff() {
                       << " old_ptr=" << old_ptr
                       << " new_ptr=" << diff_tensor_.data_ptr()
                       << " nbytes=" << nbytes;
+    CAFFE_FFI_LOG_INFO() << "[COW] Blob#" << id_
+                         << " UnshareDiff() explicit COW clone (diff)"
+                         << " old_refcount=" << refcount
+                         << " old_ptr=" << old_ptr
+                         << " new_ptr=" << diff_tensor_.data_ptr()
+                         << " nbytes=" << nbytes
+                         << " -> now private owner";
   }
   return diff_tensor_.defined() ? diff_tensor_.data_ptr() : nullptr;
 }

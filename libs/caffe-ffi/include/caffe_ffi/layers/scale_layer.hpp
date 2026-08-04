@@ -34,6 +34,9 @@ class ScaleLayer : public Layer {
   int num_axes_;
   bool bias_term_;
   int outer_dim_, scale_dim_, inner_dim_;
+  // True when the last Forward used the COW identity short-circuit (scale all
+  // 1.0 and no bias / bias all 0.0), so Backward can zero-copy ShareDiff.
+  bool cow_identity_ = false;
 };
 
 }  // namespace caffe_ffi

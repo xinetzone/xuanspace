@@ -701,3 +701,306 @@ layer {
         data_blob = net.blob_by_name("data")
         # Inplace: same blob, no shared-state flag (bottom==top).
         np.testing.assert_array_equal(data_blob.to_numpy(), x)
+
+
+# ─── Prototxt builders for TS31-B4 identity-layer COW promotion ──────────
+
+def _make_scale_identity_prototxt(dims, bias_term=True) -> str:
+    """Input -> Scale with scale=1.0 and bias=0.0 (identity)."""
+    bias_str = "true" if bias_term else "false"
+    bias_filler = "bias_filler { type: \"constant\" value: 0.0 }" if bias_term else ""
+    return f"""name: "scale_cow"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "scale"
+  type: "Scale"
+  bottom: "data"
+  top: "scale_out"
+  scale_param {{
+    axis: 1
+    num_axes: 1
+    bias_term: {bias_str}
+    filler {{ type: "constant" value: 1.0 }}
+    {bias_filler}
+  }}
+}}
+"""
+
+
+def _make_scale_nonidentity_prototxt(dims) -> str:
+    """Input -> Scale with scale=2.0 (non-identity)."""
+    return f"""name: "scale_cow_nonid"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "scale"
+  type: "Scale"
+  bottom: "data"
+  top: "scale_out"
+  scale_param {{
+    axis: 1
+    num_axes: 1
+    bias_term: false
+    filler {{ type: "constant" value: 2.0 }}
+  }}
+}}
+"""
+
+
+def _make_bias_identity_prototxt(dims) -> str:
+    """Input -> Bias with bias=0.0 (identity)."""
+    return f"""name: "bias_cow"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "bias"
+  type: "Bias"
+  bottom: "data"
+  top: "bias_out"
+  bias_param {{
+    axis: 1
+    num_axes: 1
+    filler {{ type: "constant" value: 0.0 }}
+  }}
+}}
+"""
+
+
+def _make_bias_nonidentity_prototxt(dims) -> str:
+    """Input -> Bias with bias=2.0 (non-identity)."""
+    return f"""name: "bias_cow_nonid"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "bias"
+  type: "Bias"
+  bottom: "data"
+  top: "bias_out"
+  bias_param {{
+    axis: 1
+    num_axes: 1
+    filler {{ type: "constant" value: 2.0 }}
+  }}
+}}
+"""
+
+
+def _make_eltwise_identity_prototxt(dims, coeff=1.0) -> str:
+    """Input -> Eltwise (single bottom, coeff)."""
+    return f"""name: "eltwise_cow"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "eltwise"
+  type: "Eltwise"
+  bottom: "data"
+  top: "eltwise_out"
+  eltwise_param {{
+    operation: SUM
+    coeff: {coeff}
+  }}
+}}
+"""
+
+
+def _make_scale_relu_prototxt(dims) -> str:
+    """Input -> Scale(identity) -> in-place ReLU on scale_out."""
+    return f"""name: "scale_cow_relu"
+input: "data"
+input_dim: {dims[0]}
+input_dim: {dims[1]}
+layer {{
+  name: "scale"
+  type: "Scale"
+  bottom: "data"
+  top: "scale_out"
+  scale_param {{
+    axis: 1
+    num_axes: 1
+    bias_term: false
+    filler {{ type: "constant" value: 1.0 }}
+  }}
+}}
+layer {{
+  name: "relu"
+  type: "ReLU"
+  bottom: "scale_out"
+  top: "scale_out"
+}}
+"""
+
+
+@require_cpp_extension
+class TestIdentityLayerCOWBehavior:
+    """TS31-B4: COW zero-copy sharing promoted to identity layers.
+
+    Scale (scale=1, bias=0), Bias (bias=0), and single-bottom Eltwise
+    (coeff=1) all degenerate to identity (y = x). Their forward now shares
+    bottom's data via ShareData (O(1)) instead of an O(n) memcpy, and their
+    backward shares bottom's diff via ShareDiff. Non-identity parameters must
+    keep the original memcpy path (no COW sharing).
+    """
+
+    def test_scale_identity_forward_zerocopy(self, ptrace):
+        """Scale(scale=1, no bias) forward: top shares bottom's data pointer."""
+        net = net_from_param(net_param_from_string(
+            _make_scale_identity_prototxt((2, 8), bias_term=False)))
+        inp = np.random.RandomState(11).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(scale_cow_identity)"):
+            net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        scale_blob = net.blob_by_name("scale_out")
+        assert scale_blob.IsDataShared(), \
+            "Identity Scale: top must share data tensor (zero-copy)"
+        assert scale_blob.SharesDataWith(data_blob), \
+            "Identity Scale: top must share data with bottom"
+        assert scale_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, \
+            "Identity Scale: pointers must be equal (zero-copy)"
+        np.testing.assert_array_equal(scale_blob.to_numpy(), inp)
+
+    def test_scale_identity_with_bias_zero_zerocopy(self, ptrace):
+        """Scale(scale=1, bias=0) forward: also zero-copy."""
+        net = net_from_param(net_param_from_string(
+            _make_scale_identity_prototxt((2, 8), bias_term=True)))
+        inp = np.random.RandomState(12).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(scale_cow_bias_zero)"):
+            net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        scale_blob = net.blob_by_name("scale_out")
+        assert scale_blob.IsDataShared()
+        assert scale_blob.SharesDataWith(data_blob)
+        np.testing.assert_array_equal(scale_blob.to_numpy(), inp)
+
+    def test_scale_nonidentity_no_cow(self):
+        """Scale(scale=2.0) forward: real copy, no COW sharing."""
+        net = net_from_param(net_param_from_string(
+            _make_scale_nonidentity_prototxt((2, 8))))
+        inp = np.random.RandomState(13).randn(2, 8).astype(np.float32)
+        net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        scale_blob = net.blob_by_name("scale_out")
+        assert not scale_blob.IsDataShared(), \
+            "Non-identity Scale must not share data tensor"
+        assert not scale_blob.SharesDataWith(data_blob)
+        np.testing.assert_allclose(scale_blob.to_numpy(), 2.0 * inp, rtol=1e-6)
+
+    def test_scale_identity_backward_zerocopy(self, ptrace):
+        """Identity Scale backward: bottom diff shares top diff."""
+        net = net_from_param(net_param_from_string(
+            _make_scale_identity_prototxt((2, 8), bias_term=False)))
+        inp = np.random.RandomState(14).randn(2, 8).astype(np.float32)
+        dy = np.random.RandomState(15).randn(2, 8).astype(np.float32)
+        with ptrace("FwdBwd(scale_cow_bw)"):
+            net.Forward({"data": inp})
+            net.backward({"scale_out": dy})
+        data_blob = net.blob_by_name("data")
+        scale_blob = net.blob_by_name("scale_out")
+        assert data_blob.IsDiffShared(), \
+            "Identity Scale backward: bottom diff must be shared"
+        assert data_blob.SharesDiffWith(scale_blob), \
+            "Identity Scale backward: bottom diff shares top diff"
+        np.testing.assert_array_equal(data_blob.diff, dy)
+
+    def test_scale_downstream_inplace_relu_cow_isolation(self, ptrace):
+        """In-place ReLU downstream triggers COW; bottom data stays intact."""
+        dims = (2, 8)
+        net = net_from_param(net_param_from_string(
+            _make_scale_relu_prototxt(dims)))
+        inp = np.random.RandomState(16).randn(*dims).astype(np.float32)
+        with ptrace("Forward(scale_cow_relu)"):
+            net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        scale_blob = net.blob_by_name("scale_out")
+        assert not scale_blob.IsDataShared(), \
+            "In-place ReLU on scale_out must trigger COW, breaking sharing"
+        assert scale_blob.data_tensor.ctypes.data != data_blob.data_tensor.ctypes.data
+        np.testing.assert_array_equal(data_blob.to_numpy(), inp)
+        np.testing.assert_array_equal(scale_blob.to_numpy(), np.maximum(inp, 0))
+
+    def test_bias_identity_forward_zerocopy(self, ptrace):
+        """Bias(bias=0) forward: top shares bottom's data pointer."""
+        net = net_from_param(net_param_from_string(
+            _make_bias_identity_prototxt((2, 8))))
+        inp = np.random.RandomState(17).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(bias_cow_identity)"):
+            net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        bias_blob = net.blob_by_name("bias_out")
+        assert bias_blob.IsDataShared()
+        assert bias_blob.SharesDataWith(data_blob)
+        assert bias_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data
+        np.testing.assert_array_equal(bias_blob.to_numpy(), inp)
+
+    def test_bias_nonidentity_no_cow(self):
+        """Bias(bias=2.0) forward: real copy, no COW sharing."""
+        net = net_from_param(net_param_from_string(
+            _make_bias_nonidentity_prototxt((2, 8))))
+        inp = np.random.RandomState(18).randn(2, 8).astype(np.float32)
+        net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        bias_blob = net.blob_by_name("bias_out")
+        assert not bias_blob.IsDataShared()
+        assert not bias_blob.SharesDataWith(data_blob)
+        np.testing.assert_allclose(bias_blob.to_numpy(), inp + 2.0, rtol=1e-6)
+
+    def test_bias_identity_backward_zerocopy(self, ptrace):
+        """Identity Bias backward: bottom diff shares top diff."""
+        net = net_from_param(net_param_from_string(
+            _make_bias_identity_prototxt((2, 8))))
+        inp = np.random.RandomState(19).randn(2, 8).astype(np.float32)
+        dy = np.random.RandomState(20).randn(2, 8).astype(np.float32)
+        with ptrace("FwdBwd(bias_cow_bw)"):
+            net.Forward({"data": inp})
+            net.backward({"bias_out": dy})
+        data_blob = net.blob_by_name("data")
+        bias_blob = net.blob_by_name("bias_out")
+        assert data_blob.IsDiffShared()
+        assert data_blob.SharesDiffWith(bias_blob)
+        np.testing.assert_array_equal(data_blob.diff, dy)
+
+    def test_eltwise_identity_forward_zerocopy(self, ptrace):
+        """Single-bottom Eltwise(coeff=1) forward: top shares bottom's data."""
+        net = net_from_param(net_param_from_string(
+            _make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
+        inp = np.random.RandomState(21).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(eltwise_cow_identity)"):
+            net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        elt_blob = net.blob_by_name("eltwise_out")
+        assert elt_blob.IsDataShared()
+        assert elt_blob.SharesDataWith(data_blob)
+        assert elt_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data
+        np.testing.assert_array_equal(elt_blob.to_numpy(), inp)
+
+    def test_eltwise_nonidentity_no_cow(self):
+        """Single-bottom Eltwise(coeff=2.0) forward: real copy, no COW sharing."""
+        net = net_from_param(net_param_from_string(
+            _make_eltwise_identity_prototxt((2, 8), coeff=2.0)))
+        inp = np.random.RandomState(22).randn(2, 8).astype(np.float32)
+        net.Forward({"data": inp})
+        data_blob = net.blob_by_name("data")
+        elt_blob = net.blob_by_name("eltwise_out")
+        assert not elt_blob.IsDataShared()
+        assert not elt_blob.SharesDataWith(data_blob)
+        np.testing.assert_allclose(elt_blob.to_numpy(), 2.0 * inp, rtol=1e-6)
+
+    def test_eltwise_identity_backward_zerocopy(self, ptrace):
+        """Identity Eltwise backward: bottom diff shares top diff."""
+        net = net_from_param(net_param_from_string(
+            _make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
+        inp = np.random.RandomState(23).randn(2, 8).astype(np.float32)
+        dy = np.random.RandomState(24).randn(2, 8).astype(np.float32)
+        with ptrace("FwdBwd(eltwise_cow_bw)"):
+            net.Forward({"data": inp})
+            net.backward({"eltwise_out": dy})
+        data_blob = net.blob_by_name("data")
+        elt_blob = net.blob_by_name("eltwise_out")
+        assert data_blob.IsDiffShared()
+        assert data_blob.SharesDiffWith(elt_blob)
+        np.testing.assert_array_equal(data_blob.diff, dy)

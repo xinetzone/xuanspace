@@ -151,7 +151,6 @@ void EltwiseLayer::Reshape(const std::vector<Blob*>& bottom,
 void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                                 const std::vector<Blob*>& top) {
   const int64_t count = bottom[0]->count();
-  float* top_data = top[0]->cpu_mutable_data();
   const int num_bottoms = static_cast<int>(bottom.size());
 
   const char* op_name = "UNKNOWN";
@@ -164,6 +163,28 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "Eltwise Forward: op=" << op_name
                       << " num_bottoms=" << num_bottoms
                       << " count=" << count;
+
+  // TS31-B4 COW promotion: when Eltwise takes a single bottom with coeff == 1,
+  // every op degenerates to identity (y = x). Replace the O(n) memcpy with an
+  // O(1) refcount share; the COW clone is deferred to the first downstream
+  // mutable access. NOTE: the identity check must run BEFORE cpu_mutable_data(),
+  // which would otherwise trigger a COW clone on a shared tensor.
+  const bool inplace = (bottom[0] == top[0]);
+  bool identity = !inplace && num_bottoms == 1 && coeffs_[0] == 1.0f;
+  if (identity) {
+    top[0]->ShareData(bottom[0]);
+    cow_identity_ = true;
+    CAFFE_FFI_LOG_INFO() << "[ELTWISE-COW] " << this->name()
+                         << " Eltwise forward: IDENTITY (single bottom, coeff=1) -> COW zero-copy"
+                         << " op=" << op_name
+                         << " count=" << count
+                         << " shared_ptr=" << static_cast<const void*>(top[0]->cpu_data())
+                         << " bottom_ptr=" << static_cast<const void*>(bottom[0]->cpu_data());
+    return;
+  }
+  cow_identity_ = false;
+
+  float* top_data = top[0]->cpu_mutable_data();
 
   auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -289,6 +310,23 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
   if (!any_propagate) {
     CAFFE_FFI_LAYER_LOG << "Eltwise Backward_cpu: no gradients needed, skipping";
     return;
+  }
+
+  // TS31-B4 COW promotion: when the forward used the identity short-circuit
+  // (single bottom, coeff=1), the backward is a pure identity pass-through
+  // (dX = dy). Reuse the O(1) ShareDiff zero-copy instead of an O(n) memcpy.
+  if (cow_identity_ && propagate_down[0]) {
+    const bool inplace = (bottom[0] == top[0]);
+    if (!inplace) {
+      bottom[0]->ShareDiff(top[0]);
+      CAFFE_FFI_LOG_INFO() << "[ELTWISE-COW] " << this->name()
+                           << " Eltwise backward: IDENTITY -> COW zero-copy diff"
+                           << " op=" << op_name
+                           << " count=" << count
+                           << " shared_ptr=" << static_cast<const void*>(bottom[0]->cpu_diff())
+                           << " top_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
+      return;
+    }
   }
 
   auto t_start = std::chrono::high_resolution_clock::now();

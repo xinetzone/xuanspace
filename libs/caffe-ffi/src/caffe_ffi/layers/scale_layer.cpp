@@ -62,12 +62,35 @@ void ScaleLayer::LayerSetUp(const std::vector<Blob*>& bottom,
       this->blobs_.resize(1);
     }
     this->blobs_[0] = make_object<Blob>(scale_shape);
-    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 1.0f, this->blobs_[0]->cpu_mutable_data());
-    CAFFE_FFI_TENSOR_LOG << "Scale: created scale blob shape=[" << scale_shape_ss.str() << "] (initialized to 1.0)";
+    // Apply scale_param.filler() if specified (default to 1.0, the identity scale).
+    float scale_value = 1.0f;
+    if (param.has_filler()) {
+      const caffe::FillerParameter& filler = param.filler();
+      if (filler.type() == "constant") {
+        scale_value = filler.value();
+      } else {
+        CAFFE_FFI_LOG_WARN() << "[SCALE-FILLER] filler type '" << filler.type()
+                             << "' not implemented, using constant 1.0 for scale";
+      }
+    }
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), scale_value,
+                   this->blobs_[0]->cpu_mutable_data());
+    CAFFE_FFI_TENSOR_LOG << "Scale: created scale blob shape=[" << scale_shape_ss.str()
+                         << "] (filler value=" << scale_value << ")";
     if (bias_term_) {
       this->blobs_[1] = make_object<Blob>(scale_shape);
-      caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f, this->blobs_[1]->cpu_mutable_data());
-      CAFFE_FFI_TENSOR_LOG << "Scale: created bias blob shape=[" << scale_shape_ss.str() << "] (initialized to 0.0)";
+      // Apply scale_param.bias_filler() if specified (default to 0.0, the identity bias).
+      float bias_value = 0.0f;
+      if (param.has_bias_filler()) {
+        const caffe::FillerParameter& filler = param.bias_filler();
+        if (filler.type() == "constant") {
+          bias_value = filler.value();
+        }
+      }
+      caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), bias_value,
+                     this->blobs_[1]->cpu_mutable_data());
+      CAFFE_FFI_TENSOR_LOG << "Scale: created bias blob shape=[" << scale_shape_ss.str()
+                           << "] (filler value=" << bias_value << ")";
     }
   } else {
     CAFFE_FFI_LAYER_LOG << "Scale: scale factor from bottom[1]";
@@ -104,10 +127,10 @@ void ScaleLayer::Reshape(const std::vector<Blob*>& bottom,
 void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                               const std::vector<Blob*>& top) {
   const float* bottom_data = bottom[0]->cpu_data();
-  float* top_data = top[0]->cpu_mutable_data();
   const float* scale_data = (bottom.size() > 1) ? bottom[1]->cpu_data()
                            : this->blobs_[0]->cpu_data();
   const int count = static_cast<int>(bottom[0]->count());
+  const float* bias_data = (bias_term_ && this->blobs_.size() > 1) ? this->blobs_[1]->cpu_data() : nullptr;
 
   CAFFE_FFI_LAYER_LOG << "Scale Forward: count=" << count
                       << " outer_dim_=" << outer_dim_
@@ -115,6 +138,38 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " inner_dim_=" << inner_dim_
                       << " bias_term_=" << bias_term_
                       << " scale_from_bottom=" << (bottom.size() > 1);
+
+  // TS31-B4 COW promotion: when Scale degenerates to identity (scale all 1.0
+  // and no bias / bias all 0.0), replace the O(n) memcpy with O(1) refcount
+  // sharing. The COW clone is deferred to the first downstream mutable access,
+  // preserving the isolation semantics of the original memcpy. NOTE: the
+  // identity check must run BEFORE cpu_mutable_data(), which would otherwise
+  // trigger a COW clone on a shared tensor.
+  const bool inplace = (bottom[0] == top[0]);
+  bool identity = !inplace;
+  if (identity) {
+    for (int i = 0; i < scale_dim_; ++i) {
+      if (scale_data[i] != 1.0f) { identity = false; break; }
+    }
+  }
+  if (identity && bias_data) {
+    for (int i = 0; i < scale_dim_; ++i) {
+      if (bias_data[i] != 0.0f) { identity = false; break; }
+    }
+  }
+  if (identity) {
+    top[0]->ShareData(bottom[0]);
+    cow_identity_ = true;
+    CAFFE_FFI_LOG_INFO() << "[SCALE-COW] " << this->name()
+                         << " Scale forward: IDENTITY (scale=1, bias=0) -> COW zero-copy"
+                         << " count=" << count
+                         << " shared_ptr=" << static_cast<const void*>(top[0]->cpu_data())
+                         << " bottom_ptr=" << static_cast<const void*>(bottom_data);
+    return;
+  }
+  cow_identity_ = false;
+
+  float* top_data = top[0]->cpu_mutable_data();
 
   auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -133,7 +188,6 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     s_max = std::max(s_max, scale_data[i]);
   }
 
-  const float* bias_data = (bias_term_ && this->blobs_.size() > 1) ? this->blobs_[1]->cpu_data() : nullptr;
   if (bias_data) {
     for (int i = 0; i < scale_dim_; ++i) {
       b_min = std::min(b_min, bias_data[i]);
@@ -223,9 +277,29 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
 
+  // TS31-B4 COW promotion: when the forward used the identity short-circuit
+  // (scale=1, bias=0), the input gradient is a pure identity pass-through
+  // (dX = dy). Reuse the O(1) ShareDiff zero-copy for the *input* gradient
+  // instead of an O(n) memcpy. Note: d_scale and d_bias are NOT zero in
+  // general (they are sums over broadcast dims), so they must still be
+  // computed below.
+  const bool inplace = (bottom[0] == top[0]);
+  const bool identity_dx = cow_identity_ && need_dx && !inplace;
+  if (identity_dx) {
+    bottom[0]->ShareDiff(top[0]);
+    CAFFE_FFI_LOG_INFO() << "[SCALE-COW] " << this->name()
+                         << " Scale backward: IDENTITY -> COW zero-copy diff (dx=dy)"
+                         << " count=" << count
+                         << " shared_ptr=" << static_cast<const void*>(bottom[0]->cpu_diff())
+                         << " top_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
+  }
+
   auto t_start = std::chrono::high_resolution_clock::now();
 
-  float* bottom_diff = need_dx ? bottom[0]->cpu_mutable_diff() : nullptr;
+  // When identity_dx, bottom's diff is already shared with top's diff
+  // (zero-copy), so we must NOT write to it via cpu_mutable_diff() (which
+  // would trigger a COW unshare). d_scale/d_bias are still accumulated.
+  float* bottom_diff = (need_dx && !identity_dx) ? bottom[0]->cpu_mutable_diff() : nullptr;
   float* scale_diff = nullptr;
   if (need_dscale) {
     scale_diff = scale_from_bottom
@@ -263,8 +337,9 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
         const float dy_val = top_diff[idx];
         const float x_val = bottom_data[idx];
 
-        // dX = dy * s
-        if (need_dx) {
+        // dX = dy * s. When identity_dx, the gradient is already shared via
+        // ShareDiff (zero-copy), so no write is needed here.
+        if (need_dx && !identity_dx) {
           float dx_val = dy_val * factor;
           bottom_diff[idx] = dx_val;
           dx_min = std::min(dx_min, dx_val);
