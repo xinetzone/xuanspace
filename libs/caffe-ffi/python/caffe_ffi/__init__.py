@@ -12,6 +12,7 @@ from . import blob
 from . import layer
 from . import net
 from . import io
+from . import sequence
 
 from .io import (
     read_net,
@@ -178,6 +179,7 @@ __all__ = [
     "layer",
     "net",
     "io",
+    "sequence",
     "read_net",
     "read_net_from_prototxt",
     "read_net_from_binary",
