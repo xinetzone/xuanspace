@@ -36,6 +36,8 @@ docs/
 | [WSL2_BUILD_SETUP_GUIDE.md](setup/WSL2_BUILD_SETUP_GUIDE.md) | WSL2 构建设置指南 |
 | [PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md](setup/PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS.md) | Protobuf 兼容性与编译 flags 配置 |
 | [PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS_CHANGELOG_20260801.md](setup/PROTOBUF_COMPATIBILITY_AND_COMPILER_FLAGS_CHANGELOG_20260801.md) | Protobuf 兼容性变更日志（2026-08-01） |
+| [ASAN_REPORT_READING_GUIDE.md](setup/ASAN_REPORT_READING_GUIDE.md) | ASan 报告堆栈解读指南 |
+| [ASAN_VERIFICATION_REPORT_20260804.md](setup/ASAN_VERIFICATION_REPORT_20260804.md) | ASan 内存安全验证报告（2026-08-04） |
 
 ---
 
@@ -63,6 +65,7 @@ docs/
 | [SETSHAPEONLY_API_DESIGN.md](design/SETSHAPEONLY_API_DESIGN.md) | SetShapeOnly API 设计文档 |
 | [FFI_ZEROCOPY_PATTERN_EXTRACTION.md](design/FFI_ZEROCOPY_PATTERN_EXTRACTION.md) | FFI 零拷贝模式萃取 |
 | [caffe_slim_zerocopy_refactor_draft.md](design/caffe_slim_zerocopy_refactor_draft.md) | Caffe Slim 零拷贝重构草稿 |
+| [INPLACE_MEMORY_SAFETY_STANDARD.md](design/INPLACE_MEMORY_SAFETY_STANDARD.md) | In-place 操作内存安全规范 |
 
 ---
 
