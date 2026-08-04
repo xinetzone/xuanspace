@@ -418,6 +418,20 @@ class Layer(_Object):
             return list(_native_method(self, "blobs_array")())
         return list(getattr(self, "_py_blobs", []))
 
+    def set_train_mode(self, train: bool) -> None:
+        """Switch layer to training (True) or test/inference (False) mode.
+
+        Layers with train/test differences (e.g. Dropout) consult this flag.
+        """
+        if self._is_native:
+            _native_method(self, "set_train_mode")(bool(train))
+
+    def is_train(self) -> bool:
+        """Return True if the layer is in training mode, else False (inference)."""
+        if self._is_native:
+            return bool(_native_method(self, "is_train")())
+        return False
+
     def __repr__(self) -> str:
         name = self.name
         if name:

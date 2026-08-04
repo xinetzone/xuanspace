@@ -201,7 +201,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   refl::ObjectDef<Layer>()
       .def("type", &Layer::type, "Get layer type string (e.g., 'ReLU', 'InnerProduct')")
       .def("name", &Layer::name, "Get layer name")
-      .def("blobs_array", &Layer::blobs_array, "Get parameter blobs (weights/biases) as Array");
+      .def("blobs_array", &Layer::blobs_array, "Get parameter blobs (weights/biases) as Array")
+      .def("set_train_mode", &Layer::set_train_mode,
+           "Set run mode: true = training, false = test/inference (default)")
+      .def("is_train", &Layer::train_mode, "Get current run mode (true = training, false = inference)");
 
   refl::ObjectDef<Net>()
       .def("name", [](const Net* self) -> std::string { return std::string(self->name()); }, "Get network name")

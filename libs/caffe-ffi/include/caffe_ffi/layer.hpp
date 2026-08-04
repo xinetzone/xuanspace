@@ -135,6 +135,17 @@ class Layer : public Object {
     param_propagate_down_[param_id] = value;
   }
 
+  /**
+   * @brief Set the run mode: true = training, false = test/inference.
+   *
+   * Layers with different train/test behavior (e.g. Dropout) consult this flag
+   * in Forward_cpu/Backward_cpu. Default is inference (false), preserving pure
+   * evaluation semantics unless explicitly switched to training.
+   */
+  void set_train_mode(bool train_mode) { train_mode_ = train_mode; }
+  /** @brief Get the current run mode (true = training, false = inference). */
+  bool train_mode() const { return train_mode_; }
+
   TVM_FFI_DECLARE_OBJECT_INFO("caffe_ffi.Layer", Layer, Object);
 
  protected:
@@ -142,6 +153,7 @@ class Layer : public Object {
   std::vector<ObjectPtr<Blob>> blobs_;
   std::vector<bool> param_propagate_down_;
   std::vector<float> loss_;
+  bool train_mode_ = false;  // true = training, false = test/inference (default)
 
   virtual void Forward_cpu(const std::vector<Blob*>& bottom,
                            const std::vector<Blob*>& top) = 0;
