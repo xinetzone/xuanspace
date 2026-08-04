@@ -199,13 +199,13 @@ layer {
   name: "ip3"
   type: "InnerProduct"
   bottom: "x"
-  top: "x"
+  top: "x3"
   inner_product_param { num_output: 2 bias_term: true }
 }
 layer {
   name: "prob"
   type: "Softmax"
-  bottom: "x"
+  bottom: "x3"
   top: "prob"
 }
 """
@@ -458,6 +458,33 @@ class TestNetTopologies:
         np.testing.assert_allclose(
             out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
         )
+
+    def test_inplace_inner_product_shape_change_rejected(self, ptrace):
+        """In-place InnerProduct with output size != input size is rejected (ASan guard).
+
+        Regression guard for Task 17b: an in-place InnerProduct whose num_output
+        differs from the input feature dim would resize the shared bottom/top buffer,
+        causing Forward_cpu to read beyond the truncated buffer (heap-buffer-overflow
+        caught by ASan). The layer must reject this at Reshape time instead.
+        """
+        proto = """name: "inplace_ip_shape_change"
+layer {
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param { shape { dim: 2 dim: 4 } }
+}
+layer {
+  name: "ip"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "data"
+  inner_product_param { num_output: 2 bias_term: true }
+}
+"""
+        with ptrace("in-place InnerProduct shape-change → rejected"):
+            with pytest.raises((ValueError, RuntimeError)):
+                net_from_param(net_param_from_string(proto))
 
     def test_residual_eltwise_sum(self, ptrace):
         """Eltwise SUM of two independent processing paths (dual-path add) produces valid output."""

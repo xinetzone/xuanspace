@@ -159,6 +159,25 @@ void InnerProductLayer::Reshape(const std::vector<Blob*>& bottom,
       << "Input size incompatible with inner product parameters (layer '"
       << this->name() << "'). See [IP-K-MISMATCH] above.";
   M_ = static_cast<int>(bottom[0]->count(0, axis));
+
+  // In-place 安全守卫：InnerProduct 输出尺寸(N_)与输入尺寸(K_)通常不同，
+  // 若 top 与 bottom 共享同一 Blob（in-place），top[0]->Reshape(top_shape) 会
+  // 改变共享缓冲区大小，导致 Forward 时按旧尺寸（M*K）读取数据越界
+  // （heap-buffer-overflow）。当缓冲区被截断（N_ < K_）时越界读最易触发。
+  if (bottom[0] == top[0]) {
+    const int64_t bottom_count = bottom[0]->count();
+    const int64_t top_count = static_cast<int64_t>(M_) * static_cast<int64_t>(N_);
+    if (top_count != bottom_count) {
+      CAFFE_FFI_CHECK_VALUE_EQ(top_count, bottom_count)
+          << "InnerProduct in-place operation requires input and output to have "
+          << "the same total count (M*N == M*K), but got bottom_count=" << bottom_count
+          << " (M*K=" << M_ << "*" << K_ << ") vs top_count=" << top_count
+          << " (M*N=" << M_ << "*" << N_ << "). In-place InnerProduct with "
+          << "num_output != input feature dim is unsupported (would corrupt the "
+          << "shared buffer and cause out-of-bounds access).";
+    }
+  }
+
   std::vector<int64_t> top_shape;
   for (int i = 0; i < axis; ++i) {
     top_shape.push_back(bottom[0]->shape(i));
