@@ -122,4 +122,4 @@ Input (1×1×28×28)
 
 - [P3-E 实现计划](../../../../.agents/docs/retrospective/reports/code-optimization/retrospective-caffe-ffi-p3b-test-milestone-20260731/sections/17-p3e-backward-implementation-plan.md)
 - [P3 阶段总复盘](../../../../.agents/docs/retrospective/reports/code-optimization/retrospective-caffe-ffi-p3b-test-milestone-20260731/sections/19-p3-phase-retrospective.md)
-- [P4 路线图](../../../../.agents/docs/retrospective/reports/code-optimization/retrospective-caffe-ffi-p3b-test-milestone-20260731/sections/20-p4-roadmap.md)
+- [P4 路线图](../../../../../../.trae/specs/caffe-ffi-tvm-integration/p4-roadmap.md)
