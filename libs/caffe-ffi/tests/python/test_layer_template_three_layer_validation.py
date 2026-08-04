@@ -104,7 +104,7 @@ class TestReLULayers:
             t["shape"] = str(inp.shape)
             t["negative_slope"] = 0.0
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
             t["output_shape"] = str(result.shape)
@@ -123,7 +123,7 @@ class TestReLULayers:
                               [-3.0, -0.5]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         expected = np.zeros_like(inp)
@@ -139,7 +139,7 @@ class TestReLULayers:
             t["shape"] = str(inp.shape)
             t["negative_slope"] = 0.1
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         # 手算：x<0时输出 x*0.1
@@ -155,7 +155,7 @@ class TestReLULayers:
             inp = np.array([[[[-2.0, 0.0, 0.5, 100.0]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         expected = np.array([[[[0.0, 0.0, 0.5, 100.0]]]], dtype=np.float32)
@@ -182,7 +182,7 @@ class TestReLULayers:
             t["negative_slope"] = negative_slope
             t["input_range"] = f"[{inp.min():.2f}, {inp.max():.2f}]"
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         # Numpy参考实现对比
@@ -205,8 +205,8 @@ class TestReLULayers:
                 negative_slope=0.01, input_shape=(2, 4, 6, 6))
             t["shape"] = str(inp.shape)
 
-            out1 = net.Forward({in_name: inp})[out_name]
-            out2 = net.Forward({in_name: inp})[out_name]
+            out1 = net.forward({in_name: inp})[out_name]
+            out2 = net.forward({in_name: inp})[out_name]
 
         # 确定性验证：两次输出完全相等（逐元素激活无随机因素）
         np.testing.assert_array_equal(out1, out2)
@@ -223,11 +223,11 @@ class TestReLULayers:
             t["shape"] = "(1,2,3,3)"
 
             # 第一次forward
-            out_a = net.Forward({in_name: inp1})[out_name]
+            out_a = net.forward({in_name: inp1})[out_name]
             # 第二次用不同输入
-            out_b = net.Forward({in_name: inp2})[out_name]
+            out_b = net.forward({in_name: inp2})[out_name]
             # 第三次回到第一次输入，结果应与第一次相同
-            out_a2 = net.Forward({in_name: inp1})[out_name]
+            out_a2 = net.forward({in_name: inp1})[out_name]
 
         np.testing.assert_array_equal(out_a, out_a2,
                                       err_msg="Forward is stateful!")
@@ -250,7 +250,7 @@ class TestReLULayers:
             for round_i in range(20):
                 for net, in_name, out_name, shape in nets:
                     inp = rng.randn(*shape).astype(np.float32)
-                    out = net.Forward({in_name: inp})[out_name]
+                    out = net.forward({in_name: inp})[out_name]
                     expected = relu_np(inp)
                     np.testing.assert_allclose(
                         out, expected, rtol=1e-6, atol=1e-7,
@@ -265,7 +265,7 @@ class TestReLULayers:
             inp = np.zeros((2, 3, 4, 4), dtype=np.float32)
             t["shape"] = str(inp.shape)
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         np.testing.assert_array_equal(result, inp)
@@ -278,7 +278,7 @@ class TestReLULayers:
             t["shape"] = str(inp.shape)
             t["value_range"] = "[-1e6, 1e6]"
 
-            outputs = net.Forward({in_name: inp})
+            outputs = net.forward({in_name: inp})
             result = outputs[out_name]
 
         expected = np.array([[[[0.0, 1e6, 0.0, 1e-6]]]], dtype=np.float32)
@@ -302,7 +302,7 @@ layer {{ name: 'relu' type: 'ReLU' bottom: 'data' top: 'out' }}
 
             rng = np.random.RandomState(999)
             inp = rng.randn(n, c).astype(np.float32)
-            outputs = net.Forward({"data": inp})
+            outputs = net.forward({"data": inp})
             result = outputs["out"]
 
         expected = relu_np(inp)

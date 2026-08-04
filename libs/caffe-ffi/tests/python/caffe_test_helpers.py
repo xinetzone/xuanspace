@@ -224,8 +224,11 @@ def assert_forward_dtype(outputs: dict, blob_names: list[str], dtype=np.float32)
 # Float / saturation-safe assertions
 # ──────────────────────────────────────────────────────────────────────
 
-def assert_finite(arr: np.ndarray, label: str = "array") -> None:
+def assert_finite(arr, label: str = "array") -> None:
     """Assert that *arr* contains no NaN or Inf values.
+
+    Coerces the input to a numpy array first, so it also accepts Blob objects
+    returned by ``net.Forward()`` via their ``to_numpy()`` method.
 
     Typical use after a forward pass::
 
@@ -233,6 +236,10 @@ def assert_finite(arr: np.ndarray, label: str = "array") -> None:
         for k, v in out.items():
             assert_finite(v, label=k)
     """
+    if hasattr(arr, "to_numpy"):
+        arr = arr.to_numpy()
+    else:
+        arr = np.asarray(arr)
     assert not np.any(np.isnan(arr)), f"{label} contains NaN"
     assert not np.any(np.isinf(arr)), f"{label} contains Inf"
 
