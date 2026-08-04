@@ -118,6 +118,10 @@ message LayerParameter {
   optional CropParameter crop_param = 154;
   optional LRNParameter lrn_param = 155;
   optional RecurrentParameter recurrent_param = 156;
+  optional L2NormParameter l2_norm_param = 158;
+  optional InstanceNormParameter instance_norm_param = 159;
+  optional MarginRankingParameter margin_ranking_param = 160;
+  optional HingeParameter hinge_param = 161;
 }
 
 message SigmoidParameter {
@@ -369,4 +373,42 @@ message RecurrentParameter {
 
   // Reserved for future recurrent cell variants (gru, peephole, etc.).
   reserved 6, 7, 8, 9, 10;
+}
+
+message L2NormParameter {
+  // Normalization axis: the L2 norm is computed over all dimensions starting
+  // at `axis` (default 1 = channel dim in NCHW, i.e. spatial-only norm).
+  optional int32 axis = 1 [default = 1];
+  // Small epsilon added inside the square root for numerical stability.
+  optional float eps = 2 [default = 1e-5];
+}
+
+message InstanceNormParameter {
+  // Epsilon added to variance for numerical stability.
+  optional float eps = 1 [default = 1e-5];
+  // If true, learns per-channel scale (gamma) and shift (beta) parameters.
+  optional bool affine = 2 [default = false];
+  // If true, uses running (global) statistics during inference; otherwise
+  // computes per-instance statistics from the current batch.
+  optional bool use_global_stats = 3 [default = false];
+}
+
+message MarginRankingParameter {
+  // Margin in the ranking loss; default 1.0.
+  optional float margin = 1 [default = 1.0];
+  // Sign of the loss: 1 (positive) or -1 (negative). Used to flip the
+  // direction of the pairwise ranking comparison.
+  optional int32 sign = 2 [default = 1];
+}
+
+message HingeParameter {
+  // Norm used for the hinge loss: L1 (sum of violations) or L2 (sum of
+  // squared violations).
+  enum Norm {
+    L1 = 0;
+    L2 = 1;
+  }
+  optional Norm norm = 1 [default = L1];
+  // Axis along which the class scores are laid out (default 1 = channel in NCHW).
+  optional int32 axis = 2 [default = 1];
 }
