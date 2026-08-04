@@ -116,6 +116,7 @@ message LayerParameter {
   optional SliceParameter slice_param = 153;
   optional CropParameter crop_param = 154;
   optional LRNParameter lrn_param = 155;
+  optional RecurrentParameter recurrent_param = 156;
 }
 
 message SigmoidParameter {
@@ -337,4 +338,28 @@ message LRNParameter {
     CUDNN = 2;
   }
   optional Engine engine = 6 [default = DEFAULT];
+}
+
+message RecurrentParameter {
+  // The time step (sequence length) to unroll. The bottom blob is reshaped
+  // to (T, N, D) where T = num_steps, N = batch, D = input_dim.
+  optional uint32 num_steps = 1 [default = 100];
+
+  // If true, the hidden state h_t is exposed as a top blob (in addition to
+  // the per-timestep output). Unused currently; kept for Caffe compatibility.
+  optional bool expose_hidden = 2 [default = false];
+
+  // -------- Vanilla RNN / LSTM activation & weight layout --------
+  // Activation applied to the recurrent cell. 'tanh' or 'relu'.
+  optional string activation = 3 [default = "tanh"];
+
+  // Whether to compute the hidden state with a bias term on the hidden
+  // recurrence (b_hh). Caffe RNN uses b_hh often zero; kept for compat.
+  optional bool debug_info = 4 [default = false];
+
+  // dtype carrier for future quantized/other precision; reserved field.
+  optional int32 dtype = 5 [default = 4];  // 4 = float32 (Caffe default)
+
+  // Reserved for future recurrent cell variants (gru, peephole, etc.).
+  reserved 6, 7, 8, 9, 10;
 }
