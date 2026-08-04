@@ -5,6 +5,7 @@ Tests cover:
   UnshareData, mutable_data_tensor, cow_snapshot helper)
 - TestSplitCOWBehavior: Split-layer COW integration tests (N>=2 data isolation,
   refcount verification, const access no-COW, COW after in-place ReLU)
+- TestDropoutCOWBehavior: Dropout inference-mode COW sharing (zero-copy)
 """
 
 from __future__ import annotations
@@ -537,3 +538,166 @@ class TestSplitCOWBehavior:
         snap1_after = cow_snapshot(split_1)
         assert snap1_after["data_shared"] is True
         assert snap1_after["data_refcount"] >= 2  # data + split_1
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Test Class 3: Dropout inference-mode COW sharing (S5 optimization)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _make_dropout_prototxt(input_dims, dropout_ratio=0.5):
+    """Build Input -> Dropout prototxt (non-inplace, same shape)."""
+    dims = " ".join(f"input_dim: {d}" for d in input_dims)
+    return f"""name: "dropout_cow"
+input: "data"
+{dims}
+layer {{
+  name: "drop"
+  type: "Dropout"
+  bottom: "data"
+  top: "drop"
+  dropout_param {{ dropout_ratio: {dropout_ratio} }}
+}}
+"""
+
+
+def _make_dropout_relu_prototxt(input_dims, dropout_ratio=0.5):
+    """Input -> Dropout -> in-place ReLU (exercises COW-on-write downstream)."""
+    dims = " ".join(f"input_dim: {d}" for d in input_dims)
+    return f"""name: "dropout_relu_cow"
+input: "data"
+{dims}
+layer {{
+  name: "drop"
+  type: "Dropout"
+  bottom: "data"
+  top: "drop"
+  dropout_param {{ dropout_ratio: {dropout_ratio} }}
+}}
+layer {{
+  name: "relu"
+  type: "ReLU"
+  bottom: "drop"
+  top: "drop"
+}}
+"""
+
+
+@require_cpp_extension
+class TestDropoutCOWBehavior:
+    """Dropout inference-mode COW zero-copy sharing.
+
+    In inference mode Dropout is identity (y = x), so the non-inplace forward
+    now shares bottom's data tensor via ShareData (O(1)) instead of memcpy
+    (O(n)). The backward shares bottom's diff via ShareDiff.
+    """
+
+    def test_inference_forward_zerocopy_data_shared(self, ptrace):
+        """Inference non-inplace forward: top shares bottom's data pointer."""
+        net = net_from_param(net_param_from_string(
+            _make_dropout_prototxt((2, 8))))
+        inp = np.random.RandomState(7).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(dropout_cow_zerocopy)"):
+            net.Forward({"data": inp})
+
+        data_blob = net.blob_by_name("data")
+        drop_blob = net.blob_by_name("drop")
+
+        # COW zero-copy: top shares bottom's data tensor.
+        assert drop_blob.IsDataShared(), \
+            "Inference Dropout: top must share data tensor (zero-copy)"
+        assert drop_blob.SharesDataWith(data_blob), \
+            "Inference Dropout: top must share data with bottom"
+        assert drop_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, \
+            "Inference Dropout: pointers must be equal (zero-copy)"
+
+        # Identity output preserved.
+        np.testing.assert_array_equal(drop_blob.to_numpy(), inp)
+
+    def test_inference_forward_identity_preserved(self, ptrace):
+        """Identity forward still holds after COW sharing (y == x)."""
+        dims = (3, 4, 5)
+        net = net_from_param(net_param_from_string(
+            _make_dropout_prototxt(dims, dropout_ratio=0.3)))
+        inp = np.random.RandomState(21).randn(*dims).astype(np.float32)
+        with ptrace("Forward(dropout_cow_identity)"):
+            net.Forward({"data": inp})
+        drop_blob = net.blob_by_name("drop")
+        # .data returns a copy; const access must not trigger COW.
+        np.testing.assert_array_equal(drop_blob.data, inp)
+        assert drop_blob.IsDataShared(), \
+            "const .data access must not trigger COW"
+
+    def test_inference_downstream_inplace_relu_cow_isolation(self, ptrace):
+        """In-place ReLU downstream triggers COW; bottom data stays intact."""
+        dims = (2, 8)
+        net = net_from_param(net_param_from_string(
+            _make_dropout_relu_prototxt(dims, dropout_ratio=0.5)))
+        inp = np.random.RandomState(33).randn(*dims).astype(np.float32)
+        with ptrace("Forward(dropout_cow_relu)"):
+            net.Forward({"data": inp})
+
+        data_blob = net.blob_by_name("data")
+        drop_blob = net.blob_by_name("drop")
+
+        # In-place ReLU wrote to drop -> COW triggered, drop isolated.
+        assert not drop_blob.IsDataShared(), \
+            "In-place ReLU on drop must trigger COW, breaking sharing"
+        assert drop_blob.data_tensor.ctypes.data != data_blob.data_tensor.ctypes.data
+        # bottom (data) unchanged.
+        np.testing.assert_array_equal(data_blob.to_numpy(), inp)
+        # drop holds ReLU'd values.
+        np.testing.assert_array_equal(drop_blob.to_numpy(), np.maximum(inp, 0))
+
+    def test_inference_backward_zerocopy_diff_shared(self, ptrace):
+        """Inference backward (non-inplace): bottom diff shares top diff."""
+        net = net_from_param(net_param_from_string(
+            _make_dropout_prototxt((2, 8))))
+        inp = np.random.RandomState(5).randn(2, 8).astype(np.float32)
+        dy = np.random.RandomState(6).randn(2, 8).astype(np.float32)
+        with ptrace("Forward(dropout_cow_bw)"):
+            net.Forward({"data": inp})
+            net.backward({"drop": dy})
+
+        data_blob = net.blob_by_name("data")
+        drop_blob = net.blob_by_name("drop")
+
+        assert data_blob.IsDiffShared(), \
+            "Inference Dropout backward: bottom diff must be shared"
+        assert data_blob.SharesDiffWith(drop_blob), \
+            "Inference Dropout backward: bottom diff shares top diff"
+        # Identity dx == dy.
+        np.testing.assert_array_equal(data_blob.diff, dy)
+
+    def test_training_forward_no_cow_share(self):
+        """Training forward must NOT share (masked copy), default behavior kept."""
+        net = net_from_param(net_param_from_string(
+            _make_dropout_prototxt((4, 16))))
+        layer = net.layer_by_name("drop")
+        layer.set_train_mode(True)
+        x = np.full((4, 16), 1.0, dtype=np.float32)
+        net.Forward({"data": x})
+        drop_blob = net.blob_by_name("drop")
+        # Training performs a real masked copy -> no COW sharing with bottom.
+        assert not drop_blob.IsDataShared(), \
+            "Training Dropout must not share data tensor with bottom"
+
+    def test_inplace_dropout_no_share(self):
+        """Inplace Dropout (top == bottom) needs no COW sharing."""
+        proto = """name: "dropout_inplace_cow"
+input: "data"
+input_dim: 1
+input_dim: 4
+layer {
+  name: "drop"
+  type: "Dropout"
+  bottom: "data"
+  top: "data"
+  dropout_param { dropout_ratio: 0.5 }
+}
+"""
+        net = net_from_param(net_param_from_string(proto))
+        x = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+        net.Forward({"data": x})
+        data_blob = net.blob_by_name("data")
+        # Inplace: same blob, no shared-state flag (bottom==top).
+        np.testing.assert_array_equal(data_blob.to_numpy(), x)
