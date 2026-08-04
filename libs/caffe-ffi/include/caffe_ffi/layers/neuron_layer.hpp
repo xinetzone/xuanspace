@@ -30,7 +30,7 @@ class NeuronLayer : public Layer {
   int ExactNumBottomBlobs() const override { return 1; }
   int ExactNumTopBlobs() const override { return 1; }
 
-  static constexpr int _type_child_slots = 8;
+  static constexpr int _type_child_slots = 9;
   TVM_FFI_DECLARE_OBJECT_INFO("caffe_ffi.NeuronLayer", NeuronLayer, Layer);
 };
 
