@@ -111,4 +111,19 @@ if(BLAS_INCLUDE_DIRS)
   message(STATUS "[DEP] BLAS include: ${BLAS_INCLUDE_DIRS}")
 endif()
 
+# ── OpenMP 检测（CAFFE_USE_OPENMP=ON 时试图启用）──
+# 结果变量 CAFFE_USE_OPENMP_FOUND 供 CompilerConfig 在目标上追加
+# -fopenmp / /openmp 编译选项、OpenMP::OpenMP_CXX 链接目标与 CAFFE_USE_OPENMP 宏。
+# 若编译器不支持 OpenMP（如部分 CI 工具链），自动回退为串行执行，不影响构建。
+set(CAFFE_USE_OPENMP_FOUND FALSE)
+if(CAFFE_USE_OPENMP)
+  find_package(OpenMP QUIET)
+  if(OpenMP_CXX_FOUND)
+    set(CAFFE_USE_OPENMP_FOUND TRUE)
+    message(STATUS "[DEP] OpenMP: FOUND (flags: ${OpenMP_CXX_FLAGS})")
+  else()
+    message(STATUS "[DEP] OpenMP: NOT FOUND - falling back to serial execution")
+  endif()
+endif()
+
 find_package(Python COMPONENTS Interpreter QUIET)

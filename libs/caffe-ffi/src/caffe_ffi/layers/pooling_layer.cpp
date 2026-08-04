@@ -163,7 +163,15 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     caffe_set_fp32(static_cast<size_t>(top_count), -1.0f, mask_data);
   }
 
-  // Main pooling loop
+  // Main pooling loop. Parallelize over the batch (n) dimension: each n writes
+  // to a disjoint region of top_data/mask_data, so there is no cross-thread
+  // write race. NOTE: do NOT use OpenMP min/max reductions here — such clauses
+  // require the LLVM OpenMP runtime (`/openmp:llvm`) and are not supported by
+  // the default MSVC `/openmp` (error C7660). in_min/in_max are diagnostic-only
+  // and are computed in a separate serial pass below (outside the timed region).
+  #ifdef CAFFE_USE_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (int n = 0; n < num; ++n) {
     for (int c = 0; c < channels_; ++c) {
       for (int ph = 0; ph < pooled_height_; ++ph) {
@@ -184,8 +192,6 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
               for (int w = wstart; w < wend; ++w) {
                 const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
                 float val = bottom_data[index];
-                in_min = std::min(in_min, val);
-                in_max = std::max(in_max, val);
                 if (val > max_val) {
                   max_val = val;
                   max_idx = h * width_ + w;  // flat index within channel plane
@@ -200,10 +206,7 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
             for (int h = hstart; h < hend; ++h) {
               for (int w = wstart; w < wend; ++w) {
                 const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
-                float val = bottom_data[index];
-                in_min = std::min(in_min, val);
-                in_max = std::max(in_max, val);
-                sum += val;
+                sum += bottom_data[index];
                 ++count;
               }
             }
@@ -218,6 +221,15 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   for (int i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
+  }
+
+  // in值域统计（单独串行遍历，避免并行循环内对诊断变量的数据竞争）
+  {
+    const int bottom_count = static_cast<int>(bottom[0]->count());
+    for (int i = 0; i < bottom_count; ++i) {
+      in_min = std::min(in_min, bottom_data[i]);
+      in_max = std::max(in_max, bottom_data[i]);
+    }
   }
 
   auto t_end = std::chrono::high_resolution_clock::now();

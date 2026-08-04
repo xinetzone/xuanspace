@@ -181,11 +181,17 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   switch (op_) {
     case PROD: {
       const float* bottom0_data = bottom[0]->cpu_data();
+      #ifdef CAFFE_USE_OPENMP
+      #pragma omp parallel for schedule(static)
+      #endif
       for (int64_t i = 0; i < count; ++i) {
         top_data[i] = bottom0_data[i] * coeffs_[0];
       }
       for (int j = 1; j < num_bottoms; ++j) {
         const float* bj_data = bottom[j]->cpu_data();
+        #ifdef CAFFE_USE_OPENMP
+        #pragma omp parallel for schedule(static)
+        #endif
         for (int64_t i = 0; i < count; ++i) {
           top_data[i] *= bj_data[i] * coeffs_[j];
         }
@@ -194,11 +200,17 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
     case SUM: {
       const float* bottom0_data = bottom[0]->cpu_data();
+      #ifdef CAFFE_USE_OPENMP
+      #pragma omp parallel for schedule(static)
+      #endif
       for (int64_t i = 0; i < count; ++i) {
         top_data[i] = bottom0_data[i] * coeffs_[0];
       }
       for (int j = 1; j < num_bottoms; ++j) {
         const float* bj_data = bottom[j]->cpu_data();
+        #ifdef CAFFE_USE_OPENMP
+        #pragma omp parallel for schedule(static)
+        #endif
         for (int64_t i = 0; i < count; ++i) {
           top_data[i] += bj_data[i] * coeffs_[j];
         }
@@ -207,12 +219,18 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
     case MAX: {
       const float* bottom0_data = bottom[0]->cpu_data();
+      #ifdef CAFFE_USE_OPENMP
+      #pragma omp parallel for schedule(static)
+      #endif
       for (int64_t i = 0; i < count; ++i) {
         top_data[i] = bottom0_data[i] * coeffs_[0];
         max_idx_[i] = 0;
       }
       for (int j = 1; j < num_bottoms; ++j) {
         const float* bj_data = bottom[j]->cpu_data();
+        #ifdef CAFFE_USE_OPENMP
+        #pragma omp parallel for schedule(static)
+        #endif
         for (int64_t i = 0; i < count; ++i) {
           float val = bj_data[i] * coeffs_[j];
           if (val > top_data[i]) {

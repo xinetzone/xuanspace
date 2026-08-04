@@ -9,6 +9,7 @@ option(CAFFE_FFI_ENABLE_DEBUG_LOG "Enable detailed debug logging for memory/cont
 option(CAFFE_FFI_ENABLE_BACKTRACE "Enable stack backtrace support for memory leak diagnosis" ON)
 option(CAFFE_FFI_BUILD_TESTS "Build C++ unit tests" ON)
 option(CAFFE_USE_BLAS "Use BLAS (OpenBLAS/MKL/cblas) for GEMM/GEMV acceleration. Set to OFF to force pure C++ fallback." ON)
+option(CAFFE_USE_OPENMP "Use OpenMP to parallelize compute-heavy loops (pure-C++ GEMM fallback, pooling, elementwise). Set to OFF to force serial execution." ON)
 option(CAFFE_FFI_ENABLE_COW "Enable Copy-on-Write optimization for N>=2 Split layers (Phase 2)" ON)
 option(CAFFE_FFI_ENABLE_COW_PHASE3 "Enable Phase 3 large-N COW optimizations (batch refcount, lazy reshape)" OFF)
 option(CAFFE_FFI_ENABLE_ASAN "Enable AddressSanitizer (ASan) for memory error detection" OFF)

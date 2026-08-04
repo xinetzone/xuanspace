@@ -106,6 +106,12 @@ inline void caffe_cpu_gemm_fp32(const bool TransA, const bool TransB,
               TransB ? ::CblasTrans : ::CblasNoTrans,
               M, N, K, alpha, A, TransA ? M : K, B, TransB ? K : N, beta, C, N);
 #else
+  // Pure C++ fallback (no BLAS). When OpenMP is enabled, parallelize over the
+  // M (row) dimension: each outer iteration writes to a distinct row of C, so
+  // there is no cross-thread write race; the inner k-reduction is per-row.
+  #ifdef CAFFE_USE_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (int i = 0; i < M; ++i) {
     for (int j = 0; j < N; ++j) {
       float sum = 0.0f;
@@ -130,6 +136,10 @@ inline void caffe_cpu_gemv_fp32(const bool TransA,
               M, N, alpha, A, N, x, 1, beta, y, 1);
 #else
   if (!TransA) {
+    // Each outer iteration writes a distinct y[i] -> safe to parallelize.
+    #ifdef CAFFE_USE_OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
     for (int i = 0; i < M; ++i) {
       float sum = 0.0f;
       for (int j = 0; j < N; ++j) {
@@ -138,6 +148,7 @@ inline void caffe_cpu_gemv_fp32(const bool TransA,
       y[i] = alpha * sum + beta * y[i];
     }
   } else {
+    // TransA accumulates into y[j] across i (a reduction) -> keep serial.
     for (int j = 0; j < N; ++j) {
       y[j] *= beta;
     }
