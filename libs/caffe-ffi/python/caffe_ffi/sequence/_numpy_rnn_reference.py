@@ -239,6 +239,291 @@ def _lstm_unidirectional(
 
 
 # ---------------------------------------------------------------------------
+#  Vanilla RNN backward (BPTT)
+# ---------------------------------------------------------------------------
+
+def rnn_backward(
+    dy: np.ndarray,
+    x: np.ndarray,
+    W_ih: np.ndarray,
+    W_hh: np.ndarray,
+    b_ih=None,
+    b_hh=None,
+    h0=None,
+    activation: str = "tanh",
+    batch_first: bool = False,
+    d_h_n: np.ndarray = None,
+) -> dict:
+    """Backpropagation through time for a vanilla RNN.
+
+    Forward (single direction)::
+
+        z_t = x_t @ W_ih.T + b_ih + h_{t-1} @ W_hh.T + b_hh
+        h_t = act(z_t)
+
+    Args:
+        dy: Gradient of the loss w.r.t. the output h_t for every time step.
+            Shape (T, N, H) (or (N, T, H) with batch_first=True).
+        x: Input sequence (T, N, D) or (N, T, D).
+        W_ih/W_hh/b_ih/b_hh: Same weights as :func:`rnn_forward`.
+        h0: Initial hidden state (N, H). Gradients w.r.t. it are returned.
+        activation: 'tanh' or 'relu'.
+        batch_first: Layout of ``dy``/``x``.
+        d_h_n: Optional gradient w.r.t. the final hidden state h_T (N, H),
+            added to the recurrent path at the last time step.
+
+    Returns:
+        dict with keys:
+            dX    (T, N, D) gradient w.r.t. input
+            dW_ih (H, D), dW_hh (H, H)
+            db_ih (H,),  db_hh (H,)
+            dh0   (N, H) gradient w.r.t. initial hidden state
+    """
+    if batch_first:
+        x = x.transpose(1, 0, 2)
+        dy = dy.transpose(1, 0, 2)
+
+    T, N, D = x.shape
+    H = W_ih.shape[0]
+    b_ih = _ensure_1d(b_ih, H, "b_ih")
+    b_hh = _ensure_1d(b_hh, H, "b_hh")
+
+    # ---- Forward pass (cache z_t and h_t) ----
+    h = np.zeros((N, H), dtype=np.float64) if h0 is None else h0.astype(np.float64)
+    h_cache = [h.copy()]  # h_cache[t] is h_{t-1}; h_cache[t+1] is h_t
+    z_cache = []
+    act_fn = _get_activation(activation)
+    act_deriv = _activation_derivative(activation)
+
+    for t in range(T):
+        x_t = x[t].astype(np.float64)
+        z_t = x_t @ W_ih.T + b_ih + h @ W_hh.T + b_hh
+        z_cache.append(z_t)
+        h = act_fn(z_t)
+        h_cache.append(h.copy())
+
+    # ---- Backward pass ----
+    dX = np.zeros((T, N, D), dtype=np.float64)
+    dW_ih = np.zeros((H, D), dtype=np.float64)
+    dW_hh = np.zeros((H, H), dtype=np.float64)
+    db_ih = np.zeros(H, dtype=np.float64)
+    db_hh = np.zeros(H, dtype=np.float64)
+
+    dh_next = np.zeros((N, H), dtype=np.float64)
+    if d_h_n is not None:
+        dh_next += d_h_n.astype(np.float64)
+
+    for t in range(T - 1, -1, -1):
+        dh_t = dy[t].astype(np.float64) + dh_next
+        z_t = z_cache[t]
+        dz_t = dh_t * act_deriv(z_t)
+        # dW_ih += dz_t^T @ x_t,  db_ih += dz_t (sum over batch)
+        dW_ih += dz_t.T @ x[t].astype(np.float64)
+        db_ih += dz_t.sum(axis=0)
+        dW_hh += dz_t.T @ h_cache[t].astype(np.float64)
+        db_hh += dz_t.sum(axis=0)
+        dX[t] = dz_t @ W_ih
+        dh_next = dz_t @ W_hh
+
+    grads = {
+        "dX": dX.astype(np.float32),
+        "dW_ih": dW_ih.astype(np.float32),
+        "dW_hh": dW_hh.astype(np.float32),
+        "db_ih": db_ih.astype(np.float32),
+        "db_hh": db_hh.astype(np.float32),
+        "dh0": dh_next.astype(np.float32),
+    }
+    if batch_first:
+        grads["dX"] = grads["dX"].transpose(1, 0, 2)
+    return grads
+
+
+# ---------------------------------------------------------------------------
+#  LSTM backward (BPTT)
+# ---------------------------------------------------------------------------
+
+def lstm_backward(
+    dy: np.ndarray,
+    x: np.ndarray,
+    W_ii, W_if, W_io, W_ig,
+    W_hi, W_hf, W_ho, W_hg,
+    b_ii=None, b_if=None, b_io=None, b_ig=None,
+    b_hi=None, b_hf=None, b_ho=None, b_hg=None,
+    h0=None,
+    c0=None,
+    batch_first: bool = False,
+    d_h_n: np.ndarray = None,
+    d_c_n: np.ndarray = None,
+) -> dict:
+    """Backpropagation through time for a single-direction LSTM.
+
+    Forward cell::
+
+        i_t = sigmoid(x_t @ W_ii.T + h_{t-1} @ W_hi.T + b_ii + b_hi)
+        f_t = sigmoid(x_t @ W_if.T + h_{t-1} @ W_hf.T + b_if + b_hf)
+        o_t = sigmoid(x_t @ W_io.T + h_{t-1} @ W_ho.T + b_io + b_ho)
+        g_t = tanh   (x_t @ W_ig.T + h_{t-1} @ W_hg.T + b_ig + b_hg)
+        c_t = f_t * c_{t-1} + i_t * g_t
+        h_t = o_t * tanh(c_t)
+
+    Args:
+        dy: Gradient w.r.t. hidden outputs (T, N, H) or (N, T, H).
+        x: Input sequence (T, N, D) or (N, T, D).
+        W_*/b_*: as in :func:`lstm_forward`.
+        h0/c0: Initial states (N, H). Gradients returned.
+        batch_first: Layout of ``dy``/``x``.
+        d_h_n / d_c_n: Optional gradients w.r.t. final h_T / c_T (N, H),
+            added to the recurrent path at the last time step.
+
+    Returns:
+        dict with keys:
+            dX (T, N, D)
+            dW_ii/dW_if/dW_io/dW_ig (H, D), dW_hi/dW_hf/dW_ho/dW_hg (H, H)
+            db_ii/db_if/db_io/db_ig and db_hi/db_hf/db_ho/db_hg (H,)
+            dh0 (N, H), dc0 (N, H)
+    """
+    if batch_first:
+        x = x.transpose(1, 0, 2)
+        dy = dy.transpose(1, 0, 2)
+
+    T, N, D = x.shape
+    H = W_ii.shape[0]
+
+    b_ii = _ensure_1d(b_ii, H, "b_ii")
+    b_if = _ensure_1d(b_if, H, "b_if")
+    b_io = _ensure_1d(b_io, H, "b_io")
+    b_ig = _ensure_1d(b_ig, H, "b_ig")
+    b_hi = _ensure_1d(b_hi, H, "b_hi")
+    b_hf = _ensure_1d(b_hf, H, "b_hf")
+    b_ho = _ensure_1d(b_ho, H, "b_ho")
+    b_hg = _ensure_1d(b_hg, H, "b_hg")
+
+    # ---- Forward pass (cache gates) ----
+    h = np.zeros((N, H), dtype=np.float64) if h0 is None else h0.astype(np.float64)
+    c = np.zeros((N, H), dtype=np.float64) if c0 is None else c0.astype(np.float64)
+    h_cache = [h.copy()]  # h_cache[t] = h_{t-1}
+    c_cache = [c.copy()]  # c_cache[t] = c_{t-1}
+    i_cache, f_cache, o_cache, g_cache = [], [], [], []
+    tanh_c_cache = []
+
+    for t in range(T):
+        x_t = x[t].astype(np.float64)
+        i_t = _sigmoid(x_t @ W_ii.T + h @ W_hi.T + b_ii + b_hi)
+        f_t = _sigmoid(x_t @ W_if.T + h @ W_hf.T + b_if + b_hf)
+        o_t = _sigmoid(x_t @ W_io.T + h @ W_ho.T + b_io + b_ho)
+        g_t = np.tanh(x_t @ W_ig.T + h @ W_hg.T + b_ig + b_hg)
+        c = f_t * c + i_t * g_t
+        tc = np.tanh(c)
+        h = o_t * tc
+        i_cache.append(i_t)
+        f_cache.append(f_t)
+        o_cache.append(o_t)
+        g_cache.append(g_t)
+        tanh_c_cache.append(tc)
+        h_cache.append(h.copy())
+        c_cache.append(c.copy())
+
+    # ---- Backward pass ----
+    dX = np.zeros((T, N, D), dtype=np.float64)
+    dW_ii = np.zeros((H, D), dtype=np.float64)
+    dW_if = np.zeros((H, D), dtype=np.float64)
+    dW_io = np.zeros((H, D), dtype=np.float64)
+    dW_ig = np.zeros((H, D), dtype=np.float64)
+    dW_hi = np.zeros((H, H), dtype=np.float64)
+    dW_hf = np.zeros((H, H), dtype=np.float64)
+    dW_ho = np.zeros((H, H), dtype=np.float64)
+    dW_hg = np.zeros((H, H), dtype=np.float64)
+    db_ii = np.zeros(H, dtype=np.float64)
+    db_if = np.zeros(H, dtype=np.float64)
+    db_io = np.zeros(H, dtype=np.float64)
+    db_ig = np.zeros(H, dtype=np.float64)
+    db_hi = np.zeros(H, dtype=np.float64)
+    db_hf = np.zeros(H, dtype=np.float64)
+    db_ho = np.zeros(H, dtype=np.float64)
+    db_hg = np.zeros(H, dtype=np.float64)
+
+    dh_next = np.zeros((N, H), dtype=np.float64)
+    dc_next = np.zeros((N, H), dtype=np.float64)
+    if d_h_n is not None:
+        dh_next += d_h_n.astype(np.float64)
+    if d_c_n is not None:
+        dc_next += d_c_n.astype(np.float64)
+
+    for t in range(T - 1, -1, -1):
+        dh_t = dy[t].astype(np.float64) + dh_next
+        x_t = x[t].astype(np.float64)
+        h_prev = h_cache[t].astype(np.float64)
+        i_t, f_t, o_t, g_t = i_cache[t], f_cache[t], o_cache[t], g_cache[t]
+        tc_t = tanh_c_cache[t]
+
+        # Gate gradients within a cell
+        dtanh_c = dh_t * o_t
+        dc_t = dtanh_c * (1.0 - tc_t * tc_t) + dc_next
+        do_t = dh_t * tc_t
+        di_t = dc_t * g_t
+        df_t = dc_t * c_cache[t].astype(np.float64)
+        dg_t = dc_t * i_t
+
+        # dc_{t-1} = dc_t * f_t
+        dc_next = dc_t * f_t
+
+        # Backprop through activations
+        dg_t = dg_t * (1.0 - g_t * g_t)
+        di_t = di_t * i_t * (1.0 - i_t)
+        df_t = df_t * f_t * (1.0 - f_t)
+        do_t = do_t * o_t * (1.0 - o_t)
+
+        # Input-to-hidden weight & bias gradients
+        dW_ii += di_t.T @ x_t
+        dW_if += df_t.T @ x_t
+        dW_io += do_t.T @ x_t
+        dW_ig += dg_t.T @ x_t
+        db_ii += di_t.sum(axis=0)
+        db_if += df_t.sum(axis=0)
+        db_io += do_t.sum(axis=0)
+        db_ig += dg_t.sum(axis=0)
+
+        # Hidden-to-hidden weight & bias gradients
+        dW_hi += di_t.T @ h_prev
+        dW_hf += df_t.T @ h_prev
+        dW_ho += do_t.T @ h_prev
+        dW_hg += dg_t.T @ h_prev
+        db_hi += di_t.sum(axis=0)
+        db_hf += df_t.sum(axis=0)
+        db_ho += do_t.sum(axis=0)
+        db_hg += dg_t.sum(axis=0)
+
+        # Input gradient & recurrent hidden gradient
+        dX[t] = (di_t @ W_ii + df_t @ W_if + do_t @ W_io + dg_t @ W_ig)
+        dh_next = (di_t @ W_hi + df_t @ W_hf + do_t @ W_ho + dg_t @ W_hg)
+
+    grads = {
+        "dX": dX.astype(np.float32),
+        "dW_ii": dW_ii.astype(np.float32),
+        "dW_if": dW_if.astype(np.float32),
+        "dW_io": dW_io.astype(np.float32),
+        "dW_ig": dW_ig.astype(np.float32),
+        "dW_hi": dW_hi.astype(np.float32),
+        "dW_hf": dW_hf.astype(np.float32),
+        "dW_ho": dW_ho.astype(np.float32),
+        "dW_hg": dW_hg.astype(np.float32),
+        "db_ii": db_ii.astype(np.float32),
+        "db_if": db_if.astype(np.float32),
+        "db_io": db_io.astype(np.float32),
+        "db_ig": db_ig.astype(np.float32),
+        "db_hi": db_hi.astype(np.float32),
+        "db_hf": db_hf.astype(np.float32),
+        "db_ho": db_ho.astype(np.float32),
+        "db_hg": db_hg.astype(np.float32),
+        "dh0": dh_next.astype(np.float32),
+        "dc0": dc_next.astype(np.float32),
+    }
+    if batch_first:
+        grads["dX"] = grads["dX"].transpose(1, 0, 2)
+    return grads
+
+
+# ---------------------------------------------------------------------------
 #  Caffe-style packed weights helper
 # ---------------------------------------------------------------------------
 
@@ -484,6 +769,22 @@ def _get_activation(name: str):
         return np.tanh
     elif name == "relu":
         return lambda x: np.maximum(0, x)
+    else:
+        raise ValueError(f"Unknown activation: {name}")
+
+
+def _activation_derivative(name: str):
+    """Derivative of the activation used by RNN backward (BPTT).
+
+    ``relu`` is subgradient 0 at x <= 0, 1 at x > 0 (matching C++ convention).
+    """
+    if name == "tanh":
+        def d(x):
+            t = np.tanh(x)
+            return 1.0 - t * t
+        return d
+    elif name == "relu":
+        return lambda x: (x > 0).astype(np.float64)
     else:
         raise ValueError(f"Unknown activation: {name}")
 

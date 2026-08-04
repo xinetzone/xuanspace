@@ -26,6 +26,8 @@ import numpy as np
 from ._numpy_rnn_reference import (
     rnn_forward,
     lstm_forward,
+    rnn_backward,
+    lstm_backward,
     pack_lstm_weights_caffe,
     unpack_lstm_weights_caffe,
     init_rnn_weights,
@@ -37,6 +39,8 @@ __all__ = [
     "LSTM",
     "rnn_forward",
     "lstm_forward",
+    "rnn_backward",
+    "lstm_backward",
     "pack_lstm_weights_caffe",
     "unpack_lstm_weights_caffe",
     "init_rnn_weights",
