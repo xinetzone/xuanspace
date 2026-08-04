@@ -139,6 +139,17 @@ message LayerParameter {
   optional FilterParameter filter_param = 176;
   optional SigmoidCrossEntropyLossParameter sigmoid_cross_entropy_loss_param = 177;
   optional ParameterParameter parameter_param = 178;
+  optional DataParameter data_param = 179;
+  optional ImageDataParameter image_data_param = 180;
+  optional HDF5DataParameter hdf5_data_param = 181;
+  optional HDF5OutputParameter hdf5_output_param = 182;
+  optional MemoryDataParameter memory_data_param = 183;
+  optional WindowDataParameter window_data_param = 184;
+  optional DummyDataParameter dummy_data_param = 185;
+  optional PythonParameter python_param = 186;
+  optional ContrastiveLossParameter contrastive_loss_param = 187;
+  optional InfogainLossParameter infogain_loss_param = 188;
+  optional UpsampleParameter upsample_param = 189;
 }
 
 message SigmoidParameter {
@@ -554,4 +565,166 @@ message SigmoidCrossEntropyLossParameter {
 // (no bottom, one top). The shape is given by `shape`.
 message ParameterParameter {
   optional BlobShape shape = 1;
+}
+
+// Data: reads a batch of training data from a LEVELDB/LMDB source.
+// In caffe-ffi the data is loaded through the Python/numpy bridge (no C++
+// leveldb/lmdb dependency); the parameters are kept for caffex compatibility.
+message DataParameter {
+  enum DB {
+    LEVELDB = 0;
+    LMDB = 1;
+  }
+  // Specify the data source.
+  optional string source = 1;
+  // Specify the batch size.
+  optional uint32 batch_size = 4;
+  // The rand_skip variable is for the data layer to skip a few data points
+  // to avoid all asynchronous sgd clients to start at the same point.
+  optional uint32 rand_skip = 7 [default = 0];
+  optional DB backend = 8 [default = LEVELDB];
+  // Simple scaling and subtracting the data mean, if provided. Note that the
+  // mean subtraction is always carried out before scaling.
+  optional float scale = 2 [default = 1];
+  optional string mean_file = 3;
+  // Randomly crop an image.
+  optional uint32 crop_size = 5 [default = 0];
+  // Randomly mirror data.
+  optional bool mirror = 6 [default = false];
+  // Force the encoded image to have 3 color channels.
+  optional bool force_encoded_color = 9 [default = false];
+  // Prefetch queue.
+  optional uint32 prefetch = 10 [default = 4];
+}
+
+// ImageData: reads a batch of images from a text file of (filename, label)
+// pairs. Images are decoded through the Python/numpy bridge.
+message ImageDataParameter {
+  // Specify the data source.
+  optional string source = 1;
+  // Specify the batch size.
+  optional uint32 batch_size = 4 [default = 1];
+  // The rand_skip variable is for the data layer to skip a few data points.
+  optional uint32 rand_skip = 7 [default = 0];
+  // Whether or not ImageDataLayer should shuffle the list of files at every epoch.
+  optional bool shuffle = 8 [default = false];
+  // It will also resize images if new_height or new_width are not zero.
+  optional uint32 new_height = 9 [default = 0];
+  optional uint32 new_width = 10 [default = 0];
+  // Specify if the images are color or gray.
+  optional bool is_color = 11 [default = true];
+  // Simple scaling and subtracting the data mean, if provided.
+  optional float scale = 2 [default = 1];
+  optional string mean_file = 3;
+  // Randomly crop an image.
+  optional uint32 crop_size = 5 [default = 0];
+  // Randomly mirror data.
+  optional bool mirror = 6 [default = false];
+  optional string root_folder = 12 [default = ""];
+}
+
+// HDF5Data: reads a batch of data from HDF5 files. Data is loaded through
+// the Python/h5py bridge (no C++ HDF5 dependency).
+message HDF5DataParameter {
+  // Specify the data source.
+  optional string source = 1;
+  // Specify the batch size.
+  optional uint32 batch_size = 2;
+  // Whether to shuffle the data.
+  optional bool shuffle = 3 [default = false];
+}
+
+// HDF5Output: writes the top blob to an HDF5 file via the Python/h5py bridge.
+message HDF5OutputParameter {
+  optional string file_name = 1;
+}
+
+// MemoryData: feeds in-memory data (numpy/DLPack tensors) into the network.
+// The batch is supplied by the Python side (e.g. via Net.set_input_arrays).
+message MemoryDataParameter {
+  optional uint32 batch_size = 1;
+  optional uint32 channels = 2;
+  optional uint32 height = 3;
+  optional uint32 width = 4;
+}
+
+// WindowData: reads detection-window data. Windows are loaded through the
+// Python/numpy bridge.
+message WindowDataParameter {
+  // Specify the data source.
+  optional string source = 1;
+  // Simple scaling and subtracting the data mean, if provided.
+  optional float scale = 2 [default = 1];
+  optional string mean_file = 3;
+  // Specify the batch size.
+  optional uint32 batch_size = 4;
+  // Randomly crop an image.
+  optional uint32 crop_size = 5 [default = 0];
+  // Randomly mirror data.
+  optional bool mirror = 6 [default = false];
+  // Foreground (object) overlap threshold.
+  optional float fg_threshold = 7 [default = 0.5];
+  // Background (non-object) overlap threshold.
+  optional float bg_threshold = 8 [default = 0.5];
+  // Fraction of batch that should be foreground objects.
+  optional float fg_fraction = 9 [default = 0.25];
+  // Amount of contextual padding to add around a window.
+  optional uint32 context_pad = 10 [default = 0];
+  // Mode for cropping out a detection window: "warp" or "square".
+  optional string crop_mode = 11 [default = "warp"];
+  // cache_images: will load all images in memory for faster access.
+  optional bool cache_images = 12 [default = false];
+  // Append root_folder to locate images.
+  optional string root_folder = 13 [default = ""];
+}
+
+// DummyData: fills any number of arbitrarily shaped blobs with random (or
+// constant) data generated by "Fillers".
+message DummyDataParameter {
+  // This layer produces N >= 1 top blobs.  Specify 1 or N shape fields, and
+  // 0, 1 or N data_fillers.
+  repeated FillerParameter data_filler = 1;
+  repeated BlobShape shape = 6;
+  // 4D dimensions -- deprecated.  Use "shape" instead.
+  repeated uint32 num = 2;
+  repeated uint32 channels = 3;
+  repeated uint32 height = 4;
+  repeated uint32 width = 5;
+}
+
+// Python: a custom Python layer. The ffi bridge calls the module's setup /
+// reshape / forward / backward methods.
+message PythonParameter {
+  optional string module = 1;
+  optional string layer = 2;
+  // Set to the attribute `param_str` of the PythonLayer object before setup().
+  optional string param_str = 3 [default = ''];
+  // DEPRECATED.
+  optional bool share_in_parallel = 4 [default = false];
+}
+
+// ContrastiveLoss: Hadsell et al. 2006 contrastive loss over pairs of samples.
+message ContrastiveLossParameter {
+  // margin for dissimilar pair.
+  optional float margin = 1 [default = 1.0];
+  // legacy_version = false (default) uses (margin - d)^2 as proposed in the
+  // Hadsell paper. legacy_version = true uses (margin - d^2), kept only to
+  // reproduce existing models.
+  optional bool legacy_version = 2 [default = false];
+}
+
+// InfogainLoss: information gain loss, optionally weighted by an infogain
+// matrix read from `source`.
+message InfogainLossParameter {
+  // Specify the infogain matrix source.
+  optional string source = 1;
+  // axis of prob.
+  optional int32 axis = 2 [default = 1];
+}
+
+// Upsample: nearest-neighbor upsampling by an integer `scale` factor.
+// (caffex declares UpsampleLayer but ships no parameter message; caffe-ffi
+// adds an explicit scale for a concrete, self-contained implementation.)
+message UpsampleParameter {
+  optional int32 scale = 1 [default = 2];
 }
