@@ -4,11 +4,10 @@
 Usage:
     python scripts/gen_proto.py
 
-This script regenerates python/caffe_ffi/caffe/proto/caffe_pb2.py from proto/caffe/proto/caffe.proto.
+This script regenerates python/caffe_ffi/caffe_pb2.py from proto/caffe/proto/caffe.proto.
 Requires grpcio-tools package (pip install grpcio-tools).
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -16,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROTO_DIR = ROOT / "proto"
-OUTPUT_DIR = ROOT / "python" / "caffe_ffi" / "caffe" / "proto"
+OUTPUT_DIR = ROOT / "python" / "caffe_ffi"
 PROTO_FILE = PROTO_DIR / "caffe" / "proto" / "caffe.proto"
 
 
@@ -53,17 +52,17 @@ def main() -> int:
         if expected_file.exists():
             expected_file.unlink()
         shutil.move(str(generated_file), str(expected_file))
-        
-        caffe_proto_dir = OUTPUT_DIR / "caffe" / "proto"
-        if caffe_proto_dir.exists():
-            init_file = caffe_proto_dir / "__init__.py"
-            if not init_file.exists():
-                init_file.write_text("")
-        caffe_dir = OUTPUT_DIR / "caffe"
-        if caffe_dir.exists():
-            init_file = caffe_dir / "__init__.py"
-            if not init_file.exists():
-                init_file.write_text("")
+
+        # Clean up the now-empty intermediate package dirs left by protoc
+        # (caffe/proto/caffe) so the redundant compat package is not recreated.
+        for d in (OUTPUT_DIR / "caffe" / "proto" / "caffe",
+                  OUTPUT_DIR / "caffe" / "proto",
+                  OUTPUT_DIR / "caffe"):
+            if d.exists():
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
 
     if not expected_file.exists():
         print(f"Error: expected generated file not found: {expected_file}", file=sys.stderr)
@@ -73,7 +72,7 @@ def main() -> int:
 
     try:
         sys.path.insert(0, str(ROOT / "python"))
-        from caffe_ffi.caffe.proto import caffe_pb2
+        from caffe_ffi import caffe_pb2
         net_param = caffe_pb2.NetParameter()
         net_param.name = "test"
         data = net_param.SerializeToString()

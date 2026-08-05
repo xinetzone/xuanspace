@@ -61,14 +61,6 @@ def _check_caffe_ffi_import() -> tuple[str, bool, str]:
         return ("caffe_ffi 导入", False, f"失败: {e!r}")
 
 
-def _check_caffe_import() -> tuple[str, bool, str]:
-    try:
-        from caffe_ffi import caffe
-        return ("caffe 模块导入", True, "成功")
-    except Exception as e:
-        return ("caffe 模块导入", False, f"失败: {e!r}")
-
-
 def _check_basic_functionality() -> tuple[str, bool, str]:
     try:
         import caffe_ffi
@@ -97,7 +89,6 @@ def main() -> int:
     checks.append(_check_tvm_ffi_import())
     checks.append(_check_package("caffe-ffi"))
     checks.append(_check_caffe_ffi_import())
-    checks.append(_check_caffe_import())
     checks.append(_check_basic_functionality())
 
     passed = 0
