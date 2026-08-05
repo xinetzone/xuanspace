@@ -33,6 +33,15 @@
 #include "caffe_ffi/layers/slice_layer.hpp"
 #include "caffe_ffi/layers/crop_layer.hpp"
 
+#include "caffe_ffi/layers/python_layer.hpp"
+
+#include "caffe_ffi/layers/data_io_bridge.hpp"
+#include "caffe_ffi/layers/data_layer.hpp"
+#include "caffe_ffi/layers/image_data_layer.hpp"
+#include "caffe_ffi/layers/hdf5_data_layer.hpp"
+#include "caffe_ffi/layers/hdf5_output_layer.hpp"
+#include "caffe_ffi/layers/window_data_layer.hpp"
+
 #include "caffe_ffi/layers/sigmoid_layer.hpp"
 #include "caffe_ffi/layers/tanh_layer.hpp"
 #include "caffe_ffi/layers/prelu_layer.hpp"
@@ -132,6 +141,16 @@ void BlobUpdate(ObjectPtr<Blob> blob) {
   blob->Update();
 }
 
+void PythonLayerRegister(const String& name, Function callback) {
+  CAFFE_FFI_CHECK_VALUE(!name.empty()) << "python_layer.register: key must not be empty";
+  RegisterPythonLayerCallback(static_cast<std::string>(name), callback);
+}
+
+void DataIORegister(const String& key, Function callback) {
+  CAFFE_FFI_CHECK_VALUE(!key.empty()) << "data_io.register: key must not be empty";
+  RegisterDataIOCallback(static_cast<std::string>(key), callback);
+}
+
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
   refl::GlobalDef()
@@ -148,7 +167,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("caffe_ffi.GetBacktrace", GetBacktraceString, "Get stack backtrace string")
       .def("caffe_ffi.BlobDataTensor", BlobDataTensor, "Get Blob's data tensor (zero-copy DLPack)")
       .def("caffe_ffi.BlobDiffTensor", BlobDiffTensor, "Get Blob's diff tensor (zero-copy DLPack)")
-      .def("caffe_ffi.BlobUpdate", BlobUpdate, "Update Blob: data -= diff (gradient descent step)");
+      .def("caffe_ffi.BlobUpdate", BlobUpdate, "Update Blob: data -= diff (gradient descent step)")
+      .def("caffe_ffi.python_layer.register", PythonLayerRegister,
+           "Register a Python layer callback under '<module>.<layer>' key")
+      .def("caffe_ffi.data_io.register", DataIORegister,
+           "Register a data I/O callback under '<layer_type>.<layer_name>' key");
 
   refl::ObjectDef<Blob>()
       .def(refl::init<>(), "Create empty Blob")
@@ -243,5 +266,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(GetBacktrace, GetBacktraceString)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(BlobDataTensor, BlobDataTensor)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(BlobDiffTensor, BlobDiffTensor)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(BlobUpdate, BlobUpdate)
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(PythonLayerRegister, PythonLayerRegister)
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(DataIORegister, DataIORegister)
 
 }  // namespace caffe_ffi
