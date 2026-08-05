@@ -9,6 +9,18 @@
 #include "caffe_ffi/fill.hpp"
 #include "caffe_ffi/log.hpp"
 
+// ── Recurrent base-class registration decision ────────────────────────────
+// RecurrentLayer is an ABSTRACT base class: it declares the pure-virtual hooks
+// LayerSetUpStep/ReshapeStep/ForwardStep/BackwardStep, so it cannot be
+// instantiated directly. A REGISTER_LAYER_CLASS(Recurrent) here would expand to
+// make_object<RecurrentLayer>, which fails to compile for an abstract class.
+// Therefore the Recurrent base class is intentionally NOT registered. Concrete
+// recurrent cells (LSTM, RNN, LSTMUnit) override the pure-virtual hooks and are
+// registered in their own translation units (lstm_layer.cpp, rnn_layer.cpp,
+// lstm_unit.cpp). This file only implements the shared unrolling loop and the
+// state-buffer machinery used by those subclasses.
+// ──────────────────────────────────────────────────────────────────────────
+
 namespace caffe_ffi {
 
 void RecurrentLayer::LayerSetUp(const std::vector<Blob*>& bottom,
