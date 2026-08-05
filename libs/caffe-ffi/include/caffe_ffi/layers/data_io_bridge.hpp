@@ -38,6 +38,15 @@ void RegisterDataIOCallback(const std::string& key, Function callback);
 Function LookupDataIOCallback(const std::string& key);
 
 /**
+ * @brief Clear all registered data-io callbacks.
+ * \note Call this from the Python side via atexit (caffe_ffi.data_io.clear)
+ *       before the Python interpreter shuts down. This releases the Python
+ *       Function objects held by the static registry so they are not destroyed
+ *       after Py_Finalize, which would otherwise segfault.
+ */
+void ClearDataIOCallback();
+
+/**
  * @brief Invoke the callback (if any) for `key` with the given blobs' tensors.
  * \param key      Registration key ("<layer_type>.<layer_name>").
  * \param blobs    Blobs whose data tensors are passed to the callback.

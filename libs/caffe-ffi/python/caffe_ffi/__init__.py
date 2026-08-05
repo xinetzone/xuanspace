@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import logging
 
 __version__ = "0.1.0"
@@ -185,6 +186,30 @@ def disable_debug_logging() -> None:
     """Disable debug logging, restoring WARNING as the default level."""
     _logger.setLevel(logging.WARNING)
     set_log_level(LOG_LEVEL_WARN)
+
+
+def _cleanup_callbacks() -> None:
+    """Release Python Function objects held by the C++ static callback registries.
+
+    The data_io and python_layer registries are C++ static ``std::unordered_map``s
+    that store TVM FFI ``Function`` handles pointing at Python callables. If they
+    are left populated, their destructors run after ``Py_Finalize`` and touch the
+    already-destroyed Python runtime, causing a segmentation fault on interpreter
+    shutdown. Clearing them here (via the FFI ``clear`` functions) before the
+    runtime is torn down removes the handles and prevents the segfault.
+    """
+    if not _ffi_api.is_available():
+        return
+    for name in ("caffe_ffi.data_io.clear", "caffe_ffi.python_layer.clear"):
+        fn = _ffi_api.get_global_func(name)
+        if fn is not None:
+            try:
+                fn()
+            except Exception:  # pragma: no cover - best-effort during shutdown
+                pass
+
+
+atexit.register(_cleanup_callbacks)
 
 
 __all__ = [

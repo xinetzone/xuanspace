@@ -59,6 +59,15 @@ void RegisterPythonLayerCallback(const std::string& name, Function callback);
  */
 Function LookupPythonLayerCallback(const std::string& name);
 
+/**
+ * @brief Clear all registered python_layer callbacks.
+ * \note Call this from the Python side via atexit (caffe_ffi.python_layer.clear)
+ *       before the Python interpreter shuts down. This releases the Python
+ *       Function objects held by the static registry so they are not destroyed
+ *       after Py_Finalize, which would otherwise segfault.
+ */
+void ClearPythonLayerCallback();
+
 }  // namespace caffe_ffi
 
 #endif  // CAFFE_FFI_LAYERS_PYTHON_LAYER_HPP_

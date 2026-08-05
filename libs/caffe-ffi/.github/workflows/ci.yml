@@ -338,7 +338,7 @@ jobs:
   # Nightly: Extended gradient regression + pooling edge-case tests
   # ────────────────────────────────────────────────────────────────
   nightly:
-    name: "Nightly: Gradient Regression & Edge Cases"
+    name: "Nightly: P2 Data-IO, TVM-FFI, Gradient Regression & Edge Cases"
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     defaults:
@@ -388,6 +388,24 @@ jobs:
       - name: Verify caffe_ffi import
         run: |
           python -c "import caffe_ffi; print('caffe_ffi version:', caffe_ffi.__version__)"
+
+      # ── Nightly 0a: TVM-FFI dependency loading check ──
+      # Catches the runtime root causes that previously blocked P0:
+      #   - tvm_ffi.core Cython extension missing
+      #   - caffe_ffi falling back to the stub (is_available()==False)
+      #   - version skew / symbol absence (WinError 127)
+      - name: TVM-FFI dependency loading check (nightly)
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python scripts/ci_check_tvmffi.py
+
+      # ── Nightly 0b: P2 data-IO operator tests (Data/ImageData/HDF5Data) ──
+      - name: Run P2 data-IO operator tests (nightly)
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python -m pytest tests/python/test_p2_data_io_ops.py -v --tb=short
 
       # ── Nightly 1: Pooling tie-breaking & overlap accumulation (11 edge-case tests) ──
       - name: Run pooling tie-breaking and overlap accumulation tests

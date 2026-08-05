@@ -38,6 +38,11 @@ Function LookupDataIOCallback(const std::string& key) {
   return it->second;
 }
 
+void ClearDataIOCallback() {
+  DataIOCallbackRegistry().clear();
+  CAFFE_FFI_LAYER_LOG << "Cleared all data-io callbacks (registry size -> 0)";
+}
+
 bool InvokeDataIOCallback(const std::string& key, const std::vector<Blob*>& blobs,
                           bool writable) {
   Function callback = LookupDataIOCallback(key);

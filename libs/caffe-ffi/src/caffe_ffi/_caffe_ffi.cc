@@ -151,6 +151,14 @@ void DataIORegister(const String& key, Function callback) {
   RegisterDataIOCallback(static_cast<std::string>(key), callback);
 }
 
+void ClearDataIO() {
+  ClearDataIOCallback();
+}
+
+void ClearPythonLayer() {
+  ClearPythonLayerCallback();
+}
+
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
   refl::GlobalDef()
@@ -171,7 +179,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("caffe_ffi.python_layer.register", PythonLayerRegister,
            "Register a Python layer callback under '<module>.<layer>' key")
       .def("caffe_ffi.data_io.register", DataIORegister,
-           "Register a data I/O callback under '<layer_type>.<layer_name>' key");
+           "Register a data I/O callback under '<layer_type>.<layer_name>' key")
+      .def("caffe_ffi.python_layer.clear", ClearPythonLayer,
+           "Clear all python_layer callbacks (call before interpreter shutdown)")
+      .def("caffe_ffi.data_io.clear", ClearDataIO,
+           "Clear all data_io callbacks (call before interpreter shutdown)");
 
   refl::ObjectDef<Blob>()
       .def(refl::init<>(), "Create empty Blob")

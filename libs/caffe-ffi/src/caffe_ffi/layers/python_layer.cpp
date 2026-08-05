@@ -40,6 +40,11 @@ Function LookupPythonLayerCallback(const std::string& name) {
   return it->second;
 }
 
+void ClearPythonLayerCallback() {
+  PythonCallbackRegistry().clear();
+  CAFFE_FFI_LAYER_LOG << "Cleared all python_layer callbacks (registry size -> 0)";
+}
+
 void PythonLayer::LayerSetUp(const std::vector<Blob*>& bottom,
                              const std::vector<Blob*>& top) {
   const caffe::PythonParameter& param = this->layer_param_.python_param();
