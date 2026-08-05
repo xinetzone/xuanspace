@@ -43,6 +43,31 @@ def header(title: str) -> None:
 
 
 # ============================================================
+# 模块级内存基线：屏蔽其他测试模块遗留 Blob 对绝对断言的干扰
+# ============================================================
+# 迁移前为独立脚本（进程级干净内存起点），迁移为 pytest 后与全量套件共享进程，
+# 其他模块（如失败用例持有 traceback 引用）会遗留存活 Blob，污染 total_allocated_bytes()
+# 的绝对基线。改为模块启动时捕获基线、断言相对差值，并在模块结束释放本模块故意泄漏。
+_BASELINE_BYTES: int | None = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _capture_memory_baseline() -> Iterator[None]:
+    """模块内所有用例之前捕获内存基线，结束后释放本模块故意泄漏的引用。"""
+    global _BASELINE_BYTES
+    gc.collect()
+    _BASELINE_BYTES = caffe_ffi.total_allocated_bytes()
+    yield
+    _leaked_ref.clear()
+    gc.collect()
+
+
+def _rel_mem() -> int:
+    """返回相对模块基线的已分配字节数（屏蔽跨模块遗留 Blob 的干扰）。"""
+    return caffe_ffi.total_allocated_bytes() - _BASELINE_BYTES
+
+
+# ============================================================
 # Test 1: 正常创建→释放（基准）
 # ============================================================
 def test_normal_lifecycle() -> None:
@@ -54,12 +79,12 @@ def test_normal_lifecycle() -> None:
     nbytes = b.data_tensor.nbytes * 2  # data + diff
     print(f"  [INFO] data_ptr=0x{dp:016x}, nbytes(data+diff)={nbytes}")
 
-    mem_before = caffe_ffi.total_allocated_bytes()
+    mem_before = _rel_mem()
     assert mem_before == nbytes, f"expected {nbytes}, got {mem_before}"
 
     del b
     gc.collect()
-    mem_after = caffe_ffi.total_allocated_bytes()
+    mem_after = _rel_mem()
     assert mem_after == 0, f"expected 0, got {mem_after}"
     setup_quiet()
 
@@ -73,14 +98,14 @@ def test_loop_variable_leak() -> None:
     blobs = [Blob([4, 4]) for _ in range(3)]
     for i, b in enumerate(blobs):
         b.data_tensor[:] = float(i)
-    mem_with = caffe_ffi.total_allocated_bytes()
+    mem_with = _rel_mem()
     print(f"  [INFO] 3 blobs alive, total={mem_with} bytes")
     assert mem_with == 384, f"got {mem_with}"
 
     # 只del list，但循环变量 i, b 仍在帧中持有最后一个Blob
     del blobs
     gc.collect()
-    mem_partial = caffe_ffi.total_allocated_bytes()
+    mem_partial = _rel_mem()
     print(f"  [INFO] after del blobs (i,b still alive): total={mem_partial} bytes")
     assert mem_partial == 128, f"got {mem_partial}"
     print("  （查看上方日志确认只有2个~Blob输出）")
@@ -88,7 +113,7 @@ def test_loop_variable_leak() -> None:
     # 彻底删除所有引用
     del i, b
     gc.collect()
-    mem_clean = caffe_ffi.total_allocated_bytes()
+    mem_clean = _rel_mem()
     assert mem_clean == 0, f"got {mem_clean}"
     setup_quiet()
 
@@ -114,7 +139,7 @@ def test_intentional_leak() -> None:
 
     del b
     gc.collect()
-    mem = caffe_ffi.total_allocated_bytes()
+    mem = _rel_mem()
     assert mem >= 512, f"expected >=512, got {mem}"
     print(f"  [INFO] Leaked object NOT destroyed (expected - ref held by global)")
     print(f"  [INFO] total_allocated_bytes={mem} (non-zero = leak detected)")
@@ -134,11 +159,11 @@ def test_refcount_cleanup() -> None:
     expected = b.data_tensor.nbytes + b.diff_tensor.nbytes  # 72 bytes
     print(f"  [INFO] data_ptr=0x{dp:016x}, expected total={expected} bytes")
 
-    mem_before = caffe_ffi.total_allocated_bytes() - _leaked_bytes
+    mem_before = _rel_mem() - _leaked_bytes
     assert mem_before == expected, f"expected {expected}, got {mem_before}"
 
     del b  # 纯引用计数释放，无需gc.collect()
-    mem_after = caffe_ffi.total_allocated_bytes() - _leaked_bytes
+    mem_after = _rel_mem() - _leaked_bytes
     assert mem_after == 0, f"got {mem_after}"
     print(f"  [INFO] ~Blob() for ptr=0x{dp:016x} should appear above")
     setup_quiet()
@@ -162,7 +187,7 @@ def test_exception_with_catch() -> None:
 
     del b
     gc.collect()
-    mem = caffe_ffi.total_allocated_bytes() - _leaked_bytes
+    mem = _rel_mem() - _leaked_bytes
     assert mem == 0, f"got {mem}"
     print(f"  [INFO] ~Blob() printed above with correct ptr=0x{dp:016x}")
     setup_quiet()
@@ -188,7 +213,7 @@ def test_reshape_reallocation() -> None:
     assert new_dp != old_dp and new_dfp != old_dfp
     print("  （查看上方日志: FreeData应打印old_dp和old_dfp的地址）")
 
-    mem = caffe_ffi.total_allocated_bytes() - _leaked_bytes
+    mem = _rel_mem() - _leaked_bytes
     expected = 100 * 4 * 2  # 800
     assert mem == expected, f"expected {expected}, got {mem}"
 
@@ -225,7 +250,7 @@ def test_cleanup_leaks() -> None:
     print(f"  [INFO] Cleaning {n} leaked references...")
     _leaked_ref.clear()
     gc.collect()
-    mem = caffe_ffi.total_allocated_bytes()
+    mem = _rel_mem()
     assert mem == 0, f"got {mem}"
     print(f"  [INFO] ~Blob() for leaked objects should appear above")
     setup_quiet()
