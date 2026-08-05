@@ -132,6 +132,17 @@ jobs:
         run: |
           python -c "import caffe_ffi; print('caffe_ffi version:', caffe_ffi.__version__)"
 
+      # ── TVM-FFI dependency loading check (runs every matrix OS) ──
+      # Catches the runtime root causes that previously blocked P0:
+      #   - tvm_ffi.core Cython extension missing
+      #   - caffe_ffi falling back to the stub (is_available()==False)
+      #   - version skew / symbol absence (WinError 127)
+      - name: TVM-FFI dependency loading check
+        env:
+          KMP_DUPLICATE_LIB_OK: TRUE
+        run: |
+          python scripts/ci_check_tvmffi.py
+
       # ── Run full Python test suite ──
       - name: Run all Python tests
         env:
