@@ -178,14 +178,14 @@ void InnerProductLayer::Reshape(const std::vector<Blob*>& bottom,
     }
   }
 
+  // BVLC Caffe semantics: output shape keeps the leading dims before `axis`
+  // plus N_ (num_output), i.e. exactly `axis + 1` dimensions. Dimensions after
+  // `axis` are flattened into N_ and must NOT be preserved as trailing singletons.
   std::vector<int64_t> top_shape;
   for (int i = 0; i < axis; ++i) {
     top_shape.push_back(bottom[0]->shape(i));
   }
   top_shape.push_back(N_);
-  for (int i = axis + 1; i < bottom[0]->num_axes(); ++i) {
-    top_shape.push_back(1);
-  }
   CAFFE_FFI_LAYER_LOG << "InnerProduct Reshape: M_=" << M_ << " K_=" << K_
                       << " N_=" << N_ << " top_shape=[";
   for (size_t i = 0; i < top_shape.size(); ++i) {

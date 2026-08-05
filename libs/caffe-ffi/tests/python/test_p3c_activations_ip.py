@@ -87,7 +87,7 @@ def inner_product_np(x, W, b=None, axis=1):
     - x is reshaped to (M, K) with M = prod(shape[:axis]), K = prod(shape[axis:])
     - W shape: (N, K) where N = num_output
     - b shape: (N,) or None
-    - Output shape: shape[:axis] + (N,) + (1,)*(ndim-axis-1)
+    - Output shape: shape[:axis] + (N,)  (BVLC Caffe: no trailing singleton dims)
 
     Args:
         x: Input tensor
@@ -108,7 +108,7 @@ def inner_product_np(x, W, b=None, axis=1):
     y_flat = x_flat @ W64.T
     if b is not None:
         y_flat = y_flat + b.astype(np.float64)
-    out_shape = list(shape[:axis]) + [N] + [1] * (ndim - axis - 1)
+    out_shape = list(shape[:axis]) + [N]
     return y_flat.reshape(out_shape).astype(np.float32)
 
 
@@ -1094,8 +1094,7 @@ layer { name: "ip" type: "InnerProduct" bottom: "data" top: "out"
         with ptrace("ip known no bias forward"):
             out = net.forward({"data": inp})
         # y[0] = [1,2] (first two features), y[1] = [4,5]
-        expected = np.array([[[[1]], [[2]]],
-                              [[[4]], [[5]]]], dtype=np.float32)
+        expected = np.array([[1, 2], [4, 5]], dtype=np.float32)  # (2,2)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5)
 
     def test_ip_known_values_with_bias(self, ptrace):
@@ -1115,7 +1114,7 @@ layer { name: "ip" type: "InnerProduct" bottom: "data" top: "out"
         with ptrace("ip with bias forward"):
             out = net.forward({"data": inp})
         # y = [1*1+1*2+0.1, 1*3+1*4+0.2] = [3.1, 7.2]
-        expected = np.array([[[[3.1]], [[7.2]]]], dtype=np.float32)
+        expected = np.array([[3.1, 7.2]], dtype=np.float32)  # (1,2)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5)
 
     def test_ip_numpy_match_with_bias(self, ptrace):
@@ -1159,7 +1158,7 @@ layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "out"
         np.testing.assert_allclose(out["out"], inner_product_np(inp, W, b=None), rtol=1e-4, atol=1e-5)
 
     def test_ip_output_shape(self, ptrace):
-        """InnerProduct output shape should be (M, N_out, 1, 1) for axis=1."""
+        """InnerProduct output shape should be (M, N_out) for axis=1 (BVLC Caffe)."""
         N_batch, K_feat, N_out = 2, 6, 3
         prototxt = f"""name: "ip_shape"
 layer {{ name: "data" type: "Input" top: "data" input_param {{ shape {{ dim: {N_batch} dim: {K_feat} dim: 1 dim: 1 }} }} }}
@@ -1173,7 +1172,7 @@ layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "out"
         inp = np.random.randn(N_batch, K_feat, 1, 1).astype(np.float32)
         with ptrace("ip shape forward"):
             out = net.forward({"data": inp})
-        assert out["out"].shape == (N_batch, N_out, 1, 1)
+        assert out["out"].shape == (N_batch, N_out)
 
     def test_ip_weights_unchanged_after_forward(self, ptrace):
         """InnerProduct weights should not be modified during forward."""
@@ -1571,8 +1570,8 @@ layer {{ name: "prob" type: "Softmax" bottom: "logits" top: "probs" }}
             t['probs_sum_max_err'] = float(np.max(np.abs(np.sum(out["probs"], axis=1) - 1.0)))
             t['probs_min'] = float(np.min(out["probs"]))
         # Softmax output must sum to 1
-        assert out["probs"].shape == (N, C, 1, 1)
-        np.testing.assert_allclose(np.sum(out["probs"], axis=1), np.ones((N, 1, 1)), rtol=1e-5)
+        assert out["probs"].shape == (N, C)
+        np.testing.assert_allclose(np.sum(out["probs"], axis=1), np.ones((N,)), rtol=1e-5)
         assert np.all(out["probs"] >= 0.0)
         assert np.all(out["probs"] <= 1.0)
 

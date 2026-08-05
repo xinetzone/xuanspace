@@ -59,7 +59,7 @@ def _ip_forward_ref(x, W, b=None, axis=1, transpose=False):
         axis: Flatten axis (default 1)
         transpose: Weight layout flag
     Returns:
-        y: Output tensor with shape shape[:axis] + (N,) + (1,)*(ndim-axis-1)
+        y: Output tensor with shape shape[:axis] + (N,)  (BVLC Caffe: no trailing singleton dims)
     """
     x64 = x.astype(np.float64)
     W64 = W.astype(np.float64)
@@ -78,7 +78,7 @@ def _ip_forward_ref(x, W, b=None, axis=1, transpose=False):
         y_flat = x_flat @ W64.T
     if b is not None:
         y_flat = y_flat + b.astype(np.float64)
-    out_shape = list(shape[:axis]) + [N] + [1] * (ndim - axis - 1)
+    out_shape = list(shape[:axis]) + [N]
     return y_flat.reshape(out_shape).astype(np.float32)
 
 
@@ -123,7 +123,7 @@ def _ip_backward_ref(x, W, dy, b=None, axis=1, transpose=False):
 
     db = dy_flat.sum(axis=0)  # (N,) -- always column sum
 
-    out_shape = list(shape[:axis]) + [N] + [1] * (ndim - axis - 1)
+    out_shape = list(shape[:axis]) + [N]
     dX = dX_flat.reshape(shape).astype(np.float32)
     dW = dW.astype(np.float32)
     db = db.astype(np.float32)
@@ -434,7 +434,7 @@ class TestInnerProductBackward:
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
         b = rng.randn(N).astype(np.float32) * 0.1
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         # Analytical
         _set_ip_weights(net, W, b)
@@ -455,7 +455,7 @@ class TestInnerProductBackward:
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
         b = rng.randn(N).astype(np.float32) * 0.1
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         # Analytical
         _set_ip_weights(net, W, b)
@@ -476,7 +476,7 @@ class TestInnerProductBackward:
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
         b = rng.randn(N).astype(np.float32) * 0.1
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         # Analytical
         _set_ip_weights(net, W, b)
@@ -524,7 +524,7 @@ class TestInnerProductBackward:
         net = Net(proto)
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         _set_ip_weights(net, W, None)
         net.forward({"data": x})
@@ -694,7 +694,7 @@ class TestInnerProductBackwardNCHW:
         x = (rng.randn(N_batch, C, H, W_dim).astype(np.float32)) * 0.5
         W = (rng.randn(N_out, K).astype(np.float32)) * 0.3
         b = rng.randn(N_out).astype(np.float32) * 0.1
-        dy = rng.randn(N_batch, N_out, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(N_batch, N_out).astype(np.float32) * 0.5
 
         _set_ip_weights(net, W, b)
         net.forward({"data": x})
@@ -752,7 +752,7 @@ class TestInnerProductBackwardTranspose:
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(K, N).astype(np.float32)) * 0.3
         b = rng.randn(N).astype(np.float32) * 0.1
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         _set_ip_weights(net, W, b, transpose=True)
         net.forward({"data": x})
@@ -769,7 +769,7 @@ class TestInnerProductBackwardTranspose:
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(K, N).astype(np.float32)) * 0.3
         b = rng.randn(N).astype(np.float32) * 0.1
-        dy = rng.randn(M, N, 1, 1).astype(np.float32) * 0.5
+        dy = rng.randn(M, N).astype(np.float32) * 0.5
 
         _set_ip_weights(net, W, b, transpose=True)
         net.forward({"data": x})
