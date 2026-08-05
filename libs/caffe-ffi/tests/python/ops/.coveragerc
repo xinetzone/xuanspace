@@ -1,0 +1,27 @@
+[run]
+source = utils
+branch = true
+omit =
+    */__init__.py
+    conftest.py
+    test_*.py
+
+[report]
+show_missing = true
+skip_covered = false
+precision = 2
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    except ImportError:
+    raise ImportError
+
+[html]
+directory = htmlcov
+title = Caffe Ops Test Library Coverage Report
+
+[xml]
+output = coverage.xml

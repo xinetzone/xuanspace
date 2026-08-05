@@ -112,6 +112,14 @@ CMAKE_INSTALL_NAME_DIR = "@rpath"
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 addopts = ["-v"]
+markers = [
+    "caffe: Caffe operator tests (requires pycaffe installed)",
+    "slow: marks tests as slow (performance/benchmark tests, deselected with -m \"not slow\")",
+    "edge: marks tests as edge case tests (boundary conditions, corner cases)",
+    "correctness: marks tests as correctness validation tests",
+    "performance: marks tests as performance/benchmark tests",
+    "memory: marks tests as memory usage/leak tests",
+]
 
 [tool.ruff]
 include = ["python/**/*.py", "tests/**/*.py"]
