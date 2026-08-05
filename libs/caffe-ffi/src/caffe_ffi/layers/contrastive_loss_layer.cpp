@@ -105,7 +105,8 @@ void ContrastiveLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
   switch (normalization_) {
     case caffe::LossParameter_NormalizationMode_FULL:
-      normalizer_ = static_cast<float>(num * dim);
+      // Scalar-per-sample loss: outer_num * inner_num = num * 1.
+      normalizer_ = static_cast<float>(num);
       break;
     case caffe::LossParameter_NormalizationMode_VALID:
       normalizer_ = static_cast<float>(valid_count);
@@ -171,7 +172,9 @@ void ContrastiveLossLayer::Backward_cpu(const std::vector<Blob*>& top,
         }
       } else {
         if (dist_sq < margin) {
-          alpha = -2.0f * (margin - dist_sq) * scale;
+          // d(dist_sq)/da = 2*diff, so dL/da = -2*(margin-dist_sq)*2*diff
+          // = -4*(margin-dist_sq)*diff.
+          alpha = -4.0f * (margin - dist_sq) * scale;
         }
       }
     }
