@@ -47,6 +47,11 @@ message NetParameter {
   optional bool force_backward = 5 [default = false];
   optional NetState state = 6;
   optional bool debug_info = 7 [default = false];
+  // DEPRECATED: old V1 format layers (field 2, uses enum LayerType instead of
+  // string type). Present for backward compatibility with legacy caffemodels
+  // (e.g. BVLC reference InceptionV1). Parsed and converted to V2 layer entries
+  // by io.py before reaching the C++ Net constructor.
+  repeated V1LayerParameter layers = 2;
   repeated LayerParameter layer = 100;
 }
 
@@ -150,6 +155,7 @@ message LayerParameter {
   optional ContrastiveLossParameter contrastive_loss_param = 187;
   optional InfogainLossParameter infogain_loss_param = 188;
   optional UpsampleParameter upsample_param = 189;
+  optional NormalizeParameter norm_param = 190;
 }
 
 message SigmoidParameter {
@@ -409,6 +415,19 @@ message L2NormParameter {
   optional int32 axis = 1 [default = 1];
   // Small epsilon added inside the square root for numerical stability.
   optional float eps = 2 [default = 1e-5];
+}
+
+message NormalizeParameter {
+  // Whether to normalize over the channel (across_spatial) dimension(s).
+  // True: normalize across spatial dims (BVLC behavior); False: normalize
+  // per spatial location across channels. Matches BVLC/Caffe-SSD semantics.
+  optional bool across_spatial = 1 [default = true];
+  // Filler for the learnable scale factor (defaults to constant 1).
+  optional FillerParameter scale_filler = 2;
+  // Whether the scale factor is shared across channels.
+  optional bool channel_shared = 3 [default = true];
+  // Small epsilon added for numerical stability.
+  optional float eps = 4 [default = 1e-10];
 }
 
 message InstanceNormParameter {
@@ -729,4 +748,75 @@ message InfogainLossParameter {
 // adds an explicit scale for a concrete, self-contained implementation.)
 message UpsampleParameter {
   optional int32 scale = 1 [default = 2];
+}
+
+// DEPRECATED: V1LayerParameter is the old BVLC Caffe layer parameter format.
+// It uses a LayerType enum (field 5) instead of a string type, and places
+// layer parameters at different field numbers than V2 LayerParameter.
+// This minimal definition exists ONLY to parse legacy binary caffemodels
+// (which store trained weights as BlobProto in field 6). The Python io.py
+// layer converts V1 entries to V2 LayerParameter before passing them to the
+// C++ Net constructor. All param-specific sub-messages (convolution_param, etc.)
+// are intentionally omitted — the V1 caffemodel does not carry structural
+// parameters; those come from the prototxt (V2).
+message V1LayerParameter {
+  repeated string bottom = 2;
+  repeated string top = 3;
+  optional string name = 4;
+  repeated NetStateRule include = 32;
+  repeated NetStateRule exclude = 33;
+  // LayerType enum values from BVLC Caffe V1 format. Listing all known values
+  // avoids proto2 unknown-enum parsing errors when reading legacy caffemodels.
+  // The field is kept as optional int32 (raw tag consumed, value ignored) so
+  // that forward-compatible values also parse without error.
+  enum LayerType {
+    NONE = 0;
+    ABSVAL = 35;
+    ACCURACY = 1;
+    ARGMAX = 30;
+    BNLL = 2;
+    CONCAT = 3;
+    CONTRASTIVE_LOSS = 37;
+    CONVOLUTION = 4;
+    DATA = 5;
+    DECONVOLUTION = 39;
+    DROPOUT = 6;
+    DUMMY_DATA = 32;
+    EUCLIDEAN_LOSS = 7;
+    ELTWISE = 25;
+    EXP = 38;
+    FLATTEN = 8;
+    HDF5_DATA = 9;
+    HDF5_OUTPUT = 10;
+    HINGE_LOSS = 28;
+    IM2COL = 11;
+    IMAGE_DATA = 12;
+    INFOGAIN_LOSS = 13;
+    INNER_PRODUCT = 14;
+    LRN = 15;
+    MEMORY_DATA = 29;
+    MULTINOMIAL_LOGISTIC_LOSS = 16;
+    MVN = 34;
+    POOLING = 17;
+    POWER = 26;
+    RELU = 18;
+    SIGMOID = 19;
+    SIGMOID_CROSS_ENTROPY_LOSS = 27;
+    SILENCE = 36;
+    SOFTMAX = 20;
+    SOFTMAX_LOSS = 21;
+    SPLIT = 22;
+    SLICE = 33;
+    TANH = 23;
+    WINDOW_DATA = 24;
+    THRESHOLD = 31;
+  }
+  optional LayerType type = 5;
+  repeated BlobProto blobs = 6;
+  repeated float blobs_lr = 7;
+  repeated float weight_decay = 8;
+  repeated float loss_weight = 35;
+  // param fields (V1 used param as string names at field 1001) are not needed;
+  // blobs are the only field required for weight loading. All other param
+  // sub-messages are treated as unknown fields and silently skipped.
 }

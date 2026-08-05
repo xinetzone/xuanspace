@@ -36,16 +36,45 @@ void InnerProductLayer::LayerSetUp(const std::vector<Blob*>& bottom,
     CAFFE_FFI_LAYER_LOG << "InnerProduct: using pre-loaded weights, blobs_.size=" << this->blobs_.size();
     CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_.size(), bias_term_ ? 2U : 1U)
         << "Incorrect number of weight blobs.";
+    // Legacy V1 caffemodels store InnerProduct weights as 4D blobs
+    // [1, 1, N, K] or [1, 1, K, N] (num=1, channels=1, height=N/K, width=K/N).
+    // Reshape to the logical 2D shape [N, K] or [K, N] instead of requiring
+    // strict shape equality — total element count must match.
+    const int64_t weight_count_expected = static_cast<int64_t>(N_) * static_cast<int64_t>(K_);
+    CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[0]->count(), weight_count_expected)
+        << "InnerProduct '" << this->name() << "' weight blob count mismatch: "
+        << "expected N*K=" << N_ << "*" << K_ << "=" << weight_count_expected
+        << ", got " << this->blobs_[0]->count()
+        << " (shape=" << [&]() {
+             std::ostringstream oss;
+             oss << "[";
+             for (int i = 0; i < this->blobs_[0]->num_axes(); ++i) {
+               if (i > 0) oss << ", ";
+               oss << this->blobs_[0]->shape(i);
+             }
+             oss << "]";
+             return oss.str();
+           }()
+        << "). The caffemodel weight tensor is incompatible with this layer's "
+        << "num_output=" << N_ << " and flattened input dim K=" << K_ << ".";
+    std::vector<int64_t> weight_shape(2);
     if (transpose_) {
-      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[0]->shape(0), K_);
-      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[0]->shape(1), N_);
+      weight_shape[0] = K_;
+      weight_shape[1] = N_;
     } else {
-      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[0]->shape(0), N_);
-      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[0]->shape(1), K_);
+      weight_shape[0] = N_;
+      weight_shape[1] = K_;
     }
+    this->blobs_[0]->Reshape(weight_shape);
     if (bias_term_) {
-      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[1]->count(), N_);
+      CAFFE_FFI_CHECK_VALUE_EQ(this->blobs_[1]->count(), static_cast<int64_t>(N_))
+          << "InnerProduct '" << this->name() << "' bias blob count mismatch: "
+          << "expected N=" << N_ << ", got " << this->blobs_[1]->count();
+      this->blobs_[1]->Reshape(std::vector<int64_t>{N_});
     }
+    CAFFE_FFI_LAYER_LOG << "InnerProduct: reshaped pre-loaded weight to ["
+                        << weight_shape[0] << ", " << weight_shape[1] << "]"
+                        << (bias_term_ ? " bias to [" + std::to_string(N_) + "]" : "");
   } else {
     if (bias_term_) {
       this->blobs_.resize(2);

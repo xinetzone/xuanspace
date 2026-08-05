@@ -78,10 +78,38 @@ def net_from_param(param: caffe_pb2.NetParameter) -> Net:
 
 
 def _merge_weights(param: caffe_pb2.NetParameter, weights: caffe_pb2.NetParameter) -> None:
-    layer_map = {layer.name: layer for layer in param.layer}
+    """Merge trained blobs from `weights` into the structural `param`.
+
+    Supports both V2 (LayerParameter, field 100) and legacy V1 (V1LayerParameter,
+    field 2) caffemodel formats. Blobs are matched by layer name. When a V2 layer
+    in `param` already has blobs (e.g. from filler defaults), they are replaced
+    (not extended) to avoid shape mismatch.
+    """
+    # Build name→blobs map from weights (V2 first, then V1 as fallback).
+    weight_blobs: dict[str, list] = {}
     for w_layer in weights.layer:
-        if w_layer.name in layer_map and w_layer.blobs:
-            layer_map[w_layer.name].blobs.extend(w_layer.blobs)
+        if w_layer.name and w_layer.blobs:
+            weight_blobs[w_layer.name] = list(w_layer.blobs)
+    # V1 legacy format: uses field 6 for blobs, enum type (no string type needed
+    # since the structural info comes from prototxt).
+    for v1_layer in weights.layers:
+        if v1_layer.name and v1_layer.blobs and v1_layer.name not in weight_blobs:
+            weight_blobs[v1_layer.name] = list(v1_layer.blobs)
+
+    if not weight_blobs:
+        return
+
+    layer_map = {layer.name: layer for layer in param.layer}
+    missing = []
+    for name, blobs in weight_blobs.items():
+        if name in layer_map:
+            target = layer_map[name]
+            del target.blobs[:]
+            target.blobs.extend(blobs)
+        else:
+            missing.append(name)
+    # Missing layers are non-fatal: some caffemodels contain auxiliary layers
+    # not present in the deploy prototxt (e.g. training-only loss/accuracy layers).
 
 
 def _build_net_from_param(net: Net, param: caffe_pb2.NetParameter) -> None:

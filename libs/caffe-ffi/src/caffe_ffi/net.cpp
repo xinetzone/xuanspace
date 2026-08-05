@@ -490,7 +490,47 @@ void Net::Init(const caffe::NetParameter& in_param) {
 
     layers_[layer_id]->SetUp(bottom_vecs_[layer_id], top_vecs_[layer_id]);
 
+    // Copy learned weights from the network parameter (prototxt + merged
+    // caffemodel blobs) into the layer's blobs. Without this, SetUp() only
+    // fills blobs with the default filler (constant = 1.0), silently
+    // discarding the real caffemodel weights and producing blown-up
+    // (Inf/NaN) activations during inference.
     auto& layer_blobs = layers_[layer_id]->blobs();
+    for (int param_id = 0; param_id < layer_param.blobs_size(); ++param_id) {
+      if (param_id >= static_cast<int>(layer_blobs.size())) {
+        CAFFE_FFI_CHECK_RUNTIME(false)
+            << "Layer '" << layer_param.name() << "' provides "
+            << layer_param.blobs_size() << " blob(s) in the network parameter "
+            << "but the layer only has " << layer_blobs.size() << " blob(s).";
+      }
+
+      const caffe::BlobProto& blob_proto = layer_param.blobs(param_id);
+      Blob* blob = layer_blobs[param_id].get();
+
+      // Number of weight elements the network parameter provides.
+      const int64_t proto_count = blob_proto.data_size() > 0
+          ? static_cast<int64_t>(blob_proto.data_size())
+          : (blob_proto.double_data_size() > 0
+                 ? static_cast<int64_t>(blob_proto.double_data_size())
+                 : 0);
+
+      if (proto_count > 0) {
+        // Validate shape consistency: the layer's SetUp-resolved shape must
+        // match the parameter's element count. Fail loudly instead of silently
+        // producing a corrupted / default-filled weight blob.
+        CAFFE_FFI_CHECK_RUNTIME_EQ(blob->count(), proto_count)
+            << "Layer '" << layer_param.name() << "' blob[" << param_id
+            << "] shape mismatch: layer expects " << blob->count()
+            << " elements but the network parameter provides " << proto_count
+            << ". The prototxt and caffemodel are inconsistent.";
+
+        // Copy data/double_data into the blob. reshape=false keeps the layer's
+        // SetUp-resolved shape; count equality is validated above.
+        blob->FromProto(blob_proto, /*reshape=*/false);
+      }
+    }
+
+    // Set per-parameter learning-rate multiplier names (if declared).
     for (int param_id = 0; param_id < layer_param.param_size(); ++param_id) {
       if (param_id < static_cast<int>(layer_blobs.size())) {
         layer_blobs[param_id]->set_name(layer_param.param(param_id).name());
