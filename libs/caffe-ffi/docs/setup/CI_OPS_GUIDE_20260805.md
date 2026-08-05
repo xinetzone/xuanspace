@@ -99,6 +99,32 @@ TVM-FFI 是 caffe-ffi 的运行时依赖。历史 P0 阻塞的根因都属于**�
 | 检查 3 `is_available()==False` | 加载的是 stub | 确认 `TVM_FFI_BUILD_PYTHON_MODULE=ON` 已启用 |
 | 检查 4 FAIL | FFI 桥接异常 | 检查 vendored/released tvm-ffi 版本错配 |
 
+故障排查决策流程如下：
+
+```mermaid
+flowchart TD
+    START["CI job 失败"] --> Q1{"是否报错 ScannerError?"}
+    Q1 -->|"是"| A1["根因：name: 值含冒号"]
+    A1 --> A2["给值整体加双引号，见 §2.3"]
+    Q1 -->|"否"| Q2{"检查1 tvm_ffi.core 导入?"}
+    Q2 -->|"FAIL"| B1["根因：tvm-ffi 未装或装错"]
+    B1 --> B2["pip install --no-build-isolation -e . 重装 tvm-ffi"]
+    Q2 -->|"PASS"| Q3{"检查3 is_available()==True?"}
+    Q3 -->|"False"| C1["根因：加载的是 stub"]
+    C1 --> C2["确认 TVM_FFI_BUILD_PYTHON_MODULE=ON"]
+    Q3 -->|"True"| Q4{"检查4 data_io 桥接冒烟?"}
+    Q4 -->|"FAIL"| D1["根因：FFI 桥接异常"]
+    D1 --> D2["检查 vendored/released tvm-ffi 版本错配"]
+    Q4 -->|"PASS"| E1["通过，无需处理"]
+    A2 --> F1["修复完成"]
+    B2 --> F1
+    C2 --> F1
+    D2 --> F1
+    E1 --> F1
+```
+
+> 检查 1/2/3/4 编号对应 §3.2 `ci_check_tvmffi.py` 的 4 个检查步骤。
+
 ## 5. 变更清单
 
 - `.github/workflows/ci.yml`：修复 6 处 YAML 引号问题；`nightly` 新增
