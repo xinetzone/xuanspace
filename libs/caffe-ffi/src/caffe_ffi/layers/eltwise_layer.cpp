@@ -201,64 +201,64 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
   switch (op_) {
     case PROD: {
-      const float* bottom0_data = bottom[0]->cpu_data();
+      // Fused single parallel region: compute product over all bottoms per element.
+      // Each thread only writes its own top_data[i], no cross-thread race.
+      std::vector<const float*> bdata(num_bottoms);
+      for (int j = 0; j < num_bottoms; ++j) {
+        bdata[j] = bottom[j]->cpu_data();
+      }
       #ifdef CAFFE_USE_OPENMP
       #pragma omp parallel for schedule(static)
       #endif
       for (int64_t i = 0; i < count; ++i) {
-        top_data[i] = bottom0_data[i] * coeffs_[0];
-      }
-      for (int j = 1; j < num_bottoms; ++j) {
-        const float* bj_data = bottom[j]->cpu_data();
-        #ifdef CAFFE_USE_OPENMP
-        #pragma omp parallel for schedule(static)
-        #endif
-        for (int64_t i = 0; i < count; ++i) {
-          top_data[i] *= bj_data[i] * coeffs_[j];
+        float prod = bdata[0][i] * coeffs_[0];
+        for (int j = 1; j < num_bottoms; ++j) {
+          prod *= bdata[j][i] * coeffs_[j];
         }
+        top_data[i] = prod;
       }
       break;
     }
     case SUM: {
-      const float* bottom0_data = bottom[0]->cpu_data();
+      // Fused single parallel region: accumulate all bottoms per element in a local
+      // acc, then write once. Eliminates repeated fork/join and reduces memory traffic.
+      std::vector<const float*> bdata(num_bottoms);
+      for (int j = 0; j < num_bottoms; ++j) {
+        bdata[j] = bottom[j]->cpu_data();
+      }
       #ifdef CAFFE_USE_OPENMP
       #pragma omp parallel for schedule(static)
       #endif
       for (int64_t i = 0; i < count; ++i) {
-        top_data[i] = bottom0_data[i] * coeffs_[0];
-      }
-      for (int j = 1; j < num_bottoms; ++j) {
-        const float* bj_data = bottom[j]->cpu_data();
-        #ifdef CAFFE_USE_OPENMP
-        #pragma omp parallel for schedule(static)
-        #endif
-        for (int64_t i = 0; i < count; ++i) {
-          top_data[i] += bj_data[i] * coeffs_[j];
+        float acc = bdata[0][i] * coeffs_[0];
+        for (int j = 1; j < num_bottoms; ++j) {
+          acc += bdata[j][i] * coeffs_[j];
         }
+        top_data[i] = acc;
       }
       break;
     }
     case MAX: {
-      const float* bottom0_data = bottom[0]->cpu_data();
+      // Fused single parallel region: compute max over all bottoms per element.
+      std::vector<const float*> bdata(num_bottoms);
+      for (int j = 0; j < num_bottoms; ++j) {
+        bdata[j] = bottom[j]->cpu_data();
+      }
       #ifdef CAFFE_USE_OPENMP
       #pragma omp parallel for schedule(static)
       #endif
       for (int64_t i = 0; i < count; ++i) {
-        top_data[i] = bottom0_data[i] * coeffs_[0];
-        max_idx_[i] = 0;
-      }
-      for (int j = 1; j < num_bottoms; ++j) {
-        const float* bj_data = bottom[j]->cpu_data();
-        #ifdef CAFFE_USE_OPENMP
-        #pragma omp parallel for schedule(static)
-        #endif
-        for (int64_t i = 0; i < count; ++i) {
-          float val = bj_data[i] * coeffs_[j];
-          if (val > top_data[i]) {
-            top_data[i] = val;
-            max_idx_[i] = j;
+        float max_val = bdata[0][i] * coeffs_[0];
+        int max_idx = 0;
+        for (int j = 1; j < num_bottoms; ++j) {
+          float val = bdata[j][i] * coeffs_[j];
+          if (val > max_val) {
+            max_val = val;
+            max_idx = j;
           }
         }
+        top_data[i] = max_val;
+        max_idx_[i] = max_idx;
       }
       break;
     }

@@ -163,55 +163,56 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     caffe_set_fp32(static_cast<size_t>(top_count), -1.0f, mask_data);
   }
 
-  // Main pooling loop. Parallelize over the batch (n) dimension: each n writes
-  // to a disjoint region of top_data/mask_data, so there is no cross-thread
-  // write race. NOTE: do NOT use OpenMP min/max reductions here — such clauses
-  // require the LLVM OpenMP runtime (`/openmp:llvm`) and are not supported by
-  // the default MSVC `/openmp` (error C7660). in_min/in_max are diagnostic-only
-  // and are computed in a separate serial pass below (outside the timed region).
+  // Main pooling loop. Flatten (n, c) into a single nc index so that
+  // parallelism = num * channels_ (typically >> num when batch=1 inference).
+  // Each nc writes a disjoint region of top_data/mask_data — no cross-thread
+  // write race. Do NOT use OpenMP min/max reductions here: they require
+  // `/openmp:llvm` and break MSVC's default `/openmp`. in_min/in_max are
+  // computed in a separate serial pass below (outside the timed region).
+  const int nc_total = num * channels_;
+  const int hw = height_ * width_;
+  const int pooled_hw = pooled_height_ * pooled_width_;
   #ifdef CAFFE_USE_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (int n = 0; n < num; ++n) {
-    for (int c = 0; c < channels_; ++c) {
-      for (int ph = 0; ph < pooled_height_; ++ph) {
-        for (int pw = 0; pw < pooled_width_; ++pw) {
-          int hstart = ph * stride_h_ - pad_h_;
-          int wstart = pw * stride_w_ - pad_w_;
-          int hend = std::min(hstart + kernel_h_, height_);
-          int wend = std::min(wstart + kernel_w_, width_);
-          hstart = std::max(hstart, 0);
-          wstart = std::max(wstart, 0);
-          const int pool_index = (n * channels_ + c) * pooled_height_ * pooled_width_
-                                 + ph * pooled_width_ + pw;
+  for (int nc = 0; nc < nc_total; ++nc) {
+    const int base = nc * hw;
+    const int pool_base = nc * pooled_hw;
+    for (int ph = 0; ph < pooled_height_; ++ph) {
+      for (int pw = 0; pw < pooled_width_; ++pw) {
+        int hstart = ph * stride_h_ - pad_h_;
+        int wstart = pw * stride_w_ - pad_w_;
+        int hend = std::min(hstart + kernel_h_, height_);
+        int wend = std::min(wstart + kernel_w_, width_);
+        hstart = std::max(hstart, 0);
+        wstart = std::max(wstart, 0);
+        const int pool_index = pool_base + ph * pooled_width_ + pw;
 
-          if (pool_method_ == caffe::PoolingParameter::MAX) {
-            float max_val = -std::numeric_limits<float>::max();
-            int max_idx = -1;
-            for (int h = hstart; h < hend; ++h) {
-              for (int w = wstart; w < wend; ++w) {
-                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
-                float val = bottom_data[index];
-                if (val > max_val) {
-                  max_val = val;
-                  max_idx = h * width_ + w;  // flat index within channel plane
-                }
+        if (pool_method_ == caffe::PoolingParameter::MAX) {
+          float max_val = -std::numeric_limits<float>::max();
+          int max_idx = -1;
+          for (int h = hstart; h < hend; ++h) {
+            for (int w = wstart; w < wend; ++w) {
+              const int index = base + h * width_ + w;
+              float val = bottom_data[index];
+              if (val > max_val) {
+                max_val = val;
+                max_idx = h * width_ + w;  // flat index within channel plane
               }
             }
-            top_data[pool_index] = max_val;
-            mask_data[pool_index] = static_cast<float>(max_idx);
-          } else if (pool_method_ == caffe::PoolingParameter::AVE) {
-            float sum = 0.0f;
-            int count = 0;
-            for (int h = hstart; h < hend; ++h) {
-              for (int w = wstart; w < wend; ++w) {
-                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
-                sum += bottom_data[index];
-                ++count;
-              }
-            }
-            top_data[pool_index] = (count > 0) ? sum / count : 0.0f;
           }
+          top_data[pool_index] = max_val;
+          mask_data[pool_index] = static_cast<float>(max_idx);
+        } else if (pool_method_ == caffe::PoolingParameter::AVE) {
+          float sum = 0.0f;
+          int count = 0;
+          for (int h = hstart; h < hend; ++h) {
+            for (int w = wstart; w < wend; ++w) {
+              sum += bottom_data[base + h * width_ + w];
+              ++count;
+            }
+          }
+          top_data[pool_index] = (count > 0) ? sum / count : 0.0f;
         }
       }
     }
@@ -283,47 +284,61 @@ void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
 
   const float* mask_data = (pool_method_ == caffe::PoolingParameter::MAX) ? max_idx_->cpu_data() : nullptr;
 
-  for (int n = 0; n < num; ++n) {
-    for (int c = 0; c < channels_; ++c) {
-      for (int ph = 0; ph < pooled_height_; ++ph) {
-        for (int pw = 0; pw < pooled_width_; ++pw) {
-          int hstart = ph * stride_h_ - pad_h_;
-          int wstart = pw * stride_w_ - pad_w_;
-          int hend = std::min(hstart + kernel_h_, height_);
-          int wend = std::min(wstart + kernel_w_, width_);
-          hstart = std::max(hstart, 0);
-          wstart = std::max(wstart, 0);
-          const int pool_index = (n * channels_ + c) * pooled_height_ * pooled_width_
-                                 + ph * pooled_width_ + pw;
-          const float dy = top_diff[pool_index];
+  // Flatten (n, c) into nc: parallelism = num * channels_, safe because each
+  // nc plane is a disjoint memory region in [N,C,H,W] layout and the inner
+  // ph/pw loops run serially within one thread — no cross-thread write race
+  // on bottom_diff even when pooling windows overlap (stride < kernel).
+  const int nc_total = num * channels_;
+  const int hw = height_ * width_;
+  const int pooled_hw = pooled_height_ * pooled_width_;
+  #ifdef CAFFE_USE_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
+  for (int nc = 0; nc < nc_total; ++nc) {
+    const int base = nc * hw;
+    const int pool_base = nc * pooled_hw;
+    for (int ph = 0; ph < pooled_height_; ++ph) {
+      for (int pw = 0; pw < pooled_width_; ++pw) {
+        int hstart = ph * stride_h_ - pad_h_;
+        int wstart = pw * stride_w_ - pad_w_;
+        int hend = std::min(hstart + kernel_h_, height_);
+        int wend = std::min(wstart + kernel_w_, width_);
+        hstart = std::max(hstart, 0);
+        wstart = std::max(wstart, 0);
+        const int pool_index = pool_base + ph * pooled_width_ + pw;
+        const float dy = top_diff[pool_index];
 
-          diff_in_min = std::min(diff_in_min, dy);
-          diff_in_max = std::max(diff_in_max, dy);
-
-          if (pool_method_ == caffe::PoolingParameter::MAX) {
-            // Route gradient to the max-pooling winner
-            const int winner = static_cast<int>(mask_data[pool_index]);
-            if (winner >= 0) {
-              const int bottom_idx = (n * channels_ + c) * height_ * width_ + winner;
-              bottom_diff[bottom_idx] += dy;
-              diff_out_min = std::min(diff_out_min, bottom_diff[bottom_idx]);
-              diff_out_max = std::max(diff_out_max, bottom_diff[bottom_idx]);
-            }
-          } else if (pool_method_ == caffe::PoolingParameter::AVE) {
-            // Distribute gradient equally across the pooling window
-            const int pool_size = (hend - hstart) * (wend - wstart);
-            const float scale = (pool_size > 0) ? dy / pool_size : 0.0f;
-            for (int h = hstart; h < hend; ++h) {
-              for (int w = wstart; w < wend; ++w) {
-                const int index = (n * channels_ + c) * height_ * width_ + h * width_ + w;
-                bottom_diff[index] += scale;
-                diff_out_min = std::min(diff_out_min, bottom_diff[index]);
-                diff_out_max = std::max(diff_out_max, bottom_diff[index]);
-              }
+        if (pool_method_ == caffe::PoolingParameter::MAX) {
+          // Route gradient to the max-pooling winner
+          const int winner = static_cast<int>(mask_data[pool_index]);
+          if (winner >= 0) {
+            const int bottom_idx = base + winner;
+            bottom_diff[bottom_idx] += dy;
+          }
+        } else if (pool_method_ == caffe::PoolingParameter::AVE) {
+          // Distribute gradient equally across the pooling window
+          const int pool_size = (hend - hstart) * (wend - wstart);
+          const float scale = (pool_size > 0) ? dy / pool_size : 0.0f;
+          for (int h = hstart; h < hend; ++h) {
+            for (int w = wstart; w < wend; ++w) {
+              bottom_diff[base + h * width_ + w] += scale;
             }
           }
         }
       }
+    }
+  }
+
+  // diff值域统计（串行遍历，避免并行循环内的数据竞争）
+  {
+    const int top_count_diff = static_cast<int>(top[0]->count());
+    for (int i = 0; i < top_count_diff; ++i) {
+      diff_in_min = std::min(diff_in_min, top_diff[i]);
+      diff_in_max = std::max(diff_in_max, top_diff[i]);
+    }
+    for (int i = 0; i < bottom_count; ++i) {
+      diff_out_min = std::min(diff_out_min, bottom_diff[i]);
+      diff_out_max = std::max(diff_out_max, bottom_diff[i]);
     }
   }
 
