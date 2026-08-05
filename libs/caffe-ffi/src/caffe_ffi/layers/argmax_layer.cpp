@@ -37,17 +37,24 @@ void ArgMaxLayer::LayerSetUp(const std::vector<Blob*>& bottom,
 
 void ArgMaxLayer::Reshape(const std::vector<Blob*>& bottom,
                           const std::vector<Blob*>& top) {
-  int num_top_axes = bottom[0]->num_axes();
-  if (num_top_axes < 3) {
-    num_top_axes = 3;
-  }
-  std::vector<int64_t> shape(num_top_axes, 1);
+  std::vector<int64_t> shape;
   if (has_axis_) {
-    for (int i = 0; i < num_top_axes; ++i) {
+    // With an explicit axis, the output mirrors the input's leading dimensions
+    // and replaces only the axis dimension with top_k_. Using the input's real
+    // dimensionality (without padding to 3-D) keeps BVLC Caffe semantics and
+    // supports lower-dimensional inputs such as 2-D, where accessing shape(i)
+    // beyond num_axes() would otherwise be out of bounds.
+    const int input_axes = bottom[0]->num_axes();
+    shape.assign(input_axes, 1);
+    for (int i = 0; i < input_axes; ++i) {
       shape[i] = bottom[0]->shape(i);
     }
     shape[axis_] = top_k_;
   } else {
+    // Without an axis, ArgMax flattens each instance and emits a 3-D blob:
+    // outer dim = batch, then (optionally) 2 for {index,value}, then top_k.
+    int num_top_axes = std::max(bottom[0]->num_axes(), 3);
+    shape.assign(num_top_axes, 1);
     shape[0] = bottom[0]->shape(0);
     shape[2] = top_k_;
     if (out_max_val_) {
