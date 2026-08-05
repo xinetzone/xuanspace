@@ -22,6 +22,7 @@ import numpy as np
 
 from . import caffe_pb2
 from ._core import Net
+from ._dtype import _as_float32
 
 __all__ = [
     "save_net",
@@ -118,7 +119,7 @@ def dict_to_weights(net: Net, weights: Dict[str, np.ndarray]) -> None:
         blob = by_key.get(key)
         if blob is None:
             continue
-        arr = np.asarray(arr, dtype=np.float32)
+        arr = _as_float32(arr, field=f"weight '{key}'")
         if tuple(arr.shape) != blob.shape:
             blob.Reshape(list(arr.shape))
         blob.data_tensor[:] = arr

@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 import numpy as np
 
 from ._core import Net
+from ._dtype import _as_float32
 
 __all__ = [
     "Optimizer",
@@ -147,7 +148,7 @@ class SGD(Optimizer):
     def load_state_dict(self, state: dict) -> None:
         """Restore optimizer state from a previous :meth:`state_dict`."""
         self._velocity = {
-            (k.rsplit(":", 1)[0], int(k.rsplit(":", 1)[1])): np.asarray(v)
+            (k.rsplit(":", 1)[0], int(k.rsplit(":", 1)[1])): _as_float32(v, field="optimizer velocity")
             for k, v in state.items()
         }
 
@@ -220,8 +221,8 @@ class Adam(Optimizer):
         """Restore optimizer state from a previous :meth:`state_dict`."""
         self._t = int(state.get("t", 0))
         parse = lambda key: (key.rsplit(":", 1)[0], int(key.rsplit(":", 1)[1]))  # noqa: E731
-        self._m = {parse(k): np.asarray(v) for k, v in state.get("m", {}).items()}
-        self._v = {parse(k): np.asarray(v) for k, v in state.get("v", {}).items()}
+        self._m = {parse(k): _as_float32(v, field="optimizer m") for k, v in state.get("m", {}).items()}
+        self._v = {parse(k): _as_float32(v, field="optimizer v") for k, v in state.get("v", {}).items()}
 
 
 class LRScheduler:

@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import numpy as np
 
 from . import _ffi_api
+from ._dtype import _as_float32
 
 _logger = logging.getLogger("caffe_ffi.core")
 
@@ -253,7 +254,7 @@ class Blob(_Object):
     @data.setter
     def data(self, value: np.ndarray) -> None:
         """Set data from numpy array."""
-        arr = np.asarray(value, dtype=np.float32)
+        arr = _as_float32(value, field="data")
         _logger.info("Blob.data setter: shape=%s -> %s, dtype=%s", self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
@@ -267,7 +268,7 @@ class Blob(_Object):
     @diff.setter
     def diff(self, value: np.ndarray) -> None:
         """Set diff from numpy array."""
-        arr = np.asarray(value, dtype=np.float32)
+        arr = _as_float32(value, field="diff")
         _logger.info("Blob.diff setter: shape=%s -> %s, dtype=%s", self.shape, arr.shape, arr.dtype)
         if tuple(arr.shape) != self.shape:
             self.Reshape(list(arr.shape))
@@ -302,7 +303,7 @@ class Blob(_Object):
             other_data = other.data_tensor
             _logger.info("Blob.copy_from: shape=%s <- Blob(shape=%s)", self.shape, other.shape)
         else:
-            other_data = np.asarray(other, dtype=np.float32)
+            other_data = _as_float32(other, field="data")
             _logger.info(
                 "Blob.copy_from: shape=%s <- ndarray(shape=%s, dtype=%s)",
                 self.shape,
@@ -316,13 +317,13 @@ class Blob(_Object):
 
     def from_numpy(self, arr: np.ndarray, set_diff: bool = False) -> Blob:
         """Reshape blob and set data from numpy array."""
-        arr = np.asarray(arr, dtype=np.float32)
+        arr = _as_float32(arr, field="diff" if set_diff else "data")
         _logger.info("Blob.from_numpy: shape=%s, dtype=%s, set_diff=%s", arr.shape, arr.dtype, set_diff)
         self.Reshape(list(arr.shape))
         if set_diff:
-            self.diff = arr
+            self.diff_tensor[:] = arr
         else:
-            self.data = arr
+            self.data_tensor[:] = arr
         return self
 
     def to_numpy(self, get_diff: bool = False) -> np.ndarray:
@@ -337,18 +338,16 @@ class Blob(_Object):
     def set_data(self, data) -> None:
         if self._is_native:
             # Convert input to numpy float32 array for zero-copy DLPack interop
-            if not isinstance(data, np.ndarray):
-                data = np.array(data, dtype=np.float32)
-            if data.dtype != np.float32:
-                data = data.astype(np.float32)
+            data = _as_float32(data, field="data")
             expected_shape = tuple(self.shape)
             if data.shape != expected_shape:
                 data = data.reshape(expected_shape)
             _logger.info("Blob.set_data (native): shape=%s, dtype=%s", data.shape, data.dtype)
             _native_method(self, "set_data")(data)
         else:
+            data = _as_float32(data, field="data").reshape(self._py_shape)
             _logger.info("Blob.set_data (python): shape=%s", self._py_shape)
-            self._py_data = np.array(data, dtype=np.float32).reshape(self._py_shape)
+            self._py_data = data
 
     def get_diff(self) -> List[float]:
         if self._is_native:
@@ -357,18 +356,16 @@ class Blob(_Object):
 
     def set_diff(self, diff) -> None:
         if self._is_native:
-            if not isinstance(diff, np.ndarray):
-                diff = np.array(diff, dtype=np.float32)
-            if diff.dtype != np.float32:
-                diff = diff.astype(np.float32)
+            diff = _as_float32(diff, field="diff")
             expected_shape = tuple(self.shape)
             if diff.shape != expected_shape:
                 diff = diff.reshape(expected_shape)
             _logger.info("Blob.set_diff (native): shape=%s, dtype=%s", diff.shape, diff.dtype)
             _native_method(self, "set_diff")(diff)
         else:
+            diff = _as_float32(diff, field="diff").reshape(self._py_shape)
             _logger.info("Blob.set_diff (python): shape=%s", self._py_shape)
-            self._py_diff = np.array(diff, dtype=np.float32).reshape(self._py_shape)
+            self._py_diff = diff
 
     @property
     def construction_backtrace(self) -> str:
@@ -497,19 +494,11 @@ class Net(_Object):
         if self._is_native:
             input_map = {}
             for k, v in inputs.items():
-                if isinstance(v, np.ndarray):
-                    # Pass numpy array directly for zero-copy DLPack Tensor interop
-                    if v.dtype != np.float32:
-                        v = v.astype(np.float32)
-                    input_map[k] = v
-                elif isinstance(v, Blob):
-                    # Use the blob's data tensor directly
+                if isinstance(v, Blob):
+                    # Use the blob's data tensor directly (already float32)
                     input_map[k] = v.to_numpy()
-                elif isinstance(v, (list, tuple)):
-                    # Convert list/tuple to numpy float32 array
-                    input_map[k] = np.array(v, dtype=np.float32)
                 else:
-                    input_map[k] = np.array(v, dtype=np.float32)
+                    input_map[k] = _as_float32(v, field=f"input '{k}'")
             result = _native_method(self, "Forward")(input_map)
             return {str(k): v for k, v in result.items()}
         return self._py_forward(inputs)
@@ -546,7 +535,7 @@ class Net(_Object):
             for name, arr in input_dict.items():
                 try:
                     blob = self.blob_by_name(name)
-                    blob.data = np.asarray(arr, dtype=np.float32)
+                    blob.data = arr
                 except (KeyError, RuntimeError):
                     pass
 
@@ -585,7 +574,7 @@ class Net(_Object):
             if output_diffs is not None:
                 for name, arr in output_diffs.items():
                     blob = self.blob_by_name(name)
-                    arr = np.asarray(arr, dtype=np.float32)
+                    arr = _as_float32(arr, field="diff")
                     # Make sure diff is allocated and write diff values
                     diff_t = blob.mutable_diff_tensor()
                     diff_t[:] = arr.reshape(diff_t.shape)
