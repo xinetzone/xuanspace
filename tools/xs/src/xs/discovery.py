@@ -62,6 +62,9 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
     """
     从 pyproject.toml 中提取项目名称、版本和依赖
 
+    支持动态版本：当 [project] 未声明静态 version（dynamic = ["version"]）时，
+    从 [tool.setuptools.dynamic].version.attr 指向的模块文件解析 __version__。
+
     Args:
         path: pyproject.toml 文件路径
         fallback: 如果提取失败时使用的名称
@@ -73,7 +76,7 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
         data = load_pyproject(path)
         project = data.get("project", {})
         name = project.get("name", fallback)
-        version = project.get("version", "0.0.0")
+        version = project.get("version") or _resolve_dynamic_version(path, data)
         dependencies = get_project_dependencies(data)
         dep_names = []
         for dep in dependencies:
@@ -82,6 +85,44 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
         return name, version, dep_names
     except Exception:
         return fallback, "0.0.0", []
+
+
+def _resolve_dynamic_version(pyproject_path: Path, data: dict) -> str:
+    """
+    解析动态版本号
+
+    当 pyproject 使用 dynamic = ["version"] 时，从 [tool.setuptools.dynamic]
+    的 version.attr（如 "xs.__version__"）指向的模块文件解析版本值。
+
+    Args:
+        pyproject_path: pyproject.toml 文件路径
+        data: 已加载的 pyproject 数据
+
+    Returns:
+        解析出的版本字符串，解析失败返回 "0.0.0"
+    """
+    try:
+        setuptools_cfg = data.get("tool", {}).get("setuptools", {})
+        version_cfg = setuptools_cfg.get("dynamic", {}).get("version") or {}
+        attr = version_cfg.get("attr", "")
+        if not attr:
+            return "0.0.0"
+        parts = attr.split(".")
+        if len(parts) < 2:
+            return "0.0.0"
+        module_parts, attr_name = parts[:-1], parts[-1]
+        where = setuptools_cfg.get("packages", {}).get("find", {}).get("where", ["."])
+        for base in where:
+            init_path = pyproject_path.parent / base / Path(*module_parts) / "__init__.py"
+            if not init_path.exists():
+                continue
+            text = init_path.read_text(encoding="utf-8")
+            match = re.search(rf'{re.escape(attr_name)}\s*=\s*["\']([^"\']+)["\']', text)
+            if match:
+                return match.group(1)
+        return "0.0.0"
+    except Exception:
+        return "0.0.0"
 
 
 def _scan_directory(

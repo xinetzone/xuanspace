@@ -1,12 +1,23 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "xs-cli"
-version = "0.1.0"
 description = "Xuanspace xs CLI 工具"
+readme = "README.md"
 requires-python = ">=3.14"
+dynamic = ["version"]
+keywords = ["xuanspace", "xuanjing", "cli", "monorepo", "devops"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = [
     "typer>=0.12",
     "rich>=13.0",
@@ -16,7 +27,12 @@ dependencies = [
 authors = [
     {name = "xinetzone"}
 ]
-license = {text = "MIT"}
+license = "MIT"
+
+[project.urls]
+Homepage = "https://github.com/xinetzone/xuanspace"
+Repository = "https://github.com/xinetzone/xuanspace"
+Issues = "https://github.com/xinetzone/xuanspace/issues"
 
 [project.scripts]
 xs = "xs.cli:app"
@@ -24,5 +40,5 @@ xs = "xs.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.pdm.build]
-includes = ["src/xs"]
+[tool.setuptools.dynamic]
+version = {attr = "xs.__version__"}

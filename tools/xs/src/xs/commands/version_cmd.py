@@ -124,6 +124,21 @@ def version_bump(
                 count=1,
             )
             proj.pyproject_path.write_text(new_content, encoding="utf-8")
+
+            # 同步更新 __init__.py 中的 __version__（单源版本化）
+            # 仅对 xs-cli 生效：pyproject 中 version 设为 dynamic，从 xs.__version__ 读取
+            if proj.name == "xs-cli":
+                init_path = proj.pyproject_path.parent / "src" / "xs" / "__init__.py"
+                if init_path.exists():
+                    init_content = init_path.read_text(encoding="utf-8")
+                    new_init_content = re.sub(
+                        r'(__version__\s*=\s*)"' + re.escape(old_ver) + r'"',
+                        f'\\1"{new_ver}"',
+                        init_content,
+                        count=1,
+                    )
+                    init_path.write_text(new_init_content, encoding="utf-8")
+
             changelog = proj.path / "CHANGELOG.md"
             _append_changelog(changelog, new_ver, proj.path)
 
