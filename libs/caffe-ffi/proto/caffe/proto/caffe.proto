@@ -522,8 +522,10 @@ message Im2colParameter {
 }
 
 // ArgMax: return the indices (and optionally values) of the top_k largest entries.
+// out_max_val defaults to false to match BVLC Caffe (output the argmax index).
+// When true, the max value itself is returned instead.
 message ArgMaxParameter {
-  optional bool out_max_val = 1 [default = true];
+  optional bool out_max_val = 1 [default = false];
   optional uint32 top_k = 2 [default = 1];
   optional int32 axis = 3 [default = 1];
 }
