@@ -14,25 +14,32 @@ caffe-ffi 是基于 tvm-ffi 原生对象系统的 Caffe 深度学习框架绑定
 
 ## 特性
 
-- 基于 tvm-ffi 的类型安全 FFI 绑定
-- 零拷贝数据交互（Blob 数据共享）
+- 基于 tvm-ffi 的类型安全 FFI 绑定（现代化 C++17 实现）
+- Copy-on-Write（COW）零拷贝数据交互：Blob 间 O(1) 引用计数共享（`ShareData`/`ShareDiff`），首次写入自动深拷贝，保留隔离语义
 - CPU-only 模式支持（无需 GPU）
-- 现代化 C++17 实现
-- Protobuf 模型定义序列化支持
-- 丰富的层实现（Convolution, Pooling, InnerProduct, ReLU, Softmax 等）
+- OpenMP 多线程并行（GEMM/GEMV fallback、Pooling、Eltwise）
+- 丰富的层实现（60+ 层头文件，含 Convolution/Pooling/InnerProduct/ReLU/Softmax，以及 LSTM/RNN/Recurrent 循环层与 Transformer 编码块）
+- 内存安全保证：in-place 操作校验（避免堆越界）、AddressSanitizer（ASan）构建支持
+- 内存诊断工具（`caffe_ffi.tools.memory`）：内存日志、Blob 引用追踪、全局泄漏检测计数器
+- FFI 边界 dtype 统一守卫：复数类型输入显式 `TypeError`，杜绝静默截断
+- Protobuf 模型序列化（text/binary，预生成 pb2.py 开箱即用）
+- 训练工程化：Solver / 优化器（SGD/Adam）/ 学习率调度器 / 权重序列化
+- 序列模型支持（`caffe_ffi.sequence`：numpy 参考实现）
 - 跨平台支持（Windows/Linux/macOS/WSL）
-- Conda 包管理支持
+- Docker 规范构建环境（`apps/caffe-ffi-jupyter`）+ Conda 打包支持
 - Ninja 快速构建
 
-## 版本规划
+## 版本历史
 
-| 规划版本 | 阶段定位 | 核心目标 | 关键里程碑 |
-|---------|---------|---------|-----------|
-| v0.2.0 (Beta) | 功能扩展期 | 扩展层覆盖与性能优化 | 补齐常用推理层至40+，性能benchmark体系，CI/CD流水线（GitHub Actions），自动测试覆盖Linux/Windows/macOS三平台 |
-| v0.3.0 (RC) | 发布准备期 | 包发布与API稳定化 | PyPI/Conda正式发布，API冻结与稳定性保证，向后兼容策略，完整用户文档与API参考，模型兼容性验证（经典Caffe模型） |
-| v1.0.0 (Stable) | 生产就绪期 | 稳定可用 | API稳定保证（SemVer），生产级性能与内存安全，完整示例与教程，与caffe-slim的互操作桥接层完成 |
+当前版本 **1.2.0**（开发期），完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-> 当前v0.1.0 (Alpha)已完成独立库基础设施建设（CMake模块化、40 C++测试+65 Python测试、Docker开发环境、conda打包配置），详见 [CHANGELOG.md](CHANGELOG.md)。
+| 版本 | 发布时间 | 核心内容 |
+|------|---------|---------|
+| v1.2.0 | 2026-07-31 | InsertSplits 图变换边界测试（18 用例）、P3-C Transformer 测试套件（13 用例）、核心层诊断日志、Sigmoid 饱和精度断言修复 |
+| v1.1.0 | 2026-07-30 | Copy-on-Write（COW）零拷贝机制（`ShareData`/`ShareDiff`）、内存生命周期追踪工具、COW 测试套件（21 用例）、内存泄漏修复 |
+| v0.1.0 | 2026-07-29 | 独立库基础：CMake 模块化（9 文件）、C++/Python 测试（40+65）、Docker 开发环境、conda 打包配置 |
+
+> **版本号说明**：`pyproject.toml`/`CMakeLists.txt`/`__init__.py` 中的版本号仍为 0.1.0，与 CHANGELOG 存在偏差，计划在后续正式发布时统一。
 
 ## 系统要求
 
@@ -413,6 +420,41 @@ print(report)
 disable_logging()
 ```
 
+### 网络 IO 与序列化
+
+```python
+from caffe_ffi import read_net_from_prototxt
+from caffe_ffi.serialization import save_net, load_net, weights_to_dict, dict_to_weights
+
+# 从 prototxt 文本加载网络
+net_param = read_net_from_prototxt("model.prototxt")
+
+# 权重序列化（dict <-> 权重）
+weights = weights_to_dict(net_param)          # 提取权重字典
+net_param = dict_to_weights(weights)          # 写回网络参数
+
+# 网络参数保存/加载
+save_net(net_param, "model.caffemodel")
+net_param = load_net("model.caffemodel")
+```
+
+### 训练（Solver / 优化器 / 调度器）
+
+```python
+import numpy as np
+from caffe_ffi.solver import SGD, CosineAnnealingLR, Solver
+
+net = ...  # 已构建的 Net（含 loss 输出 blob）
+optimizer = SGD(lr=0.01, weight_decay=1e-4)
+scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=100)
+solver = Solver(net=net, optimizer=optimizer, scheduler=scheduler)
+
+solver.train(True)
+for epoch in range(10):
+    loss = solver.step({"data": batch_data, "label": batch_label})  # 前向+反向+更新
+    scheduler.step(epoch)          # 更新学习率
+```
+
 ## 项目结构
 
 ```
@@ -422,49 +464,36 @@ caffe-ffi/
 ├── .temp/                   # 临时文件目录（不提交内容）
 ├── CMakeLists.txt           # 根 CMake 配置
 ├── CMakePresets.json        # CMake 预设配置
-├── pyproject.toml           # Python 构建配置
+├── pyproject.toml           # Python 构建配置（scikit-build-core）
 ├── environment.yml          # Conda 环境配置
 ├── LICENSE                  # BSD-2-Clause 许可证
 ├── CHANGELOG.md             # 变更日志
-├── include/                 # C++ 头文件
-│   └── caffe_ffi/
-│       ├── blob.hpp         # Blob 类定义
-│       ├── net.hpp          # Net 类定义
-│       ├── layer.hpp        # Layer 基类
-│       ├── common.hpp       # 公共定义
-│       ├── math_utils.hpp   # 数学工具
-│       └── layers/          # 各层实现头文件
-├── src/                     # C++ 源代码
-│   └── caffe_ffi/
-│       ├── blob.cpp
-│       ├── net.cpp
-│       ├── layer.cpp
-│       └── layers/          # 各层实现
+├── include/caffe_ffi/       # C++ 头文件
+│   ├── blob.hpp / net.hpp / layer.hpp / common.hpp / math_utils.hpp
+│   ├── log.hpp / error.hpp / fill.hpp / backtrace.hpp / perf_monitor.hpp
+│   ├── data_io_bridge.hpp   # Data IO 桥接（回调注册）
+│   └── layers/              # 60+ 层头文件（含 LSTM/RNN/Recurrent、池化/卷积/损失等）
+├── src/caffe_ffi/           # C++ 实现
+│   ├── blob.cpp / net.cpp / layer.cpp / layer_factory.cpp
+│   ├── _caffe_ffi.cc        # FFI 注册入口
+│   ├── data_io_bridge.cpp
+│   └── layers/              # 各层实现
 ├── python/caffe_ffi/        # Python 包
-│   ├── __init__.py
-│   ├── blob.py              # Blob Python 封装
-│   ├── net.py               # Net Python 封装
-│   ├── layer.py             # Layer Python 封装
-│   ├── _ffi_api.py          # FFI API 绑定
-│   ├── io.py                # IO 工具
-│   ├── caffe/               # Caffe 子模块
-│   └── tools/               # 调试工具
-├── proto/caffe/proto/       # Protobuf 定义
-│   └── caffe.proto
-├── cmake/                   # CMake 模块
-├── tests/python/            # Python 单元测试
+│   ├── __init__.py          # 公共 API（Blob/Layer/Net + io/solver/serialization/sequence/tools）
+│   ├── _core.py / _ffi_api.py / _dtype.py / caffe_pb2.py
+│   ├── blob.py / layer.py / net.py / io.py
+│   ├── solver.py            # Solver/优化器（SGD/Adam）/学习率调度器
+│   ├── serialization.py     # 权重序列化（save/load/dict）
+│   ├── sequence/            # 序列模型参考实现
+│   └── tools/               # debug / memory 诊断工具
+├── proto/caffe/proto/       # Protobuf 定义（caffe.proto）
+├── cmake/                   # CMake 模块（Options/Dependencies/CompilerConfig/DetectBLAS/DetectOpenBLAS/ProtoCompile/TargetBuild/Tests/Install/WindowsDllCopy）
+├── tests/python/            # Python 单元测试（100+ 用例）
 ├── tests/cpp/               # C++ 单元测试
 ├── conda.recipe/            # Conda 构建配方
-├── scripts/                 # 开发/构建脚本
-│   ├── dev.sh               # Linux/WSL/macOS 一键开发脚本
-│   ├── dev.ps1              # Windows 一键开发脚本
-│   ├── conda_build.sh       # Linux/WSL Conda 环境构建脚本
-│   ├── conda_build.bat      # Windows Conda 环境构建脚本
-│   ├── check_ffi_prefix.py  # FFI 前缀一致性检查
-│   ├── verify_install.py    # 安装验证脚本
-│   └── gen_proto.py         # Protobuf 代码生成
-├── docs/                    # 文档
-└── examples/                # 示例代码
+├── scripts/                 # 开发/验证脚本（dev/conda_build/docker/COW/压力测试/CI 等）
+├── docs/                    # 文档（setup/checklists/design/memory/migration/performance/plans/retrospectives/summaries/testing/training）
+└── examples/                # 示例代码（含 ASan 演示、零拷贝对比、RNN 前向等）
 ```
 
 > **临时文件约定**：调试脚本、临时测试、构建日志等临时文件请统一放在 `.temp/` 目录下，不要散落在项目根目录或其他位置。`.temp/` 目录下除 `.gitkeep` 外的文件不会被 Git 追踪。
@@ -584,6 +613,24 @@ cmake --build --preset debug
 cmake --preset developer
 cmake --build --preset developer
 ```
+
+## 构建选项
+
+关键 CMake 构建开关（`cmake/Options.cmake`），可通过 `-D<OPTION>=ON/OFF` 传入：
+
+| 选项 | 默认 | 说明 |
+|------|:----:|------|
+| `CAFFE_CPU_ONLY` | ON | 仅 CPU 支持 |
+| `CAFFE_USE_BLAS` | ON | 使用 BLAS（OpenBLAS/MKL/cblas）加速 GEMM/GEMV，OFF 则退化为纯 C++ fallback |
+| `CAFFE_USE_OPENMP` | ON | OpenMP 多线程并行（纯 C++ fallback、Pooling、Eltwise），OFF 则串行执行 |
+| `CAFFE_FFI_ENABLE_COW` | ON | 启用 Copy-on-Write 优化（Split 层 Phase 2） |
+| `CAFFE_FFI_ENABLE_COW_PHASE3` | OFF | 启用 Phase 3 大规模 N COW 优化（batch 引用计数、lazy reshape） |
+| `CAFFE_FFI_ENABLE_ASAN` | OFF | 启用 AddressSanitizer 内存错误检测（需配合 `-O1` 并清空 conda 默认 CFLAGS/CXXFLAGS） |
+| `CAFFE_FFI_ENABLE_DEBUG_LOG` | ON | 启用内存/容器操作的详细调试日志 |
+| `CAFFE_FFI_ENABLE_BACKTRACE` | ON | 启用栈回溯支持（用于内存泄漏诊断） |
+| `CAFFE_FFI_BUILD_TESTS` | OFF | 编译 C++ 单元测试 |
+
+> Python 侧可通过 `caffe_ffi.set_log_level()` / `enable_debug_logging()` 控制运行时日志级别；COW 相关分支日志通过 `CAFFE_FFI_CPP_LOG_LEVEL=2` 环境变量输出。
 
 ## Conda 包构建
 

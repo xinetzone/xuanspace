@@ -22,13 +22,13 @@ caffe-ffi/
 ├── .temp/                 # 临时文件目录（不提交内容，仅保留.gitkeep）
 ├── cmake/                 # CMake模块化配置
 ├── conda.recipe/          # Conda打包配置
-├── docs/                  # 文档和报告
+├── docs/                  # 文档和报告（setup/checklists/design/plans/retrospectives/training等）
 ├── examples/              # 使用示例
-├── include/caffe_ffi/     # C++头文件
+├── include/caffe_ffi/     # C++头文件（含 layers/ 60+ 层、data_io_bridge.hpp）
 ├── proto/                 # Protobuf定义
-├── python/caffe_ffi/      # Python绑定
-├── scripts/               # 开发脚本（dev.sh/dev.ps1/conda_build等）
-├── src/caffe_ffi/         # C++实现
+├── python/caffe_ffi/      # Python绑定（blob/net/layer/io/solver/serialization/sequence/tools）
+├── scripts/               # 开发脚本（dev.sh/dev.ps1/conda_build/docker/COW/压力测试等）
+├── src/caffe_ffi/         # C++实现（含 layers/、data_io_bridge.cpp、_caffe_ffi.cc）
 ├── tests/                 # 测试（cpp/ + python/）
 ├── CMakeLists.txt         # 顶层CMake
 ├── CMakePresets.json      # CMake预设
@@ -42,10 +42,21 @@ caffe-ffi/
 ### 构建与测试
 
 - **WSL/Linux**：`bash scripts/conda_build.sh` 或 `bash scripts/dev.sh`
-- **Windows**：`scripts\conda_build.bat` 或 `powershell scripts\dev.ps1`
+- **Windows**：`powershell scripts\dev.ps1` 或 `scripts\conda_build.bat`
 - **CMake预设**：`cmake --preset default|debug|developer`
 - **Python测试**：`python -m pytest tests/python/ -v`
 - **C++测试**：`cmake --build build && cd build && ctest --output-on-failure`
+- **Docker（黄金标准）**：`apps/caffe-ffi-jupyter` 提供固定版本 GCC/Protobuf/Python 3.14 环境，构建失败排查按 L0 环境→L1 工具链→L2 项目分层进行
+
+### 构建选项
+
+关键 CMake 开关见 `cmake/Options.cmake`，通过 `-D<OPTION>=ON/OFF` 传入：
+
+- `CAFFE_USE_OPENMP`（默认 ON）：OpenMP 并行；OFF 强制串行
+- `CAFFE_FFI_ENABLE_COW`（默认 ON）：COW 零拷贝优化（Split 层 Phase 2）
+- `CAFFE_FFI_ENABLE_COW_PHASE3`（默认 OFF）：Phase 3 大规模 N COW 优化，重建时需显式置 ON 才编译 lazy reshape 分支
+- `CAFFE_FFI_ENABLE_ASAN`（默认 OFF）：AddressSanitizer；需 `-O1` 并清空 conda 默认 CFLAGS/CXXFLAGS 规避 GNU ld 链接 bug
+- `CAFFE_FFI_BUILD_TESTS`（默认 ON for CMake / OFF for wheel）：编译 C++ 测试
 
 ### 代码规范
 
@@ -70,8 +81,14 @@ caffe-ffi/
 
 - 路径独立：`cmake/Dependencies.cmake` 默认使用 `find_package(tvm_ffi CONFIG REQUIRED)`，通过 `CAFFE_FFI_TVM_FFI_DIR` 选项指定本地路径
 - Windows DLL：使用 `NPU_FFI_API` 宏导出符号，启用 `WINDOWS_EXPORT_ALL_SYMBOLS`
-- 运行时依赖：pytest 是运行时依赖（tvm.testing 间接需要）
-- 日志框架：5级日志（TRACE/DEBUG/INFO/WARN/ERROR），默认WARN级别
+- 运行时依赖：pytest 是运行时依赖（tvm.testing 间接需要）；pyproject 采用 scikit-build-core，禁止 setuptools/setup.py
+- 日志框架：5级日志（TRACE/DEBUG/INFO/WARN/ERROR），默认WARN级别；COW 分支日志通过 `CAFFE_FFI_CPP_LOG_LEVEL=2` 输出
+- dtype 守卫：Blob 数据入口（`data.setter`/`diff.setter`/`copy_from`/`from_numpy`/`set_data`/Forward 输入）必须用 `_as_float32()` 检查并转换复数类型，对复数输入抛 `TypeError`
+- COW 语义：恒等层（dropout 推理、scale/bias=0、eltwise 单输入 coeff=1）应使用 `ShareData`/`ShareDiff` 零拷贝共享；Backward 仅 dx 走 `ShareDiff`，d_scale/d_bias 照常累加
+- 内存安全：in-place 操作需校验（如 InnerProduct bottom==top 且输出 count≠输入 count 时抛错）；static 回调注册表（data_io/python_layer）须在解释器退出前清理，否则 segfault
+- 数值梯度：C¹ 不连续拐点用 `avoid_c1_discontinuity` 推离；分段激活层（ELU/PReLU）在 C¹ 连续但 C² 不连续处需放宽 rtol 到 5e-3
+- 双 API 约定：`Net.Forward()`（大写）返回 Blob 对象，`net.forward()`（小写）返回 ndarray；断言数值时用后者
+- 测试环境：caffe-ffi 要求 Python 3.14+，禁止在 3.13 等低版本运行 C++ 扩展测试（`_ffi_api` 会加载失败返回空值）
 
 ## 上游规范引用
 
