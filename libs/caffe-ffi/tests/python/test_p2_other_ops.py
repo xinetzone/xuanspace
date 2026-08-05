@@ -34,7 +34,7 @@ import numpy as np
 import pytest
 
 from .conftest import require_cpp_extension
-from .caffe_test_helpers import make_net
+from .caffe_test_helpers import make_net, make_net_with_diag, dump_net_state
 
 RTOL = 1e-3
 ATOL = 1e-4
@@ -124,8 +124,11 @@ class TestUpsample:
 
     def test_forward_nearest_neighbor(self):
         x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)  # (1,1,2,2)
-        net = make_net(_make_upsample_prototxt(1, 1, 2, 2, 2))
+        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2),
+                                    tag="upsample_nearest")
+        dump_net_state(net, tag="upsample_nearest_before_fwd")
         out = net.Forward({"data": x})["out"].to_numpy()
+        dump_net_state(net, tag="upsample_nearest_after_fwd")
         expected = np.array([[[[1, 1, 2, 2],
                                [1, 1, 2, 2],
                                [3, 3, 4, 4],
@@ -142,10 +145,14 @@ class TestUpsample:
 
     def test_backward_gradient_sums_over_block(self):
         x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
-        net = make_net(_make_upsample_prototxt(1, 1, 2, 2, 2))
+        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2),
+                                    tag="upsample_bwd")
         dy = np.ones((1, 1, 4, 4), dtype=np.float32)
+        dump_net_state(net, tag="upsample_bwd_before_fwd")
         net.Forward({"data": x})
+        dump_net_state(net, tag="upsample_bwd_after_fwd")
         net.backward({"out": dy})
+        dump_net_state(net, tag="upsample_bwd_after_bwd")
         dx = net.blob_by_name("data").diff
         # Each 2x2 block sums to 4.
         np.testing.assert_allclose(dx, np.full((1, 1, 2, 2), 4.0),
@@ -212,8 +219,11 @@ class TestMemoryData:
         assert "MemoryData" in types
 
     def test_forward_zeros_when_no_data(self):
-        net = make_net(_make_memorydata_prototxt(2, 3, 4, 5))
+        net, _ = make_net_with_diag(_make_memorydata_prototxt(2, 3, 4, 5),
+                                    tag="memdata_zeros")
+        dump_net_state(net, tag="memdata_zeros_before_fwd")
         out = net.Forward({})["out"].to_numpy()
+        dump_net_state(net, tag="memdata_zeros_after_fwd")
         assert tuple(out.shape) == (2, 3, 4, 5)
         np.testing.assert_allclose(out, 0.0, rtol=0, atol=0)
 
@@ -300,8 +310,11 @@ class TestPythonLayer:
     def test_forward_no_op_without_callback(self):
         # No callback registered for "mymod.mylayer" -> layer degrades to no-op
         # and Forward must complete without error.
-        net = make_net(_make_python_prototxt("mymod", "mylayer"))
+        net, _ = make_net_with_diag(_make_python_prototxt("mymod", "mylayer"),
+                                    tag="python_nocb")
+        dump_net_state(net, tag="python_nocb_before_fwd")
         net.Forward({})  # should not raise
+        dump_net_state(net, tag="python_nocb_after_fwd")
 
     def test_forward_invokes_callback(self):
         # Register a callback keyed "<module>.<layer>". The minimal bridge calls
@@ -313,8 +326,11 @@ class TestPythonLayer:
             calls["count"] += 1
 
         _register_python_layer("mod", "layer", _cb)
-        net = make_net(_make_python_prototxt("mod", "layer"))
+        net, _ = make_net_with_diag(_make_python_prototxt("mod", "layer"),
+                                    tag="python_cb")
+        dump_net_state(net, tag="python_cb_before_fwd")
         net.Forward({})
+        dump_net_state(net, tag="python_cb_after_fwd")
         assert calls["count"] == 1
 
 
@@ -368,19 +384,25 @@ class TestHDF5Output:
             seen["label"] = np.from_dlpack(tensors[1]).copy()
 
         _register_data_io("HDF5Output.h5out", _cb)
-        net = make_net(_make_hdf5output_prototxt())
+        net, _ = make_net_with_diag(_make_hdf5output_prototxt(),
+                                    tag="hdf5_cb")
+        dump_net_state(net, tag="hdf5_cb_before_fwd")
         x = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         y = np.array([0.0, 1.0], dtype=np.float32)
         net.Forward({"data": x, "label": y})
+        dump_net_state(net, tag="hdf5_cb_after_fwd")
         assert seen["shape"] == (2, 3)
         np.testing.assert_allclose(seen["value"], x, rtol=RTOL, atol=ATOL)
         np.testing.assert_allclose(seen["label"], y, rtol=RTOL, atol=ATOL)
 
     def test_forward_no_callback_skips_write(self):
-        net = make_net(_make_hdf5output_prototxt(layer_name="h5_nocb"))
+        net, _ = make_net_with_diag(_make_hdf5output_prototxt(layer_name="h5_nocb"),
+                                    tag="hdf5_nocb")
+        dump_net_state(net, tag="hdf5_nocb_before_fwd")
         x = np.random.randn(2, 3).astype(np.float32)
         y = np.random.randn(2).astype(np.float32)
         net.Forward({"data": x, "label": y})  # should not raise
+        dump_net_state(net, tag="hdf5_nocb_after_fwd")
 
 
 # ---------------------------------------------------------------------------
@@ -412,8 +434,11 @@ class TestWindowData:
 
     def test_forward_fills_data_and_label(self):
         _register_data_io("WindowData.fill_win", _fill_constant_cb(3.5, label=2.0))
-        net = make_net(_make_windowdata_prototxt(layer_name="fill_win", batch_size=2))
+        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="fill_win", batch_size=2),
+                                    tag="window_cb")
+        dump_net_state(net, tag="window_cb_before_fwd")
         net.Forward({})
+        dump_net_state(net, tag="window_cb_after_fwd")
         d = net.blob_by_name("data").to_numpy()
         l = net.blob_by_name("label").to_numpy()
         # WindowData Reshape: top[0] -> [batch,3,1,1], top[1] -> [batch].
@@ -423,8 +448,11 @@ class TestWindowData:
         np.testing.assert_allclose(l, 2.0, rtol=RTOL, atol=ATOL)
 
     def test_forward_no_callback_zeros(self):
-        net = make_net(_make_windowdata_prototxt(layer_name="win_nocb", batch_size=2))
+        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="win_nocb", batch_size=2),
+                                    tag="window_nocb")
+        dump_net_state(net, tag="window_nocb_before_fwd")
         net.Forward({})
+        dump_net_state(net, tag="window_nocb_after_fwd")
         d = net.blob_by_name("data").to_numpy()
         l = net.blob_by_name("label").to_numpy()
         np.testing.assert_allclose(d, 0.0, rtol=0, atol=0)

@@ -42,11 +42,17 @@ def _blob_to_proto(blob) -> caffe_pb2.BlobProto:
 
 
 def _iter_weight_blobs(net: Net):
-    """Yield ``(layer_name, layer_type, blob_index, blob)`` for every layer blob."""
+    """Yield ``(layer_name, layer_type, blobs_list)`` for every layer with learnable blobs.
+
+    Groups all blobs of a layer together so the serialized proto has one
+    ``LayerParameter`` per layer (containing all its weight blobs in order),
+    matching the caffemodel format expected by ``CopyTrainedLayersFrom``.
+    """
     for layer in net.layers_array():
-        blobs = layer.blobs
-        for i, blob in enumerate(blobs):
-            yield layer.name, layer.type, i, blob
+        blobs = list(layer.blobs)
+        if not blobs:
+            continue
+        yield layer.name, layer.type, blobs
 
 
 def net_parameter_to_file(net: Net, path: Union[str, Path]) -> None:
@@ -54,11 +60,12 @@ def net_parameter_to_file(net: Net, path: Union[str, Path]) -> None:
     path = Path(path)
     param = caffe_pb2.NetParameter()
     param.name = net.name or "caffe_ffi"
-    for layer_name, layer_type, _i, blob in _iter_weight_blobs(net):
+    for layer_name, layer_type, blobs in _iter_weight_blobs(net):
         lp = param.layer.add()
         lp.name = layer_name
         lp.type = layer_type
-        lp.blobs.append(_blob_to_proto(blob))
+        for blob in blobs:
+            lp.blobs.append(_blob_to_proto(blob))
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         f.write(param.SerializeToString())
@@ -91,7 +98,11 @@ def weights_to_dict(net: Net) -> Dict[str, np.ndarray]:
     Returns shallow copies of the current weight tensors. Use with
     :func:`dict_to_weights` to restore them later.
     """
-    return {f"{name}:{i}": blob.data_tensor.copy() for name, _t, i, blob in _iter_weight_blobs(net)}
+    result: Dict[str, np.ndarray] = {}
+    for name, _t, blobs in _iter_weight_blobs(net):
+        for i, blob in enumerate(blobs):
+            result[f"{name}:{i}"] = blob.data_tensor.copy()
+    return result
 
 
 def dict_to_weights(net: Net, weights: Dict[str, np.ndarray]) -> None:

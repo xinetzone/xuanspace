@@ -41,6 +41,85 @@ def make_net(prototxt: str):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Diagnostic helpers for flaky-test debugging
+# ──────────────────────────────────────────────────────────────────────
+
+def dump_net_state(net, tag: str = "") -> str:
+    """Return a multi-line diagnostic string describing blob/layer connection state.
+
+    Used to capture state around net construction and Forward() calls so that
+    flaky failures can be post-mortemed.  For each blob reports:
+      - name, shape, whether data tensor is actually allocated (non-zero-size)
+      - count() (element count)
+    For each layer reports name, type, and param blob count.
+    """
+    import logging
+    logger = logging.getLogger("caffe_ffi.test.diagnostic")
+    lines = []
+    prefix = f"[{tag}] " if tag else ""
+    lines.append(f"{prefix}=== Net state dump: {net.name!r} ===")
+
+    blob_names = list(net.blob_names())
+    lines.append(f"{prefix}Blobs ({len(blob_names)}):")
+    for bname in blob_names:
+        try:
+            blob = net.blob_by_name(bname)
+            shape = tuple(blob.shape)
+            cnt = blob.count()
+            data_ok = False
+            data_size = 0
+            try:
+                d = blob.data_tensor
+                data_size = d.size
+                data_ok = (d.size > 0) or (cnt == 0)
+            except Exception as e:
+                data_ok = False
+                data_size = -1
+                lines.append(f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} "
+                             f"count={cnt:>8d} data=ERROR({e})")
+                continue
+            diff_ok = False
+            try:
+                df = blob.diff_tensor
+                diff_ok = (df.size > 0) or (cnt == 0)
+            except Exception:
+                diff_ok = False
+            lines.append(f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} "
+                         f"count={cnt:>8d} data={'OK' if data_ok else 'NULL'}"
+                         f"(size={data_size}) diff={'OK' if diff_ok else 'NULL':4s}")
+        except Exception as e:
+            lines.append(f"  {prefix}  blob {bname!r}: ERROR reading state: {e}")
+
+    layer_names = list(net.layer_names())
+    lines.append(f"{prefix}Layers ({len(layer_names)}):")
+    for lname in layer_names:
+        try:
+            layer = net.layer_by_name(lname)
+            param_blobs = len(layer.blobs)
+            lines.append(f"  {prefix}  layer {lname!r:30s} type={layer.type!r:15s} "
+                         f"param_blobs={param_blobs}")
+        except Exception as e:
+            lines.append(f"  {prefix}  layer {lname!r}: ERROR reading state: {e}")
+
+    msg = "\n".join(lines)
+    logger.info("\n%s", msg)
+    return msg
+
+
+def make_net_with_diag(prototxt: str, tag: str = "net_construct"):
+    """Construct a Net and dump diagnostic state after construction.
+
+    Returns (net, diag_string) for flaky-test debugging.
+    """
+    import logging
+    logger = logging.getLogger("caffe_ffi.test.diagnostic")
+    logger.info("[%s] Before net construction, prototxt length=%d", tag, len(prototxt))
+    net = make_net(prototxt)
+    diag = dump_net_state(net, tag=tag)
+    return net, diag
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Split counting
 # ──────────────────────────────────────────────────────────────────────
 

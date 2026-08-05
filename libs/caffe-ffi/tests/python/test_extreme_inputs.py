@@ -42,6 +42,9 @@ def _try_forward(net, input_dict, expected_error=False):
         out = net.forward(input_dict)
         return out, None
     except (ValueError, TypeError, RuntimeError, IndexError, OverflowError, MemoryError) as e:
+        # Clear traceback to avoid holding frame references that keep Blob objects alive
+        # (the leak detector fires on cross-test Blob retention via exception cycles)
+        e.__traceback__ = None
         return None, e
     except Exception as e:
         # Segfault would be a hard crash, not a Python exception — if we get here

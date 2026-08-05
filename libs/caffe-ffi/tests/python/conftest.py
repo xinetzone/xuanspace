@@ -575,6 +575,33 @@ _PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _
 
 
 @pytest.fixture(autouse=True)
+def _clear_callback_registries():
+    """Autouse fixture: clear C++ static callback registries before AND after each test.
+
+    The data_io and python_layer registries are C++ static ``std::unordered_map``s
+    that persist across test cases.  Without explicit cleanup, a callback registered
+    in one test can fire unexpectedly in a later test that creates a layer with the
+    same ``<type>.<name>`` key, causing flaky failures (stale callback invoked with
+    tensors from a different network shape / lifecycle).
+    """
+    for name in ("caffe_ffi.data_io.clear", "caffe_ffi.python_layer.clear"):
+        fn = _ffi_api.get_global_func(name)
+        if fn is not None:
+            try:
+                fn()
+            except Exception:
+                pass
+    yield
+    for name in ("caffe_ffi.data_io.clear", "caffe_ffi.python_layer.clear"):
+        fn = _ffi_api.get_global_func(name)
+        if fn is not None:
+            try:
+                fn()
+            except Exception:
+                pass
+
+
+@pytest.fixture(autouse=True)
 def _test_timing_log(request):
     """Autouse fixture: log timing + memory delta for every P1/P2/P3 test case."""
     test_name = request.node.name

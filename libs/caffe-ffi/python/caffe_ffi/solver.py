@@ -413,6 +413,8 @@ class Solver:
             Training history (``loss``, ``lr``, and optionally ``metric``).
         """
         self.train(True)
+        if self.scheduler is not None:
+            self.scheduler.step()
         for epoch in range(1, epochs + 1):
             epoch_loss: List[float] = []
             source = train_batches() if callable(train_batches) else train_batches

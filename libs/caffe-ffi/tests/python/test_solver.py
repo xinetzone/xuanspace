@@ -301,10 +301,17 @@ class TestSolver:
         opt = SGD(lr=0.01)
         solver = Solver(net, opt, loss_blob="loss")
 
+        rng = np.random.RandomState(0)
+        # Break symmetry caused by msra filler stub (which initializes weights
+        # to constant 1.0); with non-trivial weights, gradients are non-zero.
+        for layer in net.layers_array():
+            for blob in layer.blobs:
+                blob.data_tensor[:] = rng.randn(*blob.shape).astype(np.float32) * 0.1
+
         weights_before = solver.net.layer_by_name("fc1").blobs[0].data.copy()
         loss = solver.step({
-            "data": np.zeros((4, 8), dtype=np.float32),
-            "label": np.zeros((4, 1), dtype=np.float32),
+            "data": rng.randn(4, 8).astype(np.float32),
+            "label": rng.randint(0, 3, size=(4, 1)).astype(np.float32),
         })
         assert np.isfinite(loss)
         weights_after = solver.net.layer_by_name("fc1").blobs[0].data
