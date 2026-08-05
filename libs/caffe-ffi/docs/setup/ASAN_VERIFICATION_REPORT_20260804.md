@@ -56,7 +56,7 @@ ASan 内存安全错误数：0
 ```
 
 ### 3.2 内存泄漏专项
-`examples/test_memory_leak.py`：**16 passed**（零泄漏）。覆盖正常创建/销毁、故意泄漏、异常处理、Reshape 重分配等生命周期场景。
+`tests/python/test_memory_leak.py`：**16 passed**（零泄漏）。覆盖正常创建/销毁、故意泄漏、异常处理、Reshape 重分配等生命周期场景。
 
 ### 3.3 COW 引用计数
 `tests/python/test_cow.py`：**21 passed**（引用计数 + 隔离性）。

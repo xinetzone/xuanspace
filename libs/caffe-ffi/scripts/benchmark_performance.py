@@ -16,9 +16,9 @@ import numpy as np
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ".")
-sys.path.insert(0, "python")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
-build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "Release")
+build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "Release")
 if os.path.isdir(build_dir):
     os.environ["PATH"] = build_dir + os.pathsep + os.environ.get("PATH", "")
     os.add_dll_directory(os.path.abspath(build_dir))

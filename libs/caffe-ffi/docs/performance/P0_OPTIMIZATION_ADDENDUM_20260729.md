@@ -33,7 +33,7 @@ max_speedup: 5281x (zero-copy Tensor API)
 | 6 | Python _core.py Tensor 绑定 | _core.py (+28/-3) | ✅ | numpy 直接传给 C++ |
 | 7 | DLL 搜索路径更新 | _ffi_api.py (+18/-4) | ✅ | build-ninja 目录 + 最新 DLL 优先 |
 | 8 | FFI 函数注册更新 | _caffe_ffi.cc (+2) | ✅ | 新方法反射注册 |
-| 9 | Tensor API 示例脚本 | examples/test_tensor_api.py (新) | ✅ | 语义验证通过 |
+| 9 | Tensor API 示例脚本 | tests/python/test_tensor_api.py (新) | ✅ | 语义验证通过 |
 
 ### 1.3 性能验证结果（最新实测）
 

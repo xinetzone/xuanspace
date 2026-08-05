@@ -413,8 +413,8 @@ with tracked_blob([10, 10], "test1") as b:
 
 ```bash
 cd /path/to/caffe-ffi
-python examples/test_memory_logging.py    # 9场景日志功能验证
-python examples/test_memory_leak.py       # 8场景内存泄漏检测（16项检查）
+python tests/python/test_memory_logging.py    # 9场景日志功能验证
+python tests/python/test_memory_leak.py       # 8场景内存泄漏检测（16项检查）
 python examples/config.py                 # config.py自测
 python -m pytest tests/python/test_blob.py -v  # 27个功能回归测试
 ```

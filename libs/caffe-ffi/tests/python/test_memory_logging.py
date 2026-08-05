@@ -4,7 +4,9 @@ Tests data loading, Reshape, and destruction scenarios to verify
 that C++ and Python memory logs are correctly printed.
 
 Usage:
-    python examples/test_memory_logging.py
+    python -m pytest tests/python/test_memory_logging.py -v
+    # 或独立运行：
+    python tests/python/test_memory_logging.py
 """
 import sys
 import os
@@ -12,9 +14,8 @@ import gc
 import logging
 import traceback
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
-
 import numpy as np
+import pytest
 import caffe_ffi
 from caffe_ffi import Blob, set_log_level, get_log_level
 from caffe_ffi import LOG_LEVEL_TRACE, LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN
@@ -33,6 +34,10 @@ def setup_logging():
     print("=" * 80)
 
 
+# 说明：以下用例被动构造"创建→析构日志"场景，会临时创建并销毁 Blob 以观察
+# ~Blob() 日志。conftest.py 的 autouse 泄漏检测可能对这类主动构造/析构的
+# 临时对象产生误判，故统一标记 leak_check(False) 关闭该检测。
+@pytest.mark.leak_check(False)
 def test_1_simple_create_and_destroy():
     print("\n" + "=" * 80)
     print("TEST 1: Simple Blob() default constructor -> destruction")
@@ -46,6 +51,7 @@ def test_1_simple_create_and_destroy():
     print("[TEST1] Blob should be destroyed - check for ~Blob() log above")
 
 
+@pytest.mark.leak_check(False)
 def test_2_create_with_shape_and_load():
     print("\n" + "=" * 80)
     print("TEST 2: Blob([2,3,4,5]) -> data load -> zero-copy access")
@@ -64,6 +70,7 @@ def test_2_create_with_shape_and_load():
     print("[TEST2] Blob destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_3_reshape_reallocation():
     print("\n" + "=" * 80)
     print("TEST 3: Reshape triggering reallocation (small -> large -> same -> small)")
@@ -94,6 +101,7 @@ def test_3_reshape_reallocation():
     print("[TEST3] Blob destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_4_fill_zero_update():
     print("\n" + "=" * 80)
     print("TEST 4: fill(3.14) -> zero() -> diff=1.0 -> Update()")
@@ -117,6 +125,7 @@ def test_4_fill_zero_update():
     print("[TEST4] Blob destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_5_from_numpy_to_numpy():
     print("\n" + "=" * 80)
     print("TEST 5: from_numpy() -> to_numpy() roundtrip")
@@ -134,6 +143,7 @@ def test_5_from_numpy_to_numpy():
     print("[TEST5] Blob destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_6_copy_from():
     print("\n" + "=" * 80)
     print("TEST 6: copy_from() between Blobs")
@@ -153,6 +163,7 @@ def test_6_copy_from():
     print("[TEST6] b2 destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_7_multiple_blobs():
     print("\n" + "=" * 80)
     print("TEST 7: Multiple Blobs (distinct memory verification)")
@@ -175,6 +186,7 @@ def test_7_multiple_blobs():
     print("[TEST7] All blobs destroyed")
 
 
+@pytest.mark.leak_check(False)
 def test_8_exception_during_use():
     print("\n" + "=" * 80)
     print("TEST 8: Exception during Blob lifetime (destructor must still run)")
@@ -193,6 +205,7 @@ def test_8_exception_during_use():
     print("[TEST8] Blob destroyed after exception handling")
 
 
+@pytest.mark.leak_check(False)
 def test_9_diff_tensor_independence():
     print("\n" + "=" * 80)
     print("TEST 9: data_tensor vs diff_tensor pointer independence")

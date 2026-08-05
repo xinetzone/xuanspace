@@ -5,31 +5,14 @@
 要验证内存释放，需在del b或函数返回（b超出作用域）后调用mem_check()。
 """
 import gc
-import os
-import sys
 import weakref
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
-
+import caffe_ffi
+from caffe_ffi import Blob
 from caffe_ffi.tools import (
     setup_debug, setup_quiet,
     tracked_blob, BlobRef, blob_snapshot, mem_check,
 )
-import caffe_ffi
-from caffe_ffi import Blob
-
-PASSED = 0
-FAILED = 0
-
-
-def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASSED, FAILED
-    if condition:
-        PASSED += 1
-        print(f"  ✅ {name}")
-    else:
-        FAILED += 1
-        print(f"  ❌ {name} {detail}")
 
 
 def header(title: str) -> None:
@@ -84,8 +67,7 @@ def test_explicit_del():
     del b
     gc.collect()
     mem_after = caffe_ffi.total_allocated_bytes()
-    check("del b+gc后内存回到基线", mem_after == mem_before,
-          f"before={mem_before}, after={mem_after}")
+    assert mem_after == mem_before, f"before={mem_before}, after={mem_after}"
     print("  （上方C++日志中应出现 ~Blob() 打印对应指针）")
     setup_quiet()
 
@@ -109,12 +91,12 @@ def test_blobref_weakref():
     print(f"  created: {br}")
     on_destroy = make_callback(br._data_ptr, br._label)
     ref = weakref.ref(br, on_destroy)
-    check("weakref指向对象", ref() is br)
+    assert ref() is br
     print("  calling del br + gc.collect()...")
     del br
     gc.collect()
-    check("del+gc后weakref失效", ref() is None)
-    check("回调被调用", len(callback_called) == 1)
+    assert ref() is None
+    assert len(callback_called) == 1
     setup_quiet()
 
 
@@ -147,20 +129,17 @@ def test_snapshot_tools():
     b1 = Blob([8, 8])
     b2 = Blob([8, 8])
     s1 = blob_snapshot("after_two_blobs")
-    check("两个Blob共1024字节", s1 == 1024, f"got {s1}")
+    assert s1 == 1024, f"got {s1}"
     del b2
     gc.collect()
     s2 = blob_snapshot("after_del_one")
-    check("删除一个后剩512字节", s2 == 512, f"got {s2}")
+    assert s2 == 512, f"got {s2}"
     del b1
     gc.collect()
     mem_check("final")
 
 
-# ============================================================
-# 主入口
-# ============================================================
-def main():
+if __name__ == "__main__":
     print("=" * 60)
     print("  BlobRef + tracked_blob 验证测试")
     print("=" * 60)
@@ -187,15 +166,8 @@ def main():
     final_mem = caffe_ffi.total_allocated_bytes()
 
     print(f"\n{'='*60}")
-    print(f"  RESULTS: {PASSED} passed, {FAILED} failed")
     if final_mem == 0:
-        print(f"  Final memory: 0 bytes ✅ (no leaks)")
+        print("  Final memory: 0 bytes ✅ (no leaks)")
     else:
         print(f"  Final memory: {final_mem} bytes ❌ (LEAK DETECTED)")
     print(f"{'='*60}")
-
-    sys.exit(0 if FAILED == 0 and final_mem == 0 else 1)
-
-
-if __name__ == "__main__":
-    main()

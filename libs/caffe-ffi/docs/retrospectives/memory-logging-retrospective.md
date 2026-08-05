@@ -72,9 +72,9 @@ session: sc-20260728-memory-logging-toolchain
 | `examples/config.py` | 新增 | 214行 | 三层日志配置门面 |
 | `examples/utils/blob_wrapper.py` | 新增 | 205行 | BlobRef+tracked_blob工具 |
 | `examples/utils/__init__.py` | 新增 | 5行 | 包初始化 |
-| `examples/test_memory_logging.py` | 新增 | 243行 | 9场景日志功能测试 |
-| `examples/test_memory_leak.py` | 新增 | 290行 | 16项内存泄漏检查 |
-| `examples/test_blob_wrapper.py` | 新增 | 198行 | 6场景工具模块测试 |
+| `tests/python/test_memory_logging.py` | 新增 | 243行 | 9场景日志功能测试 |
+| `tests/python/test_memory_leak.py` | 新增 | 290行 | 16项内存泄漏检查 |
+| `tests/python/test_blob_wrapper.py` | 新增 | 198行 | 6场景工具模块测试 |
 
 ### 1.4 测试验证结果
 

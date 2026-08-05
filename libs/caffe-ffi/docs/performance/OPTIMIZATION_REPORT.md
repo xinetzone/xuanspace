@@ -233,7 +233,7 @@ cmake --build build --config Release
 # 运行基准测试
 export PATH=build/Release:$PATH   # Linux/macOS
 # $env:PATH = "build/Release;" + $env:PATH  # PowerShell
-python examples/benchmark_performance.py
+python scripts/benchmark_performance.py
 
 # 运行测试
 python -m pytest tests/python/ -v

@@ -189,7 +189,7 @@ cmake --build build --config Release
 
 # 运行性能基准
 $env:PATH = "build/Release;" + $env:PATH   # PowerShell
-python examples/benchmark_performance.py
+python scripts/benchmark_performance.py
 
 # 运行全量测试
 python -m pytest tests/python/ -v

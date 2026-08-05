@@ -6,11 +6,11 @@
   P2 network benchmark: 端到端网络 Forward 耗时
 
 用法（在 Linux/WSL 环境，先构建 caffe-ffi 扩展）：
-  python examples/benchmark_compute.py
+  python scripts/benchmark_compute.py
   # 仅跑 P0 层：
-  python examples/benchmark_compute.py --level P0
+  python scripts/benchmark_compute.py --level P0
   # 控制 OpenMP 线程数（若以 OpenMP 编译）：
-  OMP_NUM_THREADS=4 python examples/benchmark_compute.py
+  OMP_NUM_THREADS=4 python scripts/benchmark_compute.py
 
 说明：
 - 结果受编译配置影响：BLAS(OpenBLAS 多线程) / OpenMP(纯 C++ 并行) / 串行。
@@ -28,16 +28,16 @@ import numpy as np
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ".")
-sys.path.insert(0, "python")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 # 定位编译产物（Linux: build/python/caffe_ffi/_caffe_ffi.so；Windows: .../_caffe_ffi.dll）
 import glob
 
 _src_root = os.path.dirname(os.path.abspath(__file__))
 _build_jobs = [
-    os.path.join(_src_root, "build", "python", "caffe_ffi"),
-    os.path.join(_src_root, "build", "Release"),
-    os.path.join(_src_root, "build"),
+    os.path.join(_src_root, "..", "build", "python", "caffe_ffi"),
+    os.path.join(_src_root, "..", "build", "Release"),
+    os.path.join(_src_root, "..", "build"),
 ]
 _ext_dir = None
 for _d in _build_jobs:
