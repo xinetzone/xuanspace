@@ -417,12 +417,12 @@ jobs:
             -v --tb=long
 
       # ── Nightly 2: CLI smoke test (--help, error codes) ──
-      - name: CLI smoke: --help returns 0
+      - name: "CLI smoke: --help returns 0"
         run: |
           python tests/python/grad_regression_cli.py --help > /dev/null
           echo "PASS: --help exit code=$?"
 
-      - name: CLI smoke: bad prototxt returns 2
+      - name: "CLI smoke: bad prototxt returns 2"
         run: |
           python tests/python/grad_regression_cli.py \
             --prototxt /nonexistent.prototxt \
@@ -430,7 +430,7 @@ jobs:
           if [ "$RC" != "2" ]; then echo "FAIL: expected exit 2, got $RC"; exit 1; fi
           echo "PASS: bad prototxt exit code=$RC"
 
-      - name: CLI smoke: bad ref module returns 2
+      - name: "CLI smoke: bad ref module returns 2"
         run: |
           TMPPROTO=$(mktemp)
           cat > "$TMPPROTO" << 'EOF'
@@ -447,7 +447,7 @@ jobs:
           echo "PASS: bad ref exit code=$RC"
 
       # ── Nightly 3: CLI regression with reference backward (AVE pool) ──
-      - name: CLI regression: AVE pool vs numpy reference
+      - name: "CLI regression: AVE pool vs numpy reference"
         run: |
           TMPPROTO=$(mktemp --suffix=.prototxt)
           cat > "$TMPPROTO" << 'EOF'
@@ -470,7 +470,7 @@ jobs:
           echo "PASS: AVE pool regression passed"
 
       # ── Nightly 4: CLI regression with reference backward (MAX pool) ──
-      - name: CLI regression: MAX pool vs numpy reference
+      - name: "CLI regression: MAX pool vs numpy reference"
         run: |
           TMPPROTO=$(mktemp --suffix=.prototxt)
           cat > "$TMPPROTO" << 'EOF'
@@ -493,7 +493,7 @@ jobs:
           echo "PASS: MAX pool regression passed"
 
       # ── Nightly 5: CLI numerical gradient cross-validation (multiple seeds) ──
-      - name: CLI numerical gradient: AVE pool multi-seed
+      - name: "CLI numerical gradient: AVE pool multi-seed"
         run: |
           TMPPROTO=$(mktemp --suffix=.prototxt)
           cat > "$TMPPROTO" << 'EOF'
