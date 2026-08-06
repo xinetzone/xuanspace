@@ -164,6 +164,12 @@ class BaseConvolutionLayer : public Layer {
   void weight_cpu_gemm(const float* input, const float* output, float* weights);
   void backward_cpu_bias(float* bias, const float* input);
 
+  // Thread-safe variant: caller provides col_buffer to avoid shared col_buffer_
+  // contention. Used by OpenMP-parallel Forward/Backward paths.
+  void forward_cpu_gemm_ext(const float* input, const float* weights,
+                             float* output, float* col_buf_ptr,
+                             bool skip_im2col = false);
+
   /// Subclasses must implement: true for Deconv, false for Conv.
   virtual bool reverse_dimensions() = 0;
   /// Compute output_h_ and output_w_ from other parameters.

@@ -217,6 +217,28 @@ void BaseConvolutionLayer::forward_cpu_gemm(const float* input,
   }
 }
 
+void BaseConvolutionLayer::forward_cpu_gemm_ext(const float* input,
+                                                 const float* weights,
+                                                 float* output,
+                                                 float* col_buf_ptr,
+                                                 bool skip_im2col) {
+  const float* col_buff = input;
+  if (!is_1x1_) {
+    if (!skip_im2col) {
+      im2col_cpu(input, conv_in_channels_, conv_input_h(), conv_input_w(),
+                 kernel_h_, kernel_w_, pad_h_, pad_w_, stride_h_, stride_w_,
+                 dilation_h_, dilation_w_, col_buf_ptr);
+    }
+    col_buff = col_buf_ptr;
+  }
+  for (int g = 0; g < group_; ++g) {
+    caffe_cpu_gemm(false, false, conv_out_channels_ / group_,
+                   conv_out_spatial_dim_, kernel_dim_, 1.F,
+                   weights + weight_offset_ * g, col_buff + col_offset_ * g,
+                   0.F, output + output_offset_ * g);
+  }
+}
+
 void BaseConvolutionLayer::forward_cpu_bias(float* output,
                                             const float* bias) {
   caffe_cpu_gemm(false, false, num_output_, out_spatial_dim_,

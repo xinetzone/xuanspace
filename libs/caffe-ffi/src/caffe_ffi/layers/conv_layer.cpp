@@ -7,6 +7,10 @@
 #include <sstream>
 #include <vector>
 
+#ifdef CAFFE_USE_OPENMP
+#include <omp.h>
+#endif
+
 #include "caffe_ffi/layer_factory.hpp"
 #include "caffe_ffi/log.hpp"
 
@@ -46,26 +50,116 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float b_max = -std::numeric_limits<float>::max();
   double w_norm_sq = 0.0;
 
-  double t_gemm_us = 0, t_bias_us = 0;
+#ifdef CAFFE_USE_OPENMP
+  // ── OpenMP parallel path v4: output-channel (M) parallelism ──
+  // Design rationale:
+  //   - Serial path when OMP=1: BLAS can use its own threading without interference.
+  //   - Multi-threaded path: split output channels (M dimension of GEMM) across threads.
+  //   - Each thread gets exactly one contiguous channel range: GEMM → bias fused,
+  //     eliminating inter-phase barriers.
+  //   - Minimum chunk = 32 channels to keep OpenBLAS SGEMM efficient (AVX2 kernels
+  //     tile in 8-16 channel blocks; chunks < 16 pay disproportionate setup overhead).
+  //   - Chunk count = min(max_threads, M/32) to avoid creating chunks too small,
+  //     which causes GEMM inefficiency and barrier skew.
+  //   - im2col is single-threaded (memory-bound, ~5% of compute).
+  //   - BLAS MUST be single-threaded (OPENBLAS_NUM_THREADS=1) to prevent oversubscription.
+  const int M_total = conv_out_channels_;
+  const int N_spat = conv_out_spatial_dim_;
+  const int M_per_group = M_total / group_;
+  const int K_per_group = kernel_dim_;
+  const int max_omp_threads = omp_get_max_threads();
 
+  if (max_omp_threads <= 1) {
+    // ── Serial path (OMP=1): no parallel region, BLAS may multi-thread ──
+    for (int n = 0; n < num_; ++n) {
+      const float* input = bottom_data + static_cast<int64_t>(n) * bottom_dim_;
+      float* output = top_data + static_cast<int64_t>(n) * top_dim_;
+
+      forward_cpu_gemm(input, weight, output);
+      if (bias_term_) {
+        const float* bias = this->blobs_[1]->cpu_data();
+        forward_cpu_bias(output, bias);
+      }
+    }
+  } else {
+    // ── Multi-threaded path ──
+    const int kMinChunk = 32;
+    // Number of chunks: no more than M_total/kMinChunk, no more than max_omp_threads.
+    // This ensures each chunk is ≥ kMinChunk channels and each thread gets ≤1 chunk.
+    const int max_chunks_from_channels = std::max(1, M_total / kMinChunk);
+    const int num_chunks = std::min(max_omp_threads, max_chunks_from_channels);
+    const int chunk_size = (M_total + num_chunks - 1) / num_chunks;
+
+    #pragma omp parallel num_threads(num_chunks)
+    {
+      for (int n = 0; n < num_; ++n) {
+        const float* input = bottom_data + static_cast<int64_t>(n) * bottom_dim_;
+        float* output = top_data + static_cast<int64_t>(n) * top_dim_;
+
+        // im2col: single thread executes; implicit barrier ensures all threads
+        // see col_buffer_ writes before GEMM reads it.
+        if (!is_1x1_) {
+          #pragma omp single
+          {
+            im2col_cpu(input, conv_in_channels_, conv_input_h(), conv_input_w(),
+                       kernel_h_, kernel_w_, pad_h_, pad_w_, stride_h_, stride_w_,
+                       dilation_h_, dilation_w_, col_buffer_.cpu_mutable_data());
+          }
+        }
+
+        const float* col_buff = is_1x1_ ? input : col_buffer_.cpu_data();
+
+        // Each thread processes one channel chunk: GEMM + bias fused (no barrier between)
+        #pragma omp for schedule(static)
+        for (int mc = 0; mc < num_chunks; ++mc) {
+          const int m_start = mc * chunk_size;
+          const int m_end = std::min(m_start + chunk_size, M_total);
+
+          // GEMM for this chunk
+          for (int g = 0; g < group_; ++g) {
+            const int g_m_start = g * M_per_group;
+            const int g_m_end = (g + 1) * M_per_group;
+            const int lo = std::max(m_start, g_m_start);
+            const int hi = std::min(m_end, g_m_end);
+            if (lo >= hi) continue;
+            const int loc_m = lo - g_m_start;
+            const int loc_cnt = hi - lo;
+
+            caffe_cpu_gemm(false, false, loc_cnt, N_spat, K_per_group, 1.F,
+                           weight + static_cast<int64_t>(weight_offset_) * g
+                                  + static_cast<int64_t>(loc_m) * K_per_group,
+                           col_buff + static_cast<int64_t>(col_offset_) * g,
+                           0.F,
+                           output + static_cast<int64_t>(output_offset_) * g
+                                  + static_cast<int64_t>(loc_m) * N_spat);
+          }
+
+          // Bias for this chunk (fused: no barrier between GEMM and bias)
+          if (bias_term_) {
+            const int m_count = m_end - m_start;
+            const float* bias = this->blobs_[1]->cpu_data();
+            caffe_cpu_gemm(false, false, m_count, out_spatial_dim_, 1, 1.F,
+                           bias + m_start, bias_multiplier_.cpu_data(), 1.F,
+                           output + static_cast<int64_t>(m_start) * out_spatial_dim_);
+          }
+        }
+        // implicit barrier after omp for: all threads sync before next sample
+      }
+    }
+  }
+#else
+  // ── Serial fallback (OpenMP disabled) ──
   for (int n = 0; n < num_; ++n) {
     const float* input = bottom_data + n * bottom_dim_;
     float* output = top_data + n * top_dim_;
-
-    auto t_gemm_start = clock::now();
     forward_cpu_gemm(input, weight, output);
-    auto t_gemm_end = clock::now();
-    t_gemm_us += std::chrono::duration<double, std::micro>(t_gemm_end - t_gemm_start).count();
-
     if (bias_term_) {
-      auto t_bias_start = clock::now();
-      const float* bias = this->blobs_[1]->cpu_data();
-      forward_cpu_bias(output, bias);
-      auto t_bias_end = clock::now();
-      t_bias_us += std::chrono::duration<double, std::micro>(t_bias_end - t_bias_start).count();
+      forward_cpu_bias(output, this->blobs_[1]->cpu_data());
     }
   }
+#endif
 
+  // ── Output/weight statistics (serial; computation is trivial vs GEMM) ──
   for (int64_t i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
@@ -101,8 +195,6 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " w=[" << w_min << ", " << w_max << "]"
                        << " w_norm=" << w_norm
                        << (bias_term_ ? " b=[" + std::to_string(b_min) + ", " + std::to_string(b_max) + "]" : "")
-                       << " t_gemm=" << t_gemm_us << "us"
-                       << (bias_term_ ? " t_bias=" + std::to_string(t_bias_us) + "us" : "")
                        << " time=" << total_us << "us";
 }
 
