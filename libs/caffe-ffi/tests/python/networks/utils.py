@@ -42,12 +42,66 @@ logging.basicConfig(level=logging.ERROR)
 _CAFFE_FFI_AVAILABLE = bool(caffe_ffi.is_available())
 
 
-def _download_model(url, filename, cache_dir):
+def _download_model(url, filename, cache_dir, expected_size=None):
+    """Download a model file with integrity validation.
+
+    If a cached file exists but is smaller than the server-reported
+    Content-Length (or an explicit expected_size), it is considered
+    a truncated download from a previous run and is re-downloaded.
+    """
+    import time
     local_path = os.path.join(cache_dir, filename)
+
+    # Probe server for expected size to detect truncated downloads.
+    if expected_size is None:
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                cl = resp.headers.get("Content-Length")
+                if cl:
+                    expected_size = int(cl)
+        except Exception:
+            pass
+
+    # Check if existing file is valid (exists and size matches expected).
     if os.path.exists(local_path):
-        return local_path
-    urllib.request.urlretrieve(url, local_path)
-    return local_path
+        file_size = os.path.getsize(local_path)
+        if expected_size is None or file_size == expected_size:
+            return local_path
+        # File exists but is truncated — remove and re-download.
+        logging.warning(
+            "Cached model %s is truncated (%d bytes < expected %d); re-downloading",
+            filename, file_size, expected_size,
+        )
+        os.remove(local_path)
+
+    # Download with retries.
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            urllib.request.urlretrieve(url, local_path)
+            file_size = os.path.getsize(local_path)
+            if expected_size is not None and file_size < expected_size:
+                if attempt < max_retries - 1:
+                    logging.warning(
+                        "Download attempt %d for %s truncated (%d/%d); retrying...",
+                        attempt + 1, filename, file_size, expected_size,
+                    )
+                    os.remove(local_path)
+                    time.sleep(2 ** attempt)
+                    continue
+                raise IOError(
+                    f"Failed to download {filename} after {max_retries} attempts: "
+                    f"got {file_size} bytes, expected {expected_size}"
+                )
+            return local_path
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logging.warning("Download attempt %d for %s failed: %s; retrying...",
+                                attempt + 1, filename, e)
+                time.sleep(2 ** attempt)
+            else:
+                raise
 
 
 def _preprocess_imagenet(data, mean_val=None, scale=1.0):

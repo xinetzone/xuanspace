@@ -6,14 +6,66 @@ log output is controlled to a small number of lines, instead of O(N) per-top lin
 NOTE: caffe_ffi Logger sends WARN-level (including [SPLIT-PERF]) to stdout
 (std::cout), NOT stderr. Use capfd (fd-level capture) and check .out.
 
+These tests require CAFFE_FFI_ENABLE_PERF_LOG=ON at compile time. In Release
+builds (PERF_LOG=OFF, the production default), PERF-dependent tests are
+automatically skipped because no [SPLIT-PERF] lines are emitted.
+
 Usage:
   pytest tests/python/test_phase3_log_aggregation.py -v -s
 """
+import os
 import re
+import tempfile
 import pytest
 import numpy as np
 import caffe_ffi
 from .conftest import require_cpp_extension
+
+
+# ── PERF_LOG runtime detection ────────────────────────────────────────
+
+def _perf_log_enabled() -> bool:
+    """Detect at runtime whether the C++ extension was compiled with PERF_LOG.
+
+    Creates a tiny Split net, captures stdout at file-descriptor level
+    (needed to catch C++ std::cout output), and checks for [SPLIT-PERF].
+    Returns False if the build was compiled with CAFFE_FFI_ENABLE_PERF_LOG=OFF.
+    """
+    if not caffe_ffi.is_available():
+        return False
+    # Redirect fd 1 (stdout) to a temp file to capture C++ output
+    stdout_fd = os.dup(1)
+    tmp = tempfile.TemporaryFile(mode="w+b")
+    try:
+        os.dup2(tmp.fileno(), 1)
+        prototxt = (
+            'name: "perf_detect"\n'
+            'layer { name: "data" type: "Input" top: "data" '
+            'input_param { shape { dim: 1 dim: 16 } } }\n'
+            'layer { name: "split" type: "Split" bottom: "data" '
+            'top: "s0" top: "s1" top: "s2" }\n'
+        )
+        net = caffe_ffi.Net(prototxt)
+        net.Forward({"data": np.random.randn(1, 16).astype(np.float32)})
+        os.fsync(1)
+    except Exception:
+        return False
+    finally:
+        os.dup2(stdout_fd, 1)
+        os.close(stdout_fd)
+    try:
+        tmp.seek(0)
+        captured = tmp.read().decode("utf-8", errors="replace")
+        return "[SPLIT-PERF]" in captured
+    finally:
+        tmp.close()
+
+
+_perf_log = _perf_log_enabled()
+skipif_no_perf_log = pytest.mark.skipif(
+    not _perf_log,
+    reason="CAFFE_FFI_ENABLE_PERF_LOG=OFF (Release build); PERF-dependent tests skipped"
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -56,6 +108,7 @@ def _count_split_perf_lines(log_output: str) -> int:
 class TestLogAggregationN100:
     """Verify Phase 3.0 log aggregation for N=100 Split."""
 
+    @skipif_no_perf_log
     def test_n100_split_perf_lines_bounded(self, capfd):
         """N=100: [SPLIT-PERF] lines should be bounded (summary only, no per-top flood)."""
         num_top = 100
@@ -83,6 +136,7 @@ class TestLogAggregationN100:
             f"Log output:\n{log_output}"
         )
 
+    @skipif_no_perf_log
     def test_n100_forward_summary_present(self, capfd):
         """N=100: the Forward summary [SPLIT-PERF] log must be present."""
         num_top = 100
@@ -106,6 +160,7 @@ class TestLogAggregationN100:
             f"Log output:\n{log_output}"
         )
 
+    @skipif_no_perf_log
     def test_n100_reshape_summary_present(self, capfd):
         """N=100: the Reshape summary [SPLIT-PERF] log must be present."""
         num_top = 100
@@ -186,6 +241,7 @@ class TestLogAggregationN100:
 class TestLogAggregationBoundary:
     """Verify boundary behavior around kLogAggregateThreshold=32."""
 
+    @skipif_no_perf_log
     @pytest.mark.parametrize("num_top,expect_aggregated", [
         (4, False),    # well below threshold
         (31, False),   # just below threshold
