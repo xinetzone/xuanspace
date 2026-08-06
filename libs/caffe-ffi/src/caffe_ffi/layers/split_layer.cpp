@@ -91,10 +91,12 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                       << " num_top=" << num_top
                       << " copy_bytes=" << (count * static_cast<int64_t>(sizeof(float)));
 
-  // Measure total reshape (memory allocation) time
-  auto t_reshape_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_reshape_start = clock::now();
   int64_t total_alloc_bytes = 0;
   bool used_lazy_reshape = false;
+#endif
 
   // Note: For N=1 zero-copy path, we still reshape top[0] to the correct shape
   // here so downstream layers see valid shapes during their own Reshape().
@@ -108,16 +110,19 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
       // Forward() will replace the lazy tensor with ShareData().
       auto bottom_shape = bottom[0]->shape();
       top[i]->SetShapeOnly(ShapeView(bottom_shape.data(), bottom_shape.size()));
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       used_lazy_reshape = true;
+#endif
       continue;
     }
 #endif
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     if (num_top < kLogAggregateThreshold) {
-      auto t_top_start = std::chrono::high_resolution_clock::now();
+      auto t_top_start = clock::now();
       int64_t bytes_before = top[i]->count() * static_cast<int64_t>(sizeof(float));
       top[i]->ReshapeLike(*bottom[0]);
       int64_t bytes_after = top[i]->count() * static_cast<int64_t>(sizeof(float));
-      auto t_top_end = std::chrono::high_resolution_clock::now();
+      auto t_top_end = clock::now();
       double top_reshape_us = std::chrono::duration<double, std::micro>(
           t_top_end - t_top_start).count();
       total_alloc_bytes += (bytes_after - bytes_before);
@@ -126,18 +131,20 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                           << " bytes_after=" << bytes_after
                           << " reshape_time=" << top_reshape_us << "us";
     } else {
-      // N >= kLogAggregateThreshold: skip per-top timing and log,
-      // compute total_alloc_bytes once from batch size.
       top[i]->ReshapeLike(*bottom[0]);
     }
+#else
+    top[i]->ReshapeLike(*bottom[0]);
+#endif
   }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // For large N (Phase 2, no lazy), compute total_alloc_bytes once.
   // When Phase 3 lazy reshape is active, total_alloc_bytes stays 0 (no allocation).
   if (num_top >= kLogAggregateThreshold && !used_lazy_reshape) {
     total_alloc_bytes = num_top * count * static_cast<int64_t>(sizeof(float));
   }
 
-  auto t_reshape_end = std::chrono::high_resolution_clock::now();
+  auto t_reshape_end = clock::now();
   double reshape_ms = std::chrono::duration<double, std::milli>(
       t_reshape_end - t_reshape_start).count();
 
@@ -158,6 +165,7 @@ void SplitLayer::Reshape(const std::vector<Blob*>& bottom,
                        << " lazy_reshape=" << ((num_top >= kLazyReshapeThreshold) ? "yes" : "no")
 #endif
                        << " log_aggregated=" << ((num_top >= kLogAggregateThreshold) ? "yes" : "no");
+#endif
 }
 
 void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
@@ -181,11 +189,15 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     // directly to bottom[0], which is the correct N=1 rename/passthrough semantic.
     // For N>=2 fan-out, Forward uses ShareData/ShareDiff (COW mode) which triggers
     // COW on first mutable access to isolate branches.
-    auto t0 = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+    using clock = std::chrono::high_resolution_clock;
+    auto t0 = clock::now();
     bool was_shared = top[0]->SharesDataWith(bottom[0]);
+#endif
     top[0]->ShareDataIdentity(bottom[0]);
     top[0]->ShareDiffIdentity(bottom[0]);
-    auto t1 = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+    auto t1 = clock::now();
     double share_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
     bool now_shared = top[0]->SharesDataWith(bottom[0]);
     CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
@@ -195,6 +207,7 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                          << " data_ptr_equal=" << (now_shared ? "yes" : "no")
                          << " was_already_shared=" << (was_shared ? "yes" : "no")
                          << " memcpy_saved=" << copy_bytes_per_top << "B (zero-copy path)";
+#endif
     CAFFE_FFI_LAYER_LOG << "Split Forward(N=1 ZEROCOPY): top[0] now shares bottom data,"
                         << " data_ptr=" << static_cast<const void*>(top[0]->cpu_data())
                         << " bottom_ptr=" << static_cast<const void*>(bottom_data);
@@ -206,7 +219,10 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   // All tops initially share the same memory as bottom; the first
   // cpu_mutable_data() / cpu_mutable_diff() call on any top triggers
   // COW, cloning the shared tensor into a private copy.
-  auto t_share_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_share_start = clock::now();
+#endif
 
 #ifdef CAFFE_FFI_ENABLE_COW_PHASE3
   // Phase 3 batch path: use BatchShareData/BatchShareDiff for large N
@@ -218,7 +234,8 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     Blob::BatchShareData(bottom[0], top);
     Blob::BatchShareDiff(bottom[0], top);
 
-    auto t_share_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+    auto t_share_end = clock::now();
     double share_ms = std::chrono::duration<double, std::milli>(
         t_share_end - t_share_start).count();
 
@@ -234,6 +251,7 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                          << " all_shared=" << (all_shared ? "yes" : "no")
                          << " threshold=" << kBATCH_SHARE_THRESHOLD
                          << " memcpy_saved=" << total_copy_bytes << "B (batch refcount: 1 atomic add of " << num_top << ")";
+#endif
     CAFFE_FFI_LAYER_LOG << "Split Forward(N=" << num_top << " COW-BATCH): batch share complete,"
                         << " data_ptr=" << static_cast<const void*>(top[0]->cpu_data())
                         << " bottom_ptr=" << static_cast<const void*>(bottom_data)
@@ -243,8 +261,10 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 #endif  // CAFFE_FFI_ENABLE_COW_PHASE3
 
   // Phase 2 per-top path (N < threshold or Phase 3 disabled)
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   bool all_shared = true;
   int not_shared_count = 0;
+#endif
 
   for (int i = 0; i < num_top; ++i) {
     bool data_was_shared = top[i]->SharesDataWith(bottom[0]);
@@ -256,7 +276,9 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     bool data_now_shared = top[i]->SharesDataWith(bottom[0]);
     bool diff_now_shared = top[i]->SharesDiffWith(bottom[0]);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     if (!data_now_shared) { all_shared = false; ++not_shared_count; }
+#endif
 
     // Phase 3.0: per-top log aggregation -- skip when N >= threshold
     if (num_top < kLogAggregateThreshold) {
@@ -270,7 +292,8 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
-  auto t_share_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_share_end = clock::now();
   double share_ms = std::chrono::duration<double, std::milli>(
       t_share_end - t_share_start).count();
 
@@ -281,6 +304,7 @@ void SplitLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " all_shared=" << (all_shared ? "yes" : "no")
                        << " not_shared=" << not_shared_count
                        << " memcpy_saved=" << total_copy_bytes << "B (COW zero-copy)";
+#endif
 }
 
 void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -305,10 +329,12 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
     // not trigger COW). No accumulation needed -- gradients written to top[0]
     // by downstream layers are already visible in bottom[0].
     if (top[0]->SharesDiffWith(bottom[0])) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
                            << " Backward(N=1 IDENTITY): count=" << count
                            << " memcpy_bytes=0B (identity alias, no copy needed)"
                            << " shared_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
+#endif
       return;
     }
     // Fallback: COW already happened (e.g. non-in-place downstream), copy diff down.
@@ -317,11 +343,13 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
     if (top_diff != bottom_diff) {
       caffe_copy_fp32(static_cast<size_t>(count), top_diff, bottom_diff);
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     CAFFE_FFI_LOG_WARN() << "[SPLIT-PERF] " << this->name()
                          << " Backward(N=1): count=" << count
                          << " memcpy_bytes=" << nbytes << "B"
                          << " top_ptr=" << static_cast<const void*>(top_diff)
                          << " bottom_ptr=" << static_cast<const void*>(bottom_diff);
+#endif
     return;
   }
 
@@ -334,7 +362,10 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
   // then axpy remaining tops' gradients into bottom. This implements the standard
   // split backward: d_bottom = sum_i(d_top_i), which is mathematically correct
   // because Split is the identity operation on each branch.
-  auto t_acc_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_acc_start = clock::now();
+#endif
 
   const float* first_top_diff = top[0]->cpu_diff();
   if (first_top_diff != bottom_diff) {
@@ -358,7 +389,8 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
     caffe_axpy_fp32(static_cast<size_t>(count), 1.0f, top_diff, bottom_diff);
   }
 
-  auto t_acc_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_acc_end = clock::now();
   double acc_ms = std::chrono::duration<double, std::milli>(
       t_acc_end - t_acc_start).count();
 
@@ -368,6 +400,7 @@ void SplitLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " accum_bytes=" << nbytes << "B"
                        << " accum_time=" << acc_ms << "ms"
                        << " bottom_ptr=" << static_cast<const void*>(bottom_diff);
+#endif
 }
 
 REGISTER_LAYER_CLASS(Split);

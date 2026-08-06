@@ -55,6 +55,7 @@ void L2NormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "L2Norm Forward: outer_dim=" << outer_dim
                       << " inner_dim=" << inner_dim;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
@@ -64,6 +65,7 @@ void L2NormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float out_max = -std::numeric_limits<float>::max();
   float norm_min = std::numeric_limits<float>::max();
   float norm_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int o = 0; o < outer_dim; ++o) {
     const float* x = bottom_data + o * inner_dim;
@@ -75,20 +77,25 @@ void L2NormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       sum_sq += static_cast<double>(x[i]) * static_cast<double>(x[i]);
     }
     float norm = std::sqrt(static_cast<float>(sum_sq) + eps_);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     norm_min = std::min(norm_min, norm);
     norm_max = std::max(norm_max, norm);
+#endif
 
     const float inv_norm = 1.0f / norm;
     for (int i = 0; i < inner_dim; ++i) {
       float v = x[i] * inv_norm;
       y[i] = v;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       in_min = std::min(in_min, x[i]);
       in_max = std::max(in_max, x[i]);
       out_min = std::min(out_min, v);
       out_max = std::max(out_max, v);
+#endif
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -100,6 +107,7 @@ void L2NormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " norm=[" << norm_min << ", " << norm_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void L2NormLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -119,6 +127,7 @@ void L2NormLayer::Backward_cpu(const std::vector<Blob*>& top,
   CAFFE_FFI_LAYER_LOG << "L2Norm Backward: outer_dim=" << outer_dim
                       << " inner_dim=" << inner_dim;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
@@ -126,6 +135,7 @@ void L2NormLayer::Backward_cpu(const std::vector<Blob*>& top,
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int o = 0; o < outer_dim; ++o) {
     const float* x = bottom_data + o * inner_dim;
@@ -146,13 +156,16 @@ void L2NormLayer::Backward_cpu(const std::vector<Blob*>& top,
     for (int i = 0; i < inner_dim; ++i) {
       float v = dy[i] * inv_norm - x[i] * coef;
       dx[i] = v;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       diff_in_min = std::min(diff_in_min, dy[i]);
       diff_in_max = std::max(diff_in_max, dy[i]);
       diff_out_min = std::min(diff_out_min, v);
       diff_out_max = std::max(diff_out_max, v);
+#endif
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -162,6 +175,7 @@ void L2NormLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
                        << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(L2Norm);

@@ -25,12 +25,15 @@ void ELULayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "ELU Forward_cpu: count=" << count
                       << " alpha=" << alpha_;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int64_t i = 0; i < count; ++i) {
     float x = bottom_data[i];
@@ -41,13 +44,16 @@ void ELULayer::Forward_cpu(const std::vector<Blob*>& bottom,
       y = alpha_ * (std::exp(x) - 1.0f);
     }
     top_data[i] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     in_min = std::min(in_min, x);
     in_max = std::max(in_max, x);
     out_min = std::min(out_min, y);
     out_max = std::max(out_max, y);
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
@@ -56,6 +62,7 @@ void ELULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void ELULayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -75,15 +82,16 @@ void ELULayer::Backward_cpu(const std::vector<Blob*>& top,
   CAFFE_FFI_LAYER_LOG << "ELU Backward_cpu: count=" << count
                       << " alpha=" << alpha;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
   int64_t saturated_neg_count = 0;
-
-  constexpr float kSaturateThreshold = 1e-4f;
+#endif
 
   for (int64_t i = 0; i < count; ++i) {
     float dy = top_diff[i];
@@ -97,17 +105,20 @@ void ELULayer::Backward_cpu(const std::vector<Blob*>& top,
     }
     bottom_diff[i] = dx;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     diff_in_min = std::min(diff_in_min, dy);
     diff_in_max = std::max(diff_in_max, dy);
     diff_out_min = std::min(diff_out_min, dx);
     diff_out_max = std::max(diff_out_max, dx);
 
-    if (x < 0.0f && std::abs(y + alpha) < kSaturateThreshold) {
+    if (x < 0.0f && std::abs(y + alpha) < 1e-4f) {
       saturated_neg_count++;
     }
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   float saturate_ratio = static_cast<float>(saturated_neg_count) / static_cast<float>(count);
@@ -120,6 +131,7 @@ void ELULayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " neg_saturate=" << saturated_neg_count << "/" << count
                        << " (" << saturate_ratio << ")"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(ELU);

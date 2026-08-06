@@ -237,13 +237,15 @@ void InnerProductLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float* top_data = top[0]->cpu_mutable_data();
   const float* weight = this->blobs_[0]->cpu_data();
 
-  const int64_t top_count = top[0]->count();
-  const int64_t weight_count = this->blobs_[0]->count();
   CAFFE_FFI_TENSOR_LOG << "InnerProduct Forward_cpu: GEMM C=" << M_ << "x" << N_
                        << " += A=" << M_ << "x" << K_ << " * B=" << K_ << "x" << N_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_total_start = clock::now();
+
+  const int64_t top_count = top[0]->count();
+  const int64_t weight_count = this->blobs_[0]->count();
 
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
@@ -254,24 +256,34 @@ void InnerProductLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   double w_norm_sq = 0.0;
 
   double t_gemm_us = 0, t_bias_us = 0;
+#endif
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_gemm_start = clock::now();
+#endif
   caffe_cpu_gemm_fp32(false, transpose_ ? false : true,
                        M_, N_, K_, 1.0f,
                        bottom_data, weight, 0.0f, top_data);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_gemm_end = clock::now();
   t_gemm_us = std::chrono::duration<double, std::micro>(t_gemm_end - t_gemm_start).count();
+#endif
 
   if (bias_term_) {
     CAFFE_FFI_TENSOR_LOG << "InnerProduct Forward_cpu: adding bias (GEMM C += bias_multiplier * bias)";
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto t_bias_start = clock::now();
+#endif
     caffe_cpu_gemm_fp32(false, false, M_, N_, 1, 1.0f,
                          bias_multiplier_->cpu_data(),
                          this->blobs_[1]->cpu_data(), 1.0f, top_data);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto t_bias_end = clock::now();
     t_bias_us = std::chrono::duration<double, std::micro>(t_bias_end - t_bias_start).count();
+#endif
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // GEMM后独立reduce：输出值域
   for (int64_t i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
@@ -309,6 +321,7 @@ void InnerProductLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " t_gemm=" << t_gemm_us << "us"
                        << (bias_term_ ? " t_bias=" + std::to_string(t_bias_us) + "us" : "")
                        << " time=" << total_us << "us";
+#endif
 }
 
 void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -321,8 +334,6 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
   float* bottom_diff = propagate_down[0] ? bottom[0]->cpu_mutable_diff() : nullptr;
 
   const int64_t weight_count = this->blobs_[0]->count();
-  const int64_t top_count = top[0]->count();
-  const int64_t bottom_count = bottom[0]->count();
 
   CAFFE_FFI_LAYER_LOG << "InnerProduct Backward: M=" << M_
                       << " N=" << N_ << " K=" << K_
@@ -332,13 +343,20 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " prop_w=" << this->param_propagate_down_[0]
                       << " prop_b=" << (bias_term_ ? this->param_propagate_down_[1] : false);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_total_start = clock::now();
 
-  // ===== 阶段0：清零梯度缓冲区（纳入计时） =====
+  const int64_t top_count = top[0]->count();
+  const int64_t bottom_count = bottom[0]->count();
+#endif
+
+  // ===== 阶段0：清零梯度缓冲区 =====
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   double t_zero_us = 0;
   {
     auto t0 = clock::now();
+#endif
     if (this->param_propagate_down_[0]) {
       caffe_set_fp32(static_cast<size_t>(weight_count), 0.0f, weight_diff);
     }
@@ -346,9 +364,12 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
       caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f,
                      this->blobs_[1]->cpu_mutable_diff());
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     t_zero_us = std::chrono::duration<double, std::micro>(clock::now() - t0).count();
   }
+#endif
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // ===== 统计变量初始化 =====
   float top_diff_min = std::numeric_limits<float>::max();
   float top_diff_max = -std::numeric_limits<float>::max();
@@ -360,10 +381,13 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
   float b_diff_max = -std::numeric_limits<float>::max();
 
   double t_gemm_filter_us = 0, t_gemm_data_us = 0, t_gemm_bias_us = 0;
+#endif
 
   // ===== backward_filter: dW（权重梯度，beta=0单shot，所有M样本一次完成） =====
   if (this->param_propagate_down_[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto tgf = clock::now();
+#endif
     if (transpose_) {
       // W is [K, N], dW = X^T * dY: [K,M]*[M,N] = [K,N]
       caffe_cpu_gemm_fp32(true, false, K_, N_, M_,
@@ -375,22 +399,30 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
                           1.0f, top_diff, bottom_data,
                           0.0f, weight_diff);
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     t_gemm_filter_us = std::chrono::duration<double, std::micro>(clock::now() - tgf).count();
+#endif
   }
 
   // ===== backward_bias: db（偏置梯度，GEMV） =====
   if (bias_term_ && this->param_propagate_down_[1]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto tgb = clock::now();
+#endif
     // db = dY^T * 1_M: [N,M]*[M] = [N] → TransA=true, M=M_, N=N_
     caffe_cpu_gemv_fp32(true, M_, N_,
                         1.0f, top_diff, bias_multiplier_->cpu_data(),
                         0.0f, this->blobs_[1]->cpu_mutable_diff());
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     t_gemm_bias_us = std::chrono::duration<double, std::micro>(clock::now() - tgb).count();
+#endif
   }
 
   // ===== backward_data: dX（bottom梯度，beta=0覆盖写） =====
   if (propagate_down[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto tgd = clock::now();
+#endif
     if (transpose_) {
       // W is [K, N], dX = dY * W^T: [M,N]*[N,K] = [M,K]
       caffe_cpu_gemm_fp32(false, true, M_, K_, N_,
@@ -402,18 +434,21 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
                           1.0f, top_diff, weight,
                           0.0f, bottom_diff);
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     t_gemm_data_us = std::chrono::duration<double, std::micro>(clock::now() - tgd).count();
+#endif
   }
 
-  // ===== Post-loop reduce统计（纯读，cache友好，开销<1%） =====
-  // 1. bottom_diff值域（backward_data刚写完，cache-hot，最先统计）
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  // ===== Post-loop reduce统计 =====
+  // 1. bottom_diff值域
   if (propagate_down[0]) {
     for (int64_t i = 0; i < bottom_count; ++i) {
       bottom_diff_min = std::min(bottom_diff_min, bottom_diff[i]);
       bottom_diff_max = std::max(bottom_diff_max, bottom_diff[i]);
     }
   }
-  // 2. weight_diff值域+L2范数（double累加防精度丢失）
+  // 2. weight_diff值域+L2范数
   double w_diff_norm_sq = 0.0;
   if (this->param_propagate_down_[0]) {
     for (int64_t i = 0; i < weight_count; ++i) {
@@ -424,12 +459,12 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
   float w_diff_norm = static_cast<float>(std::sqrt(w_diff_norm_sq));
-  // 3. top_diff值域（多次被GEMM读取，L3可能有残留）
+  // 3. top_diff值域
   for (int64_t i = 0; i < top_count; ++i) {
     top_diff_min = std::min(top_diff_min, top_diff[i]);
     top_diff_max = std::max(top_diff_max, top_diff[i]);
   }
-  // 4. bias_diff值域（小，N_量级，完全cache-hot）
+  // 4. bias_diff值域
   if (bias_term_ && this->param_propagate_down_[1]) {
     int64_t bd_count = this->blobs_[1]->count();
     const float* bd = this->blobs_[1]->cpu_diff();
@@ -441,7 +476,7 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
 
   double total_us = std::chrono::duration<double, std::micro>(clock::now() - t_total_start).count();
 
-  // ===== 结构化日志输出（循环外，一次性） =====
+  // ===== 结构化日志输出 =====
   std::string w_diff_str;
   if (this->param_propagate_down_[0]) {
     w_diff_str = " w_diff=[" + std::to_string(w_diff_min) + ", " + std::to_string(w_diff_max) + "]"
@@ -475,6 +510,7 @@ void InnerProductLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " t_gemm_filter=" << t_gemm_filter_us << "us"
                        << b_bias_str
                        << " time=" << total_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(InnerProduct);

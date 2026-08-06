@@ -88,11 +88,14 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " inner_count=" << inner_count_
                       << " total_concat=" << total_concat;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
   int64_t top_count = top[0]->count();
+#endif
 
   for (int i = 0; i < num_bottoms; ++i) {
     const float* bottom_data = bottom[i]->cpu_data();
@@ -108,13 +111,13 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
-  // out值域统计
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   for (int64_t i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[CONCAT-PERF] " << this->name()
@@ -122,6 +125,7 @@ void ConcatLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " concat_axis=" << concat_axis_
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -137,7 +141,6 @@ void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " inner_count=" << inner_count_
                       << " total_concat=" << total_concat;
 
-  // Check if any bottom needs gradient
   bool any_propagate = false;
   for (int j = 0; j < num_bottoms; ++j) {
     if (propagate_down[j]) { any_propagate = true; break; }
@@ -147,14 +150,14 @@ void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float dx_min = std::numeric_limits<float>::max();
   float dx_max = -std::numeric_limits<float>::max();
+#endif
 
-  // Backward is the reverse of Forward: copy slices from top_diff to each bottom_diff
-  // Forward: bottom[i] data → top at (n*total_concat + offset_i) * inner_count_
-  // Backward: top_diff at that offset → bottom[i] diff
   for (int i = 0; i < num_bottoms; ++i) {
     if (!propagate_down[i]) continue;
     float* bottom_diff = bottom[i]->cpu_mutable_diff();
@@ -169,15 +172,17 @@ void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
                   sizeof(float) * copy_size);
     }
 
-    // Value range tracking for this bottom's diff
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     const int64_t bottom_count = bottom[i]->count();
     for (int64_t j = 0; j < bottom_count; ++j) {
       dx_min = std::min(dx_min, bottom_diff[j]);
       dx_max = std::max(dx_max, bottom_diff[j]);
     }
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[CONCAT-PERF] " << this->name()
@@ -185,6 +190,7 @@ void ConcatLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " concat_axis=" << concat_axis_
                        << " dx=[" << dx_min << ", " << dx_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Concat);

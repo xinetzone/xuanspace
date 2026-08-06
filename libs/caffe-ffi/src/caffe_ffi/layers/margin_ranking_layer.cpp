@@ -65,27 +65,33 @@ void MarginRankingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "MarginRanking Forward: count=" << count
                       << " margin=" << margin << " sign=" << sign;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  // loss_i = max(0, -y_i * (x1_i - x2_i) + margin)
-  double total = 0.0;
   int active = 0;
   float loss_min = std::numeric_limits<float>::max();
   float loss_max = -std::numeric_limits<float>::max();
+#endif
+
+  // loss_i = max(0, -y_i * (x1_i - x2_i) + margin)
+  double total = 0.0;
   for (int i = 0; i < count; ++i) {
     const float y = label[i];
     const float v = -y * (x1[i] - x2[i]) + margin;
     const float l = v > 0.0f ? v : 0.0f;
     total += static_cast<double>(l);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     if (l > 0.0f) ++active;
     loss_min = std::min(loss_min, l);
     loss_max = std::max(loss_max, l);
+#endif
   }
 
   const float mean_loss = static_cast<float>(total / static_cast<double>(count));
   top_data[0] = static_cast<float>(sign) * mean_loss;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -98,6 +104,7 @@ void MarginRankingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " mean_loss=" << mean_loss
                        << " top0=" << top_data[0]
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void MarginRankingLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -138,8 +145,10 @@ void MarginRankingLayer::Backward_cpu(const std::vector<Blob*>& top,
   //   mask_i = 1 if loss_i > 0 else 0
   const float scale = loss_weight * static_cast<float>(sign) / static_cast<float>(count);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   for (int i = 0; i < count; ++i) {
     const float y = label[i];
@@ -154,6 +163,7 @@ void MarginRankingLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -162,6 +172,7 @@ void MarginRankingLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " loss_weight=" << loss_weight
                        << " scale=" << scale
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(MarginRanking);

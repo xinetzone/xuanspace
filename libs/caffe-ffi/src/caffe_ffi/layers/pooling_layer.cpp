@@ -146,12 +146,15 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " pooled=[" << pooled_height_ << "," << pooled_width_ << "]"
                       << " top_count=" << top_count;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
+#endif
 
   // Initialize top_data and max_idx_
   caffe_set_fp32(static_cast<size_t>(top_count),
@@ -166,9 +169,7 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   // Main pooling loop. Flatten (n, c) into a single nc index so that
   // parallelism = num * channels_ (typically >> num when batch=1 inference).
   // Each nc writes a disjoint region of top_data/mask_data — no cross-thread
-  // write race. Do NOT use OpenMP min/max reductions here: they require
-  // `/openmp:llvm` and break MSVC's default `/openmp`. in_min/in_max are
-  // computed in a separate serial pass below (outside the timed region).
+  // write race.
   const int nc_total = num * channels_;
   const int hw = height_ * width_;
   const int pooled_hw = pooled_height_ * pooled_width_;
@@ -218,6 +219,7 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // out值域统计
   for (int i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
@@ -233,7 +235,7 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[POOL-PERF] " << this->name()
@@ -246,6 +248,7 @@ void PoolingLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -272,15 +275,20 @@ void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " channels=" << channels_
                       << " bottom_count=" << bottom_count;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   // Zero out bottom diff
   caffe_set_fp32(static_cast<size_t>(bottom_count), 0.0f, bottom_diff);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
+#endif
 
   const float* mask_data = (pool_method_ == caffe::PoolingParameter::MAX) ? max_idx_->cpu_data() : nullptr;
 
@@ -329,6 +337,7 @@ void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // diff值域统计（串行遍历，避免并行循环内的数据竞争）
   {
     const int top_count_diff = static_cast<int>(top[0]->count());
@@ -342,7 +351,7 @@ void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[POOL-PERF] " << this->name()
@@ -355,6 +364,7 @@ void PoolingLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
                        << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Pooling);

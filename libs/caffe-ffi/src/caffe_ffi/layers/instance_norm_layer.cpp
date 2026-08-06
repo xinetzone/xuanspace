@@ -76,7 +76,6 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const int num = num_;
   const int channels = channels_;
   const int spatial_dim = spatial_dim_;
-  const int count = num * channels * spatial_dim;
 
   const float* gamma = affine_ ? this->blobs_[0]->cpu_data() : nullptr;
   const float* beta = affine_ ? this->blobs_[1]->cpu_data() : nullptr;
@@ -86,8 +85,11 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " spatial_dim=" << spatial_dim
                       << " affine_=" << affine_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+
+  const int count = num * channels * spatial_dim;
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
@@ -97,6 +99,7 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float mean_max = -std::numeric_limits<float>::max();
   float std_min = std::numeric_limits<float>::max();
   float std_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int n = 0; n < num; ++n) {
     for (int c = 0; c < channels; ++c) {
@@ -109,8 +112,10 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
         sum += static_cast<double>(x[i]);
       }
       float mean = static_cast<float>(sum / static_cast<double>(spatial_dim));
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       mean_min = std::min(mean_min, mean);
       mean_max = std::max(mean_max, mean);
+#endif
 
       double sum_sq = 0.0;
       for (int i = 0; i < spatial_dim; ++i) {
@@ -119,22 +124,27 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       }
       float var = static_cast<float>(sum_sq / static_cast<double>(spatial_dim));
       float inv_std = 1.0f / std::sqrt(var + eps_);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       std_min = std::min(std_min, inv_std);
       std_max = std::max(std_max, inv_std);
+#endif
 
       const float g = gamma ? gamma[c] : 1.0f;
       const float b = beta ? beta[c] : 0.0f;
       for (int i = 0; i < spatial_dim; ++i) {
         float v = (x[i] - mean) * inv_std * g + b;
         y[i] = v;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         in_min = std::min(in_min, x[i]);
         in_max = std::max(in_max, x[i]);
         out_min = std::min(out_min, v);
         out_max = std::max(out_max, v);
+#endif
       }
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -150,6 +160,7 @@ void InstanceNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " inv_std=[" << std_min << ", " << std_max << "]"
                        << " count=" << count
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -179,8 +190,10 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
     return;
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   float* gamma_diff = nullptr;
   float* beta_diff = nullptr;
@@ -193,10 +206,12 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
     caffe_set_fp32(static_cast<size_t>(channels), 0.0f, beta_diff);
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
+#endif
 
   const float m = static_cast<float>(spatial_dim);
 
@@ -224,7 +239,6 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
       const float g = gamma ? gamma[c] : 1.0f;
 
       // Effective upstream gradient (after affine scaling).
-      // d_one = sum(dy * g) / M ; d_two = sum(dy * g * (x - mean)) / M
       double sum_dy = 0.0;
       double sum_dy_x = 0.0;
       for (int i = 0; i < spatial_dim; ++i) {
@@ -235,18 +249,20 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
       float mean_dy = static_cast<float>(sum_dy / static_cast<double>(m));
       float mean_dy_x = static_cast<float>(sum_dy_x / static_cast<double>(m));
 
-      // Batchnorm-style backward: dx = inv_std * (dy* g - mean_dy - (x-mean) * inv_std^2 * mean_dy_x)
+      // Batchnorm-style backward
       const float inv_std_sq = inv_std * inv_std;
       for (int i = 0; i < spatial_dim; ++i) {
         float v = inv_std * (dy[i] * g - mean_dy - (x[i] - mean) * inv_std_sq * mean_dy_x);
         if (need_dx) {
           dx[i] = v;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           diff_in_min = std::min(diff_in_min, dy[i]);
           diff_in_max = std::max(diff_in_max, dy[i]);
           diff_out_min = std::min(diff_out_min, v);
           diff_out_max = std::max(diff_out_max, v);
+#endif
         }
-        // Accumulate dgamma / dbeta: dgamma += dy * y_norm, dbeta += dy
+        // Accumulate dgamma / dbeta
         if (need_dgamma) {
           gamma_diff[c] += dy[i] * (x[i] - mean) * inv_std;
         }
@@ -257,6 +273,7 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -270,6 +287,7 @@ void InstanceNormLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
                        << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(InstanceNorm);

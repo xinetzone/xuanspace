@@ -130,7 +130,10 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " dim=" << dim
                       << " has_labels=" << (bottom.size() == 2);
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   caffe_copy_fp32(static_cast<size_t>(bottom[0]->count()), bottom_data, prob_data);
 
@@ -162,7 +165,7 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
-  // 概率分布统计
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float prob_min = std::numeric_limits<float>::max();
   float prob_max = -std::numeric_limits<float>::max();
   double sum_max_prob = 0.0;
@@ -190,6 +193,7 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float avg_max_prob = static_cast<float>(sum_max_prob / static_cast<double>(n_samples));
   float avg_entropy = static_cast<float>(sum_entropy / static_cast<double>(n_samples));
   float max_entropy = std::log(static_cast<float>(channels));
+#endif
 
   float loss = 0.0f;
   int valid_count = 0;
@@ -220,7 +224,8 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     CAFFE_FFI_LAYER_LOG << "SoftmaxWithLoss Forward: outputting probabilities only";
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   float uncertainty = (max_entropy > 0.0f) ? avg_entropy / max_entropy : 0.0f;
@@ -237,12 +242,12 @@ void SoftmaxWithLossLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " uncertainty=" << uncertainty
                        << " avg_loss=" << avg_loss
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
                                         const std::vector<bool>& propagate_down,
                                         const std::vector<Blob*>& bottom) {
-  // Labels (bottom[1]) never need gradients.
   if (bottom.size() == 2 && propagate_down[1]) {
     CAFFE_FFI_LOG_WARN() << "SoftmaxWithLoss Backward: cannot backpropagate to label inputs.";
   }
@@ -253,7 +258,6 @@ void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
   }
 
   if (bottom.size() < 2) {
-    // Probability-only mode (no labels): cannot compute loss gradient.
     CAFFE_FFI_LOG_WARN() << "SoftmaxWithLoss Backward: no labels provided; cannot compute loss gradient.";
     float* bottom_diff = bottom[0]->cpu_mutable_diff();
     caffe_set_fp32(static_cast<size_t>(bottom[0]->count()), 0.0f, bottom_diff);
@@ -267,7 +271,6 @@ void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
   float* bottom_diff = bottom[0]->cpu_mutable_diff();
   const float* label = bottom[1]->cpu_data();
 
-  // loss_weight: scalar gradient from upstream (Net sets to layer's loss_weight, typically 1.0)
   float loss_weight = top[0]->cpu_diff()[0];
 
   CAFFE_FFI_LAYER_LOG << "SoftmaxWithLoss Backward: outer_num=" << outer_num_
@@ -275,17 +278,13 @@ void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " channels=" << channels
                       << " loss_weight=" << loss_weight;
 
-  // Step 1: Copy probabilities to bottom_diff: d_bottom = prob
   caffe_copy_fp32(static_cast<size_t>(count), prob_data, bottom_diff);
 
-  // Step 2: Subtract 1 at ground-truth class positions: d_bottom[j] = prob[j] - 1{j==label}
-  //         Zero out ignored label positions.
   int valid_count = 0;
   for (int i = 0; i < outer_num_; ++i) {
     for (int j = 0; j < inner_num_; ++j) {
       const int label_value = static_cast<int>(label[i * inner_num_ + j]);
       if (has_ignore_label_ && label_value == ignore_label_) {
-        // Zero gradient for ignored positions across all channels
         for (int c = 0; c < channels; ++c) {
           bottom_diff[i * dim + c * inner_num_ + j] = 0.0f;
         }
@@ -298,14 +297,12 @@ void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
-  // Step 3: Scale by loss_weight / valid_count (average loss gradient)
-  //         If no valid samples, gradient is zero.
   float scale = (valid_count > 0) ? (loss_weight / static_cast<float>(valid_count)) : 0.0f;
   if (scale != 1.0f) {
     caffe_scal_fp32(static_cast<size_t>(count), scale, bottom_diff);
   }
 
-  // Gradient statistics for logging
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   if (valid_count > 0) {
     double sum_sq = 0.0;
     float grad_max = -std::numeric_limits<float>::max();
@@ -317,11 +314,14 @@ void SoftmaxWithLossLayer::Backward_cpu(const std::vector<Blob*>& top,
       grad_min = std::min(grad_min, v);
     }
     float grad_norm = static_cast<float>(std::sqrt(sum_sq));
-    CAFFE_FFI_LAYER_LOG << "SoftmaxWithLoss Backward: valid_count=" << valid_count
-                        << " scale=" << scale
-                        << " grad_range=[" << grad_min << ", " << grad_max << "]"
-                        << " grad_l2norm=" << grad_norm;
-  } else {
+    CAFFE_FFI_LOG_INFO() << "[LOSS-PERF] " << this->name()
+                         << " SoftmaxWithLoss backward: valid_count=" << valid_count
+                         << " scale=" << scale
+                         << " grad_range=[" << grad_min << ", " << grad_max << "]"
+                         << " grad_l2norm=" << grad_norm;
+  }
+#endif
+  if (valid_count == 0) {
     CAFFE_FFI_LOG_WARN() << "SoftmaxWithLoss Backward: no valid labels, all gradients zero";
   }
 }

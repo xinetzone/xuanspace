@@ -31,7 +31,6 @@ void DropoutLayer::LayerSetUp(const std::vector<Blob*>& bottom,
 void DropoutLayer::Reshape(const std::vector<Blob*>& bottom,
                             const std::vector<Blob*>& top) {
   top[0]->ReshapeLike(*bottom[0]);
-  // Allocate the cached mask buffer (used only in training mode).
   if (mask_ == nullptr) {
     mask_ = make_object<Blob>();
   }
@@ -57,29 +56,21 @@ void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " mode=" << (train ? "train" : "inference")
                       << " inplace=" << (inplace ? "true" : "false");
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   if (!train) {
-    // Inference mode: identity forward (y = x).
     if (!inplace) {
-      // COW zero-copy sharing: top[0] borrows bottom[0]'s data tensor.
-      // Replaces the previous O(n) memcpy with an O(1) refcount share; the
-      // actual copy is deferred to the first downstream mutable access (COW),
-      // which preserves the isolation semantics of the original memcpy.
       top[0]->ShareData(bottom[0]);
     }
-    // else: inplace, bottom[0] == top[0] already aliases, no action needed.
   } else {
-    // Training mode: inverted dropout.
-    //   mask_i ~ Bernoulli(1 - ratio)
-    //   y_i = x_i * mask_i * scale_,  scale_ = 1 / (1 - ratio)
     float* mask_data = mask_->cpu_mutable_data();
     std::bernoulli_distribution dist(1.0f - ratio_);
     for (int64_t i = 0; i < count; ++i) {
       mask_data[i] = dist(rng_) ? 1.0f : 0.0f;
     }
-    // Read x_i before writing y_i (same index) -- element-wise safe even for
-    // in-place (bottom[0] == top[0]).
     const float* bottom_data = bottom[0]->cpu_data();
     float* top_data = top[0]->cpu_mutable_data();
     for (int64_t i = 0; i < count; ++i) {
@@ -87,7 +78,8 @@ void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[DROPOUT-PERF] " << this->name()
@@ -98,6 +90,7 @@ void DropoutLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " inplace=" << (inplace ? "true" : "false")
                        << " zerocopy=" << ((!train && !inplace) ? "yes" : "no")
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void DropoutLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -117,22 +110,16 @@ void DropoutLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " mode=" << (train ? "train" : "inference")
                       << " inplace=" << (inplace ? "true" : "false");
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   if (!train) {
-    // Inference mode: identity backward (dx = dy).
     if (!inplace) {
-      // COW zero-copy sharing: bottom[0] diff borrows top[0]'s diff tensor,
-      // replacing the previous O(n) memcpy with an O(1) refcount share.
-      // Backward runs in reverse topological order, so top[0]->diff is already
-      // populated by the downstream layer before this ShareDiff is performed.
       bottom[0]->ShareDiff(top[0]);
     }
-    // else: inplace, bottom[0] == top[0], diff already aliases, no action needed.
   } else {
-    // Training mode: dx_i = dy_i * mask_i * scale_ (mask cached from forward).
-    // Read dy_i before writing dx_i (same index) -- element-wise safe even for
-    // in-place (bottom[0] == top[0]).
     const float* mask_data = mask_->cpu_data();
     const float* top_diff = top[0]->cpu_diff();
     float* bottom_diff = bottom[0]->cpu_mutable_diff();
@@ -141,7 +128,8 @@ void DropoutLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[DROPOUT-PERF] " << this->name()
@@ -152,6 +140,7 @@ void DropoutLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " inplace=" << (inplace ? "true" : "false")
                        << " zerocopy=" << ((!train && !inplace) ? "yes" : "no")
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Dropout);

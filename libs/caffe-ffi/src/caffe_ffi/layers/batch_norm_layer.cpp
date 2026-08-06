@@ -111,14 +111,15 @@ void BatchNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const float scale_factor_use = scale_factor == 0.0f ? 1.0f : scale_factor;
   const int64_t count = bottom[0]->count();
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  // 单次遍历：normalize + 输出值域统计（融合，O(N)）
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int i = 0; i < count; ++i) {
     int c = (i / spatial_dim) % channels;
@@ -126,13 +127,15 @@ void BatchNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     float y = (x - mean[c] * scale_factor_use)
         / std::sqrt(std::max(variance[c] * scale_factor_use, 0.0f) + eps_);
     top_data[i] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     in_min = std::min(in_min, x);
     in_max = std::max(in_max, x);
     out_min = std::min(out_min, y);
     out_max = std::max(out_max, y);
+#endif
   }
 
-  // mean/var参数值域统计（O(channels)，远小于count，独立遍历可接受）
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float mean_min = std::numeric_limits<float>::max();
   float mean_max = -std::numeric_limits<float>::max();
   float var_min = std::numeric_limits<float>::max();
@@ -160,6 +163,7 @@ void BatchNormLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " mean=[" << mean_min << ", " << mean_max << "]"
                        << " var=[" << var_min << ", " << var_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void BatchNormLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -192,35 +196,45 @@ void BatchNormLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " scale_factor_use=" << scale_factor_use
                       << " eps=" << eps_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  std::vector<float> inv_std(channels);
   float inv_std_min = std::numeric_limits<float>::max();
   float inv_std_max = -std::numeric_limits<float>::max();
+#endif
+
+  std::vector<float> inv_std(channels);
   for (int c = 0; c < channels; ++c) {
     float var_c = std::max(variance[c] * scale_factor_use, 0.0f);
     inv_std[c] = 1.0f / std::sqrt(var_c + eps_);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     inv_std_min = std::min(inv_std_min, inv_std[c]);
     inv_std_max = std::max(inv_std_max, inv_std[c]);
+#endif
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int64_t i = 0; i < count; ++i) {
     int c = static_cast<int>((i / spatial_dim) % channels);
     float dy = top_diff[i];
     float dx = dy * inv_std[c];
     bottom_diff[i] = dx;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     diff_in_min = std::min(diff_in_min, dy);
     diff_in_max = std::max(diff_in_max, dy);
     diff_out_min = std::min(diff_out_min, dx);
     diff_out_max = std::max(diff_out_max, dx);
+#endif
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -232,6 +246,7 @@ void BatchNormLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
                        << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(BatchNorm);

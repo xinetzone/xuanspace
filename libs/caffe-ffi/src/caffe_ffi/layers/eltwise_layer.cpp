@@ -186,7 +186,9 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
   float* top_data = top[0]->cpu_mutable_data();
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
@@ -198,6 +200,7 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     coeff_min = std::min(coeff_min, coeffs_[j]);
     coeff_max = std::max(coeff_max, coeffs_[j]);
   }
+#endif
 
   switch (op_) {
     case PROD: {
@@ -266,13 +269,14 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       CAFFE_FFI_THROW(RuntimeError) << "Unknown elementwise operation.";
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // out值域统计
   for (int64_t i = 0; i < count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ELTWISE-PERF] " << this->name()
@@ -282,6 +286,7 @@ void EltwiseLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " coeffs=[" << coeff_min << ", " << coeff_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -329,7 +334,10 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   // Initialize bottom_diff pointers and zero them if needed
   std::vector<float*> bottom_diffs(num_bottoms, nullptr);
@@ -340,9 +348,11 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // Value-range tracking for diagnostics
   float dx_min = std::numeric_limits<float>::max();
   float dx_max = -std::numeric_limits<float>::max();
+#endif
 
   switch (op_) {
     case SUM: {
@@ -354,8 +364,10 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
         for (int64_t i = 0; i < count; ++i) {
           float val = top_diff[i] * cj;
           bj_diff[i] = val;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           dx_min = std::min(dx_min, val);
           dx_max = std::max(dx_max, val);
+#endif
         }
       }
       break;
@@ -388,8 +400,10 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
             val = dy_val * coeffs_[j] * prod_others;
           }
           bottom_diffs[j][i] = val;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           dx_min = std::min(dx_min, val);
           dx_max = std::max(dx_max, val);
+#endif
         }
       }
       break;
@@ -402,8 +416,10 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
         if (propagate_down[winner]) {
           float val = top_diff[i] * coeffs_[winner];
           bottom_diffs[winner][i] = val;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           dx_min = std::min(dx_min, val);
           dx_max = std::max(dx_max, val);
+#endif
         }
       }
       break;
@@ -412,7 +428,8 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
       CAFFE_FFI_THROW(RuntimeError) << "Unknown elementwise operation.";
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ELTWISE-PERF] " << this->name()
@@ -421,6 +438,7 @@ void EltwiseLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " count=" << count
                        << " dx=[" << dx_min << ", " << dx_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Eltwise);

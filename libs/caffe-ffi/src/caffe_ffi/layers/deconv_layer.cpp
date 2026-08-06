@@ -24,13 +24,15 @@ void DeconvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const float* weight = this->blobs_[0]->cpu_data();
   const float* bottom_data = bottom[0]->cpu_data();
   float* top_data = top[0]->cpu_mutable_data();
+
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_total_start = clock::now();
+
   const int M = conv_out_channels_ / group_;
   const int K = kernel_dim_;
   const int64_t top_count = top[0]->count();
   const int64_t weight_count = this->blobs_[0]->count();
-
-  using clock = std::chrono::high_resolution_clock;
-  auto t_total_start = clock::now();
 
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
@@ -41,26 +43,36 @@ void DeconvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   double w_norm_sq = 0.0;
 
   double t_gemm_us = 0, t_bias_us = 0;
+#endif
 
   // Deconv forward = Conv backward (transposed GEMM + col2im)
   for (int n = 0; n < num_; ++n) {
     const float* input = bottom_data + n * bottom_dim_;
     float* output = top_data + n * top_dim_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto t_gemm_start = clock::now();
+#endif
     backward_cpu_gemm(input, weight, output);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     auto t_gemm_end = clock::now();
     t_gemm_us += std::chrono::duration<double, std::micro>(t_gemm_end - t_gemm_start).count();
+#endif
 
     if (bias_term_) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto t_bias_start = clock::now();
+#endif
       const float* bias = this->blobs_[1]->cpu_data();
       forward_cpu_bias(output, bias);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto t_bias_end = clock::now();
       t_bias_us += std::chrono::duration<double, std::micro>(t_bias_end - t_bias_start).count();
+#endif
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   for (int64_t i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
@@ -100,6 +112,7 @@ void DeconvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " t_gemm=" << t_gemm_us << "us"
                        << (bias_term_ ? " t_bias=" + std::to_string(t_bias_us) + "us" : "")
                        << " time=" << total_us << "us";
+#endif
 }
 
 void DeconvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -111,18 +124,21 @@ void DeconvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
   float* weight_diff = this->param_propagate_down_[0] ? this->blobs_[0]->cpu_mutable_diff() : nullptr;
   float* bottom_diff = propagate_down[0] ? bottom[0]->cpu_mutable_diff() : nullptr;
 
+  const int64_t weight_count = this->blobs_[0]->count();
+
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_total_start = clock::now();
+
   const int M = conv_out_channels_ / group_;
   const int N = conv_out_spatial_dim_;
   const int K = kernel_dim_;
-  const int64_t weight_count = this->blobs_[0]->count();
   const int64_t bottom_count = bottom[0]->count();
-
-  using clock = std::chrono::high_resolution_clock;
-  auto t_total_start = clock::now();
 
   double t_zero_us = 0;
   {
     auto t0 = clock::now();
+#endif
     if (this->param_propagate_down_[0]) {
       caffe_set_fp32(static_cast<size_t>(weight_count), 0.0f, weight_diff);
     }
@@ -130,9 +146,12 @@ void DeconvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
       caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f,
                      this->blobs_[1]->cpu_mutable_diff());
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     t_zero_us = std::chrono::duration<double, std::micro>(clock::now() - t0).count();
   }
+#endif
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float top_diff_min = std::numeric_limits<float>::max();
   float top_diff_max = -std::numeric_limits<float>::max();
   float bottom_diff_min = std::numeric_limits<float>::max();
@@ -143,47 +162,55 @@ void DeconvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
   float b_diff_max = -std::numeric_limits<float>::max();
 
   double t_gemm_filter_us = 0, t_gemm_data_us = 0, t_gemm_bias_us = 0;
+#endif
 
   bool skip_im2col = false;
 
   // Deconv backward:
-  //   bias grad: backward_cpu_bias (same as Conv)
-  //   weight grad: weight_cpu_gemm(top_diff, bottom_data, weight_diff) (swap input/output)
-  //   bottom grad: forward_cpu_gemm(top_diff, weight, bottom_diff) (Conv forward = Deconv backward)
   for (int n = 0; n < num_; ++n) {
     const float* out_data = top_diff + n * top_dim_;
     const float* in_data = bottom_data + n * bottom_dim_;
     float* out_diff = propagate_down[0] ? bottom_diff + n * bottom_dim_ : nullptr;
 
-    // Bias gradient (same as Conv: sum over spatial dims)
+    // Bias gradient
     if (bias_term_ && this->param_propagate_down_[1]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto tgb = clock::now();
+#endif
       backward_cpu_bias(this->blobs_[1]->cpu_mutable_diff(), out_data);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       t_gemm_bias_us += std::chrono::duration<double, std::micro>(clock::now() - tgb).count();
+#endif
     }
 
     if (this->param_propagate_down_[0] || propagate_down[0]) {
-      // Weight gradient: dW += top_diff * col(bottom_data)^T
-      // weight_cpu_gemm(input, output, weights) computes dW += output * col(input)^T
-      // For Deconv weight grad, we need dW += bottom_data * col(top_diff)^T (input/output swapped)
-      // which matches calling weight_cpu_gemm with (out_data, in_data, weight_diff)
+      // Weight gradient
       if (this->param_propagate_down_[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         auto tgf = clock::now();
+#endif
         weight_cpu_gemm(out_data, in_data, weight_diff);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         t_gemm_filter_us += std::chrono::duration<double, std::micro>(clock::now() - tgf).count();
-        skip_im2col = true;  // col_buffer already filled by weight_cpu_gemm's im2col
+#endif
+        skip_im2col = true;
       }
 
-      // Bottom gradient: forward_cpu_gemm (Conv forward = Deconv backward w.r.t. input)
+      // Bottom gradient
       if (propagate_down[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         auto tgd = clock::now();
+#endif
         forward_cpu_gemm(out_data, weight, out_diff,
                          this->param_propagate_down_[0] ? skip_im2col : false);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         t_gemm_data_us += std::chrono::duration<double, std::micro>(clock::now() - tgd).count();
+#endif
       }
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   if (propagate_down[0]) {
     for (int64_t i = 0; i < bottom_count; ++i) {
       bottom_diff_min = std::min(bottom_diff_min, bottom_diff[i]);
@@ -258,6 +285,7 @@ void DeconvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " t_gemm_filter=" << t_gemm_filter_us << "us"
                        << b_bias_str
                        << " time=" << total_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Deconvolution);

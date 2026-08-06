@@ -18,24 +18,30 @@ void SoftsignLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const int64_t count = bottom[0]->count();
   CAFFE_FFI_LAYER_LOG << "Softsign Forward_cpu: count=" << count;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
+#endif
 
   for (int64_t i = 0; i < count; ++i) {
     float x = bottom_data[i];
     float y = x / (1.0f + std::abs(x));
     top_data[i] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     in_min = std::min(in_min, x);
     in_max = std::max(in_max, x);
     out_min = std::min(out_min, y);
     out_max = std::max(out_max, y);
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
@@ -43,6 +49,7 @@ void SoftsignLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void SoftsignLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -59,14 +66,16 @@ void SoftsignLayer::Backward_cpu(const std::vector<Blob*>& top,
   const int64_t count = bottom[0]->count();
   CAFFE_FFI_LAYER_LOG << "Softsign Backward_cpu: count=" << count;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
   float diff_out_min = std::numeric_limits<float>::max();
   float diff_out_max = -std::numeric_limits<float>::max();
+#endif
 
-  // d/dx [ x / (1 + |x|) ] = 1 / (1 + |x|)^2
   for (int64_t i = 0; i < count; ++i) {
     float dy = top_diff[i];
     float x = bottom_data[i];
@@ -74,13 +83,16 @@ void SoftsignLayer::Backward_cpu(const std::vector<Blob*>& top,
     float dx = dy / (denom * denom);
     bottom_diff[i] = dx;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     diff_in_min = std::min(diff_in_min, dy);
     diff_in_max = std::max(diff_in_max, dy);
     diff_out_min = std::min(diff_out_min, dx);
     diff_out_max = std::max(diff_out_max, dx);
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
@@ -88,6 +100,7 @@ void SoftsignLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " diff_in=[" << diff_in_min << ", " << diff_in_max << "]"
                        << " diff_out=[" << diff_out_min << ", " << diff_out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Softsign);

@@ -171,7 +171,9 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 
   float* top_data = top[0]->cpu_mutable_data();
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
@@ -181,7 +183,9 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float s_max = -std::numeric_limits<float>::max();
   float b_min = std::numeric_limits<float>::max();
   float b_max = -std::numeric_limits<float>::max();
+#endif
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // scale值域
   for (int i = 0; i < scale_dim_; ++i) {
     s_min = std::min(s_min, scale_data[i]);
@@ -194,8 +198,8 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       b_max = std::max(b_max, bias_data[i]);
     }
   }
+#endif
 
-  // 单次遍历：scale+bias+in/out值域统计（融合，无二次遍历）
   for (int n = 0; n < outer_dim_; ++n) {
     for (int d = 0; d < scale_dim_; ++d) {
       const float factor = scale_data[d];
@@ -205,15 +209,18 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
         float x = bottom_data[idx];
         float y = x * factor + b;
         top_data[idx] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         in_min = std::min(in_min, x);
         in_max = std::max(in_max, x);
         out_min = std::min(out_min, y);
         out_max = std::max(out_max, y);
+#endif
       }
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   std::string b_str;
@@ -231,6 +238,7 @@ void ScaleLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " scale=[" << s_min << ", " << s_max << "]"
                        << b_str
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -294,7 +302,10 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
                          << " top_ptr=" << static_cast<const void*>(top[0]->cpu_diff());
   }
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+#endif
 
   // When identity_dx, bottom's diff is already shared with top's diff
   // (zero-copy), so we must NOT write to it via cpu_mutable_diff() (which
@@ -313,6 +324,7 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
     std::memset(bias_diff, 0, sizeof(float) * scale_dim_);
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // Value-range tracking for diagnostics
   float dx_min = std::numeric_limits<float>::max();
   float dx_max = -std::numeric_limits<float>::max();
@@ -320,6 +332,7 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
   float ds_max = -std::numeric_limits<float>::max();
   float db_min = std::numeric_limits<float>::max();
   float db_max = -std::numeric_limits<float>::max();
+#endif
 
   // Single-pass triple loop: compute dX, d_scale, d_bias simultaneously
   // Forward: y[n,d,i] = x[n,d,i] * s[d] + b[d]
@@ -342,8 +355,10 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
         if (need_dx && !identity_dx) {
           float dx_val = dy_val * factor;
           bottom_diff[idx] = dx_val;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           dx_min = std::min(dx_min, dx_val);
           dx_max = std::max(dx_max, dx_val);
+#endif
         }
 
         // Accumulate d_scale and d_bias
@@ -359,6 +374,7 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // Compute scale_diff and bias_diff ranges
   if (need_dscale) {
     for (int d = 0; d < scale_dim_; ++d) {
@@ -373,7 +389,7 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   std::string extra;
@@ -393,6 +409,7 @@ void ScaleLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " inner_dim=" << inner_dim_
                        << extra
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Scale);

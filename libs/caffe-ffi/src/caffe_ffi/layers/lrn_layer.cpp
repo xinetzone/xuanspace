@@ -71,8 +71,10 @@ void LRNLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const int64_t spatial_count = height_ * width_;
   const float alpha_over_size = alpha_ / size_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   caffe_set_fp32(static_cast<size_t>(scale_count), k_, scale_data);
   caffe_set_fp32(static_cast<size_t>(padded_square_->count()), 0.0f, padded_square_data);
@@ -107,6 +109,7 @@ void LRNLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   caffe_powx_fp32(scale_count, scale_data, -beta_, top_data);
   caffe_mul_fp32(scale_count, top_data, bottom_data, top_data);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
   for (int64_t i = 0; i < top[0]->count(); ++i) {
@@ -121,6 +124,7 @@ void LRNLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " LRN forward: num=" << num_ << " channels=" << channels_
                        << " size=" << size_ << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void LRNLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -145,8 +149,10 @@ void LRNLayer::Backward_cpu(const std::vector<Blob*>& top,
   const float cache_ratio_value = 2.0f * alpha_ * beta_ / size_;
   const int inverse_pre_pad = size_ - (size_ + 1) / 2;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   caffe_powx_fp32(scale_count, scale_data, -beta_, bottom_diff);
   caffe_mul_fp32(scale_count, top_diff, bottom_diff, bottom_diff);
@@ -189,6 +195,7 @@ void LRNLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float diff_min = std::numeric_limits<float>::max();
   float diff_max = -std::numeric_limits<float>::max();
   for (int64_t i = 0; i < bottom[0]->count(); ++i) {
@@ -204,6 +211,7 @@ void LRNLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " size=" << size_
                        << " diff=[" << diff_min << ", " << diff_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(LRN);

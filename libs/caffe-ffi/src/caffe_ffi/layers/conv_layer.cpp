@@ -28,8 +28,6 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float* top_data = top[0]->cpu_mutable_data();
   const int M = conv_out_channels_ / group_;
   const int K = kernel_dim_;
-  const int64_t top_count = top[0]->count();
-  const int64_t weight_count = this->blobs_[0]->count();
 
   CAFFE_FFI_LAYER_LOG << "Convolution Forward: num=" << num_
                       << " group=" << group_
@@ -39,9 +37,12 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " is_1x1=" << is_1x1_
                       << " bias_term=" << bias_term_;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_total_start = clock::now();
 
+  const int64_t top_count = top[0]->count();
+  const int64_t weight_count = this->blobs_[0]->count();
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
   float w_min = std::numeric_limits<float>::max();
@@ -49,6 +50,7 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float b_min = std::numeric_limits<float>::max();
   float b_max = -std::numeric_limits<float>::max();
   double w_norm_sq = 0.0;
+#endif
 
 #ifdef CAFFE_USE_OPENMP
   // ── OpenMP parallel path v4: output-channel (M) parallelism ──
@@ -57,9 +59,9 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   //   - Multi-threaded path: split output channels (M dimension of GEMM) across threads.
   //   - Each thread gets exactly one contiguous channel range: GEMM → bias fused,
   //     eliminating inter-phase barriers.
-  //   - Minimum chunk = 32 channels to keep OpenBLAS SGEMM efficient (AVX2 kernels
-  //     tile in 8-16 channel blocks; chunks < 16 pay disproportionate setup overhead).
-  //   - Chunk count = min(max_threads, M/32) to avoid creating chunks too small,
+  //   - Minimum chunk = 8 channels to keep OpenBLAS SGEMM efficient while maximizing
+  //     parallelism for small-channel layers (e.g. ResNet50 conv1=64ch → 8 chunks).
+  //   - Chunk count = min(max_threads, M/kMinChunk) to avoid creating chunks too small,
   //     which causes GEMM inefficiency and barrier skew.
   //   - im2col is single-threaded (memory-bound, ~5% of compute).
   //   - BLAS MUST be single-threaded (OPENBLAS_NUM_THREADS=1) to prevent oversubscription.
@@ -83,7 +85,7 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   } else {
     // ── Multi-threaded path ──
-    const int kMinChunk = 32;
+    const int kMinChunk = 8;
     // Number of chunks: no more than M_total/kMinChunk, no more than max_omp_threads.
     // This ensures each chunk is ≥ kMinChunk channels and each thread gets ≤1 chunk.
     const int max_chunks_from_channels = std::max(1, M_total / kMinChunk);
@@ -150,16 +152,18 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
 #else
   // ── Serial fallback (OpenMP disabled) ──
   for (int n = 0; n < num_; ++n) {
-    const float* input = bottom_data + n * bottom_dim_;
-    float* output = top_data + n * top_dim_;
+    const float* input = bottom_data + static_cast<int64_t>(n) * bottom_dim_;
+    float* output = top_data + static_cast<int64_t>(n) * top_dim_;
     forward_cpu_gemm(input, weight, output);
     if (bias_term_) {
-      forward_cpu_bias(output, this->blobs_[1]->cpu_data());
+      const float* bias = this->blobs_[1]->cpu_data();
+      forward_cpu_bias(output, bias);
     }
   }
 #endif
 
-  // ── Output/weight statistics (serial; computation is trivial vs GEMM) ──
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  // ── Output/weight statistics (serial; only when perf logging enabled) ──
   for (int64_t i = 0; i < top_count; ++i) {
     out_min = std::min(out_min, top_data[i]);
     out_max = std::max(out_max, top_data[i]);
@@ -196,6 +200,7 @@ void ConvolutionLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " w_norm=" << w_norm
                        << (bias_term_ ? " b=[" + std::to_string(b_min) + ", " + std::to_string(b_max) + "]" : "")
                        << " time=" << total_us << "us";
+#endif
 }
 
 void ConvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -210,8 +215,6 @@ void ConvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
   const int M = conv_out_channels_ / group_;
   const int N = conv_out_spatial_dim_;
   const int K = kernel_dim_;
-  const int64_t weight_count = this->blobs_[0]->count();
-  const int64_t bottom_count = bottom[0]->count();
 
   CAFFE_FFI_LAYER_LOG << "Convolution Backward: num=" << num_
                       << " group=" << group_
@@ -220,8 +223,12 @@ void ConvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " bias_term=" << bias_term_
                       << " prop_down=" << (propagate_down[0] ? "true" : "false");
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_total_start = clock::now();
+
+  const int64_t weight_count = this->blobs_[0]->count();
+  const int64_t bottom_count = bottom[0]->count();
 
   double t_zero_us = 0;
   {
@@ -246,31 +253,54 @@ void ConvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
   float b_diff_max = -std::numeric_limits<float>::max();
 
   double t_gemm_filter_us = 0, t_gemm_data_us = 0, t_gemm_bias_us = 0;
+#else
+  // Zero gradients without timing
+  if (this->param_propagate_down_[0]) {
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, weight_diff);
+  }
+  if (bias_term_ && this->param_propagate_down_[1]) {
+    caffe_set_fp32(static_cast<size_t>(this->blobs_[1]->count()), 0.0f,
+                   this->blobs_[1]->cpu_mutable_diff());
+  }
+#endif
 
   for (int n = 0; n < num_; ++n) {
-    const float* input = bottom_data + n * bottom_dim_;
-    const float* output = top_diff + n * top_dim_;
-    float* out_diff = propagate_down[0] ? bottom_diff + n * bottom_dim_ : nullptr;
+    const float* input = bottom_data + static_cast<int64_t>(n) * bottom_dim_;
+    const float* output = top_diff + static_cast<int64_t>(n) * top_dim_;
+    float* out_diff = propagate_down[0] ? bottom_diff + static_cast<int64_t>(n) * bottom_dim_ : nullptr;
 
     if (this->param_propagate_down_[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto tgf = clock::now();
+#endif
       weight_cpu_gemm(input, output, weight_diff);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       t_gemm_filter_us += std::chrono::duration<double, std::micro>(clock::now() - tgf).count();
+#endif
     }
 
     if (propagate_down[0]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto tgd = clock::now();
+#endif
       backward_cpu_gemm(output, weight, out_diff);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       t_gemm_data_us += std::chrono::duration<double, std::micro>(clock::now() - tgd).count();
+#endif
     }
 
     if (bias_term_ && this->param_propagate_down_[1]) {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       auto tgb = clock::now();
+#endif
       backward_cpu_bias(this->blobs_[1]->cpu_mutable_diff(), output);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       t_gemm_bias_us += std::chrono::duration<double, std::micro>(clock::now() - tgb).count();
+#endif
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   if (propagate_down[0]) {
     for (int64_t i = 0; i < bottom_count; ++i) {
       bottom_diff_min = std::min(bottom_diff_min, bottom_diff[i]);
@@ -344,6 +374,7 @@ void ConvolutionLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " t_gemm_filter=" << t_gemm_filter_us << "us"
                        << b_bias_str
                        << " time=" << total_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Convolution);

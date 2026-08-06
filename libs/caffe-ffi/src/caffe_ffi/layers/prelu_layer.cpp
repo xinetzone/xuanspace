@@ -80,7 +80,9 @@ void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
   CAFFE_FFI_LAYER_LOG << "PReLU Forward: count=" << count
                       << " channel_shared=" << channel_shared_;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
@@ -88,38 +90,48 @@ void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
   float out_max = -std::numeric_limits<float>::max();
   float slope_min = std::numeric_limits<float>::max();
   float slope_max = -std::numeric_limits<float>::max();
+#endif
 
   if (channel_shared_) {
     const float slope = slope_data[0];
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     slope_min = slope_max = slope;
+#endif
     for (int64_t i = 0; i < count; ++i) {
       float x = bottom_data[i];
       float y = std::max(x, 0.0f) + slope * std::min(x, 0.0f);
       top_data[i] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       in_min = std::min(in_min, x);
       in_max = std::max(in_max, x);
       out_min = std::min(out_min, y);
       out_max = std::max(out_max, y);
+#endif
     }
   } else {
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     for (int c = 0; c < channels_; ++c) {
       float s = slope_data[c];
       slope_min = std::min(slope_min, s);
       slope_max = std::max(slope_max, s);
     }
+#endif
     for (int64_t i = 0; i < count; ++i) {
       float x = bottom_data[i];
       int c = static_cast<int>((i / inner_dim_) % channels_);
       float y = std::max(x, 0.0f) + slope_data[c] * std::min(x, 0.0f);
       top_data[i] = y;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       in_min = std::min(in_min, x);
       in_max = std::max(in_max, x);
       out_min = std::min(out_min, y);
       out_max = std::max(out_max, y);
+#endif
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   CAFFE_FFI_LOG_INFO() << "[ACTIVATION-PERF] " << this->name()
@@ -129,6 +141,7 @@ void PReLULayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -162,7 +175,9 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
     caffe_set_fp32(static_cast<size_t>(this->blobs_[0]->count()), 0.0f, slope_diff);
   }
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
 
   float diff_in_min = std::numeric_limits<float>::max();
   float diff_in_max = -std::numeric_limits<float>::max();
@@ -171,6 +186,7 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
   float slope_diff_min = std::numeric_limits<float>::max();
   float slope_diff_max = -std::numeric_limits<float>::max();
   int64_t dead_count = 0;
+#endif
 
   if (channel_shared_) {
     const float slope = slope_data[0];
@@ -185,21 +201,27 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
         if (prop_slope) {
           slope_diff[0] += dy * x;
         }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         dead_count++;
+#endif
       }
       if (prop_down) {
         bottom_diff[i] = dx;
       }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       diff_in_min = std::min(diff_in_min, dy);
       diff_in_max = std::max(diff_in_max, dy);
       if (prop_down) {
         diff_out_min = std::min(diff_out_min, dx);
         diff_out_max = std::max(diff_out_max, dx);
       }
+#endif
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     if (prop_slope) {
       slope_diff_min = slope_diff_max = slope_diff[0];
     }
+#endif
   } else {
     for (int64_t i = 0; i < count; ++i) {
       float dy = top_diff[i];
@@ -214,18 +236,23 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
         if (prop_slope) {
           slope_diff[c] += dy * x;
         }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         dead_count++;
+#endif
       }
       if (prop_down) {
         bottom_diff[i] = dx;
       }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       diff_in_min = std::min(diff_in_min, dy);
       diff_in_max = std::max(diff_in_max, dy);
       if (prop_down) {
         diff_out_min = std::min(diff_out_min, dx);
         diff_out_max = std::max(diff_out_max, dx);
       }
+#endif
     }
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     if (prop_slope) {
       slope_diff_min = std::numeric_limits<float>::max();
       slope_diff_max = -std::numeric_limits<float>::max();
@@ -234,9 +261,11 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
         slope_diff_max = std::max(slope_diff_max, slope_diff[c]);
       }
     }
+#endif
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
   float dead_ratio = static_cast<float>(dead_count) / static_cast<float>(count);
@@ -256,6 +285,7 @@ void PReLULayer::Backward_cpu(const std::vector<Blob*>& top,
           << " (" << dead_ratio << ")"
           << " time=" << elapsed_us << "us";
   CAFFE_FFI_LOG_INFO() << perf_ss.str();
+#endif
 }
 
 REGISTER_LAYER_CLASS(PReLU);

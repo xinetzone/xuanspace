@@ -79,13 +79,16 @@ void HingeLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                       << " channels=" << channels
                       << " is_l2=" << is_l2;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  double total = 0.0;
-  long active = 0;  // number of non-zero violation terms
+  long active = 0;
   float loss_min = std::numeric_limits<float>::max();
   float loss_max = -std::numeric_limits<float>::max();
+#endif
+
+  double total = 0.0;
 
   for (int i = 0; i < outer_num; ++i) {
     const float* data_i = bottom_data + i * dim;
@@ -104,19 +107,24 @@ void HingeLayer::Forward_cpu(const std::vector<Blob*>& bottom,
         if (z > 0.0f) {
           sample_loss += is_l2 ? static_cast<double>(z) * static_cast<double>(z)
                                : static_cast<double>(z);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
           ++active;
+#endif
         }
       }
       total += sample_loss;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       const float l = static_cast<float>(sample_loss);
       loss_min = std::min(loss_min, l);
       loss_max = std::max(loss_max, l);
+#endif
     }
   }
 
   const float mean_loss = static_cast<float>(total / static_cast<double>(count_));
   top_data[0] = mean_loss;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -129,6 +137,7 @@ void HingeLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " mean_loss=" << mean_loss
                        << " top0=" << top_data[0]
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void HingeLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -168,8 +177,10 @@ void HingeLayer::Backward_cpu(const std::vector<Blob*>& top,
   // dscore_y -= sum_{c != y} of the above.
   const float scale = loss_weight / static_cast<float>(count_);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   caffe_set_fp32(static_cast<size_t>(bottom[0]->count()), 0.0f, bottom_diff);
 
@@ -197,6 +208,7 @@ void HingeLayer::Backward_cpu(const std::vector<Blob*>& top,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
 
@@ -207,6 +219,7 @@ void HingeLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " loss_weight=" << loss_weight
                        << " scale=" << scale
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Hinge);

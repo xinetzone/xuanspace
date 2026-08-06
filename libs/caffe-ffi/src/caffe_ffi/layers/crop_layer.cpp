@@ -89,11 +89,14 @@ void CropLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const int num_axes = static_cast<int>(top[0]->num_axes());
   const int64_t last_dim = top[0]->shape(num_axes - 1);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  std::vector<int64_t> idx(num_axes, 0);
   int64_t total_copied = 0;
+#endif
+
+  std::vector<int64_t> idx(num_axes, 0);
 
   while (true) {
     int64_t src_off = 0, dst_off = 0;
@@ -102,7 +105,9 @@ void CropLayer::Forward_cpu(const std::vector<Blob*>& bottom,
       dst_off += idx[d] * dest_strides_[d];
     }
     caffe_copy_fp32(static_cast<size_t>(last_dim), bottom_data + src_off, top_data + dst_off);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     total_copied += last_dim;
+#endif
 
     int d;
     for (d = num_axes - 2; d >= 0; --d) {
@@ -113,6 +118,7 @@ void CropLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     if (d < 0) break;
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
   int64_t top_count = top[0]->count();
@@ -128,6 +134,7 @@ void CropLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " Crop forward: elements_copied=" << total_copied
                        << " out=[" << out_min << ", " << out_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void CropLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -145,11 +152,14 @@ void CropLayer::Backward_cpu(const std::vector<Blob*>& top,
 
   caffe_set_fp32(static_cast<size_t>(bottom[0]->count()), 0.0f, bottom_diff);
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
-  std::vector<int64_t> idx(num_axes, 0);
   int64_t total_copied = 0;
+#endif
+
+  std::vector<int64_t> idx(num_axes, 0);
 
   while (true) {
     int64_t src_off = 0, dst_off = 0;
@@ -158,7 +168,9 @@ void CropLayer::Backward_cpu(const std::vector<Blob*>& top,
       src_off += idx[d] * dest_strides_[d];
     }
     caffe_copy_fp32(static_cast<size_t>(last_dim), top_diff + src_off, bottom_diff + dst_off);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
     total_copied += last_dim;
+#endif
 
     int d;
     for (d = num_axes - 2; d >= 0; --d) {
@@ -169,6 +181,7 @@ void CropLayer::Backward_cpu(const std::vector<Blob*>& top,
     if (d < 0) break;
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   float diff_min = std::numeric_limits<float>::max();
   float diff_max = -std::numeric_limits<float>::max();
   int64_t bottom_count = bottom[0]->count();
@@ -184,6 +197,7 @@ void CropLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " Crop backward: elements_copied=" << total_copied
                        << " diff=[" << diff_min << ", " << diff_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Crop);

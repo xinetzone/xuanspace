@@ -115,12 +115,14 @@ void SliceLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   const int64_t bottom_slice_axis = bottom[0]->shape(slice_axis_);
   int64_t offset_slice_axis = 0;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
   float in_min = std::numeric_limits<float>::max();
   float in_max = -std::numeric_limits<float>::max();
   int64_t total_copied = 0;
+#endif
 
   for (int i = 0; i < static_cast<int>(top.size()); ++i) {
     float* top_data = top[i]->cpu_mutable_data();
@@ -131,11 +133,14 @@ void SliceLayer::Forward_cpu(const std::vector<Blob*>& bottom,
           (n * bottom_slice_axis + offset_slice_axis) * slice_size_;
       caffe_copy_fp32(top_slice_axis * slice_size_,
                       bottom_data + bottom_offset, top_data + top_offset);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       total_copied += top_slice_axis * slice_size_;
+#endif
     }
     offset_slice_axis += top_slice_axis;
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   for (int64_t i = 0; i < bottom[0]->count(); ++i) {
     in_min = std::min(in_min, bottom_data[i]);
     in_max = std::max(in_max, bottom_data[i]);
@@ -152,6 +157,7 @@ void SliceLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " elements_copied=" << total_copied
                        << " in=[" << in_min << ", " << in_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -183,12 +189,14 @@ void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
   const int64_t bottom_slice_axis = bottom[0]->shape(slice_axis_);
   int64_t offset_slice_axis = 0;
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
 
   float diff_min = std::numeric_limits<float>::max();
   float diff_max = -std::numeric_limits<float>::max();
   int64_t total_copied = 0;
+#endif
 
   for (int i = 0; i < static_cast<int>(top.size()); ++i) {
     const float* top_diff = top[i]->cpu_diff();
@@ -199,11 +207,14 @@ void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
           (n * bottom_slice_axis + offset_slice_axis) * slice_size_;
       caffe_copy_fp32(top_slice_axis * slice_size_,
                       top_diff + top_offset, bottom_diff + bottom_offset);
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
       total_copied += top_slice_axis * slice_size_;
+#endif
     }
     offset_slice_axis += top_slice_axis;
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   for (int64_t i = 0; i < bottom[0]->count(); ++i) {
     diff_min = std::min(diff_min, bottom_diff[i]);
     diff_max = std::max(diff_max, bottom_diff[i]);
@@ -220,6 +231,7 @@ void SliceLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " elements_copied=" << total_copied
                        << " diff=[" << diff_min << ", " << diff_max << "]"
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Slice);

@@ -64,8 +64,10 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
   int dim = channels * inner_num_;
   const int64_t count = bottom[0]->count();
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   using clock = std::chrono::high_resolution_clock;
   auto t_start = clock::now();
+#endif
 
   caffe_copy_fp32(static_cast<size_t>(count), bottom_data, top_data);
   for (int i = 0; i < outer_num_; ++i) {
@@ -96,6 +98,7 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
     }
   }
 
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
   // 后处理独立reduce：概率分布统计（out值域/最大概率/熵/sum校验）
   float out_min = std::numeric_limits<float>::max();
   float out_max = -std::numeric_limits<float>::max();
@@ -137,6 +140,7 @@ void SoftmaxLayer::Forward_cpu(const std::vector<Blob*>& bottom,
                        << " avg_entropy=" << avg_entropy
                        << " max_entropy=" << max_entropy
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
@@ -160,7 +164,14 @@ void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
                       << " axis=" << softmax_axis_
                       << " count=" << count;
 
-  auto t_start = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  using clock = std::chrono::high_resolution_clock;
+  auto t_start = clock::now();
+
+  float dx_min = std::numeric_limits<float>::max();
+  float dx_max = -std::numeric_limits<float>::max();
+  double sum_sq = 0.0;
+#endif
 
   // Softmax Jacobian-vector product:
   //   y_i = exp(x_i) / sum_j exp(x_j)
@@ -170,10 +181,6 @@ void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
   //
   // Data layout: index = i*dim + j*inner_num_ + k
   //   i: outer index (batch), j: channel (softmax axis), k: inner (spatial)
-
-  float dx_min = std::numeric_limits<float>::max();
-  float dx_max = -std::numeric_limits<float>::max();
-  double sum_sq = 0.0;
 
   for (int i = 0; i < outer_num_; ++i) {
     const float* top_diff_i = top_diff + i * dim;
@@ -192,14 +199,17 @@ void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
         float dyj = top_diff_i[j * inner_num_ + k];
         float val = yj * (dyj - dot);
         bottom_diff_i[j * inner_num_ + k] = val;
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
         dx_min = std::min(dx_min, val);
         dx_max = std::max(dx_max, val);
         sum_sq += static_cast<double>(val) * static_cast<double>(val);
+#endif
       }
     }
   }
 
-  auto t_end = std::chrono::high_resolution_clock::now();
+#ifdef CAFFE_FFI_ENABLE_PERF_LOG
+  auto t_end = clock::now();
   double elapsed_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
   float grad_norm = static_cast<float>(std::sqrt(sum_sq));
 
@@ -210,6 +220,7 @@ void SoftmaxLayer::Backward_cpu(const std::vector<Blob*>& top,
                        << " dx=[" << dx_min << ", " << dx_max << "]"
                        << " grad_l2norm=" << grad_norm
                        << " time=" << elapsed_us << "us";
+#endif
 }
 
 REGISTER_LAYER_CLASS(Softmax);
