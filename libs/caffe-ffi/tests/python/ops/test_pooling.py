@@ -18,7 +18,7 @@
 import logging
 import numpy as np
 import pytest
-from utils import L, P, _test_op, assert_op_correct
+from .utils import L, P, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
 

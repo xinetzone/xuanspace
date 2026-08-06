@@ -17,7 +17,7 @@
 
 import numpy as np
 import pytest
-from utils import (
+from .utils import (
     _CAFFE_FFI_AVAILABLE,
     _download_model,
     _preprocess_imagenet,

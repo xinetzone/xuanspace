@@ -15,23 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import os
-import sys
 import logging
-import tempfile
-from pathlib import Path
+import os
 
 import pytest
 
 logger = logging.getLogger(__name__)
 
-# The migrated ops tests use flat imports (``from utils import ...``) while
-# living inside a package directory (``ops/__init__.py``).  pytest treats the
-# directory as the ``ops`` package and does not put it on the flat import
-# path, so explicitly add it to sys.path to make ``utils`` resolvable.
-_ops_dir = str(Path(__file__).resolve().parent)
-if _ops_dir not in sys.path:
-    sys.path.insert(0, _ops_dir)
+# Use relative import to avoid sys.path conflicts with networks/utils.py
+from . import utils as _utils_module  # noqa: F401
+
+# Verify that the L class (used by all ops tests) is available
+assert hasattr(_utils_module, "L"), "ops/utils.py does not define class L"
+logger.info(f"ops conftest: utils loaded from {_utils_module.__file__} (has L={hasattr(_utils_module, 'L')})")
 
 
 @pytest.fixture(scope="session")
