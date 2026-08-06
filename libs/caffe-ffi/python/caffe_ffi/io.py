@@ -52,26 +52,35 @@ def read_net(
         weights = read_net_from_binary(caffemodel_path)
         _merge_weights(param, weights)
     
-    if ffi.is_available():
-        new_net_from_str = ffi.get_global_func("caffe_ffi.NewNetFromProtoString")
-        if new_net_from_str is not None:
-            proto_text = text_format.MessageToString(param)
-            return new_net_from_str(proto_text)
-    
-    net = Net(param=param)
-    _build_net_from_param(net, param)
-    return net
+    return _new_net_from_param(param)
 
 
 def net_from_param(param: caffe_pb2.NetParameter) -> Net:
     from . import _ffi_api as ffi
-    
+
+    return _new_net_from_param(param)
+
+
+def _new_net_from_param(param: caffe_pb2.NetParameter) -> Net:
+    """Build a ``Net`` from a ``NetParameter`` via the C++ extension.
+
+    Prefers the binary FFI path (``NewNetFromParamBinary``) which serializes the
+    protobuf to compact binary bytes, avoiding the correctness/performance
+    overhead of ``MessageToString`` ASCII text serialization (Plan A for A-001).
+    Falls back to the text path (``NewNetFromProtoString``) for forward
+    compatibility with older native libraries, and finally to the pure-Python
+    builder when the C++ extension is unavailable.
+    """
+    from . import _ffi_api as ffi
+
     if ffi.is_available():
+        new_net_from_bin = ffi.get_global_func("caffe_ffi.NewNetFromParamBinary")
+        if new_net_from_bin is not None:
+            return new_net_from_bin(param.SerializeToString())
         new_net_from_str = ffi.get_global_func("caffe_ffi.NewNetFromProtoString")
         if new_net_from_str is not None:
-            proto_text = text_format.MessageToString(param)
-            return new_net_from_str(proto_text)
-    
+            return new_net_from_str(text_format.MessageToString(param))
+
     net = Net(param=param)
     _build_net_from_param(net, param)
     return net

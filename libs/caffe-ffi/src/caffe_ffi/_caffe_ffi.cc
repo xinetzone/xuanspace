@@ -1,4 +1,5 @@
 #include <tvm/ffi/tvm_ffi.h>
+#include <tvm/ffi/string.h>
 
 #include <fstream>
 #include <memory>
@@ -80,6 +81,14 @@ ObjectPtr<Blob> NewBlobFromShape(Shape shape) {
 ObjectPtr<Net> NewNetFromProtoString(const String& proto_text) {
   CAFFE_FFI_CHECK_VALUE(!proto_text.empty()) << "NetParameter proto text must not be empty";
   caffe::NetParameter param = ReadNetParamsFromTextString(static_cast<std::string>(proto_text));
+  return make_object<Net>(param);
+}
+
+ObjectPtr<Net> NewNetFromParamBinary(const Bytes& bytes) {
+  CAFFE_FFI_CHECK_VALUE(bytes.size() != 0) << "NetParameter binary must not be empty";
+  caffe::NetParameter param;
+  CAFFE_FFI_CHECK_RUNTIME(param.ParseFromArray(bytes.data(), static_cast<int>(bytes.size())))
+      << "Failed to parse NetParameter from binary bytes";
   return make_object<Net>(param);
 }
 
@@ -166,6 +175,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("caffe_ffi.NewBlob", NewBlob, "Create an empty Blob")
       .def("caffe_ffi.NewBlobFromShape", NewBlobFromShape, "Create a Blob with specified shape")
       .def("caffe_ffi.NewNetFromProtoString", NewNetFromProtoString, "Create Net from prototxt string")
+      .def("caffe_ffi.NewNetFromParamBinary", NewNetFromParamBinary, "Create Net from binary serialized NetParameter bytes")
       .def("caffe_ffi.NewNetFromFile", NewNetFromFile, "Create Net from prototxt file path")
       .def("caffe_ffi.LayerTypeList", LayerTypeList, "List all registered layer type names")
       .def("caffe_ffi.SetLogLevel", SetLogLevel, "Set logging level (0=TRACE, 1=DEBUG, 2=INFO, 3=WARN, 4=ERROR)")
@@ -268,6 +278,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(Version, Version)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(NewBlob, NewBlob)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(NewBlobFromShape, NewBlobFromShape)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(NewNetFromProtoString, NewNetFromProtoString)
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(NewNetFromParamBinary, NewNetFromParamBinary)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(NewNetFromFile, NewNetFromFile)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(LayerTypeList, LayerTypeList)
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(SetLogLevel, SetLogLevel)
