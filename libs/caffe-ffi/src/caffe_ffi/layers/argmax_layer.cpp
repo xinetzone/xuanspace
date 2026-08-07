@@ -53,7 +53,8 @@ void ArgMaxLayer::Reshape(const std::vector<Blob*>& bottom,
   } else {
     // Without an axis, ArgMax flattens each instance and emits a 3-D blob:
     // outer dim = batch, then (optionally) 2 for {index,value}, then top_k.
-    int num_top_axes = std::max(bottom[0]->num_axes(), 3);
+    // BVLC Caffe semantics: output is always 3D regardless of input ndim.
+    int num_top_axes = 3;
     shape.assign(num_top_axes, 1);
     shape[0] = bottom[0]->shape(0);
     shape[2] = top_k_;
