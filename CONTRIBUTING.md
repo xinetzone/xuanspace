@@ -8,7 +8,7 @@ x-toml-ref: ".meta/toml/CONTRIBUTING.toml"
 
 欢迎为 Xuanspace（玄境）项目贡献代码！无论你是修复 Bug、添加新功能、改进文档，还是优化性能，我们都非常感谢你的参与。
 
-Xuanspace 是一个 Python 3.13+ monorepo 项目，支持 PDM/uv/pip 三种包管理器，并支持 C++ 原生扩展构建。请按照本指南设置开发环境并参与贡献。
+Xuanspace 是一个 Python 3.14.6+ monorepo 项目，支持 PDM/uv/pip 三种包管理器，并支持 C++ 原生扩展构建。请按照本指南设置开发环境并参与贡献。
 
 ---
 
@@ -32,31 +32,31 @@ Xuanspace 是一个 Python 3.13+ monorepo 项目，支持 PDM/uv/pip 三种包�
 ### 2.1 前置条件（必需）
 
 - **Git**：版本控制，[安装指引](https://git-scm.com/downloads)
-- **Python 3.13+**：核心运行环境（必须，不支持更低版本）
+- **Python 3.14.6+**：核心运行环境（必须，不支持更低版本）
 
-#### Python 3.13+ 安装指引
+#### Python 3.14.6+ 安装指引
 
 **Windows：**
 - 推荐从 [Python 官网](https://www.python.org/downloads/) 下载安装包（安装时勾选 "Add Python to PATH"）
-- 或使用 winget：`winget install Python.Python.3.13`
-- 或使用 conda：`conda create -n xuanspace python=3.13 && conda activate xuanspace`
+- 或使用 winget：`winget install Python.Python.3.14`
+- 或使用 conda：`conda create -n xuanspace python=3.14 && conda activate xuanspace`
 
 **macOS：**
-- 使用 Homebrew：`brew install python@3.13`
-- 或使用 pyenv：`pyenv install 3.13.0 && pyenv global 3.13.0`
+- 使用 Homebrew：`brew install python@3.14`
+- 或使用 pyenv：`pyenv install 3.14.6 && pyenv global 3.14.6`
 
 **Linux（Ubuntu/Debian）：**
 - 使用 deadsnakes PPA：
   ```bash
   sudo add-apt-repository ppa:deadsnakes/ppa
   sudo apt update
-  sudo apt install python3.13 python3.13-venv python3.13-dev
+  sudo apt install python3.14 python3.14-venv python3.14-dev
   ```
-- 或使用 pyenv：`pyenv install 3.13.0 && pyenv global 3.13.0`
+- 或使用 pyenv：`pyenv install 3.14.6 && pyenv global 3.14.6`
 
 验证安装：
 ```bash
-python --version  # 应显示 Python 3.13.x
+python --version  # 应显示 Python 3.14.x
 ```
 
 ### 2.2 可选工具
@@ -451,12 +451,12 @@ build: 升级 CMake 最低要求到 3.26
 
 ### 8.1 Python 版本
 
-所有代码必须使用 **Python 3.13+** 语法，允许使用 Python 3.13 新特性：
+所有代码必须使用 **Python 3.14.6+** 语法，允许使用 Python 3.14 新特性：
 - 类型参数语法（`def func[T](x: T) -> T`）
 - 更强大的类型推断
 - 新的标准库功能
 
-最低要求是 Python 3.13，不向下兼容。
+最低要求是 Python 3.14.6，不向下兼容。
 
 ### 8.2 类型注解
 
@@ -482,10 +482,10 @@ def find_files(root: Path, pattern: str = "*.py") -> Iterable[Path]:
 
 | 工具 | 用途 | 配置 |
 |-----|------|------|
-| **ruff** | Lint 检查 + 导入排序 | `line-length = 120`，`target-version = "py313"` |
-| **black** | 代码格式化 | `line-length = 120`，`target-version = ["py313"]` |
+| **ruff** | Lint 检查 + 导入排序 | `line-length = 120`，`target-version = "py314"` |
+| **black** | 代码格式化 | `line-length = 120`，`target-version = ["py314"]` |
 | **isort** | 导入排序 | `profile = "black"`，与 black 兼容 |
-| **mypy** | 静态类型检查 | `python_version = "3.13"` |
+| **mypy** | 静态类型检查 | `python_version = "3.14"` |
 
 > 注意：ruff 已包含 isort 功能（`I` 规则），通常不需要单独运行 isort。
 
@@ -531,21 +531,21 @@ pytest --cov=libs --cov=apps --cov-report=term-missing
 
 ---
 
-## 9. Python 3.13 兼容性
+## 9. Python 3.14 兼容性
 
-Xuanspace 严格要求 **Python 3.13+**，确保代码兼容性：
+Xuanspace 严格要求 **Python 3.14.6+**，确保代码兼容性：
 
-1. **所有代码必须兼容 Python 3.13+**，不允许使用已废弃的语法或 API
+1. **所有代码必须兼容 Python 3.14.6+**，不允许使用已废弃的语法或 API
 
 2. **添加新依赖前必须检查兼容性**：
    ```bash
    xs py-compat <package-name>
    ```
-   该命令会检查 PyPI 上该包是否支持 Python 3.13。不兼容的依赖原则上不允许添加，除非有充分理由且经过讨论。
+   该命令会检查 PyPI 上该包是否支持 Python 3.14。不兼容的依赖原则上不允许添加，除非有充分理由且经过讨论。
 
-3. **CI 中仅使用 Python 3.13 运行测试**，不测试更低版本
+3. **CI 中仅使用 Python 3.14 运行测试**，不测试更低版本
 
-4. 可以使用的 Python 3.13 新特性包括但不限于：
+4. 可以使用的 Python 3.14 新特性包括但不限于：
    - 原生类型参数（PEP 695）
    - `typing` 模块的改进
    - 性能优化带来的新特性

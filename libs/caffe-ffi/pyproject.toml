@@ -20,7 +20,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 keywords = ["deep learning", "caffe", "tvm-ffi", "ffi", "neural network"]
-requires-python = ">=3.14"
+requires-python = ">=3.14.6"
 dependencies = [
     "numpy>=2.3",
     "protobuf>=7.0.0",

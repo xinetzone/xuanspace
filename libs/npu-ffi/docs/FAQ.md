@@ -40,15 +40,15 @@ pip install --no-build-isolation -e .
 
 **症状**：导入 npu_ffi 时在 config.py 报 `NameError: name 'VTAConfig' is not defined`。
 
-**原因**：使用了 Python 3.13 或更低版本。项目要求 Python 3.14+，利用 PEP 649（Deferred Evaluation of Annotations）默认启用延迟注解求值，类体内自引用类型注解（如 `def from_dict(...) -> VTAConfig`）才不会在类定义完成前被求值。
+**原因**：使用了 Python 3.14.5 或更低版本。项目要求 Python 3.14.6+，利用 PEP 649（Deferred Evaluation of Annotations）默认启用延迟注解求值，类体内自引用类型注解（如 `def from_dict(...) -> VTAConfig`）才不会在类定义完成前被求值。
 
-**解决**：切换到 Python 3.14 环境：
+**解决**：切换到 Python 3.14.6+ 环境：
 ```bash
 conda activate py314
-python --version  # 必须显示 3.14.x
+python --version  # 必须显示 3.14.6+
 ```
 
-> **注意**：Python 3.7-3.13 可以通过 `from __future__ import annotations` 启用 PEP 563 字符串化注解，但本项目明确要求 3.14+，不支持旧版本。
+> **注意**：Python 3.7-3.14.5 可以通过 `from __future__ import annotations` 启用 PEP 563 字符串化注解，但本项目明确要求 3.14.6+，不支持旧版本。
 
 ---
 

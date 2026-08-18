@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "{{name}} - Xuanspace 纯Python子项目"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.14"
+requires-python = ">=3.14.6"
 authors = [
     {name = "Xuanspace Team"}
 ]

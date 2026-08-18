@@ -46,7 +46,7 @@ build-backend = "setuptools.build_meta"
 name = "{name}"
 version = "0.1.0"
 description = "Xuanspace monorepo 工作区"
-requires-python = ">=3.13"
+requires-python = ">=3.14.6"
 dependencies = []
 
 [project.optional-dependencies]
@@ -204,11 +204,11 @@ xs build
 
 def _check_python() -> bool:
     version = get_python_version()
-    if check_python_version((3, 13)):
+    if check_python_version((3, 14, 6)):
         console.print(f"[green]✓ Python {version}[/green]")
         return True
     else:
-        console.print(f"[red]✗ Python {version} < 3.13，请升级 Python[/red]")
+        console.print(f"[red]✗ Python {version} < 3.14.6，请升级 Python[/red]")
         console.print("[dim]  下载地址: https://www.python.org/downloads/[/dim]")
         return False
 

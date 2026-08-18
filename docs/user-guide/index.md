@@ -75,14 +75,14 @@ xs deps update --type minor
 ### Python 兼容性检查
 
 ```bash
-# 检查所有依赖的 Python 3.13 兼容性
+# 检查所有依赖的 Python 3.14 兼容性
 xs py-compat
 
 # JSON 输出
 xs py-compat --json
 
 # 检查特定 Python 版本
-xs py-compat --py 3.13
+xs py-compat --py 3.14
 ```
 
 ## 版本管理
@@ -217,7 +217,7 @@ xs doctor
 输出示例：
 
 ```
-Python:       3.13.2  ✓
+Python:       3.14.6  ✓
 PDM:          2.22.0  ✓
 uv:           未安装  ⚠
 pip:          24.0    ✓

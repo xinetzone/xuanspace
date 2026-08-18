@@ -42,7 +42,7 @@ x-toml-ref: "toml/.agents/protocols/workspace-discovery.toml"
 ### 步骤 4：环境验证
 
 ```
-xs init  → 验证 Python ≥ 3.13、Git 可用
+xs init  → 验证 Python ≥ 3.14.6、Git 可用
 xs doctor → 完整环境诊断报告
 ```
 
@@ -50,7 +50,7 @@ xs doctor → 完整环境诊断报告
 
 ```
 ✓ 工作区根目录: /path/to/xuanspace
-✓ Python 3.13.x
+✓ Python 3.14.x
 ✓ 可用命令: xs list, xs build, xs deps check, xs docs build
 ```
 

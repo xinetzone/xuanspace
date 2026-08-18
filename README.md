@@ -8,7 +8,7 @@ x-toml-ref: ".meta/toml/README.toml"
 
 > 技术为器、思想为道，器以载道
 
-![Python 3.13+](https://img.shields.io/badge/Python-3.13+-blue?logo=python)
+![Python 3.14.6+](https://img.shields.io/badge/Python-3.14.6+-blue?logo=python)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Build: CMake+Ninja](https://img.shields.io/badge/Build-CMake%2BNinja-orange?logo=cmake)
 ![Docs: Sphinx+MyST](https://img.shields.io/badge/Docs-Sphinx%2BMyST-red?logo=sphinx)
@@ -28,7 +28,7 @@ x-toml-ref: ".meta/toml/README.toml"
 ## 特性亮点
 
 - 📦 **Monorepo 架构**：统一管理多个子项目，workspace 自动链接
-- 🐍 **Python 3.13+**：严格遵循最新 Python 标准
+- 🐍 **Python 3.14.6+**：严格遵循最新 Python 标准
 - 🔧 **多包管理器支持**：PDM（推荐）、uv（快速）、pip（标准）均可使用，不强制绑定
 - ⚡ **C++ 原生扩展**：集成 CMake + Ninja + scikit-build-core 构建链，跨平台一致
 - 📚 **Sphinx 文档**：MyST Markdown 语法，支持 Mermaid 图表，美观的文档主题
@@ -40,7 +40,7 @@ x-toml-ref: ".meta/toml/README.toml"
 
 ### 前置条件
 
-- Python 3.13+（硬性要求，不兼容版本会给出明确错误）
+- Python 3.14.6+（硬性要求，不兼容版本会给出明确错误）
 - Git
 - **可选**：PDM（推荐包管理器）
 - **可选**：CMake + Ninja（仅构建 C++ 原生扩展需要）
@@ -95,8 +95,8 @@ x-toml-ref: ".meta/toml/README.toml"
 
 | 名称 | 描述 | 语言 | 类型 | 状态 | 版本 | 文档 |
 |------|------|------|------|------|------|------|
-| xs-cli | Xuanspace CLI 工具（15 个子命令） | Python 3.13 | tools | 🟢 开发中 | 0.1.0 | [CLI 参考](docs/cli/index.md) |
-| xuan-core | 核心工具库 | Python 3.13 | lib | 🟢 开发中 | 0.1.0 | [API 参考](docs/) |
+| xs-cli | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 🟢 开发中 | 0.1.0 | [CLI 参考](docs/cli/index.md) |
+| xuan-core | 核心工具库 | Python 3.14 | lib | 🟢 开发中 | 0.1.0 | [API 参考](docs/) |
 | xuan-ext-demo | C++ 原生扩展示例（pybind11） | Python/C++ | lib(native) | 🟡 示例 | 0.1.0 | [构建指南](docs/build-system.md) |
 | tvm-book | TVM 中文手册 + flexloopy 包 | Python/C++ | lib | 🟢 开发中 | v0.1.4 | [README](libs/tvm-book/README.md) |
 | templates | 项目模板（Python/Native/Static） | Python/C++/HTML | tools | 🟢 可用 | 0.1.0 | [模板说明](tools/templates/) |

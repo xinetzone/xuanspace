@@ -13,7 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(pybind11 CONFIG REQUIRED)
 
 # 查找 Python
-find_package(Python 3.13 COMPONENTS Interpreter Development REQUIRED)
+find_package(Python 3.14 COMPONENTS Interpreter Development REQUIRED)
 
 # pybind11 扩展模块
 pybind11_add_module(_core MODULE

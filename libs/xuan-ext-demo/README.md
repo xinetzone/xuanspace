@@ -4,7 +4,7 @@ Xuanspace（玄境）C/C++ 原生扩展示例库，使用 scikit-build-core + CM
 
 ## 构建要求
 
-- Python >= 3.13
+- Python >= 3.14.6
 - CMake >= 3.26
 - Ninja 构建系统
 - C++17 兼容编译器（MSVC 2022 / GCC 11+ / Clang 14+）

@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "cmake>=3.26", "ninja>=1.11"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "xs-cli"
+version = "0.1.0"
 description = "Xuanspace xs CLI 工具"
 readme = "README.md"
-requires-python = ">=3.14"
-dynamic = ["version"]
+requires-python = ">=3.14.6"
 keywords = ["xuanspace", "xuanjing", "cli", "monorepo", "devops"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -27,7 +27,7 @@ dependencies = [
 authors = [
     {name = "xinetzone"}
 ]
-license = "MIT"
+license = {text = "MIT"}
 
 [project.urls]
 Homepage = "https://github.com/xinetzone/xuanspace"
@@ -37,8 +37,26 @@ Issues = "https://github.com/xinetzone/xuanspace/issues"
 [project.scripts]
 xs = "xs.cli:app"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.scikit-build]
+minimum-version = "0.10"
+wheel.py-api = "py3"
+wheel.packages = ["xs"]
+cmake.build-type = "Release"
+ninja.make-fallback = false
+build.verbose = true
+editable.mode = "inplace"
 
-[tool.setuptools.dynamic]
-version = {attr = "xs.__version__"}
+sdist.include = [
+    "/src/**/*.py",
+    "/pyproject.toml",
+    "/CMakeLists.txt",
+    "/README.md",
+]
+
+sdist.exclude = [
+    "**/.git",
+    "**/__pycache__",
+    "**/*.pyc",
+    "build",
+    "dist",
+]

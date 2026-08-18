@@ -15,7 +15,7 @@ Xuanspace 支持两种构建模式：
 
 | 工具 | 最低版本 | 安装方式 |
 |---|---|---|
-| Python | 3.13 | [python.org](https://www.python.org/downloads/) |
+| Python | 3.14.6 | [python.org](https://www.python.org/downloads/) |
 | pip | 24+ | 随 Python 自带 |
 
 ### 原生扩展工具（按需）
@@ -48,7 +48,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "my-lib"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.14.6"
 ```
 
 ### C++ 原生扩展项目配置
@@ -61,7 +61,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "my-ext"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.14.6"
 
 [tool.scikit-build]
 cmake.args = ["-G", "Ninja"]

@@ -47,6 +47,6 @@ x-toml-ref: "toml/.agents/protocols/prompt-bootstrap.toml"
 |---|---|
 | 已在工作区内 | 跳过 clone，直接自举（幂等） |
 | Git 不可用 | 提示安装 Git 或提供 ZIP 下载链接 |
-| Python < 3.13 | 提示升级 Python 版本 |
+| Python < 3.14.6 | 提示升级 Python 版本 |
 | 网络问题 | 提供镜像仓库地址或离线方案 |
 | 权限不足 | 提示更换目录或使用 `--user` 安装 |

@@ -8,7 +8,7 @@
 
 ## 环境要求
 
-- Python 3.13 或更高版本
+- Python 3.14.6 或更高版本
 
 ## 安装
 
@@ -68,4 +68,4 @@ python -m {{package_name}}
 
 - **状态**: 开发中 (Alpha)
 - **维护者**: Xuanspace Team
-- **兼容性**: Python 3.13+
+- **兼容性**: Python 3.14.6+

@@ -4,7 +4,7 @@
 
 ### 前置条件
 
-- Python 3.13+（硬性要求）
+- Python 3.14.6+（硬性要求）
 - Git
 - 可选：CMake + Ninja（仅构建 C++ 原生扩展需要）
 - 可选：PDM/uv/pip 任一包管理器
@@ -13,7 +13,7 @@
 
 1. 检查 Python 版本：
    ```bash
-   python --version  # 必须 >= 3.13
+   python --version  # 必须 >= 3.14.6
    ```
 
 2. 安装项目依赖（任选一种）：
@@ -117,6 +117,6 @@ xuanspace/
 - 行宽：120字符
 - 格式化工具：ruff + black + isort
 - 类型注解：鼓励但不强制
-- 目标版本：Python 3.13+
+- 目标版本：Python 3.14+
 
 配置见根目录 `pyproject.toml` 中的 `[tool.ruff]`、`[tool.black]`、`[tool.isort]` 部分。

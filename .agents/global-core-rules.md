@@ -24,11 +24,11 @@
 - 若用户已明确指定目标路径，直接在该路径下操作
 - 不确定时默认按私域处理或向用户确认
 
-## 3. Python 3.13+ 严格要求
+## 3. Python 3.14.6+ 严格要求
 
-- 所有 Python 子项目 `requires-python>=3.13`
-- 可以使用 Python 3.13 新特性（如类型参数、更严格的类型检查等）
-- 代码格式化目标版本为 py313（见 pyproject.toml）
+- 所有 Python 子项目 `requires-python>=3.14.6`
+- 可以使用 Python 3.14 新特性（如类型参数、更严格的类型检查、free-threaded模式、t-strings等）
+- 代码格式化目标版本为 py314（见 pyproject.toml）
 - 遇到 Python 版本问题时，提示用户使用 xs doctor 检查环境
 
 ## 4. 多包管理器支持
@@ -75,7 +75,7 @@
 
 - **路径引用**：Markdown 中使用相对路径，禁止 file:/// 绝对路径
 - **提交规范**：Conventional Commits，type(scope): subject，中文主体
-- **代码风格**：遵循 ruff + black + isort 配置（行宽120，py313）
+- **代码风格**：遵循 ruff + black + isort 配置（行宽120，py314）
 - **子项目创建**：必须使用 xs new 命令从模板创建，不要手动复制
 - **vendor 目录**：只读，不直接修改第三方代码
 - **attic 目录**：归档用，不删除废弃内容，移动到此处即可
