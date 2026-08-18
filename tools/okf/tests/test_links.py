@@ -48,6 +48,15 @@ def test_parse_links_with_context_resolves_relative(tmp_path):
     assert links[1][1] == tmp_path / "c.md"
 
 
+def test_parse_links_with_context_empty_and_external(tmp_path):
+    current = tmp_path / "a.md"
+    current.write_text("[empty]() [ext](https://example.com) [anch](#x)", encoding="utf-8")
+    links = parse_links_with_context(current, tmp_path)
+    assert links[0] == ("empty", None)
+    assert links[1][1] == "https://example.com"
+    assert links[2][1] == "#x"
+
+
 # ── check_broken_links ────────────────────────────────────────────────────
 
 
@@ -75,6 +84,24 @@ def test_check_broken_links_ok(tmp_path):
     bundle = Bundle(root=tmp_path, concepts={"target": object()}, indices=[], logs=[])
     links = [("target", existing)]
     assert check_broken_links(links, bundle) == []
+
+
+def test_check_broken_links_skips_non_path_targets():
+    bundle = Bundle(root=Path("."), concepts={}, indices=[], logs=[])
+    links = [("ext", "https://example.com"), ("anch", "#section"), ("none", None)]
+    assert check_broken_links(links, bundle) == []
+
+
+def test_check_broken_links_outside_bundle(tmp_path):
+    bundle_root = tmp_path / "bundle"
+    bundle_root.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("body", encoding="utf-8")
+    bundle = Bundle(root=bundle_root, concepts={}, indices=[], logs=[])
+    links = [("outside", outside)]
+    broken = check_broken_links(links, bundle)
+    assert len(broken) == 1
+    assert "outside bundle root" in broken[0]
 
 
 # ── resolve_link ──────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ServiceDefinition:
     """能力的接口契约，只声明'能做什么'，不定义'怎么做'。"""
 
@@ -28,7 +28,7 @@ class ServiceDefinition:
     description: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ServiceProvider:
     """ServiceDefinition 的具体实现，可多个并存。"""
 

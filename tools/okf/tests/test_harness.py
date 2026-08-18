@@ -121,3 +121,75 @@ def test_end_to_end_sample_bundle_services(sample_bundle_path):
     result = link_analyzer()
     assert result["broken"] == []
     assert len(result["links"]) == 1
+
+
+# ── dispose / 上下文管理器 ────────────────────────────────────────────────
+
+
+def test_harness_dispose_idempotent():
+    harness = Harness()
+    harness.dispose()
+    harness.dispose()  # 重复调用幂等安全
+
+
+def test_harness_context_manager():
+    harness = Harness()
+    harness.ctx.provide("svc", object())
+
+    with harness as h:
+        assert h is harness
+        assert harness.ctx.get("svc") is not None
+
+    # __exit__ 已 dispose，清空内部 Context
+    assert harness.ctx._store == {}
+
+
+# ── from_config 边界 ─────────────────────────────────────────────────────
+
+
+def test_from_config_no_arg_walks_up_to_find_pyproject():
+    """无参数调用向上查找 pyproject.toml 并返回 Harness。"""
+    harness = Harness.from_config()
+    assert isinstance(harness, Harness)
+
+
+def test_from_config_nonexistent_pyproject_uses_defaults(tmp_path, sample_bundle_path):
+    harness = Harness.from_config(
+        pyproject_path=tmp_path / "nonexistent.toml", bundle_path=sample_bundle_path
+    )
+    assert isinstance(harness.ctx.get("bundle_accessor"), Bundle)
+    assert isinstance(harness.ctx.get("conformance_report"), ConformanceReport)
+
+
+def test_from_config_empty_plugin_map_uses_defaults(tmp_path, sample_bundle_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text("[tool.okf]\nversion = '0.1'\n", encoding="utf-8")
+
+    harness = Harness.from_config(pyproject_path=pyproject, bundle_path=sample_bundle_path)
+    assert isinstance(harness.ctx.get("bundle_accessor"), Bundle)
+    assert isinstance(harness.ctx.get("conformance_report"), ConformanceReport)
+
+
+# ── 插件加载异常 / 非 Plugin 可调用对象 / 循环依赖 ─────────────────────────
+
+
+def test_load_plugins_from_map_non_plugin_callable():
+    harness = Harness()
+    harness._load_plugins_from_map({"x": "okf.context:Context"})
+    # 非 Plugin 的可调用对象被包装为 Plugin 并注册 fiber
+    assert "x" in harness.ctx._fibers
+
+
+def test_load_plugins_from_map_failure_prints_warning(capsys):
+    harness = Harness()
+    harness._load_plugins_from_map({"bad": "nonexistent_module:NoClass"})
+    assert "Failed to load plugin" in capsys.readouterr().out
+
+
+def test_topological_sort_cycle_fallback():
+    harness = Harness()
+    a = Plugin(name="a", apply=lambda c, cfg: None, inject=[InjectSpec("b_svc")], provide=["a_svc"])
+    b = Plugin(name="b", apply=lambda c, cfg: None, inject=[InjectSpec("a_svc")], provide=["b_svc"])
+
+    sorted_plugins = harness._topological_sort([a, b])
+    assert set(p.name for p in sorted_plugins) == {"a", "b"}

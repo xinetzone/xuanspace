@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
 
+import pytest
+
+import okf.cli as cli_module
 from okf.cli import (
     _cmd_index,
     _cmd_init,
@@ -13,7 +17,9 @@ from okf.cli import (
     _cmd_list,
     _cmd_trust,
     _cmd_validate,
+    _get_service,
 )
+from okf.harness import Harness
 
 
 def _copy_bundle(tmp_path, sample_bundle_path) -> Path:
@@ -131,3 +137,131 @@ def test_cmd_index_generates(tmp_path, sample_bundle_path, capsys):
     assert content.startswith("# bundle")
     assert "## Metric" in content
     assert "## Table" in content
+
+
+# ── _cmd_init 跳过已存在目录/文件 ─────────────────────────────────────────
+
+
+def test_cmd_init_skips_existing(tmp_path, capsys):
+    root = tmp_path / "my-bundle"
+    for name in ["concepts", "playbooks", "references"]:
+        (root / name).mkdir(parents=True, exist_ok=True)
+    (root / "index.md").write_text("# existing", encoding="utf-8")
+    (root / "log.md").write_text("# existing", encoding="utf-8")
+
+    code = _cmd_init(argparse.Namespace(path=str(root)))
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert out.count("跳过（已存在）") == 5
+
+
+# ── _get_service KeyError 分支 ────────────────────────────────────────────
+
+
+def test_get_service_missing(capsys):
+    harness = Harness()
+    result = _get_service(harness, "nonexistent_service")
+    assert result is None
+    err = capsys.readouterr().err
+    assert "未注册" in err
+    assert "nonexistent_service" in err
+
+
+# ── 服务缺失时的 return 1 分支 ─────────────────────────────────────────────
+
+
+def test_cmd_validate_service_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
+    assert _cmd_validate(argparse.Namespace(path=str(tmp_path))) == 1
+
+
+def test_cmd_index_service_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
+    assert _cmd_index(argparse.Namespace(path=str(tmp_path))) == 1
+
+
+def test_cmd_inspect_service_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
+    assert _cmd_inspect(
+        argparse.Namespace(path=str(tmp_path), concept_id=None)
+    ) == 1
+
+
+def test_cmd_trust_service_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
+    assert _cmd_trust(
+        argparse.Namespace(path=str(tmp_path), concept_id=None)
+    ) == 1
+
+
+def test_cmd_list_service_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
+    assert _cmd_list(
+        argparse.Namespace(path=str(tmp_path), type_filter=None, tag_filter=None)
+    ) == 1
+
+
+# ── inspect / trust 概念不存在分支 ─────────────────────────────────────────
+
+
+def test_cmd_inspect_concept_not_found(sample_bundle_path, capsys):
+    code = _cmd_inspect(
+        argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent")
+    )
+    assert code == 1
+    assert "概念不存在" in capsys.readouterr().err
+
+
+def test_cmd_trust_concept_not_found(sample_bundle_path, capsys):
+    code = _cmd_trust(
+        argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent")
+    )
+    assert code == 1
+    assert "概念不存在" in capsys.readouterr().err
+
+
+# ── main() 全路径 ─────────────────────────────────────────────────────────
+
+
+def test_main_version(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["okf", "--version"])
+    with pytest.raises(SystemExit) as e:
+        cli_module.main()
+    assert e.value.code == 0
+    assert "okf" in capsys.readouterr().out
+
+
+def test_main_no_command_prints_help(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["okf"])
+    with pytest.raises(SystemExit) as e:
+        cli_module.main()
+    assert e.value.code == 0
+    assert "usage" in capsys.readouterr().out.lower()
+
+
+def test_main_validate(monkeypatch, sample_bundle_path, capsys):
+    monkeypatch.setattr(sys, "argv", ["okf", "validate", str(sample_bundle_path)])
+    with pytest.raises(SystemExit) as e:
+        cli_module.main()
+    assert e.value.code == 0
+    assert "Result: PASS" in capsys.readouterr().out
+
+
+def test_main_exception_prints_traceback(monkeypatch, capsys):
+    def boom(args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli_module, "_cmd_validate", boom)
+    monkeypatch.setattr(sys, "argv", ["okf", "validate", "somepath"])
+    with pytest.raises(SystemExit) as e:
+        cli_module.main()
+    assert e.value.code == 1
+    assert "boom" in capsys.readouterr().err
+
+
+def test_import_main_module():
+    """导入 okf.__main__ 模块不产生副作用（覆盖入口 import 行）。"""
+    import okf.__main__  # noqa: F401
+
+    assert okf.__main__.__name__ == "okf.__main__"

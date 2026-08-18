@@ -2,5 +2,5 @@
 
 from .cli import main
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover - 进程入口，由集成测试覆盖
+    main()  # pragma: no cover

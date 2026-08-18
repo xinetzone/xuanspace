@@ -85,3 +85,17 @@ def test_provide_undo_does_not_remove_replacement() -> None:
     ctx.provide("svc", impl2)
     undo()
     assert ctx.get("svc") is impl2
+
+
+def test_context_manager_enter_exit_disposes() -> None:
+    """with 语句：__enter__ 返回自身，__exit__ 自动 dispose 并清空 store。"""
+    ctx = Context()
+    ctx.provide("svc", object())
+
+    with ctx as entered:
+        assert entered is ctx
+        assert ctx.get("svc") is not None
+
+    # __exit__ 已调用 dispose：服务清空
+    assert ctx._store == {}
+    assert ctx._fibers == {}

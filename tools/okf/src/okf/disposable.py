@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 Disposable = Callable[[], None]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class EffectMeta:
     """效应元信息，用于调试与可观测性。"""
     label: str

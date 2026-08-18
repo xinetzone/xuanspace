@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import tomllib
+import traceback
+from collections import deque
 from pathlib import Path
 
 from .context import Context
@@ -27,6 +29,18 @@ class Harness:
     @property
     def ctx(self) -> Context:
         return self._ctx
+
+    def dispose(self) -> None:
+        """释放 Harness：清理内部 Context 的所有资源，幂等安全。"""
+        self._ctx.dispose()
+
+    def __enter__(self) -> Harness:
+        """进入上下文：退出时自动回收资源（contextlib 语义落地）。"""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """退出上下文：自动 ``dispose()``。"""
+        self.dispose()
 
     @classmethod
     def from_config(
@@ -91,8 +105,9 @@ class Harness:
                         plugins.append(plugin_instance)
                     else:
                         plugins.append(Plugin(name=name, apply=plugin_instance))
-            except Exception as e:
-                print(f"Warning: Failed to load plugin '{name}' from '{import_path}': {e}")
+            except Exception:
+                print(f"Warning: Failed to load plugin '{name}' from '{import_path}':")
+                print(traceback.format_exc())
 
         # 拓扑排序：按依赖关系排序
         sorted_plugins = self._topological_sort(plugins)
@@ -144,10 +159,10 @@ class Harness:
                     in_degree[p.name] = in_degree.get(p.name, 0) + 1
 
         # Kahn's algorithm
-        queue = [name for name in in_degree if in_degree[name] == 0]
+        queue = deque(name for name in in_degree if in_degree[name] == 0)
         result: list[Plugin] = []
         while queue:
-            name = queue.pop(0)
+            name = queue.popleft()
             if name in name_to_plugin:
                 result.append(name_to_plugin[name])
             for neighbor in adj.get(name, []):

@@ -60,3 +60,13 @@ def test_effect_meta_fields():
     assert meta.children == [child]
     # 默认 children 为空列表
     assert EffectMeta(label="solo").children == []
+
+
+def test_disposable_list_bool():
+    """DisposableList.__bool__ 反映是否含有效应。"""
+    dl = DisposableList()
+    assert bool(dl) is False
+    dl.push(lambda: None)
+    assert bool(dl) is True
+    dl.clear()
+    assert bool(dl) is False

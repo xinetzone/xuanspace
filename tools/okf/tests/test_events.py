@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from okf import events  # noqa: F401  # 导入即 monkey-patch Context 添加事件方法
 from okf.context import Context
 
@@ -156,3 +158,69 @@ def test_on_returns_disposable_to_cancel():
     undo()
     ctx.emit("e")
     assert calls == [()]  # 取消后不再触发
+
+
+# ── bail / serial 全 None 分支 ────────────────────────────────────────────
+
+
+def test_bail_all_none_returns_none():
+    """ctx.bail：所有监听器返回 None 时返回 None。"""
+    ctx = Context()
+    ctx.on("e", lambda *a: None)
+    ctx.on("e", lambda *a: None)
+
+    assert ctx.bail("e") is None
+
+
+def test_serial_all_none_returns_none():
+    """ctx.serial：所有监听器返回 None 时返回 None。"""
+    ctx = Context()
+    ctx.on("e", lambda *a: None)
+    ctx.on("e", lambda *a: None)
+
+    assert ctx.serial("e") is None
+
+
+# ── parallel 在运行事件循环内同步调用触发 RuntimeError ─────────────────────
+
+
+def test_parallel_inside_running_loop_raises():
+    """ctx.parallel 在运行中的事件循环内同步调用触发 RuntimeError。"""
+    ctx = Context()
+
+    def h():
+        return "sync"
+
+    ctx.on("e", h)
+
+    async def run_in_loop():
+        ctx.parallel("e")  # 同步调用，位于运行循环内
+
+    with pytest.raises(RuntimeError, match="running event loop"):
+        asyncio.run(run_in_loop())
+
+
+# ── waterfall 无监听器 / next() 越过末端 ──────────────────────────────────
+
+
+def test_waterfall_no_handlers_returns_arg():
+    """无监听器时 waterfall 返回首个参数。"""
+    ctx = Context()
+    assert ctx.waterfall("e", "x") == "x"
+
+
+def test_waterfall_no_handlers_no_args_returns_none():
+    """无监听器且无参数时 waterfall 返回 None。"""
+    ctx = Context()
+    assert ctx.waterfall("e") is None
+
+
+def test_waterfall_next_past_end():
+    """next() 越过末端（无后续监听器）时返回 None。"""
+    ctx = Context()
+
+    def m(value, next):
+        return next()
+
+    ctx.on("e", m)
+    assert ctx.waterfall("e", "x") is None

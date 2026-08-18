@@ -217,6 +217,70 @@ class TestYamlParserDefensive:
         assert parser.parse() == {}
 
 
+# ─── _split_top_level 反斜杠转义 ───────────────────────────────────────────
+
+
+def test_split_top_level_backslash_escape_in_quote() -> None:
+    # 引号内反斜杠跳过后继字符，逗号不视为分隔符
+    assert _split_top_level(r'"a\,b"') == [r'"a\,b"']
+
+
+# ─── _YamlParser 续行折叠 / 缩进值 / 多行字符串边界 ───────────────────────
+
+
+class TestYamlParserFolding:
+    def test_fold_continuation_breaks_on_list_item(self) -> None:
+        parser = _YamlParser("key: value\n  - item\n")
+        assert parser.parse() == {"key": "value"}
+
+    def test_fold_continuation_breaks_on_colon(self) -> None:
+        parser = _YamlParser("key: value\n  child: x\n")
+        assert parser.parse() == {"key": "value"}
+
+    def test_parse_flow_or_scalar_empty(self) -> None:
+        assert _YamlParser("")._parse_flow_or_scalar("   ") == ""
+
+    def test_parse_indented_value_eof(self) -> None:
+        assert _YamlParser("k:\n").parse() == {"k": ""}
+
+    def test_parse_indented_value_not_indented(self) -> None:
+        assert _YamlParser("k:\nother: 1\n").parse() == {"k": "", "other": 1}
+
+    def test_parse_multiline_string_stops_at_same_indent(self) -> None:
+        assert _YamlParser("k:\n  a\nrest: x\n").parse() == {"k": "a", "rest": "x"}
+
+    def test_parse_multiline_string_skips_comment(self) -> None:
+        assert _YamlParser("k:\n  # comment\n  value\n").parse() == {"k": "value"}
+
+    def test_parse_multiline_string_skips_mid_comment(self) -> None:
+        # 注释行位于多行字符串中间，触发 _parse_multiline_string 内部的
+        # stripped.startswith("#") 分支（skip 而不追加）
+        assert _YamlParser("k:\n  first\n  # mid comment\n  second\n").parse() == {
+            "k": "first second"
+        }
+
+
+# ─── _YamlParser 列表 / 内联映射 / 流程映射边界 ───────────────────────────
+
+
+class TestYamlParserListMapping:
+    def test_parse_list_breaks_on_non_item(self) -> None:
+        assert _YamlParser("k:\n  - a\n  other\n").parse() == {"k": ["a"]}
+
+    def test_continue_mapping_breaks_on_list_item(self) -> None:
+        assert _YamlParser("sources:\n  - resource: foo\n    - bad\n").parse() == {
+            "sources": [{"resource": "foo"}]
+        }
+
+    def test_continue_mapping_breaks_on_invalid_key(self) -> None:
+        assert _YamlParser("sources:\n  - resource: foo\n    no_colon_here\n").parse() == {
+            "sources": [{"resource": "foo"}]
+        }
+
+    def test_parse_flow_map_empty_pair(self) -> None:
+        assert _YamlParser("")._parse_flow_map("{a: b, }") == {"a": "b"}
+
+
 # ─── parse_concept 已知字段 ────────────────────────────────────────────────
 
 

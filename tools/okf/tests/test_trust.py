@@ -7,6 +7,8 @@ from pathlib import Path
 
 from okf.models import Concept, TrustTier
 from okf.trust import (
+    _parse_date,
+    _parse_datetime,
     derive_trust_tier,
     is_stale,
     parse_sources,
@@ -162,3 +164,54 @@ def test_parse_status_known():
 def test_parse_status_default_draft():
     assert parse_status({}) == "draft"
     assert parse_status({"status": "unknown"}) == "draft"
+
+
+# ── 非 dict 条目 / 边界分支 ────────────────────────────────────────────────
+
+
+def test_parse_sources_skips_non_dict_items():
+    sources, _ = parse_sources({"sources": ["not-a-dict", 123, {"resource": "ok"}]})
+    assert len(sources) == 1
+    assert sources[0].resource == "ok"
+
+
+def test_parse_verification_skips_non_dict_items():
+    generated, events = parse_verification(
+        {"verified": [123, "abc", {"by": "human:x", "at": "2024-01-01T00:00:00"}]}
+    )
+    assert generated is None
+    assert len(events) == 1
+    assert events[0].by == "human:x"
+
+
+def test_derive_trust_tier_non_list_non_dict():
+    assert derive_trust_tier(_concept({"verified": "just-a-string"})) is TrustTier.UNVERIFIED
+
+
+def test_derive_trust_tier_no_meaningful_by():
+    # verified 列表有 dict 但 by 全为空 → has_any 为 False → UNVERIFIED
+    assert derive_trust_tier(_concept({"verified": [{}]})) is TrustTier.UNVERIFIED
+    assert derive_trust_tier(_concept({"verified": [{"by": ""}]})) is TrustTier.UNVERIFIED
+
+
+def test_is_stale_invalid_date():
+    assert is_stale(_concept({"stale_after": "not-a-date"}), date(2100, 1, 1)) is False
+    assert is_stale(_concept({"stale_after": 123}), date(2100, 1, 1)) is False
+
+
+# ── 私有日期解析辅助函数 ───────────────────────────────────────────────────
+
+
+def test_parse_date_value_error():
+    assert _parse_date("2024-13-45") is None
+    assert _parse_date("garbage") is None
+
+
+def test_parse_datetime_non_str_or_empty():
+    assert _parse_datetime(None) is None
+    assert _parse_datetime("") is None
+    assert _parse_datetime(123) is None
+
+
+def test_parse_datetime_value_error():
+    assert _parse_datetime("not-a-datetime") is None

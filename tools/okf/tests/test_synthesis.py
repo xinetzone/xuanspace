@@ -7,6 +7,8 @@ from pathlib import Path
 
 from okf.models import Concept
 from okf.synthesis import (
+    _relative_path,
+    _strip_list_marker,
     generate_index,
     generate_log,
     parse_log,
@@ -110,3 +112,29 @@ def test_write_log(tmp_path):
     assert written == target
     assert written.exists()
     assert "## 2024-02-01" in written.read_text(encoding="utf-8")
+
+
+# ── 私有辅助分支 ──────────────────────────────────────────────────────────
+
+
+def test_relative_path_outside_base(tmp_path):
+    base = tmp_path / "bundle"
+    outside = tmp_path / "other" / "x.md"
+    # relative_to 抛出 ValueError → 返回 target 自身
+    assert _relative_path(outside, base) == outside.as_posix()
+
+
+def test_strip_list_marker_star_and_plain():
+    assert _strip_list_marker("* item") == "item"
+    assert _strip_list_marker("- item") == "item"
+    assert _strip_list_marker("plain") == "plain"
+
+
+def test_parse_log_star_list_marker(tmp_path):
+    log_path = tmp_path / "log.md"
+    log_path.write_text(
+        "# Change Log\n\n## 2024-02-01\n\n* **Update** Updated revenue\n",
+        encoding="utf-8",
+    )
+    result = parse_log(log_path)
+    assert result[date(2024, 2, 1)] == ["**Update** Updated revenue"]

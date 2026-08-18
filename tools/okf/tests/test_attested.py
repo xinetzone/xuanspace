@@ -92,3 +92,24 @@ def test_parse_attested_computation_file_requires_root():
     concept = _concept(frontmatter=fm, body="")
     with pytest.raises(ValueError):
         parse_attested_computation(concept)
+
+
+# ── runtime 缺失 / 空 / 非字符串触发 ValueError ───────────────────────────
+
+
+def test_parse_attested_computation_missing_runtime():
+    concept = _concept(frontmatter={}, body="")
+    with pytest.raises(ValueError, match="runtime"):
+        parse_attested_computation(concept)
+
+
+def test_parse_attested_computation_empty_runtime():
+    concept = _concept(frontmatter={"runtime": "   "}, body="")
+    with pytest.raises(ValueError, match="runtime"):
+        parse_attested_computation(concept)
+
+
+def test_parse_attested_computation_non_string_runtime():
+    concept = _concept(frontmatter={"runtime": 123}, body="")
+    with pytest.raises(ValueError, match="runtime"):
+        parse_attested_computation(concept)

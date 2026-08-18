@@ -51,7 +51,7 @@ def parse_attested_computation(
 
     # ── Step 1: 解析 frontmatter 字段 ──────────────────────────────────
 
-    runtime: str = fm["runtime"]
+    runtime = fm.get("runtime")
     if not isinstance(runtime, str) or not runtime.strip():
         raise ValueError("'runtime' must be a non-empty string")
 

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from .disposable import Disposable, DisposableList, EffectMeta
 from .plugin import Fiber, FiberState, Plugin
+
+
+async def _await_if_needed(value: object) -> object:
+    """等待可等待对象，否则原样返回。"""
+    if isinstance(value, Awaitable):
+        return await value
+    return value
 
 
 @dataclass
@@ -72,14 +80,14 @@ class Context:
 
     def notify(self, names: list[str]) -> None:
         """响应式通知：遍历所有 Fiber，对 inject 命中者执行 _refresh。"""
+        name_set = set(names)
         for fiber in self._fibers.values():
             if fiber.state == FiberState.DISPOSED:
                 continue
-            # 检查该 fiber 的依赖是否与变更的服务名有交集
-            inject_names = {s.name for s in fiber.plugin.inject}
+            inject_names = fiber.inject_names
             if not inject_names:
                 continue  # 无依赖的插件不受通知影响
-            if inject_names & set(names):
+            if inject_names & name_set:
                 fiber._refresh()
 
     def get_effects(self) -> list[EffectMeta]:
@@ -97,3 +105,84 @@ class Context:
                 dispose()
         self._store.clear()
         self._effects.clear()
+
+    # ─── 上下文管理器协议 ───────────────────────────────────────────────
+
+    def __enter__(self) -> Context:
+        """进入上下文：资源回收由 ``with`` 保证（contextlib 语义落地）。"""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """退出上下文：自动 ``dispose()``，无论代码块是否抛异常。"""
+        self.dispose()
+
+    # ─── 事件分发（on/emit/bail/parallel/serial/waterfall） ─────────────
+
+    def on(self, event: str, handler: Callable) -> Disposable:
+        """注册事件监听器，返回逆函数用于取消监听。"""
+        handlers = self._listeners.setdefault(event, [])
+        handlers.append(handler)
+
+        removed = False
+
+        def undo() -> None:
+            nonlocal removed
+            if not removed:
+                with contextlib.suppress(ValueError):
+                    handlers.remove(handler)
+                removed = True
+
+        return undo
+
+    def emit(self, event: str, *args) -> None:
+        """纯通知：同步执行所有监听器，无返回值。"""
+        for handler in tuple(self._listeners.get(event, ())):
+            handler(*args)
+
+    def bail(self, event: str, *args) -> object | None:
+        """同步短路查找：第一个返回非 None 的结果获胜。"""
+        for handler in tuple(self._listeners.get(event, ())):
+            result = handler(*args)
+            if result is not None:
+                return result
+        return None
+
+    def parallel(self, event: str, *args) -> list:
+        """并行执行所有监听器（含异步），返回结果列表。"""
+
+        async def run() -> list:
+            return await asyncio.gather(
+                *(_await_if_needed(handler(*args)) for handler in tuple(self._listeners.get(event, ())))
+            )
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(run())
+        raise RuntimeError(
+            "Cannot call Context.parallel() synchronously from within a running event loop; "
+            "use asyncio.run(Context.parallel(...)) outside the loop or await listeners directly."
+        )
+
+    def serial(self, event: str, *args) -> object | None:
+        """串行执行：按注册顺序，第一个返回非 None 的结果获胜。"""
+        for handler in tuple(self._listeners.get(event, ())):
+            result = handler(*args)
+            if result is not None:
+                return result
+        return None
+
+    def waterfall(self, event: str, *args) -> object:
+        """中间件链：每个监听器接收 (*args, next)，调用 next() 继续。"""
+        handlers = list(self._listeners.get(event, ()))
+        index = 0
+
+        def next_handler(*next_args) -> object:
+            nonlocal index
+            if index >= len(handlers):
+                return next_args[0] if next_args else None
+            handler = handlers[index]
+            index += 1
+            return handler(*next_args, next_handler)
+
+        return next_handler(*args)

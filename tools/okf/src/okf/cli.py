@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 from pathlib import Path
 
 from . import __version__
@@ -198,4 +199,9 @@ def main() -> None:
     if not hasattr(args, "func"):
         parser.print_help()
         sys.exit(0)
-    sys.exit(args.func(args))
+    try:
+        exit_code = args.func(args)
+    except Exception:
+        print(traceback.format_exc(), file=sys.stderr)
+        sys.exit(1)
+    sys.exit(exit_code)

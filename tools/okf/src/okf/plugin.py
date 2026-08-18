@@ -28,14 +28,14 @@ class FiberState(enum.IntEnum):
 _INACTIVE = "__INACTIVE__"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class InjectSpec:
     """依赖声明：插件需要哪些服务。"""
     name: str
     config: dict | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Plugin:
     """插件定义。"""
     name: str
@@ -55,10 +55,16 @@ class Fiber:
         self._disposables = DisposableList()
         self._error: Exception | None = None
         self._epoch: str = _INACTIVE
+        self._inject_names: frozenset[str] = frozenset(s.name for s in plugin.inject)
 
     @property
     def name(self) -> str:
         return self.plugin.name
+
+    @property
+    def inject_names(self) -> frozenset[str]:
+        """缓存的依赖服务名集合，避免每次 notify 重复计算。"""
+        return self._inject_names
 
     def effect(self, execute: Callable[[], Disposable | list[Disposable]], label: str = "") -> Disposable:
         """注册可逆效应，返回逆函数。"""

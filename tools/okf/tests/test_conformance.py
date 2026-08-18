@@ -12,7 +12,7 @@ from okf.conformance import (
     validate_strict,
 )
 from okf.loader import load_bundle
-from okf.models import Bundle, Concept
+from okf.models import Bundle, Concept, ConformanceReport
 
 SAMPLE_BUNDLE = Path(__file__).parent / "fixtures" / "sample_bundle"
 
@@ -130,3 +130,57 @@ def test_is_conformant():
     bundle = load_bundle(SAMPLE_BUNDLE)
     report = check_bundle(bundle)
     assert is_conformant(report) is True
+
+
+# ── 严格项：body 为空 ─────────────────────────────────────────────────────
+
+
+def test_strict_flags_empty_body(tmp_path):
+    concept = Concept(
+        path=tmp_path / "x.md",
+        type="Metric",
+        frontmatter={"type": "Metric"},
+        body="   \n  ",
+    )
+    bundle = Bundle(
+        root=tmp_path,
+        concepts={"x": concept},
+        indices=[tmp_path / "index.md"],
+        logs=[tmp_path / "log.md"],
+    )
+    errors = validate_strict(bundle)
+    assert any("empty body" in e for e in errors)
+
+
+# ── 宽松项：概念文件不存在（FileNotFoundError） ───────────────────────────
+
+
+def test_lenient_concept_file_not_found(tmp_path):
+    missing_path = tmp_path / "concepts" / "ghost.md"
+    concept = Concept(
+        path=missing_path,
+        type="Metric",
+        title="Ghost",
+        description="No file",
+        frontmatter={"type": "Metric"},
+        body="body",
+    )
+    bundle = Bundle(
+        root=tmp_path,
+        concepts={"concepts/ghost": concept},
+        indices=[tmp_path / "index.md"],
+        logs=[tmp_path / "log.md"],
+    )
+    warnings = validate_lenient(bundle)
+    assert any("file not found" in w for w in warnings)
+
+
+# ── format_report：warnings 为空的 "(none)" 分支 ──────────────────────────
+
+
+def test_format_report_empty_warnings():
+    report = ConformanceReport(errors=[], warnings=[], bundle=None)
+    text = format_report(report)
+    assert "Warnings (0)" in text
+    assert "  (none)" in text
+    assert "Bundle: N/A" in text
