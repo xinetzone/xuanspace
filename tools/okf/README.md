@@ -16,12 +16,19 @@ Open Knowledge Format (OKF) v0.2 工具链：一个**零运行时依赖**、**�
 pip install .
 ```
 
+## 全局选项
+
+| 选项 | 说明 |
+|------|------|
+| `--version` / `-V` | 显示版本号 |
+| `--help` | 显示帮助信息 |
+
 ## 命令
 
 | 命令 | 说明 |
 |------|------|
 | `okf validate <path> [--strict]` | 一致性校验（§11） |
-| `okf init <path>` | 创建 Bundle 骨架 |
+| `okf init <path>` | 创建 Bundle 骨架（`index.md`、`log.md`、`concepts/`、`playbooks/`、`references/`） |
 | `okf index <path>` | 生成/更新 `index.md` |
 | `okf inspect <path> [concept_id]` | 查看概念详情 |
 | `okf trust <path> [concept_id]` | 信任等级与保鲜状态 |
@@ -38,4 +45,4 @@ conformance_checker = "my_org.okf:CustomChecker"
 
 ## 参考
 
-- OKF 规范：`vendor/knowledge-catalog/okf/SPEC.md`
+- OKF v0.2 规范：`awesome-okf-xs` 文档库（[frontmatter 规范](../../../awesome-okf-xs/.agents/rules/frontmatter.md)）
