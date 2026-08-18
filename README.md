@@ -9,7 +9,6 @@ x-toml-ref: ".meta/toml/README.toml"
 > 技术为器、思想为道，器以载道
 
 ![Python 3.14.6+](https://img.shields.io/badge/Python-3.14.6+-blue?logo=python)
-![License: MIT](https://img.shields.io/badge/License-MIT-green)
 ![Build: CMake+Ninja](https://img.shields.io/badge/Build-CMake%2BNinja-orange?logo=cmake)
 ![Docs: Sphinx+MyST](https://img.shields.io/badge/Docs-Sphinx%2BMyST-red?logo=sphinx)
 
