@@ -9,6 +9,7 @@
 ```
 tools/
 ├── xs/              # xs CLI 工具主项目（核心实现）
+├── okf/             # OKF v0.2 工具链（校验/脚手架/合成/信任推导）
 └── templates/       # 项目模板目录
     ├── python/      # Python 库/应用模板
     ├── native/      # C/C++ 原生扩展/应用模板
@@ -29,6 +30,19 @@ tools/
 - 其他开发辅助命令
 
 `xs` CLI 是项目的主要开发入口，apps/xs-cli/ 只是入口点包装，实际实现在 tools/xs/ 中。
+
+### tools/okf/ - OKF v0.2 工具链
+
+`tools/okf/` 是 OKF (Open Knowledge Format) v0.2 工具链，提供以下命令：
+
+- `okf validate <path>` - 一致性校验（§11）
+- `okf init <path>` - 创建 Bundle 骨架
+- `okf index <path>` - 生成/更新 `index.md`
+- `okf inspect <path>` - 查看概念详情
+- `okf trust <path>` - 信任等级与保鲜状态
+- `okf list <path>` - 列出概念
+
+特点：零运行时依赖（仅 Python 3.14.6 标准库），scikit-build-core 构建，可插拔插件架构。
 
 ### tools/templates/ - 项目模板
 

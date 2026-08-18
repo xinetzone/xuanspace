@@ -1,0 +1,90 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "okf-toolchain"
+version = "0.1.0"
+description = "OKF v0.2 工具链：Open Knowledge Format 的校验、脚手架、索引/日志合成与信任推导"
+readme = "README.md"
+requires-python = ">=3.14.6"
+keywords = ["okf", "knowledge", "markdown", "frontmatter", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Build Tools",
+]
+# 零运行时依赖：仅使用 Python 3.14.6 标准库（dataclasses/pathlib/argparse/re/asyncio/tomllib）
+dependencies = []
+authors = [
+    {name = "xinetzone"}
+]
+license = {text = "MIT"}
+
+[project.urls]
+Homepage = "https://github.com/xinetzone/xuanspace"
+Repository = "https://github.com/xinetzone/xuanspace"
+Issues = "https://github.com/xinetzone/xuanspace/issues"
+
+[project.scripts]
+okf = "okf.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.11",
+]
+
+# 声明式插件装配：第三方可替换任意实现，保持相同 provide 服务名即时生效
+[tool.okf]
+version = "0.1.0"
+
+[tool.okf.plugins]
+bundle_loader = "okf.plugins.loader:BundleLoader"
+conformance_checker = "okf.plugins.conformance:ConformanceChecker"
+index_synthesizer = "okf.plugins.synthesis:IndexSynthesizer"
+log_synthesizer = "okf.plugins.synthesis:LogSynthesizer"
+trust_deriver = "okf.plugins.trust:TrustDeriver"
+link_resolver = "okf.plugins.links:LinkResolver"
+cli_adapter = "okf.plugins.cli_adapter:CLIAdapter"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+wheel.py-api = "py3"
+wheel.packages = ["okf"]
+cmake.build-type = "Release"
+cmake.args = ["-GNinja"]
+ninja.make-fallback = false
+build.verbose = false
+editable.mode = "inplace"
+
+sdist.include = [
+    "/src/**/*.py",
+    "/pyproject.toml",
+    "/CMakeLists.txt",
+    "/README.md",
+]
+
+sdist.exclude = [
+    "**/.git",
+    "**/__pycache__",
+    "**/*.pyc",
+    "build",
+    "dist",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
