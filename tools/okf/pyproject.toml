@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "okf-toolchain"
+name = "okf-kit"
 version = "0.1.0"
 description = "OKF v0.2 工具链：Open Knowledge Format 的校验、脚手架、索引/日志合成与信任推导"
 readme = "README.md"
@@ -55,13 +55,13 @@ cli_adapter = "okf.plugins.cli_adapter:CLIAdapter"
 
 [tool.scikit-build]
 minimum-version = "0.10"
+build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
-wheel.packages = ["okf"]
+wheel.packages = ["src/okf"]
 cmake.build-type = "Release"
 cmake.args = ["-GNinja"]
 ninja.make-fallback = false
 build.verbose = false
-editable.mode = "inplace"
 
 sdist.include = [
     "/src/**/*.py",

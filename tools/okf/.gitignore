@@ -1,0 +1,13 @@
+# scikit-build-core / CMake 就地构建产物
+# 这些文件会在 editable.mode="inplace" 或直接运行 cmake 时生成于源码根目录
+.cmake/
+CMakeCache.txt
+CMakeFiles/
+CMakeInit.txt
+build.ninja
+cmake_install.cmake
+install_manifest*.txt
+.skbuild-info.json
+
+# scikit-build-core 构建目录（build-dir = "build/{wheel_tag}"）
+build/
