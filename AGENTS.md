@@ -29,11 +29,11 @@ x-toml-ref: ".meta/toml/AGENTS.toml"
 
 ## 项目概述
 
-**Xuanspace（玄境）** 是一个 Python 3.13+ monorepo 项目，用于管理多个子项目。
+**Xuanspace（玄境）** 是一个 Python 3.14.6+ monorepo 项目，用于管理多个子项目。
 
 - **核心理念**：技术为器、思想为道，器以载道
 - **技术栈**：
-  - Python 3.13+（PEP 517/621）
+  - Python 3.14.6+（PEP 517/621）
   - typer CLI（xs 命令行工具）
   - CMake + Ninja + scikit-build-core（C++ 原生扩展）
   - Sphinx + MyST（文档系统）
@@ -82,9 +82,9 @@ xuanspace/
 
 ## 开发规范要点
 
-- **Python版本**：所有子项目 `requires-python>=3.13`，严格使用Python 3.13+特性
+- **Python版本**：所有子项目 `requires-python>=3.14.6`，严格使用Python 3.14+特性
 - **包管理器**：不强制PDM，支持uv/pip等标准Python工具
-- **代码风格**：遵循ruff+black+isort配置（行宽120，py313目标版本），配置见根目录pyproject.toml
+- **代码风格**：遵循ruff+black+isort配置（行宽120，py314目标版本），配置见根目录pyproject.toml
 - **提交规范**：遵循Conventional Commits（`type(scope): subject`），主体使用中文
 - **文档规范**：遵循YAML/TOML内容-元数据二分法，详见 [.agents/rules/frontmatter.md](.agents/rules/frontmatter.md)
 - **路径引用**：Markdown文档交叉引用使用相对路径，禁止`file:///`绝对路径

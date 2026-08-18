@@ -7,7 +7,7 @@ name = "npu-ffi"
 version = "0.1.0"
 description = "VTA FFI bindings for NPU accelerator based on tvm-ffi"
 license = { file = "LICENSE" }
-requires-python = ">=3.13"
+requires-python = ">=3.14.6"
 dependencies = [
   "protobuf>=7.0.0",
   "apache-tvm-ffi",

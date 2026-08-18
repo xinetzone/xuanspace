@@ -173,7 +173,7 @@ xs toolchain install <tool>  # 安装指定工具
 检查依赖包与 Python 版本的兼容性。
 
 ```bash
-xs py-compat [--json] [--py 3.13]
+xs py-compat [--json] [--py 3.14]
 ```
 
 ## xs update

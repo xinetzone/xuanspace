@@ -6,7 +6,7 @@ x-toml-ref: "../.meta/toml/docs/dependency-report.toml"
 
 # Xuanspace（玄境）项目依赖树报告
 
-> 生成日期：2026-07-24 | 根版本：v0.1.0 | Python >= 3.13
+> 生成日期：2026-07-24 | 根版本：v0.1.0 | Python >= 3.14.6
 
 ## 1. 目录结构
 
@@ -49,7 +49,7 @@ xuanspace (main repo)
 
 ```mermaid
 graph TD
-    ROOT[xuanspace v0.1.0<br/>Python >= 3.13]
+    ROOT[xuanspace v0.1.0<br/>Python >= 3.14.6]
     XS[xs-cli v0.1.0<br/>typer, rich, packaging, tomli-w]
     XC[xuan-core v0.1.0]
     XED[xuan-ext-demo v0.1.0<br/>native/C++]
@@ -70,10 +70,10 @@ graph TD
 
 | 包名 | 来源 | 版本 | Python | 运行时依赖 | 类型 |
 |------|------|------|--------|-----------|------|
-| `xuanspace` | 根 | 0.1.0 | >=3.13 | — | monorepo-root |
-| `xs-cli` | self | 0.1.0 | >=3.13 | typer, rich, packaging, tomli-w | tools |
-| `xuan-core` | self | 0.1.0 | >=3.13 | 无 | lib |
-| `xuan-ext-demo` | self | 0.1.0 | >=3.13 | 无 | lib(native) |
+| `xuanspace` | 根 | 0.1.0 | >=3.14.6 | — | monorepo-root |
+| `xs-cli` | self | 0.1.0 | >=3.14.6 | typer, rich, packaging, tomli-w | tools |
+| `xuan-core` | self | 0.1.0 | >=3.14.6 | 无 | lib |
+| `xuan-ext-demo` | self | 0.1.0 | >=3.14.6 | 无 | lib(native) |
 | `flexloopy` | submodule | — | >=3.8 | typing-extensions, apache-tvm-ffi | lib |
 | `apache-tvm-ffi` | submodule | — | >=3.9 | typing-extensions | vendor |
 | `dlpack` | nested | v1.3 | — | — | vendor(C) |
@@ -87,11 +87,11 @@ flexloopy → apache-tvm-ffi → typing-extensions
 
 ### Python 版本兼容性
 
-| 包 | 要求 | 根项目 (>=3.13) | 状态 |
+| 包 | 要求 | 根项目 (>=3.14.6) | 状态 |
 |----|------|:---:|:---:|
-| xs-cli | >=3.13 | 一致 | ✅ |
-| xuan-core | >=3.13 | 一致 | ✅ |
-| xuan-ext-demo | >=3.13 | 一致 | ✅ |
+| xs-cli | >=3.14.6 | 一致 | ✅ |
+| xuan-core | >=3.14.6 | 一致 | ✅ |
+| xuan-ext-demo | >=3.14.6 | 一致 | ✅ |
 | flexloopy | >=3.8 | 向下兼容 | ✅ |
 | apache-tvm-ffi | >=3.9 | 向下兼容 | ✅ |
 
@@ -111,7 +111,7 @@ flexloopy → apache-tvm-ffi → typing-extensions
 |-----|---------|------|
 | `quality` | push/PR | `xs doctor` + `xs meta validate` + `xs lfs check` + `xs docs build` |
 | `template-validation` | push/PR | 3 平台 x 3 模板类型（python/native/static） |
-| `test` | push/PR | Python 3.13 单元测试 |
+| `test` | push/PR | Python 3.14 单元测试 |
 | `lint` | push/PR | ruff + mypy + black |
 
 <!-- changelog -->

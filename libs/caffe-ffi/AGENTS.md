@@ -88,7 +88,7 @@ caffe-ffi/
 - 内存安全：in-place 操作需校验（如 InnerProduct bottom==top 且输出 count≠输入 count 时抛错）；static 回调注册表（data_io/python_layer）须在解释器退出前清理，否则 segfault
 - 数值梯度：C¹ 不连续拐点用 `avoid_c1_discontinuity` 推离；分段激活层（ELU/PReLU）在 C¹ 连续但 C² 不连续处需放宽 rtol 到 5e-3
 - 双 API 约定：`Net.Forward()`（大写）返回 Blob 对象，`net.forward()`（小写）返回 ndarray；断言数值时用后者
-- 测试环境：caffe-ffi 要求 Python 3.14+，禁止在 3.13 等低版本运行 C++ 扩展测试（`_ffi_api` 会加载失败返回空值）
+- 测试环境：caffe-ffi 要求 Python 3.14.6+，禁止在 3.14.5 及以下低版本运行 C++ 扩展测试（`_ffi_api` 会加载失败返回空值）
 
 ## 上游规范引用
 

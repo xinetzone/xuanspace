@@ -14,7 +14,7 @@
   - Windows: MSVC (Visual Studio 2022 17.7+) 或 Clang
   - Linux: GCC 12+ 或 Clang 16+
   - macOS: Clang 15+
-- Python 3.13 或更高版本（含开发头文件）
+- Python 3.14.6 或更高版本（含开发头文件）
 
 ### Windows 环境准备
 
@@ -28,13 +28,13 @@
 
 ```bash
 # Ubuntu/Debian
-sudo apt install cmake ninja-build build-essential python3.13-dev
+sudo apt install cmake ninja-build build-essential python3.14-dev
 ```
 
 ### macOS 环境准备
 
 ```bash
-brew install cmake ninja python@3.13
+brew install cmake ninja python@3.14
 ```
 
 ## 安装
@@ -71,4 +71,4 @@ print(add_f(1.5, 2.5))  # 输出: 4.0
 
 - **状态**: 开发中 (Alpha)
 - **维护者**: Xuanspace Team
-- **兼容性**: Python 3.13+、C++17
+- **兼容性**: Python 3.14.6+、C++17

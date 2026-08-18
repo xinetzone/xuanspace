@@ -275,13 +275,13 @@ jobs:
       - name: Check Python compatibility
         run: xs py-compat
 
-      # 验证 Python < 3.14 时明确拒绝
+      # 验证 Python < 3.14.6 时明确拒绝
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Verify Python < 3.14 is rejected
+      - name: Verify Python < 3.14.6 is rejected
         run: |
           python -m pip install -e ".[dev]" 2>&1 || true
           xs --version 2>&1 || echo "Python 3.13 correctly rejected"

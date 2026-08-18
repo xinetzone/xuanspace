@@ -139,15 +139,15 @@ def get_python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
-def check_python_version(min_version: tuple[int, int] = (3, 14)) -> bool:
+def check_python_version(min_version: tuple[int, int, int] = (3, 14, 6)) -> bool:
     """
     检查当前 Python 版本是否满足最低要求
 
     Args:
-        min_version: 最低版本元组，默认为 (3, 14)
+        min_version: 最低版本元组，默认为 (3, 14, 6)
 
     Returns:
         如果版本满足要求返回 True，否则返回 False
     """
-    current = sys.version_info[:2]
+    current = sys.version_info[:3]
     return current >= min_version
