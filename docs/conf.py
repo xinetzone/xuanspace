@@ -3,15 +3,7 @@
 
 import importlib.util as _ilut
 import os
-import sys
 from pathlib import Path
-
-if sys.platform == "win32":
-    import asyncio
-
-    if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
