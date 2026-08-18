@@ -1,7 +1,5 @@
 """OKF Bundle 加载器：遍历目录树，加载概念与保留文件。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from .frontmatter import parse_concept

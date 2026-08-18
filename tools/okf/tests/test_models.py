@@ -1,7 +1,5 @@
 """``okf.models`` 核心数据模型的单元测试。"""
 
-from __future__ import annotations
-
 import dataclasses
 from datetime import date, datetime
 from pathlib import Path

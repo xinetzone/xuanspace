@@ -1,7 +1,5 @@
 """OKF 信任与生命周期解析（§5）的测试。"""
 
-from __future__ import annotations
-
 from datetime import date, datetime
 from pathlib import Path
 

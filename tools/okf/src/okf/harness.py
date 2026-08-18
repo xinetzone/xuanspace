@@ -1,7 +1,5 @@
 """Harness 自举 —— 从 pyproject.toml 配置驱动插件装配。"""
 
-from __future__ import annotations
-
 import importlib
 import tomllib
 import traceback

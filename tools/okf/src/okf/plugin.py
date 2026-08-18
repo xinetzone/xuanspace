@@ -1,7 +1,5 @@
 """插件生命周期状态机 —— Cordis Fiber 实现。"""
 
-from __future__ import annotations
-
 import contextlib
 import enum
 from collections.abc import Callable

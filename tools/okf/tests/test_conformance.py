@@ -1,7 +1,5 @@
 """OKF 一致性校验（§11）测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from okf.conformance import (

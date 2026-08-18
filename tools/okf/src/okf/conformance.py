@@ -3,8 +3,6 @@
 提供 Bundle 的严格项与宽松项校验，生成 ConformanceReport。
 """
 
-from __future__ import annotations
-
 from .frontmatter import parse_frontmatter  # noqa: F401
 from .links import check_broken_links, parse_links_with_context
 from .models import Bundle, ConformanceReport

@@ -5,8 +5,6 @@
 流程映射 ``{k: v}``、块级序列与嵌套映射，以及多行字符串续行。
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

@@ -1,7 +1,5 @@
 """统一上下文 —— Cordis Context 实现。"""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable

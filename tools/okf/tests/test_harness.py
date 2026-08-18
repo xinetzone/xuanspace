@@ -1,7 +1,5 @@
 """Harness 自举与插件装配的单元测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from okf.harness import Harness

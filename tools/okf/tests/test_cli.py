@@ -1,7 +1,5 @@
 """CLI 子命令的端到端集成测试。"""
 
-from __future__ import annotations
-
 import argparse
 import shutil
 import sys

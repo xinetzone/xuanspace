@@ -3,8 +3,6 @@
 提供示例 OKF Bundle 路径与内存中构建 Bundle 的辅助函数。
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

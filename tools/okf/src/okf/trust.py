@@ -3,8 +3,6 @@
 零第三方依赖，仅使用 Python 标准库 ``datetime``。
 """
 
-from __future__ import annotations
-
 from datetime import date, datetime
 
 from .models import (

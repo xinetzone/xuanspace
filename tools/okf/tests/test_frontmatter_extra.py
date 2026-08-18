@@ -1,7 +1,5 @@
 """``okf.frontmatter`` 补充测试：块级序列、嵌套、续行折叠与标量推断等边界分支。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from okf.frontmatter import (

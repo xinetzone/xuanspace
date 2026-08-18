@@ -1,7 +1,5 @@
 """OKF 交叉链接解析（§6）测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from okf.links import (

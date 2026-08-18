@@ -1,7 +1,5 @@
 """``okf.frontmatter`` 解析器（零第三方依赖）的单元测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

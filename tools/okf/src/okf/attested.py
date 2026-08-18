@@ -3,8 +3,6 @@
 仅使用 Python 标准库 ``pathlib`` 与 ``re``。
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

@@ -1,7 +1,5 @@
 """``okf.loader`` Bundle 加载器的单元测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from okf.loader import load_bundle, load_concept

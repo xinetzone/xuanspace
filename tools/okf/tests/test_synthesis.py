@@ -1,7 +1,5 @@
 """OKF 索引与日志合成器（§8/§9）测试。"""
 
-from __future__ import annotations
-
 from datetime import date
 from pathlib import Path
 

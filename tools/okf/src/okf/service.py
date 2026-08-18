@@ -3,8 +3,6 @@
 仅使用 Python 标准库 ``dataclasses`` 与 ``collections.abc``，零第三方依赖。
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING

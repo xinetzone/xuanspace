@@ -4,8 +4,6 @@
 其 ``__call__``（经由 ``Plugin.apply``）来覆盖防御分支。
 """
 
-from __future__ import annotations
-
 from datetime import date
 
 import pytest

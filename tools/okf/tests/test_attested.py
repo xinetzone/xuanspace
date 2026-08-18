@@ -1,7 +1,5 @@
 """Attested Computation 契约解析器测试。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

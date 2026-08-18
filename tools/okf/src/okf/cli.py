@@ -1,7 +1,5 @@
 """okf CLI 命令。"""
 
-from __future__ import annotations
-
 import argparse
 import sys
 import traceback
