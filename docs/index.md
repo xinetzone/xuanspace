@@ -19,6 +19,7 @@ quickstart
 
 user-guide/index
 cli/index
+okf/index
 build-system
 architecture
 ```
