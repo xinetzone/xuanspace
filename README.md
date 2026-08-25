@@ -46,11 +46,13 @@ x-toml-ref: ".meta/toml/README.toml"
 
 ### 安装步骤
 
-1. 克隆仓库（包含子模块）：
+1. 克隆仓库：
 
    ```bash
-   git clone --recurse-submodules https://github.com/xinetzone/xuanspace.git
+   git clone https://github.com/xinetzone/xuanspace.git
    ```
+
+   > 子模块默认**延迟初始化**，按需运行 `git submodule update --init <path>`，详见 [CONTRIBUTING.md](CONTRIBUTING.md#35-顶层子模块延迟初始化策略)。
 
 2. 进入项目目录：
 
@@ -92,14 +94,17 @@ x-toml-ref: ".meta/toml/README.toml"
 
 ## 项目索引
 
-| 名称 | 描述 | 语言 | 类型 | 状态 | 版本 | 文档 |
-|------|------|------|------|------|------|------|
-| xs-cli | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 🟢 开发中 | 0.1.0 | [CLI 参考](docs/cli/index.md) |
-| xuan-core | 核心工具库 | Python 3.14 | lib | 🟢 开发中 | 0.1.0 | [API 参考](docs/) |
-| xuan-ext-demo | C++ 原生扩展示例（pybind11） | Python/C++ | lib(native) | 🟡 示例 | 0.1.0 | [构建指南](docs/build-system.md) |
-| tvm-book | TVM 中文手册 + flexloopy 包 | Python/C++ | lib | 🟢 开发中 | v0.1.4 | [README](libs/tvm-book/README.md) |
-| templates | 项目模板（Python/Native/Static） | Python/C++/HTML | tools | 🟢 可用 | 0.1.0 | [模板说明](tools/templates/) |
-| tvm-ffi | Apache TVM C++ FFI 跨语言绑定库 | C++ | vendor | 🔵 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
+| 名称 | 描述 | 语言 | 类型 | 维护状态 | 版本 | 文档 |
+|------|------|------|------|---------|------|------|
+| xs | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](docs/cli/index.md) |
+| okf | OKF v0.2 工具链（校验/脚手架/合成/信任推导） | Python 3.14 | tools | 活跃 | 0.1.0 | [OKF 文档](docs/okf/index.md) |
+| templates | 项目模板（Python/Native/Static） | 多语言 | tools | 活跃 | 0.1.0 | [模板说明](tools/templates/) |
+| caffe-ffi | Caffe 深度学习框架 FFI 绑定 | Python/C++ | lib | 活跃 | 1.2.0 | [README](libs/caffe-ffi/README.md) |
+| demo-ffi | FFI 扩展开发模板（Stub/Real 双运行时） | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/demo-ffi/README.md) |
+| npu-ffi | VTA NPU 加速器 FFI 绑定 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/npu-ffi/README.md) |
+| tvm-book | TVM 中文手册 + flexloopy（子模块） | Python/C++ | lib(submodule) | 上游 | v0.1.4 | [README](libs/tvm-book/README.md) |
+| tvm-ffi | Apache TVM C++ FFI 跨语言绑定库（子模块） | C++ | vendor(submodule) | 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
+| caffe | Caffe 深度学习框架（子模块） | C++ | vendor(submodule) | 上游 | - | [上游仓库](https://github.com/daoflows/caffe) |
 
 ## 架构设计
 
