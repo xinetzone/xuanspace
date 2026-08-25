@@ -14,6 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sphinx + MyST Markdown 文档系统
 - CMakePresets.json 跨平台构建预设
 - AGENTS.md AI 协作规范
-- Python 3.13+ 严格兼容
+- Python 3.14.6+ 严格兼容
 - 多包管理器支持（PDM/uv/pip）
 - GitHub Actions CI 配置
