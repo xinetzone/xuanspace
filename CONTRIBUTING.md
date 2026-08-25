@@ -125,14 +125,14 @@ ninja --version
 
 ### 3.1 克隆仓库
 
-使用 `--recurse-submodules` 一次性克隆并初始化所有子模块：
+默认**不初始化子模块**（延迟初始化策略，见 [3.5 节](#35-顶层子模块延迟初始化策略)），克隆体积更小：
 
 ```bash
-git clone --recurse-submodules https://github.com/xinetzone/xuanspace.git
+git clone https://github.com/xinetzone/xuanspace.git
 cd xuanspace
 ```
 
-如果你已经克隆了但没有初始化子模块：
+如需一次性初始化所有子模块：
 ```bash
 git submodule update --init --recursive
 ```
@@ -206,6 +206,36 @@ git submodule status --recursive
 # 运行以下命令修复：
 git submodule update --init --recursive
 ```
+
+### 3.5 顶层子模块延迟初始化策略
+
+Xuanspace 仓库包含 3 个上游子模块，**默认不随仓库克隆初始化**（延迟初始化），仅在需要时按需初始化，避免拉取体积较大的第三方代码：
+
+| 子模块路径 | 上游仓库 | 用途 |
+|-----------|---------|------|
+| `libs/tvm-book` | https://github.com/xinetzone/tvm-book.git | TVM 中文手册 + flexloopy 包 |
+| `vendor/tvm-ffi` | https://github.com/apache/tvm-ffi.git | Apache TVM C++ FFI 绑定库（demo-ffi/npu-ffi/caffe-ffi 的底层依赖） |
+| `vendor/caffe` | git@github.com:daoflows/caffe.git | Caffe 深度学习框架（caffe-ffi 的上游源码） |
+
+**初始化时机**：
+
+- 纯 Python 开发（xs CLI、okf 工具链、文档构建等）时，**无需初始化**任何子模块。
+- 需构建 `demo-ffi` / `npu-ffi` / `caffe-ffi` 时，初始化对应依赖（如 `vendor/tvm-ffi`）。
+- 需查阅或修改 TVM 手册时，初始化 `libs/tvm-book`。
+
+**按需初始化命令**（在项目根目录执行）：
+
+```bash
+# 仅初始化单个子模块
+git submodule update --init vendor/tvm-ffi
+git submodule update --init libs/tvm-book
+git submodule update --init vendor/caffe
+
+# 或一次初始化全部
+git submodule update --init --recursive
+```
+
+> **说明**：未初始化的子模块目录为空属正常状态，不代表项目缺失，也不影响纯 Python 开发。
 
 ---
 
