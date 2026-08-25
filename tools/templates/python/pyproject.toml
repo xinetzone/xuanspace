@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "{{name}}"
@@ -26,8 +26,12 @@ dev = [
     "pytest-cov>=5.0",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.build-type = "Release"
+wheel.packages = ["src/{{package_name}}"]
+ninja.make-fallback = false
+build.verbose = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

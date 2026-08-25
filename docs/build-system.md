@@ -2,12 +2,12 @@
 
 ## 概述
 
-Xuanspace 支持两种构建模式：
+Xuanspace **全仓库统一采用 `scikit-build-core`（CMake + Ninja）构建后端**，唯一例外是纯 Python 子项目使用 `scikit-build-core` 搭配 `LANGUAGES NONE` 的 CMakeLists.txt（不依赖 C++ 编译器）。
 
-| 模式 | 构建后端 | 适用场景 |
+| 项目类型 | 构建后端 | 说明 |
 |---|---|---|
-| 纯 Python | setuptools | Python 库和应用 |
-| C++ 原生扩展 | scikit-build-core + CMake + Ninja | C/C++ 扩展模块 |
+| 纯 Python 子项目/根枢纽包 | scikit-build-core + LANGUAGES NONE | 无需 C++ 编译器，CMake 仅做安装 |
+| C++ 原生扩展 / FFI | scikit-build-core + CMake + Ninja | C/C++ 扩展模块 |
 
 ## 构建工具链
 
@@ -40,22 +40,39 @@ Xuanspace 支持两种构建模式：
 
 ### 纯 Python 项目配置
 
+纯 Python 项目同样使用 scikit-build-core，CMakeLists.txt 声明 `LANGUAGES NONE`：
+
 ```toml
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "my-lib"
 version = "0.1.0"
 requires-python = ">=3.14.6"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.build-type = "Release"
+wheel.packages = ["src/my_lib"]
+ninja.make-fallback = false
+```
+
+对应 `CMakeLists.txt`：
+
+```cmake
+project(my_lib LANGUAGES NONE)
+if(SKBUILD)
+  install(DIRECTORY src/my_lib/ DESTINATION my_lib)
+endif()
 ```
 
 ### C++ 原生扩展项目配置
 
 ```toml
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.10", "cmake>=3.26", "ninja"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -64,7 +81,10 @@ version = "0.1.0"
 requires-python = ">=3.14.6"
 
 [tool.scikit-build]
-cmake.args = ["-G", "Ninja"]
+minimum-version = "0.10"
+cmake.build-type = "Release"
+wheel.packages = ["my_ext"]
+ninja.make-fallback = false
 ```
 
 ## CMakePresets.json

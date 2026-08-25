@@ -14,5 +14,6 @@ authors = [
 license = {text = "MIT"}
 
 [tool.scikit-build]
+minimum-version = "0.10"
 cmake.build-type = "Release"
 wheel.packages = ["xuan_ext_demo"]

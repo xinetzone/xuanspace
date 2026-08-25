@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "xuanspace"
@@ -132,22 +132,14 @@ packages = [
     {from = "tools"}
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = []
-exclude = [
-    "apps*",
-    "libs*",
-    "vendor*",
-    "tools*",
-    "docs*",
-    "scripts*",
-    "attic*",
-    ".agents*",
-    ".meta*",
-    "build*",
-    "dist*"
-]
+# ── scikit-build-core：根目录为纯 Python 枢纽包 ──
+# 根项目不伪装成可安装库，无 Python 包体；仅承载 dev 依赖与 CLI 工具链聚合。
+# 构建由 LANGUAGES NONE 的根 CMakeLists.txt 完成，无需 C++ 编译器。
+[tool.scikit-build]
+minimum-version = "0.10"
+cmake.build-type = "Release"
+ninja.make-fallback = false
+build.verbose = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

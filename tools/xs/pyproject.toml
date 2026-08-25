@@ -10,22 +10,22 @@ readme = "README.md"
 requires-python = ">=3.14.6"
 keywords = ["xuanspace", "xuanjing", "cli", "monorepo", "devops"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Environment :: Console",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
-    "Programming Language :: Python :: 3 :: Only",
-    "Topic :: Software Development :: Build Tools",
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
-    "typer>=0.12",
-    "rich>=13.0",
-    "packaging>=24.0",
-    "tomli-w>=1.0"
+  "typer>=0.12",
+  "rich>=13.0",
+  "packaging>=24.0",
+  "tomli-w>=1.0"
 ]
 authors = [
-    {name = "xinetzone"}
+  {name = "xinetzone"}
 ]
 license = {text = "MIT"}
 
@@ -39,24 +39,23 @@ xs = "xs.cli:app"
 
 [tool.scikit-build]
 minimum-version = "0.10"
-wheel.py-api = "py3"
-wheel.packages = ["xs"]
 cmake.build-type = "Release"
+wheel.packages = ["src/xs"]
 ninja.make-fallback = false
 build.verbose = true
 editable.mode = "inplace"
 
 sdist.include = [
-    "/src/**/*.py",
-    "/pyproject.toml",
-    "/CMakeLists.txt",
-    "/README.md",
+  "/src/**/*.py",
+  "/pyproject.toml",
+  "/CMakeLists.txt",
+  "/README.md",
 ]
 
 sdist.exclude = [
-    "**/.git",
-    "**/__pycache__",
-    "**/*.pyc",
-    "build",
-    "dist",
+  "**/.git",
+  "**/__pycache__",
+  "**/*.pyc",
+  "build",
+  "dist",
 ]

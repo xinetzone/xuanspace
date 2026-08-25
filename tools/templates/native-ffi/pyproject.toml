@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [tool.scikit-build]
+minimum-version = "0.10"
 cmake.version = "CMakeLists.txt"
 cmake.build-type = "Release"
 wheel.packages = ["python/{{package_name}}"]

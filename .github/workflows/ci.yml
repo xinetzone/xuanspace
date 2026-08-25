@@ -161,6 +161,10 @@ jobs:
       - name: Install xs-cli
         run: python -m pip install -e tools/xs/
 
+      # --- 0. pyproject.toml canonical 风格校验 ---
+      - name: Check pyproject.toml canonical style
+        run: python scripts/check_pyproject_style.py
+
       # --- 1. 环境诊断 ---
       - name: xs doctor
         run: xs doctor
