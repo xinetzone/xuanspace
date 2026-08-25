@@ -3,7 +3,7 @@ from __future__ import annotations
 import atexit
 import logging
 
-__version__ = "0.1.0"
+__version__ = "1.2.0"
 
 from . import _ffi_api
 from . import caffe_pb2

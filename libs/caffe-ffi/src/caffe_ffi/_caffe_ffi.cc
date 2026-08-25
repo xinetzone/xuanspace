@@ -56,7 +56,7 @@
 #include "caffe/proto/caffe.pb.h"
 
 #ifndef CAFFE_FFI_VERSION
-#define CAFFE_FFI_VERSION "0.1.0"
+#define CAFFE_FFI_VERSION "1.2.0"
 #endif
 
 namespace caffe_ffi {

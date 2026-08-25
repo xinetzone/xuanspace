@@ -39,7 +39,7 @@ caffe-ffi 是基于 tvm-ffi 原生对象系统的 Caffe 深度学习框架绑定
 | v1.1.0 | 2026-07-30 | Copy-on-Write（COW）零拷贝机制（`ShareData`/`ShareDiff`）、内存生命周期追踪工具、COW 测试套件（21 用例）、内存泄漏修复 |
 | v0.1.0 | 2026-07-29 | 独立库基础：CMake 模块化（9 文件）、C++/Python 测试（40+65）、Docker 开发环境、conda 打包配置 |
 
-> **版本号说明**：`pyproject.toml`/`CMakeLists.txt`/`__init__.py` 中的版本号仍为 0.1.0，与 CHANGELOG 存在偏差，计划在后续正式发布时统一。
+> **版本号说明**：`pyproject.toml`/`CMakeLists.txt`/`__init__.py`/`_caffe_ffi.cc`/`conda.recipe/meta.yaml` 中的版本号已统一为 1.2.0，与 CHANGELOG 保持一致。
 
 ## 系统要求
 

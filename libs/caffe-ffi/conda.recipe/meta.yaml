@@ -1,5 +1,5 @@
 {% set name = "caffe-ffi" %}
-{% set version = "0.1.0" %}
+{% set version = "1.2.0" %}
 
 package:
   name: {{ name|lower }}

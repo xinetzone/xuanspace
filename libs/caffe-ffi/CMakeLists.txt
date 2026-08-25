@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.26)
-project(caffe_ffi VERSION 0.1.0 LANGUAGES CXX)
+project(caffe_ffi VERSION 1.2.0 LANGUAGES CXX)
 
 message(STATUS "[caffe_ffi] ====== CMake Configure Begin ======")
 message(STATUS "[caffe_ffi] Project: ${PROJECT_NAME} v${PROJECT_VERSION}")
