@@ -4,6 +4,7 @@ xs doctor 命令模块
 """
 
 
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -14,7 +15,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ..config import check_python_version, find_workspace_root, get_python_version
+from ..config import (
+    check_python_version,
+    find_workspace_root,
+    get_python_version,
+    get_python_version_requirement,
+    load_pyproject,
+)
 
 console = Console()
 
@@ -217,6 +224,69 @@ def check_sphinx(workspace_root: Path) -> CheckResult:
         )
 
 
+_PY_MINOR_REF = re.compile(r"\b3\.(\d+)(?:\.\d+)?\+")
+
+
+def check_version_consistency(workspace_root: Path) -> CheckResult:
+    """检查根文档中的 Python 版本声明是否与 pyproject.toml 的 requires-python 一致"""
+    pyproject_path = workspace_root / "pyproject.toml"
+    if not pyproject_path.exists():
+        return CheckResult(
+            name="版本一致性",
+            status="skip",
+            message="根 pyproject.toml 不存在，跳过版本一致性检查",
+            required=False,
+        )
+
+    try:
+        pyproject = load_pyproject(pyproject_path)
+    except Exception:
+        return CheckResult(
+            name="版本一致性",
+            status="warning",
+            message="根 pyproject.toml 解析失败，跳过版本一致性检查",
+            required=False,
+        )
+
+    requires_python = get_python_version_requirement(pyproject) or ""
+    match = re.search(r"3\.(\d+)", requires_python)
+    required_minor = int(match.group(1)) if match else None
+    if required_minor is None:
+        return CheckResult(
+            name="版本一致性",
+            status="skip",
+            message="未在 pyproject.toml 声明 requires-python",
+            required=False,
+        )
+
+    doc_files = ("CHANGELOG.md", "README.md", "AGENTS.md")
+    mismatches: list[str] = []
+    for fname in doc_files:
+        path = workspace_root / fname
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for m in _PY_MINOR_REF.finditer(text):
+            if int(m.group(1)) < required_minor:
+                mismatches.append(f"{fname}:{m.group(0)}")
+
+    if mismatches:
+        return CheckResult(
+            name="版本一致性",
+            status="error",
+            version=requires_python,
+            message=f"{len(mismatches)} 处 Python 版本声明低于 {requires_python}",
+            install_hint="需同步: " + "; ".join(mismatches),
+        )
+
+    return CheckResult(
+        name="版本一致性",
+        status="ok",
+        version=requires_python,
+        message="CHANGELOG/README/AGENTS.md 版本声明与 pyproject.toml 一致",
+    )
+
+
 def _get_status_style(status: str) -> tuple[str, str]:
     """获取状态对应的图标和颜色"""
     styles = {
@@ -260,6 +330,7 @@ def run_doctor(check_mode: bool = False) -> int:
     results.append(check_cmake())
     results.append(check_ninja())
     results.append(check_sphinx(workspace_root))
+    results.append(check_version_consistency(workspace_root))
 
     table = Table(show_header=True, header_style="bold magenta", box=None)
     table.add_column("状态", width=6, justify="center")
