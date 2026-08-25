@@ -1,5 +1,7 @@
 # demo-ffi
 
+> **维护状态**：孵化中（Incubating）—— 作为 FFI 扩展开发模板，Stub 模式可独立构建与测试，不承载生产功能。
+
 基于 [tvm-ffi](https://github.com/tlc-pack/tvm-ffi) 的高性能 C++/Python FFI 扩展项目模板。
 
 ## 特性

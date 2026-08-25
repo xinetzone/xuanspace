@@ -1,5 +1,7 @@
 # npu-ffi
 
+> **维护状态**：孵化中（Incubating）—— VTA NPU 加速器绑定，Stub 模式可独立构建与测试，待真实硬件验证。
+
 Type-safe FFI bindings for VTA NPU accelerator based on tvm-ffi
 
 <!-- badges: start -->
