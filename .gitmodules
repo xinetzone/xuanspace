@@ -1,12 +1,12 @@
 [submodule "vendor/tvm-ffi"]
 	path = vendor/tvm-ffi
-	url = https://github.com/apache/tvm-ffi.git
+	url = git@github.com:apache/tvm-ffi.git
 [submodule "libs/tvm-book"]
 	path = libs/tvm-book
-	url = https://github.com/xinetzone/tvm-book.git
+	url = git@github.com:xinetzone/tvm-book.git
 [submodule "vendor/caffe"]
 	path = vendor/caffe
 	url = git@github.com:daoflows/caffe.git
 [submodule "libs/mystx"]
 	path = libs/mystx
-	url = https://github.com/xinetzone/mystx.git
+	url = git@github.com:xinetzone/mystx.git
