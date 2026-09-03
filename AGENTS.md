@@ -93,7 +93,7 @@ xuanspace/
 
 - **新增子项目**：使用 `xs new --type python|native|static <name>` 从模板创建
 - **C++原生扩展**：必须在`libs/`下创建，使用CMake+Ninja+scikit-build-core构建系统
-- **文档构建**：使用Sphinx+MyST构建，配置见`docs/conf.py`
+- **文档构建**：使用Sphinx+MyST构建，配置见`doc/conf.py`
 - **环境检查**：使用 `xs doctor` 检查开发环境完整性
 - **列出子项目**：使用 `xs list` 查看所有子项目状态
 

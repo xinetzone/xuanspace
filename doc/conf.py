@@ -154,7 +154,21 @@ def _has_sphinx_app():
 
 
 def setup(app):
-    """Xuanspace project setup hook — declare parallel safety & add guard."""
+    """Xuanspace project setup hook — declare parallel safety & add guard.
+
+    P1-A 审计结论（2026-09-03）：当前启用扩展的 parallel_{read,write}_safe 元数据
+    均为 True，无覆写需求。将来启用 autoapi / _ext.gallery_directive 等上游未声
+    明扩展时，将其加入下方覆写表即可，无需去上游提 PR。
+    """
+    _PARALLEL_SAFE_OVERRIDES: dict[str, tuple[bool, bool]] = {
+        # "autoapi.extension":        (True, True),
+        # "sphinx.ext.linkcode":      (True, True),
+    }
+    for ext_name, (pr, pw) in _PARALLEL_SAFE_OVERRIDES.items():
+        if ext_name in getattr(app, "extensions", {}):
+            setattr(app.extensions[ext_name], "parallel_read_safe", bool(pr))
+            setattr(app.extensions[ext_name], "parallel_write_safe", bool(pw))
+
     def _assert_parallel_ready(app, env):
         if app.parallel > 0 and not app.is_parallel_allowed("read"):
             raise RuntimeError(

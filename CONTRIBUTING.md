@@ -739,15 +739,15 @@ docs/
 # 构建 HTML 文档
 xs docs build
 # 或
-sphinx-build -b html docs docs/_build/html
+sphinx-build -b html doc doc/_build/html
 
 # 启动本地预览服务器（自动重载）
 xs docs serve
 # 或
-sphinx-autobuild docs docs/_build/html
+sphinx-autobuild doc doc/_build/html
 ```
 
-构建完成后，打开 `docs/_build/html/index.html` 即可查看。
+构建完成后，打开 `doc/_build/html/index.html` 即可查看。
 
 ### 12.4 文档风格建议
 

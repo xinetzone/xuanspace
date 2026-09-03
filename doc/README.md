@@ -80,13 +80,13 @@ xs docs linkcheck
 pdm install --dev -G docs
 
 # 构建 HTML
-pdm run sphinx-build -b html docs/ docs/_build/html
+pdm run sphinx-build -b html doc/ doc/_build/html
 
 # 启动预览服务器
-pdm run sphinx-autobuild docs/ docs/_build/html
+pdm run sphinx-autobuild doc/ doc/_build/html
 ```
 
-构建产物输出到 `docs/_build/` 目录（该目录已在 .gitignore 中）。
+构建产物输出到 `doc/_build/` 目录（该目录已在 .gitignore 中）。
 
 ## 内容-元数据二分法规范
 

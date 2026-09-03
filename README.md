@@ -96,8 +96,8 @@ x-toml-ref: ".meta/toml/README.toml"
 
 | 名称 | 描述 | 语言 | 类型 | 维护状态 | 版本 | 文档 |
 |------|------|------|------|---------|------|------|
-| xs | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](docs/cli/index.md) |
-| okf | OKF v0.2 工具链（校验/脚手架/合成/信任推导） | Python 3.14 | tools | 活跃 | 0.1.0 | [OKF 文档](docs/okf/index.md) |
+| xs | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](doc/cli/index.md) |
+| okf | OKF v0.2 工具链（校验/脚手架/合成/信任推导） | Python 3.14 | tools | 活跃 | 0.1.0 | [OKF 文档](doc/okf/index.md) |
 | templates | 项目模板（Python/Native/Static） | 多语言 | tools | 活跃 | 0.1.0 | [模板说明](tools/templates/) |
 | caffe-ffi | Caffe 深度学习框架 FFI 绑定 | Python/C++ | lib | 活跃 | 1.2.0 | [README](libs/caffe-ffi/README.md) |
 | demo-ffi | FFI 扩展开发模板（Stub/Real 双运行时） | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/demo-ffi/README.md) |
@@ -147,7 +147,7 @@ xuanspace/
 ├── libs/          # 共享库（Python 库、C++ 扩展）
 ├── vendor/        # 第三方依赖（作为 Git 子模块管理）
 ├── tools/         # 独立工具集（构建脚本、代码生成器等）
-├── docs/          # Sphinx 文档源文件
+├── doc/           # Sphinx 文档源文件
 ├── scripts/       # 项目运维脚本
 ├── attic/         # 归档内容（不活跃但有参考价值的项目）
 ├── .agents/       # AI Agent 配置与脚本
@@ -159,13 +159,13 @@ xuanspace/
 
 ## 文档与资源
 
-- 📖 **完整文档**：Sphinx 构建后位于 `docs/_build/html/`
+- 📖 **完整文档**：Sphinx 构建后位于 `doc/_build/html/`
 - 🤝 **贡献指南**：详见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - 🤖 **AI 协作**：详见 [AGENTS.md](AGENTS.md)
 - 🐛 **问题反馈**：[GitHub Issues](https://github.com/xinetzone/xuanspace/issues)
 - 📝 **更新日志**：详见 [CHANGELOG.md](CHANGELOG.md)
 
-更多技术细节和开发指南请查阅 `docs/` 目录。
+更多技术细节和开发指南请查阅 `doc/` 目录。
 
 ## 许可证
 

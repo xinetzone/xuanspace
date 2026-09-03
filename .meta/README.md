@@ -44,7 +44,7 @@ version: 1.0.0
 
 ## TOML 元数据文件示例
 
-对应文档 `docs/quickstart.md` 的元数据文件 `.meta/toml/docs/quickstart.toml`：
+对应文档 `doc/quickstart.md` 的元数据文件 `.meta/toml/doc/quickstart.toml`：
 
 ```toml
 [meta]

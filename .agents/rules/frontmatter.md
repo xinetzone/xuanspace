@@ -47,7 +47,7 @@ YAML frontmatter 中**禁止**出现以下字段（这些应放在 TOML 元数�
 | Markdown 文件路径 | TOML 元数据路径 |
 |---|---|
 | `README.md` | `.meta/toml/README.toml` |
-| `docs/guide.md` | `.meta/toml/docs/guide.toml` |
+| `doc/guide.md` | `.meta/toml/doc/guide.toml` |
 | `libs/xuan-core/README.md` | `.meta/toml/libs/xuan-core/README.toml` |
 | `.agents/ONBOARDING.md` | `.meta/toml/.agents/ONBOARDING.toml` |
 

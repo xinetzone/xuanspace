@@ -1,7 +1,7 @@
 ---
 id: "dependency-report"
 version: "1.0"
-x-toml-ref: "../.meta/toml/docs/dependency-report.toml"
+x-toml-ref: "../.meta/toml/doc/dependency-report.toml"
 ---
 
 # Xuanspace（玄境）项目依赖树报告

@@ -50,8 +50,8 @@ node_modules/
 Thumbs.db
 
 # Sphinx docs
-docs/_build/
-docs/api/
+doc/_build/
+doc/api/
 
 # Testing
 .coverage

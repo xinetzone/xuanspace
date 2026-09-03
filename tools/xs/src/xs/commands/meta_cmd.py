@@ -27,8 +27,8 @@ META_README = """# 文档元数据目录
 
 ## 结构
 
-- `toml/` — TOML 格式的元数据文件，与 docs/ 目录结构镜像对应
-  - 例如 `docs/guide/index.md` 的元数据在 `toml/docs/guide/index.toml`
+- `toml/` — TOML 格式的元数据文件，与 doc/ 目录结构镜像对应
+  - 例如 `doc/guide/index.md` 的元数据在 `toml/doc/guide/index.toml`
 
 ## 规则
 

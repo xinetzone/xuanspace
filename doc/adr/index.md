@@ -23,8 +23,8 @@
 
 ```bash
 # 创建新 ADR（按序号递增）
-mkdir -p docs/adr
-touch docs/adr/0001-<title>.md
+mkdir -p doc/adr
+touch doc/adr/0001-<title>.md
 ```
 
 > 随着项目发展，重要的架构决策将在此记录。

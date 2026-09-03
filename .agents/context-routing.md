@@ -22,7 +22,7 @@
 | **修改 .agents/ 规范本身** | [README.md](README.md) | - |
 | **子项目内任务** | 该子项目的 README.md、pyproject.toml/CMakeLists.txt | 该子项目 AGENTS.md（若有） |
 | **静态HTML项目** | - | [../tools/templates/static/](../tools/templates/static/) |
-| **Sphinx文档构建** | - | [../docs/conf.py](../docs/conf.py)、[../docs/README.md](../docs/README.md) |
+| **Sphinx文档构建** | - | [../doc/conf.py](../doc/conf.py)、[../doc/README.md](../doc/README.md) |
 
 ## 子项目路由
 
