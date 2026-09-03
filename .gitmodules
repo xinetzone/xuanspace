@@ -7,3 +7,6 @@
 [submodule "vendor/caffe"]
 	path = vendor/caffe
 	url = git@github.com:daoflows/caffe.git
+[submodule "libs/mystx"]
+	path = libs/mystx
+	url = https://github.com/xinetzone/mystx.git
