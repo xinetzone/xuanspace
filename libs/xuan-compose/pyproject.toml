@@ -34,6 +34,10 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+# 对等上游 [project.scripts] podman-compose = "podman_compose:main"（FR-3）
+[project.scripts]
+xuan-compose = "xuan_compose.cli.main:main"
+
 [project.optional-dependencies]
 test = [
     "pytest>=8.0",
