@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-only
-"""值对象层（翻译自 podman_compose.py 第 1625-1682、3991-4018 行）。
+"""值对象层（翻译自 podman_compose.py 第 1625-1682、2420-2426、3991-4018 行）。
 
 - ``ServiceDependencyCondition``：依赖条件枚举（docker 风格条件在 ``from_value``
   中映射为 podman 条件，逐行保留）。
 - ``ServiceDependency``：服务依赖值对象（名称 + 条件，带相等/哈希语义）。
 - ``PullImageSettings``：镜像拉取策略设置（dataclass 原样保留）。
+- ``XPodmanSettingKey``：``x-podman`` 扩展设置键（上游为
+  ``PodmanCompose`` 的嵌套 ``Enum``；分层后提为模块级 ``StrEnum``，
+  T6 引擎层将以此为唯一事实源，差异登记 T10 差异表）。
 """
 
 from dataclasses import dataclass
@@ -17,7 +20,17 @@ __all__ = [
     "ServiceDependency",
     "ServiceDependencyCondition",
     "PullImageSettings",
+    "XPodmanSettingKey",
 ]
+
+
+class XPodmanSettingKey(StrEnum):
+    DOCKER_COMPOSE_COMPAT = "docker_compose_compat"
+    DEFAULT_NET_NAME_COMPAT = "default_net_name_compat"
+    DEFAULT_NET_BEHAVIOR_COMPAT = "default_net_behavior_compat"
+    NAME_SEPARATOR_COMPAT = "name_separator_compat"
+    IN_POD = "in_pod"
+    POD_ARGS = "pod_args"
 
 
 class ServiceDependencyCondition(StrEnum):
