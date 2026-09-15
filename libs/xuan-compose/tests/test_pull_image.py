@@ -16,7 +16,7 @@ from unittest import IsolatedAsyncioTestCase, mock
 from parameterized import parameterized
 
 from xuan_compose.model import PullImageSettings
-from xuan_compose.pull import pull_image, pull_images, settings_to_pull_args
+from xuan_compose.pull import prepare_images, pull_image, pull_images, settings_to_pull_args
 
 
 class TestPullImageSettings(IsolatedAsyncioTestCase):
@@ -170,3 +170,83 @@ class TestPullImageSettings(IsolatedAsyncioTestCase):
         )
         assert run_mock.call_count == 1
         run_mock.assert_called_with([], "pull", ["--policy", "missing", "ghcr.io/a:latest"])
+
+
+def _make_prepare_compose(version: str | None, services: dict | None = None) -> mock.Mock:
+    compose = mock.Mock()
+    compose.podman_version = version
+    compose.podman = mock.Mock()
+    compose.services = services or {
+        "a": {"image": "ghcr.io/a:latest"},
+        "b": {"image": "ghcr.io/b:latest"},
+    }
+    compose.commands = {"build": mock.AsyncMock(return_value=0)}
+    return compose
+
+
+class TestPrepareImages(IsolatedAsyncioTestCase):
+    """T6 新增：prepare_images 的版本门控、excluded 过滤与 build 装配分支。"""
+
+    async def test_unknown_version_skips_pre_pull_and_builds(self) -> None:
+        compose = _make_prepare_compose(None)
+        args = Namespace(no_build=False, build=True)
+
+        with mock.patch("xuan_compose.pull.pull_images") as pull_mock:
+            result = await prepare_images(compose, args, excluded=set())
+
+        assert result == 0
+        pull_mock.assert_not_called()
+        compose.commands["build"].assert_awaited_once()
+        build_args = compose.commands["build"].await_args.args[1]
+        assert build_args.if_not_exists is False
+
+    async def test_podman_below_5_6_skips_pre_pull(self) -> None:
+        compose = _make_prepare_compose("5.5.9")
+        args = Namespace(no_build=False, build=False)
+
+        with mock.patch("xuan_compose.pull.pull_images") as pull_mock:
+            result = await prepare_images(compose, args, excluded=set())
+
+        assert result == 0
+        pull_mock.assert_not_called()
+        compose.commands["build"].assert_awaited_once()
+        build_args = compose.commands["build"].await_args.args[1]
+        assert build_args.if_not_exists is True
+
+    async def test_podman_5_6_pre_pulls_with_excluded_filter(self) -> None:
+        compose = _make_prepare_compose("5.6.0")
+        args = Namespace(no_build=False, build=True)
+
+        with mock.patch(
+            "xuan_compose.pull.pull_images", mock.AsyncMock(return_value=0)
+        ) as pull_mock:
+            result = await prepare_images(compose, args, excluded={"b"})
+
+        assert result == 0
+        pull_mock.assert_awaited_once()
+        pulled_services = pull_mock.await_args.args[2]
+        assert [s["image"] for s in pulled_services] == ["ghcr.io/a:latest"]
+        compose.commands["build"].assert_awaited_once()
+
+    async def test_pull_failure_aborts_before_build(self) -> None:
+        compose = _make_prepare_compose("5.6.0")
+        args = Namespace(no_build=False, build=True)
+
+        with mock.patch(
+            "xuan_compose.pull.pull_images", mock.AsyncMock(return_value=1)
+        ):
+            result = await prepare_images(compose, args, excluded=set())
+
+        assert result == 1
+        compose.commands["build"].assert_not_called()
+
+    async def test_no_build_skips_build_step(self) -> None:
+        compose = _make_prepare_compose(None)
+        args = Namespace(no_build=True, build=False)
+
+        with mock.patch("xuan_compose.pull.pull_images") as pull_mock:
+            result = await prepare_images(compose, args, excluded=set())
+
+        assert result == 0
+        pull_mock.assert_not_called()
+        compose.commands["build"].assert_not_called()
