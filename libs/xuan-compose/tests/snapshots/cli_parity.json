@@ -1,0 +1,2632 @@
+{
+  "global": {
+    "options": [
+      {
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "dest": "help",
+        "action": "_HelpAction",
+        "nargs": 0,
+        "const": null,
+        "default": "__ARGPARSE_SUPPRESS__",
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "show this help message and exit"
+      },
+      {
+        "option_strings": [
+          "-v",
+          "--version"
+        ],
+        "dest": "version",
+        "action": "_StoreTrueAction",
+        "nargs": 0,
+        "const": true,
+        "default": false,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "show version"
+      },
+      {
+        "option_strings": [
+          "--in-pod"
+        ],
+        "dest": "in_pod",
+        "action": "_StoreAction",
+        "nargs": null,
+        "const": null,
+        "default": null,
+        "choices": null,
+        "required": false,
+        "metavar": "in_pod",
+        "type": "str",
+        "help": "Specify pod usage:\n  'true'   - create/use a pod named pod_<project name>\n  'false'  - do not use a pod\n  '<name>' - create/use a custom pod with the given name"
+      },
+      {
+        "option_strings": [
+          "--pod-args"
+        ],
+        "dest": "pod_args",
+        "action": "_StoreAction",
+        "nargs": null,
+        "const": null,
+        "default": null,
+        "choices": null,
+        "required": false,
+        "metavar": "pod_args",
+        "type": "str",
+        "help": "custom arguments to be passed to `podman pod`"
+      },
+      {
+        "option_strings": [
+          "--env-file"
+        ],
+        "dest": "env_file",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "env_file",
+        "type": null,
+        "help": "Specify an alternate environment file (can be specified multiple times)"
+      },
+      {
+        "option_strings": [
+          "-f",
+          "--file"
+        ],
+        "dest": "file",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "file",
+        "type": null,
+        "help": "Specify an compose file (default: docker-compose.yml) or '-' to read from stdin."
+      },
+      {
+        "option_strings": [
+          "--profile"
+        ],
+        "dest": "profile",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "profile",
+        "type": null,
+        "help": "Specify a profile to enable"
+      },
+      {
+        "option_strings": [
+          "-p",
+          "--project-name"
+        ],
+        "dest": "project_name",
+        "action": "_StoreAction",
+        "nargs": null,
+        "const": null,
+        "default": null,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": "str",
+        "help": "Specify an alternate project name (default: directory name)"
+      },
+      {
+        "option_strings": [
+          "--podman-path"
+        ],
+        "dest": "podman_path",
+        "action": "_StoreAction",
+        "nargs": null,
+        "const": null,
+        "default": "podman",
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": "str",
+        "help": "Specify an alternate path to podman (default: use location in $PATH variable)"
+      },
+      {
+        "option_strings": [
+          "--podman-args"
+        ],
+        "dest": "podman_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom global arguments to be passed to `podman`"
+      },
+      {
+        "option_strings": [
+          "--podman-pull-args"
+        ],
+        "dest": "podman_pull_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman pull`"
+      },
+      {
+        "option_strings": [
+          "--podman-push-args"
+        ],
+        "dest": "podman_push_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman push`"
+      },
+      {
+        "option_strings": [
+          "--podman-build-args"
+        ],
+        "dest": "podman_build_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman build`"
+      },
+      {
+        "option_strings": [
+          "--podman-inspect-args"
+        ],
+        "dest": "podman_inspect_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman inspect`"
+      },
+      {
+        "option_strings": [
+          "--podman-run-args"
+        ],
+        "dest": "podman_run_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman run`"
+      },
+      {
+        "option_strings": [
+          "--podman-start-args"
+        ],
+        "dest": "podman_start_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman start`"
+      },
+      {
+        "option_strings": [
+          "--podman-stop-args"
+        ],
+        "dest": "podman_stop_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman stop`"
+      },
+      {
+        "option_strings": [
+          "--podman-rm-args"
+        ],
+        "dest": "podman_rm_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman rm`"
+      },
+      {
+        "option_strings": [
+          "--podman-volume-args"
+        ],
+        "dest": "podman_volume_args",
+        "action": "_AppendAction",
+        "nargs": null,
+        "const": null,
+        "default": [],
+        "choices": null,
+        "required": false,
+        "metavar": "args",
+        "type": null,
+        "help": "custom arguments to be passed to `podman volume`"
+      },
+      {
+        "option_strings": [
+          "--no-ansi"
+        ],
+        "dest": "no_ansi",
+        "action": "_StoreTrueAction",
+        "nargs": 0,
+        "const": true,
+        "default": false,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "Do not print ANSI control characters"
+      },
+      {
+        "option_strings": [
+          "--no-cleanup"
+        ],
+        "dest": "no_cleanup",
+        "action": "_StoreTrueAction",
+        "nargs": 0,
+        "const": true,
+        "default": false,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "Do not stop and remove existing pod & containers"
+      },
+      {
+        "option_strings": [
+          "--dry-run"
+        ],
+        "dest": "dry_run",
+        "action": "_StoreTrueAction",
+        "nargs": 0,
+        "const": true,
+        "default": false,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "No action; perform a simulation of commands"
+      },
+      {
+        "option_strings": [
+          "--parallel"
+        ],
+        "dest": "parallel",
+        "action": "_StoreAction",
+        "nargs": null,
+        "const": null,
+        "default": 9223372036854775807,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": "int",
+        "help": null
+      },
+      {
+        "option_strings": [
+          "--verbose"
+        ],
+        "dest": "verbose",
+        "action": "_StoreTrueAction",
+        "nargs": 0,
+        "const": true,
+        "default": false,
+        "choices": null,
+        "required": false,
+        "metavar": null,
+        "type": null,
+        "help": "Print debugging output"
+      }
+    ]
+  },
+  "command_order": [
+    "help",
+    "ls",
+    "version",
+    "wait",
+    "systemd",
+    "pull",
+    "push",
+    "build",
+    "up",
+    "down",
+    "ps",
+    "run",
+    "cp",
+    "exec",
+    "start",
+    "stop",
+    "restart",
+    "logs",
+    "config",
+    "port",
+    "pause",
+    "unpause",
+    "kill",
+    "stats",
+    "images"
+  ],
+  "commands": {
+    "help": {
+      "help": "show help",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        }
+      ]
+    },
+    "ls": {
+      "help": "List running compose projects",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-f",
+            "--format"
+          ],
+          "dest": "format",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": "table",
+          "choices": [
+            "table",
+            "json"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Format the output"
+        }
+      ]
+    },
+    "version": {
+      "help": "show version",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-f",
+            "--format"
+          ],
+          "dest": "format",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": "pretty",
+          "choices": [
+            "pretty",
+            "json"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Format the output"
+        },
+        {
+          "option_strings": [
+            "--short"
+          ],
+          "dest": "short",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Shows only Podman Compose's version number"
+        }
+      ]
+    },
+    "wait": {
+      "help": "wait running containers to stop",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        }
+      ]
+    },
+    "systemd": {
+      "help": "create systemd unit file and register its compose stacks",
+      "description": "\nWhen first installed type `sudo podman-compose systemd -a create-unit`\nlater you can add a compose stack by running `podman-compose systemd -a register`\nthen you can start/stop your stack with `systemctl --user start podman-compose@<PROJ>`\n",
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-a",
+            "--action"
+          ],
+          "dest": "action",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": "register",
+          "choices": [
+            "register",
+            "unregister",
+            "create-unit",
+            "list",
+            "ls"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "create systemd unit file or register compose stack to it"
+        }
+      ]
+    },
+    "pull": {
+      "help": "pull stack images",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--force-local"
+          ],
+          "dest": "force_local",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Also pull unprefixed images for services which have a build section"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "services to pull"
+        }
+      ]
+    },
+    "push": {
+      "help": "push stack images",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--ignore-push-failures"
+          ],
+          "dest": "ignore_push_failures",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Push what it can and ignores images with push failures. (not implemented)"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "services to push"
+        }
+      ]
+    },
+    "build": {
+      "help": "build stack images",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--pull"
+          ],
+          "dest": "pull",
+          "action": "PullPolicyAction",
+          "nargs": "?",
+          "const": null,
+          "default": null,
+          "choices": [
+            "always",
+            "missing",
+            "never",
+            "newer"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Pull image policy (always|missing|never|newer). Set to 'newer' if specify --pull without a value. default (pull_policy in compose file)."
+        },
+        {
+          "option_strings": [
+            "--pull-always"
+          ],
+          "dest": "pull_always",
+          "action": "PullPolicyAction",
+          "nargs": "?",
+          "const": null,
+          "default": null,
+          "choices": [
+            "true",
+            "false"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Deprecated, use --pull=always instead"
+        },
+        {
+          "option_strings": [
+            "--build-arg"
+          ],
+          "dest": "build_arg",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": [],
+          "choices": null,
+          "required": false,
+          "metavar": "key=val",
+          "type": null,
+          "help": "Set build-time variables for services."
+        },
+        {
+          "option_strings": [
+            "--no-cache"
+          ],
+          "dest": "no_cache",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Do not use cache when building the image."
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        }
+      ]
+    },
+    "up": {
+      "help": "Create and start the entire stack or some of its services",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-d",
+            "--detach"
+          ],
+          "dest": "detach",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Detached mode: Run container in the background, print new container name.             Incompatible with --abort-on-container-exit and --abort-on-container-failure."
+        },
+        {
+          "option_strings": [
+            "--no-color"
+          ],
+          "dest": "no_color",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Produce monochrome output."
+        },
+        {
+          "option_strings": [
+            "--quiet-pull"
+          ],
+          "dest": "quiet_pull",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Pull without printing progress information."
+        },
+        {
+          "option_strings": [
+            "--no-deps"
+          ],
+          "dest": "no_deps",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't start linked services."
+        },
+        {
+          "option_strings": [
+            "--no-attach"
+          ],
+          "dest": "no_attach",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": [],
+          "choices": null,
+          "required": false,
+          "metavar": "SERVICE",
+          "type": null,
+          "help": "Do not attach to SERVICE."
+        },
+        {
+          "option_strings": [
+            "--force-recreate"
+          ],
+          "dest": "force_recreate",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Recreate containers even if their configuration and image haven't changed."
+        },
+        {
+          "option_strings": [
+            "--always-recreate-deps"
+          ],
+          "dest": "always_recreate_deps",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Recreate dependent containers. Incompatible with --no-recreate."
+        },
+        {
+          "option_strings": [
+            "--no-recreate"
+          ],
+          "dest": "no_recreate",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "If containers already exist, don't recreate them. Incompatible with --force-recreate and -V."
+        },
+        {
+          "option_strings": [
+            "--no-build"
+          ],
+          "dest": "no_build",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't build an image, even if it's missing."
+        },
+        {
+          "option_strings": [
+            "--no-start"
+          ],
+          "dest": "no_start",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't start the services after creating them."
+        },
+        {
+          "option_strings": [
+            "--build"
+          ],
+          "dest": "build",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Build images before starting containers."
+        },
+        {
+          "option_strings": [
+            "--abort-on-container-exit"
+          ],
+          "dest": "abort_on_container_exit",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Stops all containers if any container was stopped. Incompatible with -d and --abort-on-container-failure."
+        },
+        {
+          "option_strings": [
+            "--abort-on-container-failure"
+          ],
+          "dest": "abort_on_container_failure",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Stops all containers if any container stops with a non-zero exit code. Incompatible with -d and --abort-on-container-exit."
+        },
+        {
+          "option_strings": [
+            "-t",
+            "--timeout"
+          ],
+          "dest": "timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Use this timeout in seconds for container shutdown when attached or when containers are already running. (default: 10)"
+        },
+        {
+          "option_strings": [
+            "-V",
+            "--renew-anon-volumes"
+          ],
+          "dest": "renew_anon_volumes",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Recreate anonymous volumes instead of retrieving data from the previous containers."
+        },
+        {
+          "option_strings": [
+            "--remove-orphans"
+          ],
+          "dest": "remove_orphans",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Remove containers for services not defined in the Compose file."
+        },
+        {
+          "option_strings": [
+            "--scale"
+          ],
+          "dest": "scale",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "SERVICE=NUM",
+          "type": null,
+          "help": "Scale SERVICE to NUM instances. Overrides the `scale` setting in the Compose file if present."
+        },
+        {
+          "option_strings": [
+            "--exit-code-from"
+          ],
+          "dest": "exit_code_from",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "SERVICE",
+          "type": "str",
+          "help": "Return the exit code of the selected service container. Implies --abort-on-container-exit."
+        },
+        {
+          "option_strings": [
+            "--no-hosts"
+          ],
+          "dest": "no_hosts",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Do not modify the /etc/hosts file in the container."
+        },
+        {
+          "option_strings": [
+            "--pull"
+          ],
+          "dest": "pull",
+          "action": "PullPolicyAction",
+          "nargs": "?",
+          "const": null,
+          "default": null,
+          "choices": [
+            "always",
+            "missing",
+            "never",
+            "newer"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Pull image policy (always|missing|never|newer). Set to 'newer' if specify --pull without a value. default (pull_policy in compose file)."
+        },
+        {
+          "option_strings": [
+            "--pull-always"
+          ],
+          "dest": "pull_always",
+          "action": "PullPolicyAction",
+          "nargs": "?",
+          "const": null,
+          "default": null,
+          "choices": [
+            "true",
+            "false"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Deprecated, use --pull=always instead"
+        },
+        {
+          "option_strings": [
+            "--build-arg"
+          ],
+          "dest": "build_arg",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": [],
+          "choices": null,
+          "required": false,
+          "metavar": "key=val",
+          "type": null,
+          "help": "Set build-time variables for services."
+        },
+        {
+          "option_strings": [
+            "--no-cache"
+          ],
+          "dest": "no_cache",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Do not use cache when building the image."
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        },
+        {
+          "option_strings": [
+            "--wait"
+          ],
+          "dest": "wait",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Wait for services to be running|healthy. Implies detached mode."
+        },
+        {
+          "option_strings": [
+            "--wait-timeout"
+          ],
+          "dest": "wait_timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Maximum duration in seconds to wait for the project to be running|healthy"
+        }
+      ]
+    },
+    "down": {
+      "help": "tear down entire stack",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-v",
+            "--volumes"
+          ],
+          "dest": "volumes",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Remove named volumes declared in the `volumes` section of the Compose file and anonymous volumes attached to containers."
+        },
+        {
+          "option_strings": [
+            "--remove-orphans"
+          ],
+          "dest": "remove_orphans",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Remove containers for services not defined in the Compose file."
+        },
+        {
+          "option_strings": [
+            "--rmi"
+          ],
+          "dest": "rmi",
+          "action": "_StoreAction",
+          "nargs": "?",
+          "const": "all",
+          "default": null,
+          "choices": [
+            "local",
+            "all"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Remove images used by services. `local` remove only images that don't have a custom tag. (`local` or `all`)"
+        },
+        {
+          "option_strings": [
+            "-t",
+            "--timeout"
+          ],
+          "dest": "timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Specify a shutdown timeout in seconds. "
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        }
+      ]
+    },
+    "ps": {
+      "help": "show status of containers",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-q",
+            "--quiet"
+          ],
+          "dest": "quiet",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Only display container IDs"
+        },
+        {
+          "option_strings": [
+            "-f",
+            "--format"
+          ],
+          "dest": "format",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Pretty-print container statistics to JSON or using a Go template"
+        }
+      ]
+    },
+    "run": {
+      "help": "create a container similar to a service to run a one-off command",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--build"
+          ],
+          "dest": "build",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Build images before starting containers."
+        },
+        {
+          "option_strings": [
+            "-d",
+            "--detach"
+          ],
+          "dest": "detach",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Detached mode: Run container in the background, print new container name."
+        },
+        {
+          "option_strings": [
+            "--name"
+          ],
+          "dest": "name",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Assign a name to the container"
+        },
+        {
+          "option_strings": [
+            "--entrypoint"
+          ],
+          "dest": "entrypoint",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Override the entrypoint of the image."
+        },
+        {
+          "option_strings": [
+            "-e",
+            "--env"
+          ],
+          "dest": "env",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "KEY=VAL",
+          "type": null,
+          "help": "Set an environment variable (can be used multiple times)"
+        },
+        {
+          "option_strings": [
+            "-l",
+            "--label"
+          ],
+          "dest": "label",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "KEY=VAL",
+          "type": null,
+          "help": "Add or override a label (can be used multiple times)"
+        },
+        {
+          "option_strings": [
+            "-u",
+            "--user"
+          ],
+          "dest": "user",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Run as specified username or uid"
+        },
+        {
+          "option_strings": [
+            "--no-deps"
+          ],
+          "dest": "no_deps",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't start linked services"
+        },
+        {
+          "option_strings": [
+            "--rm"
+          ],
+          "dest": "rm",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Remove container after run. Ignored in detached mode."
+        },
+        {
+          "option_strings": [
+            "-p",
+            "--publish"
+          ],
+          "dest": "publish",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Publish a container's port(s) to the host (can be used multiple times)"
+        },
+        {
+          "option_strings": [
+            "--service-ports"
+          ],
+          "dest": "service_ports",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Run command with the service's ports enabled and mapped to the host."
+        },
+        {
+          "option_strings": [
+            "-v",
+            "--volume"
+          ],
+          "dest": "volume",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Bind mount a volume (can be used multiple times)"
+        },
+        {
+          "option_strings": [
+            "-T"
+          ],
+          "dest": "T",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Disable pseudo-tty allocation. By default `podman-compose run` allocates a TTY."
+        },
+        {
+          "option_strings": [
+            "-w",
+            "--workdir"
+          ],
+          "dest": "workdir",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Working directory inside the container"
+        },
+        {
+          "option_strings": [],
+          "dest": "service",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "service",
+          "type": null,
+          "help": "service name"
+        },
+        {
+          "option_strings": [],
+          "dest": "cnt_command",
+          "action": "_StoreAction",
+          "nargs": "...",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "command",
+          "type": null,
+          "help": "command and its arguments"
+        }
+      ]
+    },
+    "cp": {
+      "help": "copy files/folders between a service container and the local filesystem",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-a",
+            "--archive"
+          ],
+          "dest": "archive",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": true,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Chown copied files to the primary uid/gid of the destination container (default=True)"
+        },
+        {
+          "option_strings": [
+            "--overwrite"
+          ],
+          "dest": "overwrite",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Allow to overwrite directories with non-directories and vice versa (default=None)"
+        },
+        {
+          "option_strings": [],
+          "dest": "src",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "SOURCE",
+          "type": null,
+          "help": "Source path. Use SERVICE:PATH for container paths, or just PATH for local paths"
+        },
+        {
+          "option_strings": [],
+          "dest": "dst",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "DESTINATION",
+          "type": null,
+          "help": "Destination path. Use SERVICE:PATH for container paths, or just PATH for local paths"
+        }
+      ]
+    },
+    "exec": {
+      "help": "execute a command in a running container",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-d",
+            "--detach"
+          ],
+          "dest": "detach",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Detached mode: Run container in the background, print new container name."
+        },
+        {
+          "option_strings": [
+            "--privileged"
+          ],
+          "dest": "privileged",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Give the process extended Linux capabilities inside the container"
+        },
+        {
+          "option_strings": [
+            "-u",
+            "--user"
+          ],
+          "dest": "user",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Run as specified username or uid"
+        },
+        {
+          "option_strings": [
+            "-T"
+          ],
+          "dest": "T",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Disable pseudo-tty allocation. By default `podman-compose run` allocates a TTY."
+        },
+        {
+          "option_strings": [
+            "--index"
+          ],
+          "dest": "index",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": 1,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Index of the container if there are multiple instances of a service"
+        },
+        {
+          "option_strings": [
+            "-e",
+            "--env"
+          ],
+          "dest": "env",
+          "action": "_AppendAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "KEY=VAL",
+          "type": null,
+          "help": "Set an environment variable (can be used multiple times)"
+        },
+        {
+          "option_strings": [
+            "-w",
+            "--workdir"
+          ],
+          "dest": "workdir",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Working directory inside the container"
+        },
+        {
+          "option_strings": [],
+          "dest": "service",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "service",
+          "type": null,
+          "help": "service name"
+        },
+        {
+          "option_strings": [],
+          "dest": "cnt_command",
+          "action": "_StoreAction",
+          "nargs": "...",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "command",
+          "type": null,
+          "help": "command and its arguments"
+        }
+      ]
+    },
+    "start": {
+      "help": "start specific services",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        },
+        {
+          "option_strings": [
+            "--wait"
+          ],
+          "dest": "wait",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Wait for services to be running|healthy. Implies detached mode."
+        },
+        {
+          "option_strings": [
+            "--wait-timeout"
+          ],
+          "dest": "wait_timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Maximum duration in seconds to wait for the project to be running|healthy"
+        }
+      ]
+    },
+    "stop": {
+      "help": "stop specific services",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-t",
+            "--timeout"
+          ],
+          "dest": "timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Specify a shutdown timeout in seconds. "
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        }
+      ]
+    },
+    "restart": {
+      "help": "restart specific services",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-t",
+            "--timeout"
+          ],
+          "dest": "timeout",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Specify a shutdown timeout in seconds. "
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "affected services"
+        }
+      ]
+    },
+    "logs": {
+      "help": "show logs from services",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-f",
+            "--follow"
+          ],
+          "dest": "follow",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Follow log output. The default is false"
+        },
+        {
+          "option_strings": [
+            "-l",
+            "--latest"
+          ],
+          "dest": "latest",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Act on the latest container podman is aware of"
+        },
+        {
+          "option_strings": [
+            "-n",
+            "--names"
+          ],
+          "dest": "names",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Output the container name in the log"
+        },
+        {
+          "option_strings": [
+            "--no-color"
+          ],
+          "dest": "no_color",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Produce monochrome output"
+        },
+        {
+          "option_strings": [
+            "--no-log-prefix"
+          ],
+          "dest": "no_log_prefix",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't print prefix with container identifier in logs"
+        },
+        {
+          "option_strings": [
+            "--since"
+          ],
+          "dest": "since",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Show logs since TIMESTAMP"
+        },
+        {
+          "option_strings": [
+            "-t",
+            "--timestamps"
+          ],
+          "dest": "timestamps",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Show timestamps."
+        },
+        {
+          "option_strings": [
+            "--tail"
+          ],
+          "dest": "tail",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": "all",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Number of lines to show from the end of the logs for each container."
+        },
+        {
+          "option_strings": [
+            "--until"
+          ],
+          "dest": "until",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Show logs until TIMESTAMP"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "service names"
+        }
+      ]
+    },
+    "config": {
+      "help": "displays the compose file",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--no-normalize"
+          ],
+          "dest": "no_normalize",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Don't normalize compose model."
+        },
+        {
+          "option_strings": [
+            "--services"
+          ],
+          "dest": "services",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Print the service names, one per line."
+        },
+        {
+          "option_strings": [
+            "-q",
+            "--quiet"
+          ],
+          "dest": "quiet",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Do not print config, only parse."
+        }
+      ]
+    },
+    "port": {
+      "help": "Prints the public port for a port binding.",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "--index"
+          ],
+          "dest": "index",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": 1,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "index of the container if there are multiple instances of a service"
+        },
+        {
+          "option_strings": [
+            "--protocol"
+          ],
+          "dest": "protocol",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": "tcp",
+          "choices": [
+            "tcp",
+            "udp"
+          ],
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "tcp or udp"
+        },
+        {
+          "option_strings": [],
+          "dest": "service",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "service",
+          "type": null,
+          "help": "service name"
+        },
+        {
+          "option_strings": [],
+          "dest": "private_port",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": true,
+          "metavar": "private_port",
+          "type": "int",
+          "help": "private port"
+        }
+      ]
+    },
+    "pause": {
+      "help": "Pause all running containers",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "service names"
+        }
+      ]
+    },
+    "unpause": {
+      "help": "Unpause all running containers",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "service names"
+        }
+      ]
+    },
+    "kill": {
+      "help": "Kill one or more running containers with a specific signal",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "service names"
+        },
+        {
+          "option_strings": [
+            "-s",
+            "--signal"
+          ],
+          "dest": "signal",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Signal to send to the container (default 'KILL')"
+        },
+        {
+          "option_strings": [
+            "-a",
+            "--all"
+          ],
+          "dest": "all",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Signal all running containers"
+        }
+      ]
+    },
+    "stats": {
+      "help": "Display percentage of CPU, memory, network I/O, block I/O and PIDs for services.",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [],
+          "dest": "services",
+          "action": "_StoreAction",
+          "nargs": "*",
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": "services",
+          "type": null,
+          "help": "service names"
+        },
+        {
+          "option_strings": [
+            "-i",
+            "--interval"
+          ],
+          "dest": "interval",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "int",
+          "help": "Time in seconds between stats reports (default 5)"
+        },
+        {
+          "option_strings": [
+            "--no-reset"
+          ],
+          "dest": "no_reset",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Disable resetting the screen between intervals"
+        },
+        {
+          "option_strings": [
+            "--no-stream"
+          ],
+          "dest": "no_stream",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Disable streaming stats and only pull the first result"
+        },
+        {
+          "option_strings": [
+            "-f",
+            "--format"
+          ],
+          "dest": "format",
+          "action": "_StoreAction",
+          "nargs": null,
+          "const": null,
+          "default": null,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": "str",
+          "help": "Pretty-print container statistics to JSON or using a Go template"
+        }
+      ]
+    },
+    "images": {
+      "help": "List images used by the created containers",
+      "description": null,
+      "options": [
+        {
+          "option_strings": [
+            "-h",
+            "--help"
+          ],
+          "dest": "help",
+          "action": "_HelpAction",
+          "nargs": 0,
+          "const": null,
+          "default": "__ARGPARSE_SUPPRESS__",
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "show this help message and exit"
+        },
+        {
+          "option_strings": [
+            "-q",
+            "--quiet"
+          ],
+          "dest": "quiet",
+          "action": "_StoreTrueAction",
+          "nargs": 0,
+          "const": true,
+          "default": false,
+          "choices": null,
+          "required": false,
+          "metavar": null,
+          "type": null,
+          "help": "Only display images IDs"
+        }
+      ]
+    }
+  },
+  "meta": {
+    "source": "containers/podman-compose",
+    "source_file": "podman_compose.py",
+    "commit": "e3df10472e194ab6d547b5ad25542c5c79e1a5fb",
+    "python": "3.14.2",
+    "note": "由 tests/generate_parity_snapshots.py 生成；仅上游基线升级时重新生成"
+  }
+}

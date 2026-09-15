@@ -11,6 +11,7 @@
 
 import contextlib
 import io
+import runpy
 import unittest
 from unittest import mock
 
@@ -37,3 +38,9 @@ class TestMain(unittest.TestCase):
             stderr.getvalue().strip(),
             "Error: External network [missing-net] does not exist",
         )
+
+    def test_python_m_entrypoint_invokes_main(self) -> None:
+        # python -m xuan_compose → 包根 __main__.py 调用 cli.main.main 一次
+        with mock.patch("xuan_compose.cli.main.main") as mocked:
+            runpy.run_module("xuan_compose.__main__", run_name="__main__")
+        mocked.assert_called_once_with()

@@ -20,6 +20,7 @@ from xuan_compose.cli.main import async_main
 from xuan_compose.cli.parser import COMMAND_PARSERS, build_parser, parse_args
 from xuan_compose.commands import COMMAND_HANDLERS
 from xuan_compose.engine import ComposeEngine
+from xuan_compose.runner import CalledProcessError
 
 ALL_COMMANDS = set(COMMAND_HANDLERS)
 
@@ -361,6 +362,54 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
         ):
             await async_main(["ps"])
         assert captured["engine"].executable == os.path.realpath(sys.argv[0])
+
+    async def test_custom_podman_path_missing_is_fatal(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            await async_main(["--podman-path", "/no/such/podman-bin", "version"])
+        assert ctx.exception.code == 1
+
+    async def test_missing_custom_podman_path_allowed_in_dry_run(self) -> None:
+        # dry-run 下二进制不存在只警告不退出（上游 44-46 行）
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            await async_main(
+                ["--dry-run", "--podman-path", "/no/such/podman-bin", "version", "--short"]
+            )
+        from xuan_compose import __version__
+
+        assert buf.getvalue().strip() == __version__
+
+    async def test_existing_custom_podman_path_realpathed(self) -> None:
+        # 用当前解释器作为"存在且可执行"的替身，两平台通用
+        interpreter = sys.executable
+        captured: dict = {}
+
+        class _Cap:
+            def __init__(self, engine: object, path: object, *a: object, **kw: object) -> None:
+                captured["path"] = path
+
+            run = mock.AsyncMock(return_value=0)
+            output = mock.AsyncMock(return_value=b"podman version 5.2.3\n")
+
+        with (
+            mock.patch.object(ComposeEngine, "_parse_compose_file"),
+            mock.patch("xuan_compose.cli.main.Podman", side_effect=_Cap),
+        ):
+            await async_main(["--podman-path", interpreter, "ps"])
+        assert captured["path"] == os.path.realpath(interpreter)
+
+    async def test_version_probe_called_process_error_is_fatal(self) -> None:
+        # CalledProcessError 且带 output：错误信息拼接 output 后仍 fatal
+        # （版本探测失败的终局与 FileNotFoundError 一致，都是 exit 1）
+        pod = mock.Mock()
+        pod.run = mock.AsyncMock(return_value=0)
+        pod.output = mock.AsyncMock(
+            side_effect=CalledProcessError(125, ["podman"], output=b"podman: boom\n")
+        )
+        with mock.patch("xuan_compose.cli.main.Podman", return_value=pod):
+            with self.assertRaises(SystemExit) as ctx:
+                await async_main(["version"])
+        assert ctx.exception.code == 1
 
     async def test_handlers_installed_for_inter_command_lookup(self) -> None:
         # install_handlers 必须在分发前装配：up/run 经 compose.commands 互调
