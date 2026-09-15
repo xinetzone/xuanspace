@@ -5,20 +5,24 @@
 本模块承载命令层最重的运行时编排：pod 创建、依赖条件等待、容器启停、
 镜像预拉/构建装配、存量容器重建判定、attach 任务监督与 SIGINT 收口。
 ``compose`` 形参为 ``Any`` 鸭子类型（与翻译层惯例一致，T10 差异表登记）。
+
+依赖条件检查（check_dep_conditions/_validate_completed_successfully）上游位于
+up 命令辅助区，T4 已按 test_depends_on.py 归属迁入执行层 dependencies.py；
+本模块从那里再导入 check_dep_conditions 保持符号面（handler 经
+compose.commands 互调，测试亦从本模块导入），不重复实现（单一事实源）。
 """
 
 import argparse
 import asyncio
-import json
 import os
 import signal
 import sys
 from typing import Any
 
 from ..compat import STOP_GRACE_PERIOD, str_to_seconds, strverscmp_lt
+from ..dependencies import check_dep_conditions
 from ..logging_utils import log
 from ..logs import _task_cancelled
-from ..model import ServiceDependencyCondition
 from ..pull import prepare_images
 from ..runner import CalledProcessError, wait_with_timeout
 from ..translate.container_args import container_to_args
@@ -94,117 +98,6 @@ async def create_secrets_from_environment(compose: Any) -> None:
                     secret_environment,
                 ],
             )
-
-
-async def _validate_completed_successfully(
-    compose: Any, container_names: list[str]
-) -> None:
-    # Poll until all containers have left the 'created' state
-    # This prevents podman wait from racing against container startup
-    last_log_time = 0.0
-    while True:
-        try:
-            statuses_raw = await compose.podman.output(
-                [], "inspect", ["--format={{.State.Status}}"] + container_names
-            )
-            statuses = statuses_raw.decode().split()
-            if all(s != "created" for s in statuses if s):
-                break
-        except CalledProcessError as exc:
-            log.debug(
-                "podman inspect failed while polling for created states: %s",
-                exc,
-            )
-
-        now = asyncio.get_event_loop().time()
-        if now - last_log_time >= 1.0:
-            log.debug(
-                "Waiting for dependency containers to leave 'created' state: %s",
-                ", ".join(container_names),
-            )
-            last_log_time = now
-        await asyncio.sleep(0.05)
-
-    # podman does not actually support value "service_completed_successfully"
-    # default value "stopped" is sent instead
-    await compose.podman.output([], "wait", ["--condition=stopped"] + container_names)
-
-    for container_name in container_names:
-        try:
-            inspect_output = await compose.podman.output([], "inspect", [container_name])
-        except CalledProcessError as exc:
-            raise RuntimeError(
-                f"Container {container_name} disappeared after waiting for stop"
-            ) from exc
-        container_info = json.loads(inspect_output)[0]
-
-        exit_code = container_info.get("State", {}).get("ExitCode", -1)
-        if exit_code != 0:
-            error_msg = (
-                f"Container {container_name} didn't complete successfully: exit code {exit_code}"
-            )
-            log.error(error_msg)
-            raise RuntimeError(error_msg)
-
-
-async def check_dep_conditions(compose: Any, deps: set[Any]) -> None:
-    """Enforce that all specified conditions in deps are met"""
-    if not deps:
-        return
-
-    for condition in ServiceDependencyCondition:
-        deps_cd = []
-        for d in deps:
-            if d.condition == condition:
-                if (
-                    d.condition
-                    in (ServiceDependencyCondition.HEALTHY, ServiceDependencyCondition.UNHEALTHY)
-                ) and (
-                    compose.podman_version is not None
-                    and strverscmp_lt(compose.podman_version, "4.6.0")
-                ):
-                    log.warning(
-                        "Ignored %s condition check due to podman %s doesn't support %s!",
-                        d.name,
-                        compose.podman_version,
-                        condition.value,
-                    )
-                    continue
-
-                deps_cd.extend(compose.container_names_by_service[d.name])
-
-        if deps_cd:
-
-            async def wait_one(
-                d_cnt: str, condition: ServiceDependencyCondition = condition
-            ) -> None:
-                while True:
-                    try:
-                        if condition == ServiceDependencyCondition.SERVICE_COMPLETED_SUCCESSFULLY:
-                            await _validate_completed_successfully(compose, [d_cnt])
-                        else:
-                            await compose.podman.output(
-                                [], "wait", [f"--condition={condition.value}", d_cnt]
-                            )
-                        log.debug(
-                            "dependency for condition %s has been fulfilled on container %s",
-                            condition.value,
-                            d_cnt,
-                        )
-                        break
-                    except CalledProcessError as _exc:
-                        output = list(
-                            ((_exc.stdout or b"") + (_exc.stderr or b"")).decode().split("\n")
-                        )
-                        log.debug(
-                            'Podman wait returned an error (%d) when executing "%s": %s',
-                            _exc.returncode,
-                            _exc.cmd,
-                            output,
-                        )
-                    await asyncio.sleep(1)
-
-            await asyncio.gather(*(wait_one(cnt) for cnt in deps_cd))
 
 
 async def run_container(
