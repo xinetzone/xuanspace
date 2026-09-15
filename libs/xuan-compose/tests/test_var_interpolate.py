@@ -1,0 +1,261 @@
+# SPDX-License-Identifier: GPL-2.0-only
+"""变量插值测试。
+
+逐用例移植自上游 tests/unit/test_var_interpolate.py（48 个参数化用例，断言零削弱）。
+唯一机械适配是 POSIX shell 交叉校验的传输层：
+
+* POSIX 平台：与上游一致，``shell=True`` + 仅含 var_values 的最小 env；
+* Windows 平台：无原生 POSIX shell，经 ``wsl.exe bash --noprofile --norc -s``
+  执行，并用 ``env -i`` 构造与上游等价的“仅含 var_values”的最小环境
+  （WSL 会强制注入 USER/NAME 等，直接继承会污染用例 3-6）。
+Python 侧断言语义与上游完全一致，无 skip。
+"""
+
+import os
+import subprocess
+import unittest
+
+from parameterized import parameterized
+
+from xuan_compose.errors import PodmanComposeError
+from xuan_compose.interpolation import var_interpolate
+
+
+def _shell_evaluate(to_interpolate: str, var_values: dict[str, str]) -> tuple[str, int]:
+    """以 POSIX shell 求值 echo "<to_interpolate>"，返回 (stdout 去尾换行, 退出码)。"""
+    if os.name == "posix":
+        process = subprocess.Popen(
+            f'echo "{to_interpolate}"',
+            env=var_values,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, _ = process.communicate()
+        return stdout.rstrip(b"\n").decode(), process.returncode
+
+    # Windows：经 WSL 传输，env -i 保证子 shell 只看到 var_values（与上游最小 env 对等）。
+    # 上游 48 个用例的模板与取值均不含单/双引号，故此处的 shell 引用是安全的。
+    assigns = " ".join(f"{key}={value!r}" for key, value in var_values.items())
+    script = f"env -i {assigns} bash --noprofile --norc -c 'echo \"{to_interpolate}\"'\n"
+    process = subprocess.Popen(
+        ["wsl.exe", "bash", "--noprofile", "--norc", "-s"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = process.communicate(script.encode())
+    return stdout.rstrip(b"\n").decode(), process.returncode
+
+
+class TestVarInterpolate(unittest.TestCase):
+    test_cases = [
+        # 0. Substitution without braces
+        ("Hello $NAME!", {"NAME": "Alice"}, "Hello Alice!", True),
+        # 1. Substitution with braces
+        ("Hello ${NAME}", {"NAME": "Alice"}, "Hello Alice", True),
+        # 2. Unset variable (empty substitution)
+        ("Hello ${NAME}", {}, "Hello ", True),
+        # 3. Default if unset (:-)
+        ("User: ${USER:-guest}", {}, "User: guest", True),
+        # 4. Default if unset or empty (:-)
+        ("User: ${USER:-guest}", {"USER": ""}, "User: guest", True),
+        # 5. Default if unset (-)
+        ("User: ${USER-guest}", {}, "User: guest", True),
+        # 6. Default if unset but not if empty (-)
+        ("User: ${USER-guest}", {"USER": ""}, "User: ", True),
+        # 7. Required variable (error if unset or empty)
+        ("Path: ${TEST_PATH:?TEST_PATH required}", {"TEST_PATH": "/bin"}, "Path: /bin", True),
+        # 8. Required variable fails when missing
+        (
+            "Path: ${TEST_PATH:?TEST_PATH required}",
+            {},
+            PodmanComposeError(
+                "required variable TEST_PATH is missing a value: TEST_PATH required"
+            ),
+            True,
+        ),
+        # 9. Required variable fails when empty (since :?)
+        (
+            "Path: ${TEST_PATH:?TEST_PATH required}",
+            {"TEST_PATH": ""},
+            PodmanComposeError(
+                "required variable TEST_PATH is missing a value: TEST_PATH required"
+            ),
+            True,
+        ),
+        # 10. Required variable (no colon, fails only if unset)
+        ("Config: ${CFG?missing}", {"CFG": "cfg.yaml"}, "Config: cfg.yaml", True),
+        # 11. Required variable fails when unset
+        (
+            "Config: ${CFG?missing}",
+            {},
+            PodmanComposeError("required variable CFG is missing a value: missing"),
+            True,
+        ),
+        # 12. Required variable passes even if empty (no colon)
+        ("Config: ${CFG?missing}", {"CFG": ""}, "Config: ", True),
+        # 13. Alternative if set (:+)
+        ("Alt: ${MODE:+active}", {"MODE": "1"}, "Alt: active", True),
+        # 14. Alternative if set, variable empty (still uses alt)
+        ("Alt: ${MODE+active}", {"MODE": ""}, "Alt: active", True),
+        # 15. Alternative if not set (+)
+        ("Alt: ${MODE+active}", {}, "Alt: ", True),
+        # 16. Combination of multiple vars
+        ("${GREETING:-Hi}, ${NAME:-stranger}!", {}, "Hi, stranger!", True),
+        # 17. Mix of required and default
+        ("${ENV:?Missing ENV} - ${SERVICE:-api}", {"ENV": "prod"}, "prod - api", True),
+        # 18. Default values with spaces
+        ("${USER:-default user}", {}, "default user", True),
+        # 19. Escaped dollar sign
+        (
+            "Price: $$${AMOUNT}",
+            {"AMOUNT": "100"},
+            "Price: $100",
+            False,  # In POSIX shells, $$ becomes PID, so skip shell test
+        ),
+        # 20. Empty variable substitution
+        ("Value: ${VAR}", {"VAR": ""}, "Value: ", True),
+        # 21. Nested default (inner default resolves)
+        ("${OUTER:-${INNER:-default}}", {}, "default", True),
+        # 22. Nested default (inner variable exists)
+        ("${OUTER:-${INNER:-default}}", {"INNER": "inner_value"}, "inner_value", True),
+        # 23. Nested default (outer variable exists)
+        (
+            "${OUTER:-${INNER:-default}}",
+            {"OUTER": "outer_value", "INNER": "inner_value"},
+            "outer_value",
+            True,
+        ),
+        # 24. Nested fallback chain
+        ("${A:-${B:-${C:-final}}}", {}, "final", True),
+        # 25. Nested fallback uses middle value
+        ("${A:-${B:-${C:-final}}}", {"B": "mid"}, "mid", True),
+        # 26. Nested fallback uses top value
+        ("${A:-${B:-${C:-final}}}", {"A": "top"}, "top", True),
+        # 27. Nested required variable message
+        ("${MAIN:-${BACKUP:?Missing BACKUP}}", {"BACKUP": "backup_value"}, "backup_value", True),
+        # 28. Nested required variable fails (inner missing)
+        (
+            "${MAIN:-${BACKUP:?Missing BACKUP}}",
+            {},
+            PodmanComposeError("required variable BACKUP is missing a value: Missing BACKUP"),
+            True,
+        ),
+        # 29. Nested default with error in inner fallback
+        ("${X:-${Y:?Y required}}", {"Y": "ok"}, "ok", True),
+        # 30. Nested default that triggers inner error
+        (
+            "${X:-${Y:?Y required}}",
+            {},
+            PodmanComposeError("required variable Y is missing a value: Y required"),
+            True,
+        ),
+        # 31. Inner nested default that is never triggered because outer value is used
+        ("${X:-${Y:?Y required}}", {"X": "ok"}, "ok", True),
+        # 32. Nested alternative expansion
+        (
+            "${VAR:+${ALT:-default_alt}}",
+            {"VAR": "something", "ALT": "alt_value"},
+            "alt_value",
+            True,
+        ),
+        # 33. Nested alternative fallback
+        ("${VAR:+${ALT:-default_alt}}", {"VAR": "something"}, "default_alt", True),
+        # 34. Nested with unset outer, inner provides default
+        ("${OUTER:-prefix_${INNER:-none}}", {}, "prefix_none", True),
+        # 35. Nested with inner variable set
+        ("${OUTER:-prefix_${INNER:-none}}", {"INNER": "abc"}, "prefix_abc", True),
+        # 36. Outer required, inner fallback
+        ("${REQ:?Missing ${ALT:-something}}", {"REQ": "value"}, "value", True),
+        # 37. Outer required triggers nested message
+        (
+            "${REQ:?Missing ${ALT:-something}}",
+            {},
+            PodmanComposeError("required variable REQ is missing a value: Missing something"),
+            True,
+        ),
+        # 38. Nested alternative chain
+        ("${A:+${B:+${C:-end}}}", {"A": "1", "B": "1", "C": "final"}, "final", True),
+        # 39. Nested alternative where middle missing
+        ("${A:+${B:+${C:-end}}}", {"A": "1"}, "", True),
+        # 40. Triple nested default with middle empty
+        ("${A:-${B:-${C:-${D:-default}}}}", {"B": ""}, "default", True),
+        # 41. Mixed chain: required + default + alternative
+        ("${ENV:-${FALLBACK:+${ALT:-alt_value}}}", {"FALLBACK": "1"}, "alt_value", True),
+        # 42. Invalid variable name in braces (starts with digit)
+        (
+            "${1INVALID}",
+            {},
+            ValueError(
+                "Invalid interpolation format: ${1INVALID}."
+                " You may need to escape any $ with another $"
+            ),
+            True,
+        ),
+        # 43. Invalid variable name in braces (starts with non-alphanumeric)
+        (
+            "${-INVALID}",
+            {},
+            ValueError(
+                "Invalid interpolation format: ${-INVALID}."
+                " You may need to escape any $ with another $"
+            ),
+            True,
+        ),
+        # 44. Invalid variable name in braces (empty)
+        (
+            "${}",
+            {},
+            ValueError(
+                "Invalid interpolation format: ${}. You may need to escape any $ with another $"
+            ),
+            False,
+        ),
+        # 45. Dollar sign not followed by valid variable name (should be treated as literal)
+        # Disable shell comparison since POSIX shells would treat $5 as fifth argument
+        ("Price is $5", {}, "Price is $5", False),
+        # 46. Required variable with spaces in error message (unquoted command syntax)
+        (
+            "cmd ${BAR:?BAR variable missing}",
+            {"BAR": "myvalue"},
+            "cmd myvalue",
+            True,
+        ),
+        # 47. Required variable with spaces in error message fails when missing
+        (
+            "cmd ${BAR:?BAR variable missing}",
+            {},
+            ValueError("required variable BAR is missing a value: BAR variable missing"),
+            True,
+        ),
+    ]
+
+    @parameterized.expand(test_cases)
+    def test_var_interpolate(
+        self,
+        to_interpolate: str,
+        var_values: dict[str, str],
+        expected: str | PodmanComposeError | ValueError,
+        compare_shell_evaluation: bool,
+    ) -> None:
+        try:
+            result = var_interpolate(to_interpolate, var_values)
+            self.assertEqual(result, expected)
+        except (PodmanComposeError, ValueError) as e:
+            self.assertTrue(
+                isinstance(expected, (PodmanComposeError, ValueError)),
+                msg=f"Expected PodmanComposeError or ValueError for input: {to_interpolate}",
+            )
+            self.assertEqual(str(e), str(expected))
+
+        if not compare_shell_evaluation:
+            return
+
+        # Ensure that the behavior matches the behavior of POSIX shells
+        shell_result, exit_code = _shell_evaluate(to_interpolate, var_values)
+        if isinstance(expected, (PodmanComposeError, ValueError)):
+            error_msg = f"Expected non-zero return code success for input: {to_interpolate}"
+            self.assertNotEqual(exit_code, 0, msg=error_msg)
+        else:
+            self.assertEqual(shell_result, expected)
