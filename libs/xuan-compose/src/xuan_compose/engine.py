@@ -75,6 +75,11 @@ class ComposeEngine:
         # 分层后改为显式注入，默认 None 保证实例化零子进程（TR-6.1）。
         self.podman: Podman | None = podman
         self.podman_version: str | None = None
+        # 上游模块级 ``script``（第 56 行，导入期读取解释器启动参数取真实路径）
+        # 的分层替代：systemd unit 模板需要可执行路径，改为引擎显式字段，
+        # 由 CLI 层装配时注入，导入/实例化期不读取解释器启动参数（FR-5，
+        # T10 差异表登记；TR-8.3 argv 读取只允许存在于未来的 cli/ 层）。
+        self.executable: str | None = None
         self.environ: dict[str, str] = {}
         self.exit_code = None
         self.commands: dict[str, Any] = {}
