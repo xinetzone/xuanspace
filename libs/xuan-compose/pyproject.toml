@@ -62,13 +62,16 @@ lint = [
     "types-PyYAML>=6.0",
 ]
 
-# 纯 Python 包：无 [tool.scikit-build.cmake] 段
+# 纯 Python 包：wheel.cmake=false 显式禁用 CMake（仓库根亦不提供 CMakeLists.txt），
+# scikit-build-core 按 wheel.packages 直接打包，产出 py3-none-any 通用 wheel；
+# sdist 构建同样无需 cmake/ninja（scikit-build-core 1.0+ 语义，见 build/wheel.py）。
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-wheel.packages = ["src/xuan_compose"]
 build-dir = "build/{wheel_tag}"
-ninja.make-fallback = false
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/xuan_compose"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
