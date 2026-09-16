@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -133,13 +133,15 @@ packages = [
 ]
 
 # ── scikit-build-core：根目录为纯 Python 枢纽包 ──
-# 根项目不伪装成可安装库，无 Python 包体；仅承载 dev 依赖与 CLI 工具链聚合。
-# 构建由 LANGUAGES NONE 的根 CMakeLists.txt 完成，无需 C++ 编译器。
+# 根项目无可发布 Python 包体，仅承载 dev 依赖与 CLI 工具链聚合。
+# wheel.cmake=false 禁用 CMake（根目录不提供 CMakeLists.txt），
+# pip install -e ".[dev]" 无需 cmake/ninja；原生扩展子项目各自独立构建，
+# 原生工具链由下方 dev/build extras 与 CI 按需要安装。
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-ninja.make-fallback = false
-build.verbose = true
+
+[tool.scikit-build.wheel]
+cmake = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

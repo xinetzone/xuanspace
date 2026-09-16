@@ -153,8 +153,7 @@ xuanspace/
 ├── .agents/       # AI Agent 配置与脚本
 ├── .meta/         # 项目元数据
 ├── AGENTS.md      # AI 智能体协作指南
-├── pyproject.toml # 根项目配置
-└── CMakeLists.txt # CMake 构建配置
+└── pyproject.toml # 根项目配置（纯 Python 枢纽包）
 ```
 
 ## 文档与资源
