@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "cmake>=3.26", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -37,18 +37,15 @@ Issues = "https://github.com/xinetzone/xuanspace/issues"
 [project.scripts]
 xs = "xs.cli:app"
 
+# 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
+# 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-wheel.packages = ["src/xs"]
-ninja.make-fallback = false
-build.verbose = true
 editable.mode = "inplace"
 
 sdist.include = [
   "/src/**/*.py",
   "/pyproject.toml",
-  "/CMakeLists.txt",
   "/README.md",
 ]
 
@@ -59,3 +56,7 @@ sdist.exclude = [
   "build",
   "dist",
 ]
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/xs"]
