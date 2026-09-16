@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -26,12 +26,15 @@ dev = [
     "pytest-cov>=5.0",
 ]
 
+# 纯 Python 包：wheel.cmake=false 显式禁用 CMake（模板不提供 CMakeLists.txt），
+# scikit-build-core 直接按 wheel.packages 打包，产出 py3-none-any 通用 wheel；
+# 构建全程无需 cmake/ninja（scikit-build-core 1.0+ 语义）。
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-wheel.packages = ["src/{{package_name}}"]
-ninja.make-fallback = false
-build.verbose = true
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/{{package_name}}"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
