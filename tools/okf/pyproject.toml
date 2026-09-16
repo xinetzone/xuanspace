@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -53,19 +53,17 @@ trust_deriver = "okf.plugins.trust:TrustDeriver"
 link_resolver = "okf.plugins.links:LinkResolver"
 cli_adapter = "okf.plugins.cli_adapter:CLIAdapter"
 
+# 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
+# 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
+# 未来挂载原生模块时：恢复 CMakeLists.txt、移除 wheel.cmake=false，
+# 并在 build-system.requires 加回 cmake/ninja。
 [tool.scikit-build]
 minimum-version = "0.10"
 build-dir = "build/{wheel_tag}"
-cmake.build-type = "Release"
-cmake.args = ["-GNinja"]
-wheel.packages = ["src/okf"]
-ninja.make-fallback = false
-build.verbose = false
 
 sdist.include = [
   "/src/**/*.py",
   "/pyproject.toml",
-  "/CMakeLists.txt",
   "/README.md",
 ]
 
@@ -76,6 +74,10 @@ sdist.exclude = [
   "build",
   "dist",
 ]
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/okf"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
