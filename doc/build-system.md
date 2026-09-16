@@ -2,12 +2,17 @@
 
 ## 概述
 
-Xuanspace **全仓库统一采用 `scikit-build-core`（CMake + Ninja）构建后端**，唯一例外是纯 Python 子项目使用 `scikit-build-core` 搭配 `LANGUAGES NONE` 的 CMakeLists.txt（不依赖 C++ 编译器）。
+Xuanspace **全仓库统一采用 `scikit-build-core` 构建后端**，按项目是否含原生代码分两种形态：
 
-| 项目类型 | 构建后端 | 说明 |
+| 项目类型 | 构建形态 | 说明 |
 |---|---|---|
-| 纯 Python 子项目/根枢纽包 | scikit-build-core + LANGUAGES NONE | 无需 C++ 编译器，CMake 仅做安装 |
-| C++ 原生扩展 / FFI | scikit-build-core + CMake + Ninja | C/C++ 扩展模块 |
+| 纯 Python 子项目/根枢纽包 | scikit-build-core + `wheel.cmake=false`，**无 CMakeLists.txt** | 无需 CMake/Ninja/编译器，产出 `py3-none-any` 通用 wheel |
+| C++ 原生扩展 / FFI | scikit-build-core + CMake + Ninja + CMakeLists.txt | C/C++ 扩展模块，产出平台相关 wheel |
+
+> 历史形态 `LANGUAGES NONE` + 占位 CMakeLists.txt 已废止：它仍会触发 CMake 配置，
+> 导致纯 Python 包被钉上平台相关 wheel 标签（`cp3xx-cp3xx-<os>_<arch>`），
+> 且 sdist 构建被迫依赖 cmake/ninja。`scripts/check_pyproject_style.py` 会
+> 强制校验两种形态的一致性（纯 Python 包不得携带 CMakeLists.txt、不得声明 ninja）。
 
 ## 构建工具链
 
@@ -40,11 +45,12 @@ Xuanspace **全仓库统一采用 `scikit-build-core`（CMake + Ninja）构建�
 
 ### 纯 Python 项目配置
 
-纯 Python 项目同样使用 scikit-build-core，CMakeLists.txt 声明 `LANGUAGES NONE`：
+纯 Python 项目使用 scikit-build-core 的纯 Python 模式：**不创建 CMakeLists.txt**，
+在 `[tool.scikit-build.wheel]` 显式声明 `cmake = false`：
 
 ```toml
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -54,19 +60,19 @@ requires-python = ">=3.14.6"
 
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-wheel.packages = ["src/my_lib"]
-ninja.make-fallback = false
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/my_lib"]
 ```
 
-对应 `CMakeLists.txt`：
+特征：
 
-```cmake
-project(my_lib LANGUAGES NONE)
-if(SKBUILD)
-  install(DIRECTORY src/my_lib/ DESTINATION my_lib)
-endif()
-```
+- 构建全程不调用 CMake/Ninja，干净环境无需预装原生工具链；
+- 产出 `py3-none-any`、`Root-Is-Purelib: true` 的通用 wheel；
+- sdist 与从 sdist 重建 wheel 同样无需 cmake/ninja；
+- 未来若挂载原生模块：恢复 CMakeLists.txt、移除 `wheel.cmake=false`，
+  并在 `build-system.requires` 加回 `cmake`/`ninja`（即转为下一节的原生形态）。
 
 ### C++ 原生扩展项目配置
 

@@ -5,8 +5,11 @@
 检查：
 1. TOML 可解析（tomllib）
 2. build-backend == "scikit_build_core.build"（统一后端）
-3. [build-system].requires 含 scikit-build-core 与 ninja
-4. 无 setuptools / tool.setuptools 残留（作为唯一构建后端）
+3. [build-system].requires 含 scikit-build-core
+4. 原生项目（未声明 wheel.cmake=false）必须含 ninja；
+   纯 Python 项目（[tool.scikit-build.wheel] cmake=false）禁止声明
+   cmake/ninja 构建需求，且同目录不得携带 CMakeLists.txt
+5. 无 setuptools / tool.setuptools 残留（作为唯一构建后端）
 
 用法：python scripts/check_pyproject_style.py
 退出码：0 全部通过；1 存在不合规项；2 脚本自身错误。
@@ -16,6 +19,7 @@ Python 版本要求：3.11+（使用标准库 tomllib）。
 
 from __future__ import annotations
 
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -39,12 +43,25 @@ EXCLUDE_DIRS = {
     ".agents",
 }
 
-REQUIRED_REQUIRES = {"scikit-build-core", "ninja"}
+REQUIRED_REQUIRES = {"scikit-build-core"}
+NATIVE_REQUIRED_REQUIRES = {"ninja"}
+PURE_PYTHON_DENIED_REQUIRES = {"cmake", "ninja"}
 DENIED_MARKERS = {
     "tool.setuptools",
     "tool.pdm.build",
 }
 DENIED_BACKENDS = {"setuptools.build_meta", "setuptools.build_meta:__legacy__"}
+
+
+def _req_name(req: str) -> str:
+    """从 PEP 508 requirement 串取裸包名（剥离版本标记与环境标记）。"""
+    return re.split(r"[<>=!~;\[\s]", req, maxsplit=1)[0].strip()
+
+
+def is_pure_python(data: dict[str, Any]) -> bool:
+    """纯 Python 包判定：[tool.scikit-build.wheel] cmake 显式为 false。"""
+    wheel = data.get("tool", {}).get("scikit-build", {}).get("wheel", {})
+    return isinstance(wheel, dict) and wheel.get("cmake") is False
 
 
 def iter_pyproject(root: Path):
@@ -73,8 +90,22 @@ def iter_pyproject(root: Path):
 
     # 仅保留真实存在的文件，排序保证输出稳定
     for path in sorted(seen):
-        if path.exists():
+        if path.exists() and not _is_nested_submodule(root, path.parent):
             yield path
+
+
+def _is_nested_submodule(root: Path, project_dir: Path) -> bool:
+    """嵌套 git submodule（gitlink）判定：非根目录且内含 .git 文件或目录。
+
+    submodule 是独立仓库（如 vendor/*、libs/tvm-book、libs/mystx），
+    有各自的构建标准与 CI，不受本仓 canonical 风格约束；
+    根目录自身的 .git 是本仓标志，不算嵌套 submodule。
+    """
+    try:
+        project_dir.relative_to(root)
+    except ValueError:
+        return False
+    return project_dir != root and (project_dir / ".git").exists()
 
 
 def check_one(path: Path) -> list[str]:
@@ -94,12 +125,28 @@ def check_one(path: Path) -> list[str]:
     if backend != "scikit_build_core.build":
         issues.append(f"build-backend 应为 scikit_build_core.build，实际为 {backend!r}")
 
-    # 2. requires 含 scikit-build-core 与 ninja
+    # 2. requires 规则：scikit-build-core 始终必需；
+    #    ninja 仅原生项目必需；纯 Python 项目禁止 cmake/ninja
     if isinstance(requires, list):
-        req_names = {r.split(">=")[0].split("==")[0].split("<")[0] for r in requires}
+        req_names = {_req_name(r) for r in requires}
         for req in REQUIRED_REQUIRES:
             if req not in req_names:
                 issues.append(f"[build-system].requires 缺少 {req}")
+        if is_pure_python(data):
+            for req in PURE_PYTHON_DENIED_REQUIRES:
+                if req in req_names:
+                    issues.append(
+                        f"纯 Python 包（wheel.cmake=false）不需要 {req}，"
+                        f"应从 [build-system].requires 移除"
+                    )
+            if (path.parent / "CMakeLists.txt").exists():
+                issues.append(
+                    "纯 Python 包（wheel.cmake=false）不得携带 CMakeLists.txt，应删除"
+                )
+        else:
+            for req in NATIVE_REQUIRED_REQUIRES:
+                if req not in req_names:
+                    issues.append(f"[build-system].requires 缺少 {req}（原生项目必需）")
     else:
         issues.append("缺少 [build-system].requires")
 
