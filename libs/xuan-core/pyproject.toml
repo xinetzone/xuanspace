@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11"]
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -13,9 +13,11 @@ authors = [
 ]
 license = {text = "MIT"}
 
+# 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
+# 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
 [tool.scikit-build]
 minimum-version = "0.10"
-cmake.build-type = "Release"
-wheel.packages = ["src/xuan_core"]
-ninja.make-fallback = false
-build.verbose = true
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/xuan_core"]
