@@ -16,8 +16,8 @@ from xuan_compose.merge import (
     load_yaml_or_die,
     rec_merge,
     rec_merge_one,
-    resolve_extends,
 )
+from xuan_compose.normalize import resolve_extends
 
 
 class TestOverrideTagConstruction:

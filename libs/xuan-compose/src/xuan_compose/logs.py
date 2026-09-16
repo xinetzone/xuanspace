@@ -10,7 +10,6 @@
 
 import argparse
 import asyncio
-import sys
 from typing import Any
 
 from .translate.run_args import get_service_info
@@ -52,9 +51,5 @@ def create_format_logs_task(
 
 def _task_cancelled(task: asyncio.Task[Any]) -> bool:
     """等价于上游 compose_up 内的 ``_task_cancelled`` 判定。"""
-    if task.cancelled():
-        return True
-    # Task.cancelling() is new in python 3.11
-    if sys.version_info >= (3, 11) and task.cancelling():
-        return True
-    return False
+    # Task.cancelling() 自 3.11 起可用；本库 requires-python>=3.14，无需版本守卫。
+    return bool(task.cancelled() or task.cancelling())

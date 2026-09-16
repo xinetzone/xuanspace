@@ -6,7 +6,11 @@
 * ``OverrideTag`` / ``ResetTag``（第 1764-1808 行，YAML 标签 ``!override``/``!reset``）
 * ``clone`` / ``rec_merge_one`` / ``rec_merge``（第 2221-2317 行）
 * ``load_yaml_or_die``（第 2320-2326 行）
-* ``resolve_extends``（第 2329-2365 行）
+
+``resolve_extends``（上游第 2329-2365 行）在分层归属上属于规范化流程，
+T11 下沉到 :mod:`xuan_compose.normalize`——它内部要调用 ``rec_subs``/
+``normalize_service``（同模块）与本模块的 ``rec_merge``/``load_yaml_or_die``，
+下沉后规范层内部依赖变为单向（normalize → merge），消除原先的惰性导入环。
 
 差异登记（T10 汇总）：``OverrideTag``/``ResetTag`` 仍继承 ``yaml.YAMLObject``，
 因此 import 本模块时会向上游一样把两个标签注册进全局 ``yaml.SafeLoader``/
@@ -15,7 +19,6 @@
 不导入本模块，故包根导入仍无副作用。
 """
 
-import os
 import sys
 from typing import Any
 
@@ -31,7 +34,6 @@ __all__ = [
     "rec_merge_one",
     "rec_merge",
     "load_yaml_or_die",
-    "resolve_extends",
 ]
 
 
@@ -188,46 +190,3 @@ def load_yaml_or_die(file_path: str, stream: Any) -> dict[str, Any]:
         log.fatal("Compose file contains an error:\n%s", e)
         log.info("Compose file %s contains an error:", file_path, exc_info=e)
         sys.exit(1)
-
-
-def resolve_extends(
-    services: dict[str, Any], service_names: list[str], environ: dict[str, Any]
-) -> None:
-    # 函数内导入：normalize 依赖 merge 的标签，merge 反向使用其规范化函数，
-    # 延迟到调用期以消除 import 期环。
-    from .normalize import normalize_service, rec_subs
-
-    for name in service_names:
-        service = services[name]
-        ext = service.get("extends", {})
-        if isinstance(ext, str):
-            ext = {"service": ext}
-        from_service_name = ext.get("service")
-        if not from_service_name:
-            continue
-        filename = ext.get("file")
-        if filename:
-            if filename.startswith("./"):
-                filename = filename[2:]
-            with open(filename, encoding="utf-8") as f:
-                content = load_yaml_or_die(filename, f) or {}
-            if "services" in content:
-                content = content["services"]
-            subdirectory = os.path.dirname(filename)
-            content = rec_subs(content, environ)
-            from_service = content.get(from_service_name, {}) or {}
-            normalize_service(from_service, subdirectory)
-        else:
-            from_service = services.get(from_service_name, {}).copy()
-            try:
-                del from_service["_deps"]
-            except KeyError as e:
-                raise KeyError(
-                    f"{from_service_name} not found at services.{name}.extends definition"
-                ) from e
-            try:
-                del from_service["extends"]
-            except KeyError:
-                pass
-        new_service = rec_merge({}, from_service, service)
-        services[name] = new_service

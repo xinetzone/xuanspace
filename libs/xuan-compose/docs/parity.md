@@ -78,7 +78,7 @@
 | rec_merge_one | merge.py | 2225 |
 | rec_merge | merge.py | 2311 |
 | load_yaml_or_die | merge.py | 2320 |
-| resolve_extends | merge.py | 2329 |
+| resolve_extends | **normalize.py**（T11 由 merge 下沉，见 D14） | 2329 |
 | find_compose_files_recursively | discovery.py | 2392 |
 | COMPOSE_DEFAULT_LS（常量） | discovery.py | 2374 |
 
@@ -284,6 +284,7 @@
 | D11 | `!override`/`!reset` YAMLObject 全局注册 | 原样保留（merge.py 导入即注册进 SafeLoader/SafeDumper），但包根 `__init__.py` 不导入 merge——`import xuan_compose` 仍无副作用 | T3 登记；行为与上游一致，包根无副作用由 TR-2.2 冒烟保证 |
 | D12 | `prog` 随 `sys.argv[0]`（podman-compose 呈现） | argparse 默认 prog（`python -m xuan_compose`/`xuan-compose` 呈现） | AC-4 明确允许 prog 差异；快照序列化刻意不采集 prog |
 | D13 | check_dep_conditions/_validate_completed_successfully 定义于 up 辅助区，T4 按 test_depends_on 归属提前迁入 dependencies.py 后，T7 在 commands/updown.py 又逐行重译了一份（重复实现） | T10 去重：删除 commands/updown.py 内的副本，改为 `from ..dependencies import check_dep_conditions` 再导出（保持符号面与测试导入路径），单一事实源 | 两份字节级一致；去重后 940 测试全绿、ruff/mypy 0 |
+| D14 | `resolve_extends` 原置于 merge.py，但其函数体要调用 normalize 的 `rec_subs`/`normalize_service`，只能用函数内惰性 import 反向取 normalize，与 normalize 顶层 `from .merge import ...` 构成规范层内部惰性环 | T11 V 审查后下沉到 normalize.py（它本属规范化流程），内部直接用同模块函数、仅单向 `from .merge import rec_merge, load_yaml_or_die`；merge.py 删除该函数与惰性 import | 纯代码移动零行为变化；环消除后规范层依赖为 normalize→merge 单向，940 测试全绿（test_merge_extra 的 TestResolveExtends 改从 normalize 导入） |
 
 ### 5.3 逐行保留的上游怪癖（未顺手"修正"，T9 测试固化）
 

@@ -19,7 +19,7 @@ from typing import Any, overload
 from .compat import is_list, is_relative_ref, secondarypathisabs
 from .errors import PodmanComposeError
 from .interpolation import var_interpolate
-from .merge import OverrideTag, ResetTag
+from .merge import OverrideTag, ResetTag, load_yaml_or_die, rec_merge
 
 __all__ = [
     "rec_subs",
@@ -31,6 +31,7 @@ __all__ = [
     "normalize_service_final",
     "normalize_final",
     "is_context_git_url",
+    "resolve_extends",
 ]
 
 
@@ -290,3 +291,49 @@ def normalize_final(compose: dict[str, Any], project_dir: str) -> dict[str, Any]
     for service in services.values():
         normalize_service_final(service, project_dir)
     return compose
+
+
+def resolve_extends(
+    services: dict[str, Any], service_names: list[str], environ: dict[str, Any]
+) -> None:
+    """解析服务 ``extends``（翻译自上游第 2329-2365 行；T11 由 merge 下沉至此）。
+
+    本函数本属规范化流程：内部复用同模块的 :func:`rec_subs` /
+    :func:`normalize_service`，以及合并/加载工具 :func:`rec_merge` /
+    :func:`load_yaml_or_die`（来自 merge）。放在本模块使规范层内部依赖
+    单向（normalize → merge），不再需要函数内惰性导入。
+    """
+    for name in service_names:
+        service = services[name]
+        ext = service.get("extends", {})
+        if isinstance(ext, str):
+            ext = {"service": ext}
+        from_service_name = ext.get("service")
+        if not from_service_name:
+            continue
+        filename = ext.get("file")
+        if filename:
+            if filename.startswith("./"):
+                filename = filename[2:]
+            with open(filename, encoding="utf-8") as f:
+                content = load_yaml_or_die(filename, f) or {}
+            if "services" in content:
+                content = content["services"]
+            subdirectory = os.path.dirname(filename)
+            content = rec_subs(content, environ)
+            from_service = content.get(from_service_name, {}) or {}
+            normalize_service(from_service, subdirectory)
+        else:
+            from_service = services.get(from_service_name, {}).copy()
+            try:
+                del from_service["_deps"]
+            except KeyError as e:
+                raise KeyError(
+                    f"{from_service_name} not found at services.{name}.extends definition"
+                ) from e
+            try:
+                del from_service["extends"]
+            except KeyError:
+                pass
+        new_service = rec_merge({}, from_service, service)
+        services[name] = new_service

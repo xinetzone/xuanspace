@@ -36,9 +36,16 @@ from .dependencies import flat_deps
 from .discovery import find_compose_files_recursively
 from .envfile import dotenv_to_dict
 from .logging_utils import log
-from .merge import OverrideTag, ResetTag, load_yaml_or_die, rec_merge, resolve_extends
+from .merge import OverrideTag, ResetTag, load_yaml_or_die, rec_merge
 from .model import XPodmanSettingKey
-from .normalize import norm_as_dict, norm_as_list, normalize, normalize_final, rec_subs
+from .normalize import (
+    norm_as_dict,
+    norm_as_list,
+    normalize,
+    normalize_final,
+    rec_subs,
+    resolve_extends,
+)
 from .runner import Podman
 from .translate.mounts import get_mnt_dict
 from .translate.ports import norm_ports
