@@ -31,6 +31,10 @@ Python ≥ 3.14 的 src 布局纯 Python 库。
   WSL py3.14 940 passed。
 - **T10 对等审计与文档**：142 个上游公开符号 100% 映射（docs/parity.md）、
   py3.14 差异逐条登记、README 完稿（库 API/CLI/架构图/测试/集成验证）。
+- **T11 独立对抗审查**：3 个 fresh-context reviewer（对等/架构/五攻击者）结论
+  全 pass、0 blocker/major；修复 4 项重构引入问题（resolve_extends 下沉消除
+  规范层惰性环、删 3.11 版本守卫死分支、架构图校正、SPDX 计数），审查报告见
+  docs/review.md；13 条上游固有健壮性问题登记为上游回馈候选（不在对等重构中夹带修改）。
 
 ### 主要架构差异（行为等价）
 
