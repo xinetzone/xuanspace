@@ -38,12 +38,13 @@ class CheckResult:
     install_hint: str | None = None
 
 
-def _run_command(cmd: list[str]) -> tuple[bool, str, str]:
+def _run_command(cmd: list[str], cwd: Path | None = None) -> tuple[bool, str, str]:
     """
     运行外部命令并返回结果
 
     Args:
         cmd: 命令和参数列表
+        cwd: 命令执行目录，默认为当前工作目录
 
     Returns:
         (success, stdout, stderr) 元组
@@ -55,6 +56,7 @@ def _run_command(cmd: list[str]) -> tuple[bool, str, str]:
             text=True,
             check=False,
             timeout=10,
+            cwd=cwd,
         )
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -224,6 +226,133 @@ def check_sphinx(workspace_root: Path) -> CheckResult:
         )
 
 
+_GITMODULES_PATH_REF = re.compile(r"^\s*path\s*=\s*(.+?)\s*$", re.MULTILINE)
+
+
+def parse_submodule_paths(gitmodules_text: str) -> list[str]:
+    """解析 .gitmodules 文本，返回全部子模块相对路径（按声明顺序）"""
+    return _GITMODULES_PATH_REF.findall(gitmodules_text)
+
+
+def check_submodules(workspace_root: Path) -> list[CheckResult]:
+    """检查各子模块工作树是否与超级仓库记录的 gitlink 一致"""
+    gitmodules_path = workspace_root / ".gitmodules"
+    if not gitmodules_path.exists():
+        return [
+            CheckResult(
+                name="子模块",
+                status="skip",
+                message=".gitmodules 不存在，跳过子模块一致性检查",
+                required=False,
+            )
+        ]
+
+    try:
+        gitmodules_text = gitmodules_path.read_text(encoding="utf-8")
+    except OSError:
+        return [
+            CheckResult(
+                name="子模块",
+                status="warning",
+                message=".gitmodules 读取失败，跳过子模块一致性检查",
+                required=False,
+            )
+        ]
+
+    results: list[CheckResult] = []
+    for path in parse_submodule_paths(gitmodules_text):
+        submodule_dir = workspace_root / path
+
+        pinned_ok, pinned_out, _ = _run_command(["git", "ls-tree", "HEAD", path], cwd=workspace_root)
+        if not pinned_ok:
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="warning",
+                    message="无法读取超级仓库记录的子模块指针，跳过该项检查",
+                    required=False,
+                )
+            )
+            continue
+        pinned_match = re.search(r"commit\s+([0-9a-f]{40})", pinned_out)
+        if pinned_match is None:
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="warning",
+                    message="gitlink 解析失败，跳过该项检查",
+                    required=False,
+                )
+            )
+            continue
+        pinned_sha = pinned_match.group(1)
+
+        # 已初始化的子模块路径下必有 .git 文件（gitdir 指针）或目录；
+        # 缺失即未初始化。不能直接在子目录里跑 git rev-parse——空目录会向上
+        # 回溯到超级仓库自身的 .git，造成误判。
+        if not (submodule_dir / ".git").exists():
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="warning",
+                    message="子模块未初始化",
+                    required=False,
+                    install_hint=f"git submodule update --init {path}",
+                )
+            )
+            continue
+
+        actual_ok, actual_sha, _ = _run_command(["git", "rev-parse", "HEAD"], cwd=submodule_dir)
+        if not actual_ok:
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="warning",
+                    message="子模块未初始化",
+                    required=False,
+                    install_hint=f"git submodule update --init {path}",
+                )
+            )
+            continue
+
+        if actual_sha != pinned_sha:
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="error",
+                    version=actual_sha[:7],
+                    message=f"子模块指针漂移：期望 {pinned_sha[:7]}，实际 {actual_sha[:7]}",
+                    install_hint="git submodule update --init --recursive",
+                )
+            )
+            continue
+
+        dirty_ok, dirty_out, _ = _run_command(["git", "status", "--porcelain"], cwd=submodule_dir)
+        if dirty_ok and dirty_out:
+            results.append(
+                CheckResult(
+                    name=path,
+                    status="warning",
+                    version=actual_sha[:7],
+                    message="子模块指针一致，但工作树存在未提交修改",
+                    required=False,
+                    install_hint=f"git -C {path} status 查看并提交或还原修改",
+                )
+            )
+            continue
+
+        results.append(
+            CheckResult(
+                name=path,
+                status="ok",
+                version=actual_sha[:7],
+                message="子模块指针与 gitlink 一致",
+            )
+        )
+
+    return results
+
+
 _PY_MINOR_REF = re.compile(r"\b3\.(\d+)(?:\.\d+)?\+")
 
 
@@ -330,6 +459,7 @@ def run_doctor(check_mode: bool = False) -> int:
     results.append(check_cmake())
     results.append(check_ninja())
     results.append(check_sphinx(workspace_root))
+    results.extend(check_submodules(workspace_root))
     results.append(check_version_consistency(workspace_root))
 
     table = Table(show_header=True, header_style="bold magenta", box=None)
@@ -369,7 +499,7 @@ def run_doctor(check_mode: bool = False) -> int:
         console.print()
 
     if has_errors:
-        console.print("[bold red]✗ 发现必需工具缺失，请安装后重试[/bold red]")
+        console.print("[bold red]✗ 发现必需检查未通过，请按建议修复后重试[/bold red]")
         return 1
     elif has_warnings:
         console.print("[bold yellow]⚠ 部分可选工具未安装，不影响核心功能[/bold yellow]")
