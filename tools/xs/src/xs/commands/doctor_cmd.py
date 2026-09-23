@@ -194,13 +194,19 @@ def check_ninja() -> CheckResult:
 
 
 def check_sphinx(workspace_root: Path) -> CheckResult:
-    """检查 Sphinx 是否可用（如果 docs/ 存在）"""
-    docs_dir = workspace_root / "docs"
-    if not docs_dir.exists():
+    """检查 Sphinx 是否可用（如果文档目录存在）
+
+    本仓库约定 Sphinx 源目录为 doc/，同时兼容通用的 docs/ 命名。
+    """
+    docs_dir = next(
+        (d for name in ("doc", "docs") if (d := workspace_root / name).is_dir()),
+        None,
+    )
+    if docs_dir is None:
         return CheckResult(
             name="Sphinx",
             status="skip",
-            message="docs/ 目录不存在，跳过 Sphinx 检查",
+            message="doc/（或 docs/）目录不存在，跳过 Sphinx 检查",
             required=False,
         )
 
