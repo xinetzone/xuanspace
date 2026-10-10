@@ -8,7 +8,7 @@
 > 上游「位置」列中 M3/M4/M5 等行号锚定于更早的登记时点（早于 e3df104），属登记时点证据、不随后续基线推进重锚；symbol-map.md 的行号列已随 2026-10-10 同步统一锚定到 1f1cb09。
 
 - 语法/类型现代化（无语义变化）：M1-M7
-- 结构性重构（语义等价，架构必需）：D1-D14
+- 结构性重构（语义等价，架构必需）：D1-D15
 - 符号总账与逐模块映射：[symbol-map.md](symbol-map.md)
 - 逐行保留的上游怪癖：[upstream-quirks.md](upstream-quirks.md)
 
@@ -39,6 +39,7 @@
 | <a id="d9"></a>D9 | `compose_up` 内闭包 `_task_cancelled`（无自由变量） | 提为 `logs.py` 模块级函数；T11 F2 进一步把函数体折叠为 `bool(task.cancelled() or task.cancelling())` 并删除 `sys.version_info>=(3,11)` 死分支守卫（requires-python≥3.14，见 [review §5 F2](../review/2026-09-16-t11-adversarial-review.md#f2)） | 无自由变量，提升后行为完全一致；折叠与删守卫在 3.14 下语义等价，940 测试回归通过 |
 | <a id="d10"></a>D10 | `run()`/`_parse_args()` 留在单体 | 随 CLI 层迁出；engine.commands 初始空 dict | T7 install_handlers 填充、T8 dispatch 查表 |
 | <a id="d11"></a>D11 | `!override`/`!reset` YAMLObject 全局注册 | 原样保留（merge.py 导入即注册进 SafeLoader/SafeDumper），但包根 `__init__.py` 不导入 merge——`import xuan_compose` 仍无副作用 | T3 登记；行为与上游一致，包根无副作用由 TR-2.2 冒烟保证 |
-| <a id="d12"></a>D12 | `prog` 随 `sys.argv[0]`（podman-compose 呈现） | argparse 默认 prog（`python -m xuan_compose`/`xuan-compose` 呈现） | AC-4 明确允许 prog 差异；快照序列化刻意不采集 prog |
+| <a id="d12"></a>D12 | `prog` 随 `sys.argv[0]`（podman-compose 呈现） | argparse 默认 prog（`python -m xuan_compose`/`xuan-compose`/`xc` 呈现，见 D15） | AC-4 明确允许 prog 差异；快照序列化刻意不采集 prog |
 | <a id="d13"></a>D13 | check_dep_conditions/_validate_completed_successfully 定义于 up 辅助区，T4 按 test_depends_on 归属提前迁入 dependencies.py 后，T7 在 commands/updown.py 又逐行重译了一份（重复实现） | T10 去重：删除 commands/updown.py 内的副本，改为 `from ..dependencies import check_dep_conditions` 再导出（保持符号面与测试导入路径），单一事实源 | 两份字节级一致；去重后 940 测试全绿、ruff/mypy 0 |
 | <a id="d14"></a>D14 | `resolve_extends` 原置于 merge.py，但其函数体要调用 normalize 的 `rec_subs`/`normalize_service`，只能用函数内惰性 import 反向取 normalize，与 normalize 顶层 `from .merge import ...` 构成规范层内部惰性环 | T11 V 审查后下沉到 normalize.py（它本属规范化流程），内部直接用同模块函数、仅单向 `from .merge import rec_merge, load_yaml_or_die`；merge.py 删除该函数与惰性 import | 纯代码移动零行为变化；环消除后规范层依赖为 normalize→merge 单向，940 测试全绿（test_merge_extra 的 TestResolveExtends 改从 normalize 导入） |
+| <a id="d15"></a>D15 | 单一 console script `podman-compose = "podman_compose:main"`（FR-3） | 双 console script 同指 `xuan_compose.cli.main:main`：规范名 `xuan-compose`（FR-3 对等）+ 日常短别名 `xc`（2026-10-10 定名，对齐 monorepo 内 `xs`/`okf` 短命令风格） | FR-3 结构对等保持（存在指向 main 的 console script）；prog 随 `argv[0]` 呈现属 D12 已允许差异，对拍快照不采集故不受影响；`tests/test_cli.py::TestConsoleScripts` 静态解析 pyproject 断言双名同指且 callable 可导入；与外部 [xcfile.dev](https://xcfile.dev/) 的 `xc` 同名风险已在 README 声明，`systemd create-unit` 建议用规范名创建（D4 路径内嵌） |

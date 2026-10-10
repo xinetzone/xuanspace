@@ -28,7 +28,13 @@ pip install -e ".[test,lint]"
 安装后同时提供：
 
 - 库包 `xuan_compose`（库优先：**仅 import 不产生任何副作用**，不读 argv、不启动子进程）；
-- console script `xuan-compose`（`[project.scripts]`，与上游 `podman-compose` 等价）。
+- 两个等价的 console script（`[project.scripts]` 同指 `xuan_compose.cli.main:main`）：
+  - `xuan-compose`：**规范名/对拍名**，与上游 `podman-compose` 一一对应（FR-3）；
+  - `xc`：**日常短别名**，与 monorepo 内 `xs`/`okf` 短命令风格一致。
+
+> 命名提示：短别名 `xc` 与外部任务运行器 [xc（xcfile.dev）](https://xcfile.dev/)
+> 重名，同一环境安装顺序决定 `xc` 指向；别名面向 Xuanspace 环境使用，
+> 跨环境分发或创建 systemd unit 时请使用规范名 `xuan-compose`。
 
 > 构建说明：scikit-build-core 的 CMake 产物全部落在 `build/{wheel_tag}/`（已被
 > xuanspace 根 `.gitignore` 忽略），源码根目录保持干净。本库**不使用**
@@ -75,11 +81,15 @@ m = parse_short_mount("./data:/var/lib/mysql", basedir=".")
 ### 命令行
 
 ```bash
-# console script
+# 规范名 console script（与上游 podman-compose 对等，FR-3）
 xuan-compose --help
 xuan-compose -f compose.yaml ps
 
-# 或模块入口（两者等价；24 个命令 + help 伪命令）
+# 日常短别名（同一入口，help 的 prog 随调用名呈现）
+xc --help
+xc -f compose.yaml ps
+
+# 或模块入口（三者等价；24 个命令 + help 伪命令）
 python -m xuan_compose --help
 python -m xuan_compose -f compose.yaml up -d
 ```
