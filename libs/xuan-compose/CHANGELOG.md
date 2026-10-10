@@ -3,7 +3,7 @@
 本项目版本号独立于上游；所有重构切片（T1-T12）均保持对
 containers/podman-compose v1.6.0（commit
 `e3df10472e194ab6d547b5ad25542c5c79e1a5fb`）的行为对等，差异见
-[docs/parity.md](docs/parity.md)。
+[docs/parity/](docs/parity/README.md)。
 
 ## 0.1.0 — 初始分层重构（T1-T10）
 
@@ -29,12 +29,12 @@ Python ≥ 3.14 的 src 布局纯 Python 库。
   上游 26 个单元测试文件全量移植（484 ≥ 478，skip=0）；覆盖率整体 91%、
   核心模块 interpolation/normalize/merge/engine/translate 全部 ≥90%；
   WSL py3.14 940 passed。
-- **T10 对等审计与文档**：142 个上游公开符号 100% 映射（docs/parity.md）、
+- **T10 对等审计与文档**：142 个上游公开符号 100% 映射（docs/parity/symbol-map.md）、
   py3.14 差异逐条登记、README 完稿（库 API/CLI/架构图/测试/集成验证）。
 - **T11 独立对抗审查**：3 个 fresh-context reviewer（对等/架构/五攻击者）结论
   全 pass、0 blocker/major；修复 4 项重构引入问题（resolve_extends 下沉消除
   规范层惰性环、删 3.11 版本守卫死分支、架构图校正、SPDX 计数），审查报告见
-  docs/review.md；13 条上游固有健壮性问题登记为上游回馈候选（不在对等重构中夹带修改）。
+  docs/review/2026-09-16-t11-adversarial-review.md；13 条上游固有健壮性问题登记为上游回馈候选（不在对等重构中夹带修改，台账见 docs/findings-ledger.md）。
 
 ### 主要架构差异（行为等价）
 
@@ -49,4 +49,4 @@ Python ≥ 3.14 的 src 布局纯 Python 库。
 
 退出码 -1、`str_to_seconds` 正则怪癖、sub_dir 路径不剥 `./`、
 PullPolicyAction 静默分支、up/down 编排中的非标准输出与分支细节等，
-逐条在 docs/parity.md §5.3 登记并由测试固化。
+逐条在 docs/parity/upstream-quirks.md 登记并由测试固化。
