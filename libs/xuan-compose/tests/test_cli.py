@@ -12,6 +12,7 @@
 import io
 import os
 import sys
+import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import IsolatedAsyncioTestCase, mock
 
@@ -428,3 +429,31 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
             await async_main(["ps"])
         assert set(engine_holder["engine"].commands) == ALL_COMMANDS
         assert callable(engine_holder["engine"].commands["up"])
+
+
+class TestConsoleScripts(unittest.TestCase):
+    """FR-3 守卫：console script 双名声明（规范名 xuan-compose + 短别名 xc）。
+
+    静态解析 pyproject.toml，不依赖包已安装（pytest 经 pythonpath=src 直连源码）；
+    另验证入口 callable 可真实导入。
+    """
+
+    def test_xuan_compose_and_xc_resolve_to_same_main(self) -> None:
+        import tomllib
+        from pathlib import Path
+
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        with pyproject.open("rb") as fh:
+            scripts = tomllib.load(fh)["project"]["scripts"]
+
+        target = "xuan_compose.cli.main:main"
+        assert scripts["xuan-compose"] == target
+        assert scripts["xc"] == target
+        assert set(scripts) == {"xuan-compose", "xc"}
+
+        # 入口对象必须可导入（console script 零参调用的 callable）
+        import importlib
+
+        module_name, attr_name = target.rsplit(":", 1)
+        module = importlib.import_module(module_name)
+        assert callable(getattr(module, attr_name))

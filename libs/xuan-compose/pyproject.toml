@@ -34,9 +34,13 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
-# 对等上游 [project.scripts] podman-compose = "podman_compose:main"（FR-3）
+# 对等上游 [project.scripts] podman-compose = "podman_compose:main"（FR-3）。
+# 双脚本同指 main：xuan-compose 为规范名/对拍名（FR-3），xc 为日常短别名
+# （与 monorepo 内 xs/okf 短命令风格一致；prog 随 argv[0] 呈现，差异 D12）。
+# 注意：xc 与外部 xcfile.dev 的任务运行器重名，别名面向 Xuanspace 环境使用。
 [project.scripts]
 xuan-compose = "xuan_compose.cli.main:main"
+xc = "xuan_compose.cli.main:main"
 
 [project.optional-dependencies]
 test = [
