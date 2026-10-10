@@ -70,8 +70,8 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 | P2-5 | logger 名与外观文本 | 固定 `xuan_compose`（上游随入口 `podman_compose`/`__main__`） | 级别/退出码无影响，未登记 |
 | P2-6 | systemd unit/env 命名空间仍共享 `podman-compose@` | commands/systemd.py:93、engine.py:581 与上游逐字一致 | D4 要求模板逐字保留；与上游二进制同机并存会互相覆盖 unit，属有意对等的连带后果，建议文档点名 |
 | P2-7 | bash completion 仓库资产未携带 | 上游 completion/bash/podman-compose（411 行） | 上游 wheel 本身也不安装，wheel 行为面对等；仅 tarball/发行版渠道差异，且其命令清单已落后于 24 命令 |
-| P2-8 | updown 深层编排无单测 | run_container 零名称引用（20 行薄包装，经 compose_up 间接执行）；compose_up 的 attached/SIGINT/健康等待/config-hash 重建/孤儿清理分支零单测 | **继承自上游**：上游同样无单测，由 190 个需真实 podman 的集成测试承载，非重构退化；深层回归依赖集成环境，文档应明示 |
-| P2-9 | 2 个轮询测试断言偏弱 | tests/test_dependencies_extra.py:107-129 | 仅靠 side_effect 序列不报错通过，未断言 `await_count`，存在短路假绿空间；happy_path 同类用例已有次数断言，可补齐 |
+| P2-8 | updown 深层编排无单测 | run_container 零名称引用（20 行薄包装，经 compose_up 间接执行）；compose_up 的 attached/SIGINT/健康等待/config-hash 重建/孤儿清理分支零单测 | **继承自上游**：上游同样无单测，由 190 个需真实 podman 的集成测试承载，非重构退化；深层回归依赖集成环境，文档应明示。2026-10-10 已在 [upstream-quirks.md「T7 清单固化段」](parity/upstream-quirks.md)逐点登记 L2/L3 并与本项互链，改动通道为人工对拍上游 1.6.0 |
+| P2-9 | 2 个轮询测试断言偏弱 | tests/test_dependencies_extra.py:107-129 | 仅靠 side_effect 序列不报错通过，未断言 `await_count`，存在短路假绿空间；happy_path 同类用例已有次数断言，可补齐。2026-10-10 按固化级别新口径定性为 **L1 弱断言**（判定方法见 [upstream-quirks.md 固化级别图例](parity/upstream-quirks.md)），仍开放 |
 | P2-10 | Python <3.14 误用晦涩 | py3.13 下 `import xuan_compose.cli.main` 抛 `NameError: OverrideTag` | M1 移除 future annotations 后依赖 PEP 649；requires-python≥3.14 可挡住 pip 安装，契约外缺陷，PYTHONPATH 直跑/IDE 误用无友好提示 |
 
 <a id="d-p1-fixed"></a>
@@ -93,3 +93,18 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
    editable；WSL 权威门禁使用 `PYTHONPATH=src` 不受影响；CI 干净环境不受影响。
 2. **原生 Windows 34 failed**：全部为 `/` vs `\`、盘符、HOME 展开的 POSIX 路径假设差异，
    无一条逻辑失败；权威门禁在 WSL（POSIX）。发布目标平台应在 README 明示。
+
+<a id="f-freeze-levels"></a>
+## F. 固化强度分级体系与 L1→L0 加固（2026-10-10 闭环）
+
+- **建立四级固化口径**：L0 精确断言 / L1 弱断言 / L2 注释固化 / L3 清单固化。
+  图例与全部怪癖点的逐点级别登记在 [upstream-quirks.md](parity/upstream-quirks.md)；
+  方法论本体（断言变异敏感度、L1 全绿假象、L3 人工对拍上游基线通道、级别可升降）
+  并入主权区模式 behavior-characterization-freeze「固化强度分级」小节。
+- **L1→L0 加固一处**：create_secrets 报错串第二个片段漏 f 前缀，原测试仅
+  `assertRaises(ValueError)`（细节变异不红），已改为报错全文等值断言
+  （[test_commands_build_updown.py:188-196](../tests/test_commands_build_updown.py#L188-L196)）；
+  28 例回归通过。
+- **P2-8 互链**：SIGINT 监督、config-hash 重建等深层分支在「T7 清单固化段」
+  按 L2/L3 逐点登记，改动前须对拍上游 1.6.0（pinned `e3df104`）。
+- **遗留**：P2-9 的两个轮询弱断言已按新口径定性为 L1，尚未升级，仍开放。
