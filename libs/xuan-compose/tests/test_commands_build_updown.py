@@ -186,8 +186,14 @@ class TestCreateSecrets(IsolatedAsyncioTestCase):
             declared_secrets={"tok": {"environment": "MY_TOKEN"}},
         )
         with mock.patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as ctx:
                 await create_secrets_from_environment(compose)
+        # L0 固化：上游报错串第二个片段漏 f 前缀，'{secret_name}' 为字面量；
+        # 上游若补 f 修复，本断言变红以提示对等偏离（见 parity/upstream-quirks.md）。
+        assert str(ctx.exception) == (
+            "Environment variable 'MY_TOKEN' required"
+            " by secret '{secret_name}' is not set in the process environment."
+        )
 
     async def test_creates_named_secret_from_environment(self) -> None:
         podman = _podman()
