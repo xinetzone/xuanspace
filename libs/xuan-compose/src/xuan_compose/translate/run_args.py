@@ -148,14 +148,14 @@ def compose_cp_args(container_name: str, args: argparse.Namespace) -> list[str]:
 def compose_exec_args(
     cnt: dict[str, Any], container_name: str, args: argparse.Namespace
 ) -> list[str]:
-    podman_args = ["--interactive"]
+    podman_args = ["--detach"] if args.detach else ["--interactive"]
     if args.privileged:
         podman_args += ["--privileged"]
     if args.user:
         podman_args += ["--user", args.user]
     if args.workdir:
         podman_args += ["--workdir", args.workdir]
-    if not args.T:
+    if not args.detach and not args.T:
         podman_args += ["--tty"]
     env = dict(cnt.get("environment", {}))
     if args.env:

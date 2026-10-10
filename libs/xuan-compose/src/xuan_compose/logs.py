@@ -29,7 +29,7 @@ def create_format_logs_task(
         return None
 
     container, index = result
-    # Add colored service prefix to output by piping output through sed
+    # Add colored service prefix to output
     if args.no_log_prefix:
         log_formatter = None
     else:

@@ -201,6 +201,7 @@ class TestComposeExecArgs:
             user="1000",
             workdir="/app",
             T=False,
+            detach=False,
             env=["B=2", "C"],  # C 无等号 → 裸名（值来自宿主环境语义）
             cnt_command=["sh"],
         )
@@ -213,6 +214,6 @@ class TestComposeExecArgs:
         assert out[-2:] == ["web_1", "sh"]
 
     def test_minimal_non_tty(self) -> None:
-        args = _ns(privileged=False, user=None, workdir=None, T=True, env=None, cnt_command=None)
+        args = _ns(privileged=False, user=None, workdir=None, T=True, detach=False, env=None, cnt_command=None)
         out = compose_exec_args({}, "web_1", args)
         assert out == ["--interactive", "web_1"]

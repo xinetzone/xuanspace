@@ -502,7 +502,9 @@ class TestRunCpExec(IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(SystemExit):
                 await compose_exec(compose, args)
-        compose.podman.run.assert_awaited_once_with([], "exec", ["-it", "p_svc_2"])
+        compose.podman.run.assert_awaited_once_with(
+            [], "exec", ["-it", "p_svc_2"], pass_stdin=True
+        )
 
 
 class TestStartStopRestart(IsolatedAsyncioTestCase):

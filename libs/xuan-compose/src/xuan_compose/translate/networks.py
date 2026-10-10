@@ -230,7 +230,7 @@ def get_net_args_from_networks(compose: Any, cnt: dict[str, Any]) -> list[str]:
     for net_, net_config_ in multiple_nets.items():
         net_desc = compose.networks.get(net_) or {}
         is_ext = net_desc.get("external")
-        ext_desc: dict[str, Any] = is_ext if isinstance(is_ext, str) else {}  # type: ignore[assignment]
+        ext_desc: dict[str, Any] = is_ext if isinstance(is_ext, dict) else {}  # type: ignore[assignment]
         default_net_name = default_network_name_for_project(compose, net_, is_ext)  # type: ignore[arg-type]
         net_name = ext_desc.get("name") or net_desc.get("name") or default_net_name
 

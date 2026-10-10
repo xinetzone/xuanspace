@@ -10,6 +10,7 @@ from unittest import mock
 
 import pytest
 
+from xuan_compose.errors import PodmanComposeError
 from xuan_compose.translate.build import (
     adjust_build_ssh_key_paths,
     container_to_build_args,
@@ -61,7 +62,7 @@ class TestContainerToBuildArgs:
         assert not os.path.exists(temp_path)
 
     def test_inline_conflicts_with_dockerfile(self) -> None:
-        with pytest.raises(OSError, match="can't be used simultaneously"):
+        with pytest.raises(PodmanComposeError, match="can't be used simultaneously"):
             container_to_build_args(
                 _compose(),
                 {"build": {"context": ".", "dockerfile": "DF", "dockerfile_inline": "x"},
@@ -71,7 +72,7 @@ class TestContainerToBuildArgs:
             )
 
     def test_custom_dockerfile_missing_raises(self) -> None:
-        with pytest.raises(OSError, match="Dockerfile not found"):
+        with pytest.raises(PodmanComposeError, match="Dockerfile not found"):
             container_to_build_args(
                 _compose(),
                 {"build": {"context": "./ctx", "dockerfile": "Custom.df"}, "image": "img"},

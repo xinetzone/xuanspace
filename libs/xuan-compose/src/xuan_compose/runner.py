@@ -167,6 +167,7 @@ class Podman:
         log_formatter: str | None = None,
         *,
         suppress_output: bool = False,
+        pass_stdin: bool = False,
         # Intentionally mutable default argument to hold references to tasks
         task_reference: set[asyncio.Task] = set(),
     ) -> int | None:
@@ -178,9 +179,16 @@ class Podman:
             if self.dry_run:
                 return None
 
+            # When pass_stdin is False, use PIPE so the subprocess does not
+            # inherit podman-compose's stdin. Using DEVNULL would send EOF
+            # to containers with stdin_open, causing them to exit
+            # immediately instead of waiting for input as docker-compose does.
+            stdin_arg = None if pass_stdin else asyncio.subprocess.PIPE
+
             if log_formatter is not None:
                 p = await asyncio.create_subprocess_exec(
                     *cmd_ls,
+                    stdin=stdin_arg,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     close_fds=False,
@@ -206,13 +214,14 @@ class Podman:
             elif suppress_output:
                 p = await asyncio.create_subprocess_exec(
                     *cmd_ls,
+                    stdin=stdin_arg,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     close_fds=False,
                 )  # pylint: disable=consider-using-with
 
             else:
-                p = await asyncio.create_subprocess_exec(*cmd_ls, close_fds=False)  # pylint: disable=consider-using-with
+                p = await asyncio.create_subprocess_exec(*cmd_ls, stdin=stdin_arg, close_fds=False)  # pylint: disable=consider-using-with
 
             try:
                 exit_code = await p.wait()

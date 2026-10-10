@@ -358,7 +358,7 @@ async def compose_up(compose: Any, args: argparse.Namespace) -> int | None:
         loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(handle_sigint()))
 
     for i, cnt in enumerate(compose.containers):
-        # Add colored service prefix to output by piping output through sed
+        # Add colored service prefix to output
         color_idx = i % len(compose.console_colors)
         color = compose.console_colors[color_idx]
         space_suffix = " " * (max_service_length - len(cnt["_service"]) + 1)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
-"""逐用例移植自上游 tests/unit/test_compose_exec_args.py（2 例，断言零削弱）。
+"""逐用例移植自上游 tests/unit/test_compose_exec_args.py（3 例，断言零削弱）。
 
 适配点：``podman_compose.compose_exec_args`` →
 ``xuan_compose.translate.run_args.compose_exec_args``。
@@ -35,6 +35,15 @@ class TestComposeExecArgs(unittest.TestCase):
         ]
         self.assertEqual(result, expected)
 
+    def test_detach(self) -> None:
+        cnt = get_minimal_container()
+        args = get_minimal_args()
+        args.detach = True
+
+        result = compose_exec_args(cnt, "container_name", args)
+        expected = ["--detach", "container_name"]
+        self.assertEqual(result, expected)
+
 
 def get_minimal_container() -> dict:
     return {}
@@ -44,6 +53,7 @@ def get_minimal_args() -> argparse.Namespace:
     return argparse.Namespace(
         T=None,
         cnt_command=None,
+        detach=False,
         env=None,
         privileged=None,
         user=None,

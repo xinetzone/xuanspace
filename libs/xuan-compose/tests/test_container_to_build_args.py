@@ -15,6 +15,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
+from xuan_compose.errors import PodmanComposeError
 from xuan_compose.translate.build import container_to_build_args
 
 
@@ -234,7 +235,7 @@ class TestContainerToBuildArgs(unittest.TestCase):
         cnt["build"]["context"] = "not_prefix://github.com/test_repo"
         args = get_minimal_args()
 
-        with self.assertRaises(OSError):
+        with self.assertRaises(PodmanComposeError):
             container_to_build_args(c, cnt, args, lambda path: False)
 
     def test_build_ssh_absolute_path(self) -> None:

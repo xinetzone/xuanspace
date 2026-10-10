@@ -29,6 +29,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from ..commands.systemd import compose_systemd
+from ..errors import PodmanComposeError
 from ..logging_utils import configure_logging
 
 __all__ = [
@@ -842,6 +843,27 @@ def parse_args(engine: Any, argv: list[str] | None = None) -> argparse.Namespace
         {"systemd": SYSTEMD_DESC}
     )
     global_args = parser.parse_args(argv)
+
+    if global_args.command in ("up", "start"):
+        wait_timeout = global_args.wait_timeout
+        if wait_timeout is not None and wait_timeout < 0:
+            raise PodmanComposeError("--wait-timeout must be a non-negative integer")
+
+    if global_args.command == "up" and global_args.wait:
+        incompatible = []
+        if global_args.abort_on_container_exit:
+            incompatible.append("--abort-on-container-exit")
+        if global_args.abort_on_container_failure:
+            incompatible.append("--abort-on-container-failure")
+        if global_args.exit_code_from:
+            incompatible.append("--exit-code-from")
+        if incompatible:
+            if len(incompatible) > 1:
+                incompatible_options = ", ".join(incompatible[:-1]) + " or " + incompatible[-1]
+            else:
+                incompatible_options = incompatible[0]
+            raise PodmanComposeError(f"--wait cannot be combined with {incompatible_options}")
+        global_args.detach = True
 
     compose_env_files = os.environ.get("COMPOSE_ENV_FILES")
     if not global_args.env_file and compose_env_files:

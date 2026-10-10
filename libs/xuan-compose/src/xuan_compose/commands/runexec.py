@@ -62,7 +62,7 @@ async def compose_run(compose: Any, args: argparse.Namespace) -> None:
         podman_args.insert(1, "-i")
         if args.rm:
             podman_args.insert(1, "--rm")
-    p = await compose.podman.run([], "run", podman_args)
+    p = await compose.podman.run([], "run", podman_args, pass_stdin=True)
     sys.exit(p)
 
 
@@ -88,5 +88,5 @@ async def compose_exec(compose: Any, args: argparse.Namespace) -> None:
     container_name = container_names[args.index - 1]
     cnt = compose.container_by_name[container_name]
     podman_args = compose_exec_args(cnt, container_name, args)
-    p = await compose.podman.run([], "exec", podman_args)
+    p = await compose.podman.run([], "exec", podman_args, pass_stdin=True)
     sys.exit(p)
