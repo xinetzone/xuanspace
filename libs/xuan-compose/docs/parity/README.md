@@ -25,9 +25,10 @@ AST 解析上游单文件 `podman_compose.py` 的**顶层公开符号**（不以
 - argparse 参数表快照（25 命令，11 维，锚定 e3df104）：
   `tests/snapshots/cli_parity.json`；对拍测试 `tests/test_cli_parity.py`、
   `tests/test_command_surface.py`；重新生成 `tests/generate_parity_snapshots.py`。
-- 上游 26 个单元测试文件全量同名移植（484 例 ≥ 上游 478），见 tasks.md T9 TR-9.2。
+  （快照锚点刻意停在 e3df104：本次 1f1cb09 增量无 argparse 参数增删、快照内容不变；防篡改守卫见 `tests/test_cli_parity.py`）。
+- 上游 26 个单元测试文件全量同名移植（484 例 ≥ 上游 478），见 tasks.md T9 TR-9.2；2026-10-10 同步 1f1cb09 增量后本库移植用例增至 57 文件 / 965 例（+25，全部来自本次上游测试移植）。
   口径注：[review 报告 §7](../review/2026-09-16-t11-adversarial-review.md#7-各验收标准ac证据索引)
   AC-5 沿用 spec 原始措辞记作「27 测试移植」，交付实测为 26 个测试文件 / 484 例（TR-9.2）；
   两数并存，以 TR-9.2 实测为准。
 - 覆盖率：整体 91%（T9/T10 门禁时点），核心模块 interpolation/normalize/merge/engine/translate 全 ≥90%；
-  T11 修复后回归为 92%，口径说明见 [文档索引](../README.md#覆盖率口径说明91-与-92)。
+  T11 修复后回归为 92%，口径说明见 [文档索引](../README.md#覆盖率口径说明91-与-92)；2026-10-10 同步后复测 92%（965 passed）。

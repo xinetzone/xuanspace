@@ -108,3 +108,54 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **P2-8 互链**：SIGINT 监督、config-hash 重建等深层分支在「T7 清单固化段」
   按 L2/L3 逐点登记，改动前须对拍上游 1.6.0（pinned `e3df104`）。
 - **遗留**：P2-9 的两个轮询弱断言已按新口径定性为 L1，尚未升级，仍开放。
+
+<a id="g-upstream-sync"></a>
+## G. 上游增量同步 e3df104 → 1f1cb09（2026-10-10）
+
+上游第三方只读 submodule `vendor/podman-compose` 由 pinned 基线 `e3df10472e194ab6d547b5ad25542c5c79e1a5fb`
+（v1.6.0）推进至 `1f1cb09bfee4d79857ed23bfe2699febd7d20a53`。区间 11 个非合并提交
+（`332cfdb`、`f01d26d`、`816045e`、`03649a3`、`89a2033`、`d1088b3`、`008ef4e`、`fd64dc2`、
+`d8dea76`、`29760c4`、`ee5ad43`）已全部按对等纪律移植进本库（Task 1-7），`podman_compose.py`
+净 +143/−70（5541 → 5614 行）。
+
+### 上游提交 → 新库模块对等移植映射
+
+| 上游提交 | 新库落点 | 内容 |
+|---|---|---|
+| `fd64dc2` | `merge.py` + `normalize.py` | `!override` 语义链（from_yaml/to_yaml/rec_subs/rec_merge_one/normalize_service） |
+| `816045e` | `translate/networks.py` | 外部网络 dict 形态 `name:` |
+| `f01d26d` | `normalize.py` | `volumes: null` 显式报错 |
+| `008ef4e` | `runner.py` + `commands/runexec.py` | `pass_stdin`（仅 run/exec 转发 stdin） |
+| `03649a3` | `translate/run_args.py` | `exec --detach` |
+| `332cfdb` | `cli/parser.py` | `up --wait` 校验与互斥 |
+| `29760c4` | `translate/build.py` | `container_to_build_args` 三处 `OSError`→`PodmanComposeError` |
+| `ee5ad43` | `logs.py` + `commands/updown.py` | 注释清理 |
+| `d8dea76` | 不适用 | 仅 README |
+| `89a2033`、`d1088b3` | 不移植 | 仅 `tests/integration/**`，按 NG2 不移植 |
+
+### 符号面
+
+- 上游公开符号总数仍 **142 = 函数/类 138 + 常量 4**（无符号增删）；无同名落点仍为 3
+  （`PodmanCompose` L2469、`cmd_run` L3351、`cmd_parse` L3376）。
+- `rec_subs` 新增 1 个 `@overload`（`OverrideTag → OverrideTag`，distinct 名称仍计 1），总账不变。
+- 行号锚定：`symbol-map.md` 行号列已随本次同步统一重锚到 `1f1cb09`；`differences.md` 上游「位置」
+  列中的 M3/M4/M5 等行号属登记时点证据，不随基线推进重锚。
+
+### 怪癖条目裁决
+
+- `upstream-quirks.md`「OverrideTag 的自定义 from_yaml 取 ScalarNode.value」条目**关闭**（上游 `fd64dc2` 修复）。
+- 新增 `fd64dc2` 语义变更登记（双 `!override` 时 source 优先 / 空 mapping 得 `{}` / 标量按标记解析），
+  由 `tests/test_override_environment.py`、`tests/test_merge_extra.py` 精确断言覆盖，按 L0 定性。
+
+### 测试面
+
+- 57 文件 965 例（+25，全部来自本次上游测试移植）；WSL 权威门禁 `PYTHONPATH=src pytest --cov`
+  全绿（965 passed / 79 subtests，覆盖率 92%）。
+
+### 遗留项与环境事实
+
+- **P2-9** 两个轮询弱断言仍按 **L1** 定性、**未升级、仍开放**。
+- 原生 Windows 的 `/` vs `\` 平台差异失败（§E.2）在本次同步后仍存在，非本次引入（本次新增失败 0）。
+- 环境事实：WSL 权威门禁 venv 路径 `~/.venvs/xuan-gate`（本机由 `python3.14 -m venv` +
+  `pip install pytest pytest-cov parameterized pyyaml python-dotenv` 重建；WSL 侧无 pip，需 `ensurepip`/`venv` 自带）。
+- 不自动提交：本次文档回写与 Task 1-7 代码改动待用户批准后按原子提交拆分。

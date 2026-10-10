@@ -12,7 +12,7 @@
 
 - **行为对等 pass**：142/142 上游公开符号有落点；argparse 参数表 11 维快照零差异；
   T11 独立对抗审查 **0 blocker / 0 major**；功能完整性独立复验 **0 个 P0**。
-- **关键数字**：940 测试 / 0 skip，整体覆盖率 92%（[91%/92% 双时点口径](#覆盖率口径说明91-与-92)并存）；
+- **关键数字**：940 测试 / 0 skip（2026-09-16 交付时点口径；2026-10-10 同步后 965 例），整体覆盖率 92%（[91%/92% 双时点口径](#覆盖率口径说明91-与-92)并存）；
   39 个源文件分层 7 层，内部 import 零反向边。
 - **遗留风险口径**：P2-1…P2-10 均为登记/加固类、非功能丢失（[台账 §C](findings-ledger.md#c-p2)）；
   U1-U13 为上游固有问题，对等重构刻意不改（[台账 §B](findings-ledger.md#b-upstream)）。
@@ -34,7 +34,7 @@
 ## 上游基线（单一事实源）
 
 - 上游：[containers/podman-compose](https://github.com/containers/podman-compose) v1.6.0
-- pinned commit：`e3df10472e194ab6d547b5ad25542c5c79e1a5fb`
+- pinned commit：`1f1cb09bfee4d79857ed23bfe2699febd7d20a53`（2026-10-10 由 `e3df104` 推进，区间增量已对等移植，见 [findings-ledger.md §G](findings-ledger.md)）
 - 许可证：GPL-2.0-only（继承上游，不得重新许可）
 - 重构方式：translate-then-move（翻译式搬迁，非兼容封装、非重写）
 - 术语注：2026-09-16 交付快照抬头中的 `translate-then-mount` 是本词的旧写法，
@@ -65,15 +65,15 @@
 
 | 维度 | 证据 |
 |---|---|
-| 功能对等 | [parity/symbol-map.md](parity/symbol-map.md)；tests/test_cli_parity.py + tests/snapshots/cli_parity.json（25 命令/11 维/锚定 e3df104） |
+| 功能对等 | [parity/symbol-map.md](parity/symbol-map.md)；tests/test_cli_parity.py + tests/snapshots/cli_parity.json（25 命令/11 维/锚定 e3df104）（快照锚点刻意停在 e3df104：本次 1f1cb09 增量无 argparse 参数增删、快照内容不变；防篡改守卫见 tests/test_cli_parity.py） |
 | 符号对等 | scripts/symbol_inventory.py 输出 142/3（复现：`python scripts/symbol_inventory.py`）；[parity/symbol-map.md](parity/symbol-map.md) |
-| 测试保真 | tests/ 56 文件 940 例；上游 26 文件 484 例对拍（拆分守恒：42=18+24）；详见 [交付报告 §2](delivery/2026-09-16-delivery-summary.md#2-交付物规模实测可复现) |
-| 覆盖率 | WSL `pytest --cov`：整体 92%（T11 修复后回归/独立复验时点），核心 ≥90%，runner 96%；口径说明见下节 |
+| 测试保真 | tests/ 56 文件 940 例（2026-09-16 交付时点）；2026-10-10 同步后 57 文件 965 例；上游 26 文件 484 例对拍（拆分守恒：42=18+24）；详见 [交付报告 §2](delivery/2026-09-16-delivery-summary.md#2-交付物规模实测可复现) |
+| 覆盖率 | WSL `pytest --cov`：整体 92%（T11 修复后回归/独立复验时点），核心 ≥90%，runner 96%；口径说明见下节；2026-10-10 同步后复测仍为 92%（965 passed） |
 | 静态质量 | ruff(src+tests+scripts) 0；mypy src 0（39 源文件，178/178 公开 API 有注解） |
 | 架构边界 | [review 报告 §3](review/2026-09-16-t11-adversarial-review.md#3-tr-113-分层单向性修复后-55)：108 条 import 零反向边；argv 单点；subprocess 单模块；包根零副作用（运行时实测）。口径注：2026-10-10 AST 复核为 107 条 import 语句，108 是 T11 grep 命中数（多计 engine.py 一条含 `from .env` 的英文注释），零反向边结论不变；快照数字保持 108 |
 | 安全对抗 | [review 报告 §4](review/2026-09-16-t11-adversarial-review.md#4-tr-114-五攻击者对抗审查实质度-55)：五视角无重构新增 blocker；[findings-ledger.md §B](findings-ledger.md#b-upstream) 13 条上游固有问题台账 |
 | 许可合规 | 96/96 .py 带 SPDX 头；LICENSE 与上游归一化 sha256 一致；README 署名三要素 |
-| vendor 洁净 | `git -C vendor/podman-compose status --porcelain` 空，HEAD=e3df104（[review 报告 §1](review/2026-09-16-t11-adversarial-review.md#1-tr-111-vendor-子模块零改动)） |
+| vendor 洁净 | `git -C vendor/podman-compose status --porcelain` 空，HEAD=1f1cb09（2026-10-10 上游增量同步后；2026-09-16 T11 复核时点为 e3df104，见 [review 报告 §1](review/2026-09-16-t11-adversarial-review.md#1-tr-111-vendor-子模块零改动)） |
 | 功能完整性独立复验 | 七维证据链与运行时实证见 [verification 报告](verification/2026-09-16-full-parity-verification.md) |
 
 完整复现命令（WSL 权威门禁、纯 Python wheel/sdist 干净构建）：

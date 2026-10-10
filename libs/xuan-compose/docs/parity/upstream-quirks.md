@@ -32,7 +32,11 @@
   - service 自身的 `extends` 声明在 `resolve_extends` 后保留在合并结果。【L0】
   - `norm_as_list` 对 None 值输出裸键（`B` 而非 `B=None`）。【L2】
   - `--service-ports=False` 时先删 ports 再由 `--publish` 重建（原 ports 不保留）。【L0】
-  - OverrideTag 的自定义 from_yaml 直接取 ScalarNode.value（无隐式类型解析，标量即字符串）。【L0】
+  - ~~OverrideTag 的自定义 from_yaml 直接取 ScalarNode.value（无隐式类型解析，标量即字符串）。~~【L0】【2026-10-10 关闭：上游 fd64dc2 改为按 MappingNode/SequenceNode/ScalarNode 分别 construct_mapping/construct_sequence/construct_scalar(deep=True)，标量外形态已有隐式类型解析；替换后的行为由 tests/test_override_environment.py、tests/test_merge_extra.py 精确断言覆盖】
+  - 【L0】上游 `fd64dc2` 引入的新语义（本库已逐行对拍，三者均由 tests/test_override_environment.py、tests/test_merge_extra.py 精确等值断言覆盖，故定 L0）：
+    - 「双方均为 `!override` 时 **source 优先**」（`rec_merge_one`：`clone(value2.value) if isinstance(value2, OverrideTag) else clone(value.value)`）；此前行为不同，属上游语义变更。
+    - `!override {}`（空 flow mapping）现经 `construct_mapping` 得 `{}`（旧为 `[]`）；YAML 标量按标记解析（`1` → int `1`，非字符串 `"1"`）。
+    - `!override`/`!reset` 作为 **source 新键**时的分支语义（`!override` 解包 value 后写入、`!reset` 忽略）。
 - 依赖：`rec_deps` 对自依赖/未知依赖"保留边但不递归展开"；A→B→A 环按起点剪枝。【L0】
 - 镜像上下文 `_resolve_context_dependencies`：`urllib.parse.quote` 会百分号编码镜像 tag 的冒号（`b:1` → `b%3A1`）。【L0】
 - handler 怪癖原样保留清单（T7 登记）：
@@ -50,7 +54,7 @@
 ## T7 清单固化段（L2/L3，无精确行为断言）
 
 以下各点无 L0 自动化拦截，修改前须沿真实入口人工对拍上游 1.6.0
-（pinned `e3df10472e194ab6d547b5ad25542c5c79e1a5fb`）输出并登记对拍结果；
+（pinned `1f1cb09bfee4d79857ed23bfe2699febd7d20a53`）输出并登记对拍结果；
 不得在对等重构中顺手改动：
 
 - 【L3】cp parser 函数名笔误 `compose_parse_cp`（另见 [symbol-map.md](symbol-map.md) CLI 层登记）。

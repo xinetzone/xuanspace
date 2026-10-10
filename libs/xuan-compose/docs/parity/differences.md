@@ -5,6 +5,7 @@
 
 > 维护说明（2026-10-10）：本表为常青台账，条目本体随代码演进维护；
 > 条目中的 Task/TR/F 编号、测试数与提交时点为**登记时点证据**，不随后续重测改写。
+> 上游「位置」列中 M3/M4/M5 等行号锚定于更早的登记时点（早于 e3df104），属登记时点证据、不随后续基线推进重锚；symbol-map.md 的行号列已随 2026-10-10 同步统一锚定到 1f1cb09。
 
 - 语法/类型现代化（无语义变化）：M1-M7
 - 结构性重构（语义等价，架构必需）：D1-D14
@@ -28,7 +29,7 @@
 | # | 上游 | 新库 | 等价理由/证据 |
 |---|---|---|---|
 | <a id="d1"></a>D1 | `@cmd_run` 装饰器在单例构造期副作用注册 24 命令（含 help/desc 闭包计算） | `COMMAND_HANDLERS` 24 名显式 dict + `install_handlers(engine)`；help/desc 文本由 `COMMAND_HELP` 表 + systemd 运行时从 handler docstring 复刻装饰器切分算法（`re.sub(r"^\s+","",doc)` 无 MULTILINE） | T9 argparse 快照对拍 help/description 零差异；TR-7.1 24 名集合相等 |
-| <a id="d2"></a>D2 | `@cmd_parse` 装饰器向 `handler._parse_args` append parser | `COMMAND_PARSERS: dict[str, tuple[ParserFn, ...]]` 24 键显式注册表（wait=() 空元组）+ `build_parser()` 纯构造，共享 parser 挂载顺序精确复刻 append 序 | T9 快照 11 维参数表零差异（`tests/snapshots/cli_parity.json`，上游 e3df104） |
+| <a id="d2"></a>D2 | `@cmd_parse` 装饰器向 `handler._parse_args` append parser | `COMMAND_PARSERS: dict[str, tuple[ParserFn, ...]]` 24 键显式注册表（wait=() 空元组）+ `build_parser()` 纯构造，共享 parser 挂载顺序精确复刻 append 序 | T9 快照 11 维参数表零差异（`tests/snapshots/cli_parity.json`，上游 e3df104）——快照锚点刻意停在 e3df104（2026-10-10 推进 pinned 至 1f1cb09 的增量无 argparse 参数增删，快照内容不变，防篡改守卫见 tests/test_cli_parity.py:38） |
 | <a id="d3"></a>D3 | `PodmanCompose._parse_args(self, argv)` 引擎方法（写全局 logging、回写单例） | `parse_args(engine, argv)` CLI 纯函数（engine 仅作 global_args 回写宿主，`configure_logging` 替代 basicConfig） | 回填/分流/退出码逐行一致；TR-9.1 参数表零差异 |
 | <a id="d4"></a>D4 | 模块级 `script = realpath(argv[0])` 导入期副作用（L56） | `ComposeEngine.executable` 字段默认 None，`cli/main.py` 装配期单点注入 | systemd create-unit 模板渲染结果逐字一致（test_systemd*）；TR-8.3 grep 全库 argv 仅一处 |
 | <a id="d5"></a>D5 | 模块级 `podman_compose = PodmanCompose()` 活单例，`run()` 操作 self | 无单例；`async_main(argv)` 显式 `ComposeEngine()` → install_handlers → parse → Podman → 分发；`main(argv=None)` 同步壳 | TR-6.4 grep 无模块级活引擎；双实例隔离测试；console script 零参调用与上游等价（argv 可选仅为测试便利） |
