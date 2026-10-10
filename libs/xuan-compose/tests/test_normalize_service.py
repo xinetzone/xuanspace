@@ -151,3 +151,8 @@ class TestNormalizeService(unittest.TestCase):
         self.assertEqual(
             "ERROR: build.secrets must be a list, not a dict", str(context.exception)
         )
+
+    def test_volumes_none_raises(self) -> None:
+        with self.assertRaises(PodmanComposeError) as context:
+            normalize_service({"volumes": None})
+        self.assertEqual("ERROR: volumes must be a list", str(context.exception))

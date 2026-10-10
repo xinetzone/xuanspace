@@ -9,6 +9,11 @@
 * ``normalize_service_final`` / ``normalize_final``（第 2201-2218 行）
 * ``is_context_git_url``（第 3549-3567 行；按分层依赖置于本模块，
   T5 的 ``translate.build`` 将再导出以保持蓝图符号面）
+
+上游增量同步：``fd64dc2``（environment: !override）为 ``rec_subs`` 增加
+``OverrideTag`` 重载/分支并在 environment 取值前解包，``normalize_service``
+对 environment/labels 的 ``OverrideTag`` 就地归一 value；``f01d26d`` 在
+``volumes`` 为 ``None`` 时改为抛 ``PodmanComposeError``。
 """
 
 import os
@@ -41,28 +46,41 @@ def rec_subs(value: dict, subs_dict: dict[str, Any]) -> dict: ...
 def rec_subs(value: str, subs_dict: dict[str, Any]) -> str: ...
 @overload
 def rec_subs(value: Iterable, subs_dict: dict[str, Any]) -> Iterable: ...
+@overload
+def rec_subs(value: OverrideTag, subs_dict: dict[str, Any]) -> OverrideTag: ...
 
 
-def rec_subs(value: dict | str | Iterable, subs_dict: dict[str, Any]) -> dict | str | Iterable:
+def rec_subs(
+    value: dict | str | Iterable | OverrideTag, subs_dict: dict[str, Any]
+) -> dict | str | Iterable | OverrideTag:
     """
     do bash-like substitution in value and if list of dictionary do that recursively
     """
     if isinstance(value, dict):
-        if "environment" in value and isinstance(value["environment"], dict):
+        # environment 可能是 !override 包装，取值前先解包
+        env = value.get("environment")
+        env_dict = env.value if isinstance(env, OverrideTag) else env
+        if isinstance(env_dict, dict):
             # Load service's environment variables
             subs_dict = subs_dict.copy()
-            svc_envs = {k: v for k, v in value["environment"].items() if k not in subs_dict}
+            svc_envs = {k: v for k, v in env_dict.items() if k not in subs_dict}
             # we need to add `svc_envs` to the `subs_dict` so that it can evaluate the
             # service environment that references another service environment.
             svc_envs = rec_subs(svc_envs, subs_dict)
             subs_dict.update(svc_envs)
 
             # Resolve short-form environment variables (value is None) to their actual values
-            for env_k, env_v in value["environment"].items():
+            for env_k, env_v in env_dict.items():
                 if env_v is None and env_k in subs_dict:
-                    value["environment"][env_k] = subs_dict[env_k]
+                    env_dict[env_k] = subs_dict[env_k]
 
         value = {rec_subs(k, subs_dict): rec_subs(v, subs_dict) for k, v in value.items()}
+    elif isinstance(value, OverrideTag):
+        if isinstance(value.value, dict):
+            value.value = rec_subs(value.value, subs_dict)
+        elif is_list(value.value):
+            value.value = [rec_subs(i, subs_dict) for i in value.value]
+        return value
     elif isinstance(value, str):
         value = var_interpolate(value, subs_dict)
     elif hasattr(value, "__iter__"):
@@ -178,6 +196,8 @@ def normalize_service(service: dict[str, Any], sub_dir: str = "") -> dict[str, A
     for key in ("env_file", "security_opt", "volumes"):
         if key not in service:
             continue
+        if key == "volumes" and service[key] is None:
+            raise PodmanComposeError("ERROR: volumes must be a list")
         if isinstance(service[key], str):
             service[key] = [service[key]]
     if "security_opt" in service:
@@ -188,7 +208,12 @@ def normalize_service(service: dict[str, Any], sub_dir: str = "") -> dict[str, A
     for key in ("environment", "labels"):
         if key not in service:
             continue
-        service[key] = norm_as_dict(service[key])
+        if isinstance(service[key], ResetTag):
+            continue
+        if isinstance(service[key], OverrideTag):
+            service[key].value = norm_as_dict(service[key].value)
+        else:
+            service[key] = norm_as_dict(service[key])
     if "extends" in service:
         extends = service["extends"]
         if isinstance(extends, str):

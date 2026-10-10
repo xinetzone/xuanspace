@@ -7,6 +7,12 @@
 * ``clone`` / ``rec_merge_one`` / ``rec_merge``（第 2221-2317 行）
 * ``load_yaml_or_die``（第 2320-2326 行）
 
+上游增量同步（commit ``fd64dc2``，environment: !override）：``OverrideTag``
+改由 ``from_yaml`` 按 Mapping/Sequence/Scalar 节点深度构造，``to_yaml`` 分派
+mapping/sequence/scalar 三种 represent；``rec_merge_one`` 首个循环对 source
+新键增补 ``ResetTag``/``OverrideTag`` 分支，且双方均为 ``OverrideTag`` 时
+改为 source 优先。
+
 ``resolve_extends``（上游第 2329-2365 行）在分层归属上属于规范化流程，
 T11 下沉到 :mod:`xuan_compose.normalize`——它内部要调用 ``rec_subs``/
 ``normalize_service``（同模块）与本模块的 ``rec_merge``/``load_yaml_or_die``，
@@ -43,27 +49,41 @@ class OverrideTag(yaml.YAMLObject):
     yaml_tag = "!override"
 
     def __init__(self, value: Any) -> None:
-        self.value: dict[Any, Any] | list[Any]
-        if len(value) > 0 and isinstance(value[0], tuple):
+        self.value: dict[Any, Any] | list[Any]  # type: ignore[no-redef]
+        if isinstance(value, (dict, list)):
+            self.value = value
+        elif len(value) > 0 and isinstance(value[0], tuple):
             self.value = {}
             # item is a tuple representing service's lower level key and value
             for item in value:
                 # value can actually be a list, then all the elements from the list have to be
                 # collected
                 if isinstance(item[1].value, list):
-                    self.value[item[0].value] = [i.value for i in item[1].value]
+                    self.value[item[0].value] = [i.value for i in item[1].value]  # type: ignore[index]
                 else:
-                    self.value[item[0].value] = item[1].value
+                    self.value[item[0].value] = item[1].value  # type: ignore[index]
         else:
-            self.value = [item.value for item in value]
+            self.value = [item.value for item in value]  # type: ignore[union-attr]
 
     @classmethod
     def from_yaml(cls, loader: Any, node: Any) -> OverrideTag:
-        return OverrideTag(node.value)
+        if isinstance(node, yaml.MappingNode):
+            val = loader.construct_mapping(node, deep=True)
+        elif isinstance(node, yaml.SequenceNode):
+            val = loader.construct_sequence(node, deep=True)
+        elif isinstance(node, yaml.ScalarNode):
+            val = loader.construct_scalar(node)
+        else:
+            val = node.value
+        return OverrideTag(val)
 
     @classmethod
-    def to_yaml(cls, dumper: Any, data: OverrideTag) -> str:
-        return dumper.represent_scalar(cls.yaml_tag, data.value)
+    def to_yaml(cls, dumper: Any, data: OverrideTag) -> Any:
+        if isinstance(data.value, dict):
+            return dumper.represent_mapping(cls.yaml_tag, data.value)
+        if isinstance(data.value, list):
+            return dumper.represent_sequence(cls.yaml_tag, data.value)
+        return dumper.represent_scalar(cls.yaml_tag, data.value or "")
 
 
 class ResetTag(yaml.YAMLObject):
@@ -98,6 +118,14 @@ def rec_merge_one(target: dict[str, Any], source: dict[str, Any]) -> dict[str, A
     for key, value in source.items():
         if key in target:
             continue
+        if isinstance(value, ResetTag):
+            log.info("Unneeded !reset found for [%s]", key)
+            continue
+        if isinstance(value, OverrideTag):
+            log.info("Unneeded !override found for [%s] with value '%s'", key, value)
+            target[key] = clone(value.value)
+            done.add(key)
+            continue
         target[key] = clone(value)
         done.add(key)
     for key, value in target.items():
@@ -122,7 +150,7 @@ def rec_merge_one(target: dict[str, Any], source: dict[str, Any]) -> dict[str, A
 
         if isinstance(value, OverrideTag) or isinstance(value2, OverrideTag):
             target[key] = (
-                clone(value.value) if isinstance(value, OverrideTag) else clone(value2.value)
+                clone(value2.value) if isinstance(value2, OverrideTag) else clone(value.value)
             )
             continue
 

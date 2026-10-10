@@ -22,34 +22,47 @@ from xuan_compose.normalize import resolve_extends
 
 class TestOverrideTagConstruction:
     def test_mapping_form_becomes_dict(self) -> None:
+        # from_yaml 经 construct_mapping(deep=True) 深度构造：YAML 标量按标记解析
         loaded = yaml.safe_load("x: !override\n  a: 1\n  b: 2\n")
         tag = loaded["x"]
         assert isinstance(tag, OverrideTag)
-        assert tag.value == {"a": "1", "b": "2"}
+        assert tag.value == {"a": 1, "b": 2}
 
     def test_sequence_form_becomes_list(self) -> None:
+        # from_yaml 经 construct_sequence(deep=True) 深度构造
         tag = yaml.safe_load("x: !override [\"a\", \"b\"]\n")["x"]
         assert isinstance(tag, OverrideTag)
         assert tag.value == ["a", "b"]
 
     def test_mapping_value_with_nested_sequence(self) -> None:
-        # node.value[0] 为 (key_node, sequence_node)：item[1].value 是 node 列表；
-        # 自定义 from_yaml 直接取 ScalarNode.value，无隐式类型解析，故为字符串
+        # construct_mapping(deep=True) 递归构造 mapping：内层 sequence 深度解析
         loaded = yaml.safe_load("x: !override\n  ports:\n    - 80\n    - 81\n")
-        assert loaded["x"].value == {"ports": ["80", "81"]}
+        assert loaded["x"].value == {"ports": [80, 81]}
 
     def test_empty_mapping(self) -> None:
+        # 空 flow mapping 经 construct_mapping 得到 {}（不再是 node.value 的 []）
         tag = yaml.safe_load("x: !override {}\n")["x"]
-        assert tag.value == []
+        assert tag.value == {}
 
     def test_to_yaml_emits_tagged_scalar(self) -> None:
-        # to_yaml 契约：represent_scalar(标签, 标量值)；dict/list 值的 dump
-        # 上游本身不支持（resolver 会抛），此处白盒覆盖标量路径
+        # to_yaml 契约：非 dict/list 值走 represent_scalar(标签, 标量值)
         tag = OverrideTag.__new__(OverrideTag)
         tag.value = "scalar-value"
         node = OverrideTag.to_yaml(yaml.SafeDumper(None), tag)
         assert node.tag == "!override"
         assert node.value == "scalar-value"
+
+    def test_to_yaml_emits_tagged_mapping_and_sequence(self) -> None:
+        # dict/list 值分派到 represent_mapping / represent_sequence
+        tag_map = OverrideTag({"a": 1})
+        node_map = OverrideTag.to_yaml(yaml.SafeDumper(None), tag_map)
+        assert isinstance(node_map, yaml.MappingNode)
+        assert node_map.tag == "!override"
+
+        tag_seq = OverrideTag(["a", "b"])
+        node_seq = OverrideTag.to_yaml(yaml.SafeDumper(None), tag_seq)
+        assert isinstance(node_seq, yaml.SequenceNode)
+        assert node_seq.tag == "!override"
 
 
 class TestResetTag:
@@ -85,8 +98,27 @@ class TestRecMergeTags:
         tag = yaml.safe_load("x: !override [1, 2]\n")["x"]
         target = {"a": tag}
         result = rec_merge_one(target, {"other": 9})
-        assert result["a"] == ["1", "2"]
+        assert result["a"] == [1, 2]
         assert not isinstance(result["a"], OverrideTag)
+
+    def test_new_source_override_key_unwrapped(self) -> None:
+        # source 新键为 !override：解包 value 后写入（非覆盖既有键）
+        tag = yaml.safe_load("x: !override [1, 2]\n")["x"]
+        result = rec_merge_one({}, {"a": tag})
+        assert result["a"] == [1, 2]
+        assert not isinstance(result["a"], OverrideTag)
+
+    def test_new_source_reset_key_skipped(self) -> None:
+        # source 新键为 !reset：仅在 target 不存在时被忽略（键不写入）
+        result = rec_merge_one({}, {"a": ResetTag()})
+        assert "a" not in result
+
+    def test_both_override_source_wins(self) -> None:
+        # 双方均为 !override 时由 source 优先（fd64dc2 优先级修正）
+        target_tag = yaml.safe_load("x: !override\n  k: target\n")["x"]
+        source_tag = yaml.safe_load("x: !override\n  k: source\n")["x"]
+        result = rec_merge_one({"a": target_tag}, {"a": source_tag})
+        assert result["a"] == {"k": "source"}
 
     def test_reset_on_both_sides_deletes(self) -> None:
         target = {"a": ResetTag(), "b": 1}
