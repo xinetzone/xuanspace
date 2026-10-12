@@ -16,7 +16,7 @@
 
 | # | 内容 | 影响范围 | 上游位置 | 等价理由 |
 |---|---|---|---|---|
-| <a id="m1"></a>M1 | 全包移除 `from __future__ import annotations` | 8 个基础层文件（后续全包） | 各文件头 | PEP 649 起 3.14 注解默认惰性，future 导入冗余（ruff UP） |
+| <a id="m1"></a>M1 | 全包移除 `from __future__ import annotations`；配套在 `xuan_compose/__init__.py` 顶部加导入时版本守卫（P2-10，2026-10-12） | 8 个基础层文件（后续全包）+ 包入口 | 各文件头（上游无守卫） | PEP 649 起 3.14 注解默认惰性，future 导入冗余（ruff UP）；移除后低版本解释器会在 merge.py 类体自引用注解处抛晦涩 `NameError`，守卫把 PYTHONPATH 直跑/IDE 误用转成含当前版本与 requires-python 引导的友好 `RuntimeError`，仅在 <3.14 触发，对受支持版本与上游对等行为零影响（见 [findings-ledger P2-10](../findings-ledger.md)） |
 | <a id="m2"></a>M2 | `except asyncio.TimeoutError as exc: raise TimeoutError from exc` → `except TimeoutError: raise` | runner.wait_with_timeout | 1811-1820 | 3.11+ 两者即同一内置类型（ruff UP041） |
 | <a id="m3"></a>M3 | `asyncio.exceptions.IncompleteReadError/LimitOverrunError` 收敛为 `asyncio.*` 限定名 | runner._readchunk | 1020-1030 | 纯导入路径机械收敛 |
 | <a id="m4"></a>M4 | `XPodmanSettingKey` 由 `PodmanCompose` 嵌套 `Enum` 提为 model.py 模块级 `StrEnum` | model.py | 2430-2480 | 嵌套枚举无法脱离单例引用；StrEnum 为 3.11+ 惯用法，键值字符串不变 |
