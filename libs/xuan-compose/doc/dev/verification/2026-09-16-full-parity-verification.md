@@ -5,7 +5,7 @@
 > `e3df10472e194ab6d547b5ad25542c5c79e1a5fb`（GPL-2.0-only）
 > 方法链：F（第一性原理重建"功能全集"标尺）→ V（depth=deep，5 攻击者四路并行证伪，
 > 含 1 轮回归对抗）→ I（差异四元组定级）；纯只读审计 + 临时目录构建实证，未改源码逻辑
-> 关联文档：[parity 入口](../parity/README.md)、
+> 关联文档：[parity 入口](../parity/index.md)、
 > [T11 对抗审查](../review/2026-09-16-t11-adversarial-review.md)、
 > [交付总结报告](../delivery/2026-09-16-delivery-summary.md)
 >

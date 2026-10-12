@@ -79,9 +79,9 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 <a id="ledger-u1"></a>
 - **U1（security · P1）** `--verbose` 下完整 argv 入 INFO 日志，含 `-e KEY=SECRET`
   明文环境变量；默认 WARN 级别不可见，开启 verbose 后三条命令路径全部打印。
-  - 锚点：新库 [runner.py:85](../src/xuan_compose/runner.py#L85)（output）、
-    [:159](../src/xuan_compose/runner.py#L159)（exec）、
-    [:178](../src/xuan_compose/runner.py#L178)（run）；上游 L1891/L1963/L1982，逐字同构。
+  - 锚点：新库 [runner.py:85](../../src/xuan_compose/runner.py#L85)（output）、
+    [:159](../../src/xuan_compose/runner.py#L159)（exec）、
+    [:178](../../src/xuan_compose/runner.py#L178)（run）；上游 L1891/L1963/L1982，逐字同构。
   - 最小触发：服务带 `environment: {TOKEN: 明文}` 执行 `podman-compose --verbose up`。
   - 关闭条件：上游对敏感参数脱敏（或日志降级并在文档示警）后关闭。
 
@@ -89,7 +89,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U2（integrity · P2）** `rec_deps` 的环剪枝条件
   `any(start_point == x.name for x in dep_srv["_deps"])` 只覆盖含起点的二元环；
   不含起点的子环仍无限递归。
-  - 锚点：新库 [dependencies.py:33-54](../src/xuan_compose/dependencies.py#L33-L54)；
+  - 锚点：新库 [dependencies.py:33-54](../../src/xuan_compose/dependencies.py#L33-L54)；
     上游 L1763-L1784，逐字同构。正常工作侧（A→B→A 剪枝）已按 L0 固化，
     见 [upstream-quirks.md 依赖段](parity/upstream-quirks.md)。
   - 最小触发：`depends_on` 构造成 A→B→C→D→B（环 B-C-D 不含起点 A），
@@ -105,8 +105,8 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
   重新带回 `include` 键，`del compose["include"]` 只删合并结果、无法阻止再追加；
   ② 菱形包含（A→B→D、A→C→D）中 D 被追加、读取、合并两次，list 字段经
   `value.extend(value2)` 重复。
-  - 锚点：新库 [engine.py:466-501](../src/xuan_compose/engine.py#L466-L501)
-    （del 在 :501）与 [merge.py:191-193](../src/xuan_compose/merge.py#L191-L193)；
+  - 锚点：新库 [engine.py:466-501](../../src/xuan_compose/engine.py#L466-L501)
+    （del 在 :501）与 [merge.py:191-193](../../src/xuan_compose/merge.py#L191-L193)；
     上游 L2904-L2937（del 在 L2937）与 L2347-L2349，逐字同构。
   - 上游历史：PR [#804](https://github.com/containers/podman-compose/pull/804)
     描述明确包含"检测环包含"与"每个文件只解析一次"，2025-08-04 关闭但**未合并**；
@@ -118,11 +118,11 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U4（boundary · P3）** scale 无值域与格式校验：负数/0 副本数使
   `range(1, replicas + 1)` 为空，下游首个 `[0]` 索引点裸 IndexError；
   `--scale <服务名>`（缺等号且命中同名服务）在 `split("=")` 后取 `[1]` 同样裸 IndexError。
-  - 锚点：新库 [engine.py:594-612](../src/xuan_compose/engine.py#L594-L612)；
+  - 锚点：新库 [engine.py:594-612](../../src/xuan_compose/engine.py#L594-L612)；
     上游 L3029-L3042；下游索引点新库
-    [runexec.py:28](../src/xuan_compose/commands/runexec.py#L28)、
-    [container_args.py:207](../src/xuan_compose/translate/container_args.py#L207)、
-    [networks.py:158](../src/xuan_compose/translate/networks.py#L158)。
+    [runexec.py:28](../../src/xuan_compose/commands/runexec.py#L28)、
+    [container_args.py:207](../../src/xuan_compose/translate/container_args.py#L207)、
+    [networks.py:158](../../src/xuan_compose/translate/networks.py#L158)。
   - 最小触发：`scale: 0`（或 `deploy.replicas: 0`、`--scale svc=0`）
     后执行 run/up，下游取空列表首项越界；或对**同名已存在服务**执行
     `--scale <服务名>` 缺 `=N`，匹配分支取 `scale_args[1]` 即越界。
@@ -131,7 +131,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 <a id="ledger-u5"></a>
 - **U5（fuzz · P3）** `config_hash` 的 `json.dumps(jsonable_service, sort_keys=True)`
   无 `default=str`；`original_configuration` 只递归 dict，非 JSON 原生标量原样到达 dumps。
-  - 锚点：新库 [engine.py:149](../src/xuan_compose/engine.py#L149)；上游 L2585。
+  - 锚点：新库 [engine.py:149](../../src/xuan_compose/engine.py#L149)；上游 L2585。
   - 最小触发：service 配置含未加引号的 YAML 日期标量（safe_load 得 `datetime.date`）
     或残留自定义标签对象，up 重建判定计算哈希时 TypeError。
   - 关闭条件：`default=str` 或配置加载期将非标量标量规范化。
@@ -140,7 +140,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U6（boundary · P3）** `existing_containers` 对 `podman ps --format json`
   输出无类型防御：`json.loads` 结果非数组（null/对象）、条目 `Names` 为空、
   或 `Labels` 为 null 时裸异常。
-  - 锚点：新库 [runner.py:290-292](../src/xuan_compose/runner.py#L290-L292)；
+  - 锚点：新库 [runner.py:290-292](../../src/xuan_compose/runner.py#L290-L292)；
     上游 L2094-L2097，逐字同构。
   - 最小触发：ps 返回 `null` → `for c in None` TypeError；条目 Names 为空 →
     `None[0]` TypeError；Labels 为 null → `None.get(...)` AttributeError。
@@ -149,8 +149,8 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 <a id="ledger-u7"></a>
 - **U7（boundary · P2）** `COMPOSE_PARALLEL_LIMIT=0` 时 `asyncio.Semaphore(0)`，
   所有子进程协程在 `async with self.semaphore` 处永久等待，表现为命令挂起且无输出。
-  - 锚点：新库 [parser.py:168](../src/xuan_compose/cli/parser.py#L168)
-    （`--parallel` 默认读环境变量）与 [main.py:47](../src/xuan_compose/cli/main.py#L47)
+  - 锚点：新库 [parser.py:168](../../src/xuan_compose/cli/parser.py#L168)
+    （`--parallel` 默认读环境变量）与 [main.py:47](../../src/xuan_compose/cli/main.py#L47)
     （Semaphore 构造）；上游 L3332 与 L2542，逐字同构。
   - 最小触发：`COMPOSE_PARALLEL_LIMIT=0 podman-compose up`（V 阶段实证：
     env 字符串经 argparse `type=int` 转为 0，acquire 永久挂起；负值在
@@ -161,17 +161,17 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U8（boundary · P3）** FileNotFoundError 守卫仅存在于启动期版本探测；
   命令执行途中 podman 二进制消失（卸载/替换/路径失效）时，
   `create_subprocess_exec` 抛裸 FileNotFoundError。
-  - 锚点：探测守卫新库 [main.py:60](../src/xuan_compose/cli/main.py#L60)
-    （上游 L2551）；无守卫执行点新库 [runner.py:86](../src/xuan_compose/runner.py#L86)、
-    [:189](../src/xuan_compose/runner.py#L189)、
-    [:215](../src/xuan_compose/runner.py#L215)、
-    [:224](../src/xuan_compose/runner.py#L224)。
+  - 锚点：探测守卫新库 [main.py:60](../../src/xuan_compose/cli/main.py#L60)
+    （上游 L2551）；无守卫执行点新库 [runner.py:86](../../src/xuan_compose/runner.py#L86)、
+    [:189](../../src/xuan_compose/runner.py#L189)、
+    [:215](../../src/xuan_compose/runner.py#L215)、
+    [:224](../../src/xuan_compose/runner.py#L224)。
   - 关闭条件：在 Podman 子进程边界统一转友好错误信息。
 
 <a id="ledger-u9"></a>
 - **U9（fuzz · P3）** compose 文件以 `open(filename, encoding="utf-8")` 读取，
   无 `errors` 参数与捕获；非法 UTF-8 字节产生 UnicodeDecodeError 裸栈。
-  - 锚点：新库 [engine.py:404](../src/xuan_compose/engine.py#L404)；上游 L2840。
+  - 锚点：新库 [engine.py:404](../../src/xuan_compose/engine.py#L404)；上游 L2840。
   - 最小触发：compose 文件写入非法 UTF-8 字节序列后执行任意命令。
   - 区分：**容器 stdout/stderr 流**非 UTF-8 的情形在上游基线代码中已由增量解码器
     处理（1f1cb09 L1915；议题 [#1374](https://github.com/containers/podman-compose/issues/1374)
@@ -183,9 +183,9 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U10（boundary · P3）** 环境变量通道将 `PODMAN_COMPOSE_*` 值原样按字符串存入
   `x_podman`；`resolve_pod_args` 只对 CLI `--pod-args` 通道做 `shlex.split`，
   env 通道命中时返回 str，调用处 `list + str` 触发 TypeError。
-  - 锚点：新库环境映射 [engine.py:234-239](../src/xuan_compose/engine.py#L234-L239)、
-    解析 [engine.py:195-204](../src/xuan_compose/engine.py#L195-L204)、
-    拼接点 [updown.py:57](../src/xuan_compose/commands/updown.py#L57)；
+  - 锚点：新库环境映射 [engine.py:234-239](../../src/xuan_compose/engine.py#L234-L239)、
+    解析 [engine.py:195-204](../../src/xuan_compose/engine.py#L195-L204)、
+    拼接点 [updown.py:57](../../src/xuan_compose/commands/updown.py#L57)；
     上游 L2670-L2675 与 L2631-L2640。
   - 最小触发：设置 `PODMAN_COMPOSE_POD_ARGS=--infra=false`，且无 CLI `--pod-args`
     覆盖、无 x-podman 配置时执行 up。
@@ -197,7 +197,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U11（integrity · P3）** `services[target_service_name]` 下标在缺失服务时先抛
   KeyError，其后的 `if target_service is None` 永不可达（dict 下标不返回 None），
   友好 ValueError 文案为死代码。
-  - 锚点：新库 [engine.py:726-727](../src/xuan_compose/engine.py#L726-L727)；
+  - 锚点：新库 [engine.py:726-727](../../src/xuan_compose/engine.py#L726-L727)；
     上游 L3162-L3163；同函数的镜像 tag 百分号编码怪癖已按 L0 固化
     （[upstream-quirks.md 镜像上下文段](parity/upstream-quirks.md)），缺陷侧与怪癖侧互补。
   - 最小触发：`build.additional_contexts` 引用 `service:不存在的服务`。
@@ -210,18 +210,18 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 - **U12（design · 不回馈）** bind/secret/extends 支持绝对路径、`..`、`~`：
   compose 规格本身允许挂载宿主路径，argv 不经 shell 解释，路径逃逸边界归 podman
   与调用者责任，非本库缺陷。
-  - 锚点：新库 [mounts.py:68](../src/xuan_compose/translate/mounts.py#L68)、
-    [:147](../src/xuan_compose/translate/mounts.py#L147)、
-    [build.py:37](../src/xuan_compose/translate/build.py#L37)、
-    [secrets.py:66](../src/xuan_compose/translate/secrets.py#L66)
+  - 锚点：新库 [mounts.py:68](../../src/xuan_compose/translate/mounts.py#L68)、
+    [:147](../../src/xuan_compose/translate/mounts.py#L147)、
+    [build.py:37](../../src/xuan_compose/translate/build.py#L37)、
+    [secrets.py:66](../../src/xuan_compose/translate/secrets.py#L66)
     （`expanduser`/`abspath`/`realpath`）。
 
 <a id="ledger-u13"></a>
 - **U13（timing · 刻意语义，暂不回馈）** runner 取消时 terminate→等待 10 秒→kill，
   吞掉 CancelledError 并返回 exit_code，up 监督循环据此把取消当正常终止。
-  - 锚点：新库 [runner.py:228-239](../src/xuan_compose/runner.py#L228-L239)；
+  - 锚点：新库 [runner.py:228-239](../../src/xuan_compose/runner.py#L228-L239)；
     上游 L2030-L2043，逐字同构；调用侧注释见
-    [updown.py:169](../src/xuan_compose/commands/updown.py#L169)。
+    [updown.py:169](../../src/xuan_compose/commands/updown.py#L169)。
   - 两个子面分开定性：① 取消后不重抛 CancelledError = 上游刻意的 abort 语义，
     **不得改动**；② 不 await `out_t`/`err_t` 日志 drain 任务，取消瞬间可能丢失
     尾行日志或产生 task pending 告警——若未来回馈，仅就 ② 提最小 PR。
@@ -236,7 +236,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 <a id="ledger-p2-1"></a>
 | # | 项 | 证据 | 定级理由 |
 |---|---|---|---|
-| P2-1 | `normalize_service` 新增 3 处 `assert`（depends_on override 分支） | 新库 [normalize.py:207](../src/xuan_compose/normalize.py#L206-L214) vs 上游 podman_compose.py:2138-2144 | **经回归对抗降级**：真实 YAML 入口下 mapping 形态在上游构造期即抛 AttributeError（上游 L1777-1778 tuple 无 `.value`），分歧仅在绕过公开构造契约手工注入 dict 时可观察（上游产出 dict、新库 AssertionError）；且 `python -O` 剥除 assert 后行为漂移。建议改回上游同构写法或补登记 |
+| P2-1 | `normalize_service` 新增 3 处 `assert`（depends_on override 分支） | 新库 [normalize.py:207](../../src/xuan_compose/normalize.py#L206-L214) vs 上游 podman_compose.py:2138-2144 | **经回归对抗降级**：真实 YAML 入口下 mapping 形态在上游构造期即抛 AttributeError（上游 L1777-1778 tuple 无 `.value`），分歧仅在绕过公开构造契约手工注入 dict 时可观察（上游产出 dict、新库 AssertionError）；且 `python -O` 剥除 assert 后行为漂移。建议改回上游同构写法或补登记 |
 | P2-2 | `COMPOSE_DEFAULT_LS` 双份副本 | discovery.py:14-29 与 engine.py:59-74 各一份 14 项（逐字一致） | 当前无行为差，但违反单一事实源，单边修改即静默分叉；[symbol-map.md](parity/symbol-map.md) 只登记了 discovery 落点 |
 | P2-3 | D9 登记不完整：`_task_cancelled` 不仅是"提升" | logs.py:52-55 | 函数体折叠为 `bool(cancelled() or cancelling())` 并删除 3.11 版本守卫（requires-python≥3.14 下等价），D9 措辞未覆盖此重写。**处置（2026-10-10 闭环）**：F2 当时已落地代码，[differences.md D9](parity/differences.md#d9) 已补记折叠与守卫删除，本项关闭 |
 | P2-4 | 版本号双轨 | pyproject 0.1.0 vs `__version__` 1.6.0+xuan.1 | `pip show` 与 `version` 命令不一致；CHANGELOG 已述"独立版本号"，[differences.md](parity/differences.md) D7 未登记元数据分裂 |
@@ -285,7 +285,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
   并入主权区模式 behavior-characterization-freeze「固化强度分级」小节。
 - **L1→L0 加固一处**：create_secrets 报错串第二个片段漏 f 前缀，原测试仅
   `assertRaises(ValueError)`（细节变异不红），已改为报错全文等值断言
-  （[test_commands_build_updown.py:188-196](../tests/test_commands_build_updown.py#L188-L196)）；
+  （[test_commands_build_updown.py:188-196](../../tests/test_commands_build_updown.py#L188-L196)）；
   28 例回归通过。
 - **P2-8 互链**：SIGINT 监督、config-hash 重建等深层分支在「T7 清单固化段」
   按 L2/L3 逐点登记，改动前须对拍上游 1.6.0（pinned `e3df104`）。

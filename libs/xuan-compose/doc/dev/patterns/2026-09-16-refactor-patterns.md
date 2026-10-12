@@ -5,7 +5,7 @@
 > **本篇是可更新的模式沉淀，不是冻结快照**：六个模式本体可随后续重构实践增补/修订，
 > 但 2026-09-16 案例事实（提交号、数字、D13 等）保持原样。
 > 配套案例：[交付报告](../delivery/2026-09-16-delivery-summary.md)、
-> [对等审计](../parity/README.md)、[T11 审查](../review/2026-09-16-t11-adversarial-review.md)。
+> [对等审计](../parity/index.md)、[T11 审查](../review/2026-09-16-t11-adversarial-review.md)。
 
 ## 1. 快照对拍迁移（vendor-independent snapshot）
 

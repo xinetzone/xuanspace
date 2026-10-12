@@ -10,7 +10,7 @@
 - 上游 pinned commit：`e3df10472e194ab6d547b5ad25542c5c79e1a5fb`
 - 重构方式：将上游 5541 行单体 `podman_compose.py` 翻译式搬迁为分层包（translate-then-move），
   行为与 1.6.0 对等；结构差异与 py3.14 现代化逐条登记见
-  [docs/parity/](docs/parity/README.md)（142 个公开符号 100% 映射）
+  [doc/dev/parity/](doc/dev/parity/index.md)（142 个公开符号 100% 映射）
 - 许可证：**GPL-2.0-only**（继承上游，不得重新许可）；完整许可证文本见 [LICENSE](LICENSE)；
   src/tests/scripts 全部 96 个 `.py` 文件均携带 `SPDX-License-Identifier: GPL-2.0-only` 头
 
@@ -141,7 +141,7 @@ flowchart TD
   与 `tests/test_cli_parity.py`；快照由 `tests/generate_parity_snapshots.py` 生成。
 - 142 个上游公开符号的逐模块映射、重命名（`PodmanCompose→ComposeEngine`）、
   删除项（`cmd_run`/`cmd_parse` 装饰器副作用）与 13 类 py3.14 差异：
-  [docs/parity/](docs/parity/README.md)（符号台账与差异登记分册）。
+  [doc/dev/parity/](doc/dev/parity/index.md)（符号台账与差异登记分册）。
 
 ## 测试
 

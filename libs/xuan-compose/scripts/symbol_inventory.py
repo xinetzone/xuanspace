@@ -9,7 +9,7 @@
 1. 上游 ``vendor/podman-compose/podman_compose.py`` 顶层公开符号
    （公开函数/类 + 公开常量，distinct 名称）的总数与逐条行号；
 2. 每个符号在新库 src/xuan_compose/ 下的同名落点模块；
-3. 无同名落点的符号清单（应为重命名/删除项，见 docs/parity/differences.md）。
+3. 无同名落点的符号清单（应为重命名/删除项，见 doc/dev/parity/differences.md）。
 
 只读：脚本不修改 vendor 与本库任何文件。vendor 路径可用环境变量
 ``PODMAN_COMPOSE_SRC`` 覆盖。
@@ -86,7 +86,7 @@ def main() -> None:
         if name not in targets and name not in {"PODMAN_CMDS", "COMPOSE_DEFAULT_LS",
                                                "STOP_GRACE_PERIOD", "__version__"}:
             missing.append(f"{name} (L{lineno})")
-    print(f"无同名落点（须在 docs/parity/differences.md 登记重命名/删除）: {len(missing)}")
+    print(f"无同名落点（须在 doc/dev/parity/differences.md 登记重命名/删除）: {len(missing)}")
     for item in missing:
         print(f"  - {item}")
 

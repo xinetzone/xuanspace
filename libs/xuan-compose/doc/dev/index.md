@@ -1,12 +1,13 @@
-# xuan-compose 文档索引
+# xuan-compose 文档索引（dev 证据区）
 
-> 本目录是 xuan-compose 对 [containers/podman-compose](https://github.com/containers/podman-compose)
-> v1.6.0 分层重构（translate-then-move）的证据与文档集。
+> 本目录（`doc/dev/`）是 xuan-compose 对 [containers/podman-compose](https://github.com/containers/podman-compose)
+> v1.6.0 分层重构（translate-then-move）的**证据区**。文档集总入口见 [../index.md](../index.md)。
 >
 > 2026-10-10 由 4 份长文档原子化重写为「索引 + 常青台账 + 时点报告」结构：
 > 同一事实只保留一个权威陈述位置，时点报告中的数字/结论/编号保持 2026-09-16
 > 交付快照原样，未做增删改（仅去重、引用化与结构重排；标题与导航性文字随原子化调整）。
-> 文末有[旧→新迁移表](#文件迁移表旧--新)。
+> 旧→新迁移表与 V 阶段验证记录属冻结历史，已移至
+> [2026-10-10 原子化重写档案](2026-10-10-atomization-record.md)（2026-10-12 自本页拆出）。
 
 ## 一句话结论
 
@@ -21,7 +22,7 @@
 
 | 我想…… | 文档 | 性质 |
 |---|---|---|
-| 理解对等性全貌、查基线与统计口径 | [parity/README.md](parity/README.md) | 常青入口 |
+| 理解对等性全貌、查基线与统计口径 | [parity/index.md](parity/index.md) | 常青入口 |
 | 查某个上游符号迁到了哪个模块 | [parity/symbol-map.md](parity/symbol-map.md) | 机器台账 |
 | 查 D1-D14 结构差异 / M1-M7 现代化项 | [parity/differences.md](parity/differences.md) | 常青台账 |
 | 查逐字保留的上游怪癖清单 | [parity/upstream-quirks.md](parity/upstream-quirks.md) | 常青台账 |
@@ -30,6 +31,7 @@
 | 读 T11 独立对抗审查过程、修复与 AC 证据 | [review/2026-09-16-t11-adversarial-review.md](review/2026-09-16-t11-adversarial-review.md) | 时点快照 |
 | 读功能完整性独立复验（七维证伪/P1 修复/复现命令） | [verification/2026-09-16-full-parity-verification.md](verification/2026-09-16-full-parity-verification.md) | 时点快照 |
 | 查所有已登记问题的处置结论（R/N/U/P2/P1） | [findings-ledger.md](findings-ledger.md) | 常青台账（单一事实源） |
+| 查 2026-10-10 原子化的旧→新流向与 V 阶段验证证据 | [2026-10-10-atomization-record.md](2026-10-10-atomization-record.md) | 时点档案（冻结） |
 
 ## 上游基线（单一事实源）
 
@@ -79,56 +81,16 @@
 完整复现命令（WSL 权威门禁、纯 Python wheel/sdist 干净构建）：
 [verification 报告 §7](verification/2026-09-16-full-parity-verification.md#7-复现命令)。
 
-## 覆盖率口径说明（91% 与 92%）
+### 覆盖率口径说明（91% 与 92%）
 
 文档集中并存两个覆盖率数字，来自不同测量时点，均如实保留、未做归一化：
 
-- **91%**：T9/T10 门禁时点口径，见 [parity 入口的快照证据](parity/README.md#对等证据)与
+- **91%**：T9/T10 门禁时点口径，见 [parity 入口的快照证据](parity/index.md#对等证据)与
   库 README 测试节；
 - **92%**：T11 修复后回归（[review §5](review/2026-09-16-t11-adversarial-review.md#5-本轮修复failfix回归全部完成)）
   与独立复验（[verification §4.3](verification/2026-09-16-full-parity-verification.md#43-修复后实证临时目录干净-pep-517-构建仓库零构建残留)）时点口径。
 
-## 文件迁移表（旧 → 新）
+## 历史档案
 
-原子化重写（2026-10-10）的内容流向。主仓 `.trae/specs/xuan-compose-refactor/tasks.md`
-中对旧路径的引用属交付时点历史档案，保持原样并以本表作为溯源对照。
-
-| 旧文件 | 新位置 |
-|---|---|
-| parity.md（头部基线/口径/复现） | [parity/README.md](parity/README.md) |
-| parity.md §1-§4 | [parity/symbol-map.md](parity/symbol-map.md) |
-| parity.md §5.1-§5.2 | [parity/differences.md](parity/differences.md) |
-| parity.md §5.3 | [parity/upstream-quirks.md](parity/upstream-quirks.md) |
-| parity.md §6 | 本页「证据与复现总账」+ [parity/README.md](parity/README.md) |
-| 2026-09-16-xuan-compose-delivery-summary.md §1-§5、§8 | [delivery/2026-09-16-delivery-summary.md](delivery/2026-09-16-delivery-summary.md) |
-| 2026-09-16-xuan-compose-delivery-summary.md §6 | [patterns/2026-09-16-refactor-patterns.md](patterns/2026-09-16-refactor-patterns.md) |
-| 2026-09-16-xuan-compose-delivery-summary.md §7 | 本页「证据与复现总账」 |
-| review.md §0-§5、§7、§8 | [review/2026-09-16-t11-adversarial-review.md](review/2026-09-16-t11-adversarial-review.md) |
-| review.md §6 | [findings-ledger.md](findings-ledger.md) §A/§B |
-| 2026-09-16-xuan-compose-full-parity-verification.md §1、§2、§6、§7 | [verification/2026-09-16-full-parity-verification.md](verification/2026-09-16-full-parity-verification.md) |
-| 2026-09-16-xuan-compose-full-parity-verification.md §4（P1 修复全文） | verification 报告 §4（正文保留）；摘要另登记至 [findings-ledger.md §D](findings-ledger.md#d-p1-fixed) |
-| 2026-09-16-xuan-compose-full-parity-verification.md §3（环境 P1） | [findings-ledger.md](findings-ledger.md) §E |
-| 2026-09-16-xuan-compose-full-parity-verification.md §5（P2 清单） | [findings-ledger.md](findings-ledger.md) §C |
-
-## 原子化重写验证记录（2026-10-10，V 阶段）
-
-- 事实守恒：与 git HEAD 四份旧文做编号集合机械比对——D/M/U/P2/F/N/TR-11/AC/T
-  九套编号集合**零缺失、零新增**；关键数字（5541/6472/10844/142/940/484/478/481/
-  97651/271449/39/56/96/108/91%/92% 等）全部在位；vendor 行号抽验无误
-  （normalize_service_final L2201、normalize_final L2214）。
-- 现状实测：`symbol_inventory.py` 输出 142=138+4、无落点 3（与 D1/D2/D6 一致）；
-  src=39 文件、tests=56 文件、src+tests+scripts=96 个 .py 全部带 SPDX 头
-  （与 T11 F4 口径一致）。
-- 链接门禁：107 个相对链接 + 锚点全绿（子模块不被主仓 check-links 覆盖，改用
-  一次性检查器按 GitHub slug 规则校验，含中文标题锚与显式 `<a id>`）。
-- 四视角对抗审查：fresh-context 审查员提出 13 条（0 P0/1 P1/6 P2/6 P3），
-  采纳 10 条已修复（P2-3 闭环登记、P2-6 路径更正、结论卡、编号表补 T/G/方法链、
-  mount/move 术语注、26/27 口径、迁移表细化、死锚启用、快照导航文字声明、
-  台账维护说明）；驳回 3 条并记录理由：
-  ①「恢复 CMakeLists 链接」——该文件已被子模块后续提交 `f293ed6` 删除、
-  且新位置深一级，链接必断，故降级为纯文本（快照事实保留）；
-  ②「review §6 中文锚点」——复核时已统一为显式锚 `#b-upstream`；
-  ③「常青层 142/commit 重复」——属证据入口的必要交叉引用，刻意保留。
-- 外部引用同步修复：库 README×2、CHANGELOG×4、symbol_inventory.py×2、
-  主仓 vendor-snapshot-parity SKILL×1、主仓 sticker-wiki 教程×2（源属性与断链）。
-  主仓 `.trae/specs/xuan-compose-refactor/tasks.md` 中的旧路径按历史档案保持原样。
+- [2026-10-10 原子化重写档案](2026-10-10-atomization-record.md)：4 份长文档→本结构的
+  旧→新迁移表与 V 阶段验证记录（冻结历史，除勘误外不再更新；2026-10-12 自本页拆出）。

@@ -2,7 +2,7 @@
 
 > 行号为上游 `podman_compose.py` 行号（锚定上游 commit `1f1cb09bfee4d79857ed23bfe2699febd7d20a53`）；「新库落点」为 `src/xuan_compose/`
 > 下的模块。未标注「重命名」者名称与上游完全一致。
-> 统计口径与复现命令见 [parity/README.md](README.md)；差异编号 D*/M* 见
+> 统计口径与复现命令见 [parity/index.md](index.md)；差异编号 D*/M* 见
 > [differences.md](differences.md)。
 
 ## 1. 总账（TR-10.1）

@@ -5,16 +5,16 @@
 > `e3df10472e194ab6d547b5ad25542c5c79e1a5fb`（GPL-2.0-only）
 > 交付方式：translate-then-mount（翻译式搬迁，非兼容封装、非重写）
 > 远端状态：12 笔子模块提交 + 配套主仓提交**已推送**（xuanspace GitHub / SpecWeave GitCode）
-> 关联文档：[parity 入口](../parity/README.md)（符号映射与差异）、
+> 关联文档：[parity 入口](../parity/index.md)（符号映射与差异）、
 > [T11 独立对抗审查](../review/2026-09-16-t11-adversarial-review.md)、
-> [../../README.md](../../README.md)（使用手册）、spec
+> [../../../README.md](../../../README.md)（使用手册）、spec
 > `.trae/specs/xuan-compose-refactor/`（T1-T12 全程任务记录）
 >
 > 历史说明：本文是 2026-09-16 交付时点快照（2026-10-10 原子化重写迁自
 > `docs/2026-09-16-xuan-compose-delivery-summary.md`，数字与结论零增删改；
 > 标题与导航性文字随原子化调整，
 > 原 §6 模式沉淀迁至 [patterns/2026-09-16-refactor-patterns.md](../patterns/2026-09-16-refactor-patterns.md)，
-> 原 §7 证据索引迁至[文档索引](../README.md#证据与复现总账)）。
+> 原 §7 证据索引迁至[文档索引](../index.md#证据与复现总账)）。
 
 ---
 
@@ -95,7 +95,7 @@ flowchart TD
     TR -. "仅再导出 CalledProcessError" .-> RUNNER["runner.py：全包唯一 import subprocess"]
 ```
 
-> 本图为 2026-09-16 交付时点形态；库 [README](../../README.md#架构分层) 持有随代码演进的
+> 本图为 2026-09-16 交付时点形态；库 [README](../../../README.md#架构分层) 持有随代码演进的
 > 权威架构图（T11 F3 校正版，两份在交付日等价）。
 
 关键结构差异（行为等价，详见 [D1-D14](../parity/differences.md#52-结构性重构语义等价架构必需)）：
@@ -144,7 +144,7 @@ flowchart TD
 ## 7. 质量证据
 
 全部可复现证据（功能/符号/测试/覆盖率/静态质量/架构/安全/许可/vendor 洁净）统一见
-[文档索引「证据与复现总账」](../README.md#证据与复现总账)。
+[文档索引「证据与复现总账」](../index.md#证据与复现总账)。
 
 ## 8. 已知边界（如实声明）
 
@@ -161,4 +161,4 @@ flowchart TD
 ---
 
 *本报告所有数字均来自 2026-09-16 交付时的 git/测试/扫描实测，复现命令见
-[文档索引](../README.md#证据与复现总账)与 parity/review/verification 各分册。*
+[文档索引](../index.md#证据与复现总账)与 parity/review/verification 各分册。*
