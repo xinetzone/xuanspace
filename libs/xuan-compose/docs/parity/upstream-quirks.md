@@ -37,8 +37,8 @@
     - 「双方均为 `!override` 时 **source 优先**」（`rec_merge_one`：`clone(value2.value) if isinstance(value2, OverrideTag) else clone(value.value)`）；此前行为不同，属上游语义变更。
     - `!override {}`（空 flow mapping）现经 `construct_mapping` 得 `{}`（旧为 `[]`）；YAML 标量按标记解析（`1` → int `1`，非字符串 `"1"`）。
     - `!override`/`!reset` 作为 **source 新键**时的分支语义（`!override` 解包 value 后写入、`!reset` 忽略）。
-- 依赖：`rec_deps` 对自依赖/未知依赖"保留边但不递归展开"；A→B→A 环按起点剪枝。【L0】
-- 镜像上下文 `_resolve_context_dependencies`：`urllib.parse.quote` 会百分号编码镜像 tag 的冒号（`b:1` → `b%3A1`）。【L0】
+- 依赖：`rec_deps` 对自依赖/未知依赖"保留边但不递归展开"；A→B→A 环按起点剪枝。【L0】（缺陷侧：不含起点的子环剪枝失效仍可 RecursionError，见 [findings-ledger.md U2](../findings-ledger.md#ledger-u2)）
+- 镜像上下文 `_resolve_context_dependencies`：`urllib.parse.quote` 会百分号编码镜像 tag 的冒号（`b:1` → `b%3A1`）。【L0】（缺陷侧：缺失服务先 KeyError、None 检查为死代码，见 [findings-ledger.md U11](../findings-ledger.md#ledger-u11)）
 - handler 怪癖原样保留清单（T7 登记）：
   - build 拓扑 as_completed 调度。【L1】
   - up 的 SIGINT 监督循环。【L3】
