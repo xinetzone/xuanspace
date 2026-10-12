@@ -9,7 +9,10 @@
 2. 经 :func:`~xuan_compose.cli.parser.parse_args` 解析 argv；
 3. 按参数装配 :class:`~xuan_compose.runner.Podman`（路径校验、信号量）；
 4. 非 dry-run 探测 podman 版本（失败给上游等价的 fatal + 退出码 1）；
-5. 除 ``version`` 与 ``systemd create-unit`` 外加载 compose 文件；
+5. 除 ``version`` 与 ``systemd create-unit`` 外：先做引擎就绪保障
+   （``podman info`` 探活，不可达时自动启动默认 machine，见
+   :meth:`Podman.ensure_ready`；``--no-machine-start`` / dry-run 跳过），
+   再加载 compose 文件；
 6. 注入可执行路径并经 ``engine.commands`` 查表分发 handler，int 返回码
    转 ``SystemExit``。
 """
@@ -23,10 +26,26 @@ from ..commands import install_handlers
 from ..engine import ComposeEngine
 from ..errors import PodmanComposeError
 from ..logging_utils import log
-from ..runner import CalledProcessError, Podman
+from ..runner import DEFAULT_MACHINE_READY_TIMEOUT, CalledProcessError, Podman
 from .parser import parse_args
 
 __all__ = ["async_main", "main"]
+
+
+def _machine_ready_timeout() -> float:
+    """读取就绪保障总预算 ``XC_MACHINE_READY_TIMEOUT``（秒）。
+
+    缺省或取值非法/非正时回退 :data:`DEFAULT_MACHINE_READY_TIMEOUT`，
+    避免环境变量笔误把装配期拖入无限等待或立即超时。
+    """
+    raw = os.environ.get("XC_MACHINE_READY_TIMEOUT")
+    if raw is None:
+        return DEFAULT_MACHINE_READY_TIMEOUT
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_MACHINE_READY_TIMEOUT
+    return value if value > 0 else DEFAULT_MACHINE_READY_TIMEOUT
 
 
 async def async_main(argv: list[str] | None = None) -> None:
@@ -75,6 +94,13 @@ async def async_main(argv: list[str] | None = None) -> None:
         cmd_name != "systemd" or args.action != "create-unit"
     )
     if compose_required:
+        # 引擎就绪保障：仅真实执行需要服务端的命令时触发；dry-run 与
+        # --no-machine-start（或 XC_NO_MACHINE_START=1）显式跳过。
+        # 不可自愈时 Podman.ensure_ready 抛 PodmanEngineNotReadyError，
+        # 由 main() 统一以 "Error: ..." + 退出码 1 收口，不向用户抛 traceback。
+        if not args.dry_run and not args.no_machine_start:
+            assert engine.podman is not None
+            await engine.podman.ensure_ready(timeout=_machine_ready_timeout())
         engine._parse_compose_file()
     cmd = engine.commands[cmd_name]
     retcode = await cmd(engine, args)

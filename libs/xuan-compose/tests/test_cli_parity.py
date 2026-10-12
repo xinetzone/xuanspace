@@ -19,10 +19,26 @@ from xuan_compose.cli.parser import SYSTEMD_DESC, build_parser
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "cli_parity.json"
 
+#: 本库相对上游**有意新增**的全局参数白名单（option 主名 → 差异登记号）。
+#: 对拍前从 current 剔除，使上游参数表仍维持逐位置零差异硬约束；
+#: ``test_xuan_extensions_actually_exist`` 守卫白名单与代码不漂移。
+#: 新增条目必须同时在 doc/dev/parity/differences.md 登记。
+XUAN_GLOBAL_EXTENSIONS: dict[str, str] = {
+    "--no-machine-start": "D16",
+}
+
 
 def _load_snapshot() -> dict:
     with SNAPSHOT.open(encoding="utf-8") as fh:
         return json.load(fh)  # type: ignore[no-any-return]
+
+
+def _strip_xuan_extensions(options: list[dict]) -> list[dict]:
+    return [
+        action
+        for action in options
+        if not any(s in XUAN_GLOBAL_EXTENSIONS for s in action["option_strings"])
+    ]
 
 
 class TestCliParity(unittest.TestCase):
@@ -43,8 +59,25 @@ class TestCliParity(unittest.TestCase):
 
     def test_global_options_zero_diff(self) -> None:
         upstream = self.snapshot["global"]["options"]
-        current = self.current["global"]["options"]
+        # 剔除 D16 等登记在案的本库扩展后，上游参数表必须逐位置零差异
+        current = _strip_xuan_extensions(self.current["global"]["options"])
         self._assert_option_lists_equal(upstream, current, context="<global>")
+
+    def test_xuan_extensions_actually_exist(self) -> None:
+        # 防白名单漂移：登记的每个扩展 option 必须真实存在且带 help 文案
+        present = {
+            option
+            for action in self.current["global"]["options"]
+            for option in action["option_strings"]
+        }
+        for option in XUAN_GLOBAL_EXTENSIONS:
+            assert option in present, f"白名单扩展 {option} 未在 parser 中找到"
+            action = next(
+                a
+                for a in self.current["global"]["options"]
+                if option in a["option_strings"]
+            )
+            assert action["help"], f"扩展 {option} 缺少 help 文案"
 
     def test_every_subcommand_options_zero_diff(self) -> None:
         upstream_commands = self.snapshot["commands"]

@@ -17,11 +17,12 @@ from contextlib import redirect_stderr, redirect_stdout
 from unittest import IsolatedAsyncioTestCase, mock
 
 from xuan_compose.cli import parser as cli_parser
-from xuan_compose.cli.main import async_main
+from xuan_compose.cli.main import _machine_ready_timeout, async_main, main
 from xuan_compose.cli.parser import COMMAND_PARSERS, build_parser, parse_args
 from xuan_compose.commands import COMMAND_HANDLERS
 from xuan_compose.engine import ComposeEngine
-from xuan_compose.runner import CalledProcessError
+from xuan_compose.errors import PodmanEngineNotReadyError
+from xuan_compose.runner import DEFAULT_MACHINE_READY_TIMEOUT, CalledProcessError
 
 ALL_COMMANDS = set(COMMAND_HANDLERS)
 
@@ -138,15 +139,29 @@ class TestGlobalParser(IsolatedAsyncioTestCase):
         assert args.format == "pretty"
 
     def test_podman_path_default_and_global_flags(self) -> None:
-        args = _parse(["ps"])
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("XC_NO_MACHINE_START", None)
+            args = _parse(["ps"])
         assert args.podman_path == "podman"
         assert args.dry_run is False
         assert args.verbose is False
         assert args.no_ansi is False
+        assert args.no_machine_start is False
         assert args.env_file == []
         assert args.podman_args == []
         for podman_cmd in cli_parser.PODMAN_CMDS:
             assert getattr(args, f"podman_{podman_cmd}_args") == []
+
+    def test_no_machine_start_from_flag_and_env(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("XC_NO_MACHINE_START", None)
+            assert _parse(["ps"]).no_machine_start is False
+        for truthy in ("1", "true", "YES", "on"):
+            with mock.patch.dict(os.environ, {"XC_NO_MACHINE_START": truthy}):
+                assert _parse(["ps"]).no_machine_start is True
+        with mock.patch.dict(os.environ, {"XC_NO_MACHINE_START": "0"}):
+            assert _parse(["ps"]).no_machine_start is False
+        assert _parse(["--no-machine-start", "ps"]).no_machine_start is True
 
     def test_parallel_default_is_sys_maxsize(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -278,6 +293,7 @@ class TestSubcommandArgs(IsolatedAsyncioTestCase):
 def _fake_podman(version_bytes: bytes | None = b"podman version 5.2.3\n") -> mock.Mock:
     podman = mock.Mock()
     podman.run = mock.AsyncMock(return_value=0)
+    podman.ensure_ready = mock.AsyncMock(return_value=None)
     if version_bytes is not None:
         podman.output = mock.AsyncMock(return_value=version_bytes)
     else:
@@ -347,6 +363,73 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
                 await async_main(["pull"])
         assert ctx.exception.code == 0
 
+    async def test_ensure_ready_runs_before_compose_load_with_default_timeout(self) -> None:
+        order: list[str] = []
+
+        class _OrderedPodman:
+            def __init__(self, engine: object, *a: object, **kw: object) -> None:
+                self.run = mock.AsyncMock(return_value=0)
+                self.output = mock.AsyncMock(return_value=b"podman version 5.2.3\n")
+
+                async def _ready(**kw: object) -> None:
+                    order.append("ready")
+                    assert kw["timeout"] == DEFAULT_MACHINE_READY_TIMEOUT
+
+                self.ensure_ready = _ready
+
+        def _load(self: object) -> None:
+            order.append("load")
+
+        with (
+            mock.patch.dict(os.environ, {}, clear=False),
+            mock.patch.object(ComposeEngine, "_parse_compose_file", _load),
+            mock.patch("xuan_compose.cli.main.Podman", side_effect=_OrderedPodman),
+        ):
+            os.environ.pop("XC_MACHINE_READY_TIMEOUT", None)
+            await async_main(["ps"])
+        # 就绪保障严格先于 compose 文件加载
+        assert order == ["ready", "load"]
+
+    async def test_ensure_ready_skipped_with_no_machine_start_flag(self) -> None:
+        pod = _fake_podman()
+        with (
+            mock.patch.object(ComposeEngine, "_parse_compose_file"),
+            mock.patch("xuan_compose.cli.main.Podman", return_value=pod),
+        ):
+            await async_main(["--no-machine-start", "ps"])
+        pod.ensure_ready.assert_not_called()
+
+    async def test_ensure_ready_skipped_for_version_command(self) -> None:
+        pod = _fake_podman()
+        with mock.patch("xuan_compose.cli.main.Podman", return_value=pod):
+            await async_main(["version"])
+        pod.ensure_ready.assert_not_called()
+
+    async def test_ensure_ready_skipped_in_dry_run(self) -> None:
+        pod = _fake_podman()
+        with (
+            mock.patch.object(ComposeEngine, "_parse_compose_file"),
+            mock.patch("xuan_compose.cli.main.Podman", return_value=pod),
+        ):
+            await async_main(["--dry-run", "ps"])
+        pod.ensure_ready.assert_not_called()
+
+    def test_engine_not_ready_error_exits_cleanly_without_traceback(self) -> None:
+        pod = _fake_podman()
+        pod.ensure_ready = mock.AsyncMock(
+            side_effect=PodmanEngineNotReadyError("machine boom; run `podman machine start`")
+        )
+        buf = io.StringIO()
+        with (
+            mock.patch.object(ComposeEngine, "_parse_compose_file"),
+            mock.patch("xuan_compose.cli.main.Podman", return_value=pod),
+            redirect_stderr(buf),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            main(["ps"])
+        assert ctx.exception.code == 1
+        assert "Error: machine boom" in buf.getvalue()
+
     async def test_executable_injected_for_systemd_template(self) -> None:
         captured: dict = {}
 
@@ -355,6 +438,7 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
             pod = mock.Mock()
             pod.run = mock.AsyncMock(return_value=0)
             pod.output = mock.AsyncMock(return_value=b"podman version 5.2.3\n")
+            pod.ensure_ready = mock.AsyncMock(return_value=None)
             return pod
 
         with (
@@ -391,6 +475,7 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
 
             run = mock.AsyncMock(return_value=0)
             output = mock.AsyncMock(return_value=b"podman version 5.2.3\n")
+            ensure_ready = mock.AsyncMock(return_value=None)
 
         with (
             mock.patch.object(ComposeEngine, "_parse_compose_file"),
@@ -421,6 +506,7 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
                 engine_holder["engine"] = engine
                 self.run = mock.AsyncMock(return_value=0)
                 self.output = mock.AsyncMock(return_value=b"podman version 5.2.3\n")
+                self.ensure_ready = mock.AsyncMock(return_value=None)
 
         with (
             mock.patch.object(ComposeEngine, "_parse_compose_file"),
@@ -429,6 +515,22 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
             await async_main(["ps"])
         assert set(engine_holder["engine"].commands) == ALL_COMMANDS
         assert callable(engine_holder["engine"].commands["up"])
+
+
+class TestMachineReadyTimeout(unittest.TestCase):
+    def test_default_when_env_absent(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("XC_MACHINE_READY_TIMEOUT", None)
+            assert _machine_ready_timeout() == DEFAULT_MACHINE_READY_TIMEOUT
+
+    def test_positive_value_from_env(self) -> None:
+        with mock.patch.dict(os.environ, {"XC_MACHINE_READY_TIMEOUT": "7"}):
+            assert _machine_ready_timeout() == 7.0
+
+    def test_garbage_and_non_positive_fall_back_to_default(self) -> None:
+        for bad in ("soon", "-1", "0"):
+            with mock.patch.dict(os.environ, {"XC_MACHINE_READY_TIMEOUT": bad}):
+                assert _machine_ready_timeout() == DEFAULT_MACHINE_READY_TIMEOUT
 
 
 class TestConsoleScripts(unittest.TestCase):

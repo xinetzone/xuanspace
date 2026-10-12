@@ -16,20 +16,55 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any
 
+from .errors import PodmanEngineNotReadyError
 from .logging_utils import log
 
 __all__ = [
+    "CONNECTION_REFUSED_EXIT_CODE",
+    "DEFAULT_MACHINE_READY_TIMEOUT",
     "CalledProcessError",
     "ExistingContainer",
     "Podman",
+    "is_podman_connection_error",
     "wait_with_timeout",
 ]
 
 # 子进程异常类型从本边界模块统一再导出，避免其他模块直接 import subprocess（TR-4.2）
 CalledProcessError = subprocess.CalledProcessError
+
+#: Podman 服务端不可达时的退出码（Windows/macOS 下 ssh 拨号被拒实测为 125）。
+#: 注意 125 同时是容器运行时通用错误码，故判定必须叠加 stderr 特征串。
+CONNECTION_REFUSED_EXIT_CODE = 125
+
+#: 自动启动 machine 后等待服务端就绪的默认总预算（秒），可由
+#: XC_MACHINE_READY_TIMEOUT 覆盖。
+DEFAULT_MACHINE_READY_TIMEOUT = 120.0
+
+#: 就绪轮询间隔（秒）。
+READY_POLL_INTERVAL = 1.0
+
+_CONNECTION_ERROR_MARKERS = (
+    b"Cannot connect to Podman",
+    b"unable to connect to Podman socket",
+    b"failed to connect",
+)
+
+
+def is_podman_connection_error(returncode: int, stderr: bytes) -> bool:
+    """判定一次 podman 调用失败是否为"服务端不可达"（区别于普通命令错误）。
+
+    双条件：退出码为 125 **且** stderr 命中连接错误特征文案。单看 125 会
+    误伤 ``podman run`` 等场景的容器运行时失败（同样以 125 退出）。
+    """
+    if returncode == 0:
+        return False
+    return returncode == CONNECTION_REFUSED_EXIT_CODE and any(
+        marker in stderr for marker in _CONNECTION_ERROR_MARKERS
+    )
 
 
 async def wait_with_timeout(coro: Any, timeout: int | float) -> Any:
@@ -93,6 +128,19 @@ class Podman:
             assert p.returncode is not None
             if p.returncode == 0:
                 return stdout_data
+
+            # 服务端不可达（装配期未自愈、--no-machine-start 跳过自愈或
+            # 探活后 VM 才停止的 TOCTOU 窗口）在此唯一出口统一收口为
+            # PodmanEngineNotReadyError，由 main() 以单行 Error + exit 1
+            # 呈现；其余失败保持上游逐行对等的 CalledProcessError。
+            if is_podman_connection_error(p.returncode, stderr_data):
+                detail = _first_stderr_line(stderr_data)
+                suffix = f": {detail}" if detail else ""
+                raise PodmanEngineNotReadyError(
+                    f"'{' '.join(cmd_ls)}' could not reach the Podman service{suffix}. "
+                    "Inspect machines with `podman machine list` and start the default "
+                    "one with `podman machine start`, then rerun xc."
+                )
 
             raise subprocess.CalledProcessError(p.returncode, " ".join(cmd_ls), stderr_data)
 
@@ -304,3 +352,122 @@ class Podman:
             )
             for c in containers
         }
+
+    async def ping(self) -> bool:
+        """探测 Podman 服务端是否真正可达。
+
+        ``podman info`` 需要一次到服务端的真实往返；而启动期探测所用的
+        ``podman --version`` 是纯本地客户端调用，machine 停止时照样成功，
+        不能作为服务端就绪判据。任何失败（连接拒绝、二进制缺失）一律按
+        不可达处理，由调用方决定是否触发 machine 自愈。
+        """
+        try:
+            await self.output(["info", "--format", "{{.Host.Arch}}"])
+        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
+            return False
+        return True
+
+    async def list_machines(self) -> list[dict[str, Any]]:
+        """枚举本机 podman machine（``machine list --format json``）。
+
+        命令缺失/失败/输出不可解析时返回空列表——调用方据此判定当前后端
+        不支持 machine 自愈（如 Linux 原生 socket），不得猜测性启动。
+        """
+        try:
+            raw = await self.output(["machine", "list", "--format", "json"])
+        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        return data if isinstance(data, list) else []
+
+    async def start_machine(self, name: str) -> None:
+        """启动指定 podman machine（幂等性由调用方先查 Running/Starting 保证）。"""
+        await self.output(["machine", "start", name])
+
+    async def ensure_ready(self, *, timeout: float = DEFAULT_MACHINE_READY_TIMEOUT) -> None:
+        """保障 Podman 服务端就绪，必要时自动启动默认 machine。
+
+        编排序列：
+        1. ``podman info`` 探活，已就绪则零副作用返回；
+        2. 不可达时枚举 machine，仅选择 ``Default=true`` 者；无默认机则
+           抛 :class:`PodmanEngineNotReadyError`（Linux 原生/多机配置不盲动）；
+        3. 默认机已 Running 仍不可达 → 不盲目重启，抛错指引人工排查；
+           Starting 中 → 跳过 start 直接等待；Stopped → 执行 ``machine start``；
+        4. 在 ``timeout`` 总预算内按 :data:`READY_POLL_INTERVAL` 轮询就绪。
+
+        所有面向用户的进度信息写 stderr（默认日志级别为 WARN，log.info
+        对用户不可见，而 machine 启动耗时可达数十秒，静默会像卡死）。
+        """
+        if await self.ping():
+            return
+
+        machines = await self.list_machines()
+        default = next((m for m in machines if isinstance(m, dict) and m.get("Default") is True), None)
+        if default is None:
+            raise PodmanEngineNotReadyError(
+                "Cannot connect to the Podman backend and no default podman machine "
+                "was found. Start the backend manually (for example `podman machine start`), "
+                "or verify `podman system connection list`, then rerun xc."
+            )
+
+        name = str(default.get("Name") or "")
+        if default.get("Running") is True:
+            raise PodmanEngineNotReadyError(
+                f"Podman machine '{name}' is reported running but the service is still "
+                f"unreachable. Inspect it with `podman machine logs {name}`, or restart "
+                f"it with `podman machine stop {name}` followed by `podman machine start {name}`."
+            )
+
+        if default.get("Starting") is not True:
+            print(
+                f"Podman service is unreachable; starting podman machine '{name}' "
+                "(this may take a while) ...",
+                file=sys.stderr,
+            )
+            try:
+                await self.start_machine(name)
+            except FileNotFoundError as e:
+                raise PodmanEngineNotReadyError(
+                    f"Failed to start podman machine '{name}': the podman binary "
+                    "disappeared between probes. Start it manually with "
+                    f"`podman machine start {name}` and rerun xc."
+                ) from e
+            except CalledProcessError as e:
+                detail = _first_stderr_line(e.output)
+                raise PodmanEngineNotReadyError(
+                    f"Failed to start podman machine '{name}'"
+                    + (f": {detail}" if detail else "")
+                    + f". Start it manually with `podman machine start {name}` and rerun xc."
+                ) from e
+        else:
+            print(
+                f"Podman machine '{name}' is already starting; waiting until it is ready ...",
+                file=sys.stderr,
+            )
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if await self.ping():
+                print(f"Podman machine '{name}' is ready.", file=sys.stderr)
+                return
+            await asyncio.sleep(READY_POLL_INTERVAL)
+
+        raise PodmanEngineNotReadyError(
+            f"Timed out after {timeout:.0f}s waiting for podman machine '{name}' to become "
+            f"ready. Check `podman machine logs {name}`, or start it manually with "
+            f"`podman machine start {name}`."
+        )
+
+
+def _first_stderr_line(data: bytes | None, *, limit: int = 200) -> str:
+    """从 CalledProcessError.output 提取首行非空 stderr 文本（失败诊断用）。"""
+    if not data:
+        return ""
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line:
+            return line[:limit]
+    return ""

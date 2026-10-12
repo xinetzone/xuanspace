@@ -82,6 +82,34 @@ xc --podman-args="--root /var/lib/containers" ps
 
 注意 `--podman-path` 指向不存在的文件时，仅在**非演练模式**下才会直接报错退出。
 
+(global-machine-ready)=
+## 引擎就绪保障：默认 machine 自动启动（D16）
+
+在 Windows/macOS 上 Podman 采用客户端-服务端架构：`podman` CLI 通过本机
+ssh 连接到 podman machine（WSL2/Lima 虚拟机）。机器停止时（重启电脑、
+WSL 回收后的常态），任何业务命令都会得到
+`Cannot connect to Podman ... actively refused`（exit 125）。
+
+xc 在执行需要服务端的命令前，会自动完成就绪保障：
+
+1. `podman info` 真实探活（`podman --version` 是纯本地调用，证明不了服务端在线）；
+2. 不可达时读取 `podman machine list --format json`，**仅**选择标记为
+   `Default` 的机器；无默认机（如 Linux 原生 socket）不做任何猜测性动作；
+3. 默认机停止则执行 `podman machine start`，随后每秒轮询直到就绪；
+4. 机器已在运行但仍不可达、启动失败或等待超时，给出含手动命令建议的
+   单行错误并以退出码 1 收口（不输出 Python traceback）。
+
+```bash
+xc up -d                      # 机器停止时自动 start，随后继续 up
+xc --no-machine-start up -d   # 关闭自动启动（CI/脚本场景）
+```
+
+- 环境变量 `XC_NO_MACHINE_START=1` 等同 `--no-machine-start`；
+- `XC_MACHINE_READY_TIMEOUT` 可调整就绪等待总预算（秒，默认 120，非法值回退默认）；
+- `version`、`systemd create-unit` 与 `--dry-run` 不触发就绪保障；
+- 该能力按能力探测工作（不按操作系统硬编码），设计细节见
+  [../dev/parity/differences.md](../dev/parity/differences.md) 的 D16。
+
 (global-dry-run)=
 ## 演练模式：`--dry-run`（重要边界）
 

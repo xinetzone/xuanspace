@@ -9,6 +9,8 @@
 
 - 语法/类型现代化（无语义变化）：M1-M7
 - 结构性重构（语义等价，架构必需）：D1-D15
+- 有意功能扩展（上游无，Xuanspace 增量）：D16
+- 上游缺陷修复（有意行为偏离，附回馈候选）：D17
 - 符号总账与逐模块映射：[symbol-map.md](symbol-map.md)
 - 逐行保留的上游怪癖：[upstream-quirks.md](upstream-quirks.md)
 
@@ -43,3 +45,24 @@
 | <a id="d13"></a>D13 | check_dep_conditions/_validate_completed_successfully 定义于 up 辅助区，T4 按 test_depends_on 归属提前迁入 dependencies.py 后，T7 在 commands/updown.py 又逐行重译了一份（重复实现） | T10 去重：删除 commands/updown.py 内的副本，改为 `from ..dependencies import check_dep_conditions` 再导出（保持符号面与测试导入路径），单一事实源 | 两份字节级一致；去重后 940 测试全绿、ruff/mypy 0 |
 | <a id="d14"></a>D14 | `resolve_extends` 原置于 merge.py，但其函数体要调用 normalize 的 `rec_subs`/`normalize_service`，只能用函数内惰性 import 反向取 normalize，与 normalize 顶层 `from .merge import ...` 构成规范层内部惰性环 | T11 V 审查后下沉到 normalize.py（它本属规范化流程），内部直接用同模块函数、仅单向 `from .merge import rec_merge, load_yaml_or_die`；merge.py 删除该函数与惰性 import | 纯代码移动零行为变化；环消除后规范层依赖为 normalize→merge 单向，940 测试全绿（test_merge_extra 的 TestResolveExtends 改从 normalize 导入） |
 | <a id="d15"></a>D15 | 单一 console script `podman-compose = "podman_compose:main"`（FR-3） | 双 console script 同指 `xuan_compose.cli.main:main`：规范名 `xuan-compose`（FR-3 对等）+ 日常短别名 `xc`（2026-10-10 定名，对齐 monorepo 内 `xs`/`okf` 短命令风格） | FR-3 结构对等保持（存在指向 main 的 console script）；prog 随 `argv[0]` 呈现属 D12 已允许差异，对拍快照不采集故不受影响；`tests/test_cli.py::TestConsoleScripts` 静态解析 pyproject 断言双名同指且 callable 可导入；与外部 [xcfile.dev](https://xcfile.dev/) 的 `xc` 同名风险已在 README 声明，`systemd create-unit` 建议用规范名创建（D4 路径内嵌） |
+
+## 5.3 有意功能扩展（上游无，Xuanspace 增量）
+
+> 与 5.2 的区别：D16 **不是语义等价重构**，而是上游不具备的新增能力。
+> CLI 对拍以"声明式白名单"容纳：`tests/test_cli_parity.py::XUAN_GLOBAL_EXTENSIONS`
+> 登记扩展 option，对拍前从 current 剔除（上游参数表仍逐位置零差异），
+> 并有存在性 + help 文案守卫防白名单与代码漂移。
+
+| # | 上游 | 新库 | 证据/影响 |
+|---|---|---|---|
+| <a id="d16"></a>D16 | 无服务端就绪概念：Windows/macOS 客户端-服务端架构下默认 podman machine（WSL2 VM）停止时，首个业务命令以 exit 125 + `Cannot connect to Podman` 失败，`runner.output` 直接抛裸 `CalledProcessError`，用户得到完整 Python traceback；启动期仅有的 `podman --version` 探活是纯本地调用，machine 停止时照样通过 | CLI 装配期**引擎就绪保障** `Podman.ensure_ready`（`runner.py`）：`podman info` 真实探活 → 不可达时 `podman machine list --format json` 仅选取 `Default=true` 机 → Stopped 则 `machine start` 并在总预算内 1s 轮询就绪；新增全局 `--no-machine-start`（env `XC_NO_MACHINE_START=1`）与就绪超时 `XC_MACHINE_READY_TIMEOUT`（默认 120s，非法值回退）；dry-run、`version`、`systemd create-unit` 豁免；无默认机/已运行仍不可达/启动失败/超时均抛 `PodmanEngineNotReadyError`，经 `main()` 以 `Error: ...` + exit 1 干净收口。**唯一子进程出口 `Podman.output` 同步分类**：业务调用以 125+连接文案失败时（`--no-machine-start` 跳过自愈、或探活后 VM 才停止的 TOCTOU 窗口）同样收口为 `PodmanEngineNotReadyError`，其余 125（容器运行时失败）保持 `CalledProcessError` 对等 | `tests/test_engine_ready.py` 23 例（连接错误双条件分类、探活、machine 枚举、已就绪零副作用、自动启动序列、Starting 等待、无默认机/非默认机/运行中不可达/启动失败/超时/JSON 损坏降级、二进制一致、output 出口连接错误收口 3 例）；`tests/test_cli.py` 装配契约 6 例（调用先于 compose 加载、三类豁免、env 开关、超时解析、无 traceback 收口）；对拍白名单守卫 2 例。真实端到端（2026-10-12，podman 5.8.1/WSL2）：停机状态 `xc up -d` 自动启动 machine 后正常拉起 notebook 栈（exit 0）；停机状态 `xc --no-machine-start up -d` 单行 `Error:` + exit 1 无 traceback。上游对等路径零行为变化：machine 已运行时仅多一次本地 `podman info` 往返（实测毫秒级），能力探测不按平台硬编码，Linux 原生 socket（无 machine）不误动作 |
+
+## 5.4 上游缺陷修复（有意行为偏离，附回馈候选）
+
+> 与 5.3 的区别：此处不新增能力，而是修复上游 pinned 版本自身的缺陷。
+> 每条在 [findings-ledger.md](../findings-ledger.md) B 节有对应的 U 编号回馈候选，
+> 修复均带 L0 回归测试；未修复的上游缺陷仍登记在台账 B 节、代码保持逐行对等。
+
+| # | 上游 | 新库 | 证据/影响 |
+|---|---|---|---|
+| <a id="d17"></a>D17 | `podman-compose config --services` 必然崩溃：config 子命令的 `--services` 是 store_true **布尔**（语义"逐行打印服务名"，上游 L5491-L5493），与 build/pull/push/pause/kill/stats/logs 的位置参数 `services`（nargs="*" 列表）共用 dest；`_parse_compose_file`（上游 L2816-L2820）不校验类型直接取为 target，`_resolve_profiles`（上游 L3128）`for service in True` 抛 `TypeError: 'bool' object is not iterable`（回馈候选 [findings-ledger U14](../findings-ledger.md#ledger-u14)，P2） | target 计算仅承认 `list` 形态的服务名序列（位置参数 `nargs="*"` 的恒等产物），布尔/None 一律视为"未点名"（[engine.py:383-392](../../../src/xuan_compose/engine.py#L383-L392)）；argparse 参数表零变化（无快照偏离），仅修正 dest 值到 target 的类型边界 | `tests/test_engine_parse_paths.py::TestConfigServicesFlag` 2 例 L0 回归（无 profile 服务全量保留、带 profile 不被布尔误过滤），修复前两例均复现同一 TypeError；1011 测试全绿。对其余子命令零影响：位置参数 nargs="*" 产物恒为 list |

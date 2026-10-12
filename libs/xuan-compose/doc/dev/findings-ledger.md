@@ -65,6 +65,7 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
 | U9 | fuzz | P3 | compose 文件非法 UTF-8 抛 UnicodeDecodeError 裸栈 | 无（[#1374](https://github.com/containers/podman-compose/issues/1374) 等针对容器输出流，不同路径） |
 | U10 | boundary | P3 | `PODMAN_COMPOSE_POD_ARGS` 环境变量为字符串时与 list 拼接 TypeError | 无（[#1359](https://github.com/containers/podman-compose/issues/1359) 为相邻区域，非同一缺陷） |
 | U11 | integrity | P3 | `_resolve_context_dependencies` 缺失服务先 KeyError，其后 None 检查为死代码 | 无 |
+| U14 | integrity | **P2** | `config --services` 的 store_true 布尔与位置参数 `services` 共用 dest，target 取值为 True，`_resolve_profiles` 迭代 bool 必抛 TypeError（**本库已先行修复，见 [D17](parity/differences.md#d17)**） | 无对应议题 |
 
 > 回馈节奏建议：U1 单独 PR 最先（安全类、修复最小）；U2/U3/U7 各配最小复现，
 > 并显式引用 #76/#804 说明残余形态，防止被以"已处理"关闭；P3 四项 boundary 与
@@ -203,6 +204,26 @@ Protocol 触及 15 文件、940 测试，收益边际、回归面大，**本期�
   - 最小触发：`build.additional_contexts` 引用 `service:不存在的服务`。
   - 测试现状：T9 用例按真实行为断言 KeyError 路径（对等，不改写）。
   - 关闭条件：改 `.get()` 取值并让 ValueError 路径可达。
+
+<a id="ledger-u14"></a>
+- **U14（integrity · P2 · 本库已先行修复，见 [D17](parity/differences.md#d17)）**
+  `config` 子命令的 `--services` 是 `store_true` 布尔标志（语义"逐行打印服务名"），
+  与 build/pull/push/pause/unpause/kill/stats/logs 的位置参数 `services`（`nargs="*"` 列表）
+  **共用同一 argparse dest**。`_parse_compose_file` 以
+  `target_services = getattr(args, "services", None)` 取值且不校验类型，
+  config 路径下得到 `True`，`target = True` 传入 `_resolve_profiles`，
+  在 `for service in target` 处必然抛 `TypeError: 'bool' object is not iterable`。
+  任何 compose 文件、仅默认 profile 即可触发，属文档承诺命令的全量不可用。
+  - 锚点：上游 L2816-L2820（target 计算）、L3128-L3129（迭代点）、
+    L5491-L5493（`--services` store_true 定义）、L4869-L4874（compose_config handler）；
+    本库修复点 [engine.py:380-392](../../src/xuan_compose/engine.py#L380-L392)。
+  - 最小触发：任意含 `services:` 的 compose 目录下 `podman-compose config --services`
+    （2026-10-12 由用户在 xc 真实环境复现，traceback 止于 engine.py `_resolve_profiles`）。
+  - 本库处置：target 计算仅承认 `list` 形态（位置参数 `nargs="*"` 的恒等产物），布尔/None 视为未点名；
+    `tests/test_engine_parse_paths.py::TestConfigServicesFlag` 两条 L0 回归
+    （无 profile 全量保留、带 profile 不被布尔误过滤）。
+  - 上游关闭条件：config parser 的布尔标志改 dest（如 `list_services`），
+    或在 target 计算处做序列类型校验（本库采用后者，最小且兼容其余子命令）。
 
 ### B.3 评估为非缺陷 / 上游刻意语义，不列入回馈
 

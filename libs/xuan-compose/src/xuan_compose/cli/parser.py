@@ -57,6 +57,14 @@ PODMAN_CMDS = (
 #: parser 函数统一签名。
 ParserFn = Callable[[argparse.ArgumentParser], None]
 
+#: 环境变量布尔开关的真值集合（大小写不敏感）。
+_ENV_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _env_flag(name: str) -> bool:
+    """读取布尔型环境变量开关（如 XC_NO_MACHINE_START）。"""
+    return os.environ.get(name, "").strip().lower() in _ENV_TRUE_VALUES
+
 
 class PullPolicyAction(argparse.Action):
     """翻译自上游第 5338-5352 行：--pull/--pull-always 的归一化动作。"""
@@ -166,6 +174,15 @@ def init_global_parser(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--parallel", type=int, default=os.environ.get("COMPOSE_PARALLEL_LIMIT", sys.maxsize)
+    )
+    parser.add_argument(
+        "--no-machine-start",
+        help=(
+            "Do not auto-start the default podman machine when the Podman service "
+            "is unreachable (also enabled by XC_NO_MACHINE_START=1)"
+        ),
+        action="store_true",
+        default=_env_flag("XC_NO_MACHINE_START"),
     )
     parser.add_argument(
         "--verbose",
