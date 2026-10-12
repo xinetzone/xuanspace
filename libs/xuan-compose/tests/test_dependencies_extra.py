@@ -86,10 +86,6 @@ def _compose(outputs: list[object]):
     return compose
 
 
-async def _instant_sleep(*_a: object, **_kw: object) -> None:
-    return None
-
-
 class TestValidateCompletedSuccessfully:
     _validate = staticmethod(_validate_completed_successfully)
 
@@ -113,8 +109,18 @@ class TestValidateCompletedSuccessfully:
                 b'[{"State": {"ExitCode": 0}}]',
             ]
         )
-        with mock.patch("xuan_compose.dependencies.asyncio.sleep", _instant_sleep):
+        sleep = mock.AsyncMock()
+        with mock.patch("xuan_compose.dependencies.asyncio.sleep", sleep):
             asyncio.run(self._validate(compose, ["web_1"]))
+        # L0：两次 status 轮询（created → 不睡跳出即变异）+ wait + 终态 inspect，
+        # 恰轮询一轮，sleep 仅在重试间隔触发一次
+        assert compose.podman.output.call_args_list == [
+            mock.call([], "inspect", ["--format={{.State.Status}}", "web_1"]),
+            mock.call([], "inspect", ["--format={{.State.Status}}", "web_1"]),
+            mock.call([], "wait", ["--condition=stopped", "web_1"]),
+            mock.call([], "inspect", ["web_1"]),
+        ]
+        sleep.assert_awaited_once_with(0.05)
 
     def test_inspect_failure_during_polling_is_retried(self) -> None:
         compose = _compose(
@@ -125,8 +131,18 @@ class TestValidateCompletedSuccessfully:
                 b'[{"State": {"ExitCode": 0}}]',
             ]
         )
-        with mock.patch("xuan_compose.dependencies.asyncio.sleep", _instant_sleep):
+        sleep = mock.AsyncMock()
+        with mock.patch("xuan_compose.dependencies.asyncio.sleep", sleep):
             asyncio.run(self._validate(compose, ["web_1"]))
+        # L0：首次 inspect 异常被吞掉后必须原样重发 status 轮询（短路即变异），
+        # 随后 wait + 终态 inspect，共 4 次 output、一次重试间隔 sleep
+        assert compose.podman.output.call_args_list == [
+            mock.call([], "inspect", ["--format={{.State.Status}}", "web_1"]),
+            mock.call([], "inspect", ["--format={{.State.Status}}", "web_1"]),
+            mock.call([], "wait", ["--condition=stopped", "web_1"]),
+            mock.call([], "inspect", ["web_1"]),
+        ]
+        sleep.assert_awaited_once_with(0.05)
 
     def test_container_disappeared_after_wait_raises(self) -> None:
         compose = _compose(
