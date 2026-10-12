@@ -98,14 +98,14 @@ copybutton_exclude = ".linenos, .gp"
 copybutton_selector = ":not(.prompt) > div.highlight pre"
 
 # myst.xref_missing：跨页引用由链接门禁（check_doc_links.py）校验，构建期放宽。
-# toc.not_included：文档集采用普通 Markdown 链接导航（不加 toctree 的既定决策）；
-# Sphinx 构建扫描到的全部源文件，未被 toctree 收录的页面照常产出 HTML，
-# 仅缺导航收录提示，抑制该警告即可。
+# toc.not_included 不抑制：全部页面经三层 index 的 :hidden: toctree 收录
+# （index → dev/index → 各报告页；dev/parity/index → 三分册），手写导航表负责
+# 「按意图阅读」，toctree 负责机器站点结构（侧边栏/上下页/漏收录检测），二者并存。
+# 新增页面若未挂进任何 toctree，构建告警即为有效信号，不得抑制。
 # misc.highlighting_failure：sphinxcontrib.mermaid 缺失时，```mermaid 围栏按
 # 普通代码块渲染（mermaid_params 不再生效），Pygments 无 mermaid 词法器；
 # 此为既定的优雅降级，抑制以避免环境污染下的噪声告警。
 suppress_warnings = [
     "myst.xref_missing",
-    "toc.not_included",
     "misc.highlighting_failure",
 ]

@@ -94,3 +94,16 @@
 
 - [2026-10-10 原子化重写档案](2026-10-10-atomization-record.md)：4 份长文档→本结构的
   旧→新迁移表与 V 阶段验证记录（冻结历史，除勘误外不再更新；2026-10-12 自本页拆出）。
+
+```{toctree}
+:hidden:
+:maxdepth: 2
+
+findings-ledger
+2026-10-10-atomization-record
+parity/index
+delivery/2026-09-16-delivery-summary
+patterns/2026-09-16-refactor-patterns
+review/2026-09-16-t11-adversarial-review
+verification/2026-09-16-full-parity-verification
+```

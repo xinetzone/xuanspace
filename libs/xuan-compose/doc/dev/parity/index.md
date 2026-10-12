@@ -31,4 +31,12 @@ AST 解析上游单文件 `podman_compose.py` 的**顶层公开符号**（不以
   AC-5 沿用 spec 原始措辞记作「27 测试移植」，交付实测为 26 个测试文件 / 484 例（TR-9.2）；
   两数并存，以 TR-9.2 实测为准。
 - 覆盖率：整体 91%（T9/T10 门禁时点），核心模块 interpolation/normalize/merge/engine/translate 全 ≥90%；
-  T11 修复后回归为 92%，口径说明见 [文档索引](../index.md#覆盖率口径说明91-与-92)；2026-10-10 同步后复测 92%（965 passed）。
+  T11 修复后回归为 92%，口径说明见[文档索引](../index.md#覆盖率口径说明91-与-92)；2026-10-10 同步后复测 92%（965 passed）。
+
+```{toctree}
+:hidden:
+
+symbol-map
+differences
+upstream-quirks
+```
