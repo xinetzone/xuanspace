@@ -49,6 +49,41 @@ def _parse(argv: list[str]) -> ComposeEngine:
     return engine
 
 
+class TestConfigServicesFlag:
+    """上游怪癖回归：``config --services`` 是 store_true **布尔**标志
+    （"逐行打印服务名"），与 build/up 等子命令的位置参数 ``services``
+    （nargs="*" 列表）共用同一 dest。上游 1.6.0 的
+    ``_parse_compose_file`` 直接把该布尔取为 target_services，在
+    ``_resolve_profiles`` 中 ``for service in True`` 抛
+    ``TypeError: 'bool' object is not iterable``，故
+    ``podman-compose config --services`` 在 1.6.0 必然崩溃。
+    本库只承认真实服务名序列作为显式目标（见 upstream-quirks）。
+    """
+
+    def test_bool_flag_does_not_become_iteration_target(self, _isolated_cwd_env) -> None:
+        tmp_path, _ = _isolated_cwd_env
+        _write(
+            tmp_path / "compose.yaml",
+            "services:\n  web:\n    image: img\n  db:\n    image: img2\n",
+        )
+        engine = _parse(["config", "--services"])
+        assert set(engine.services) == {"web", "db"}
+
+    def test_bool_flag_with_profiles_does_not_filter_or_crash(
+        self, _isolated_cwd_env
+    ) -> None:
+        tmp_path, _ = _isolated_cwd_env
+        _write(
+            tmp_path / "compose.yaml",
+            "services:\n"
+            "  web:\n    image: img\n"
+            "  debug:\n    image: img3\n    profiles: [debug]\n",
+        )
+        # 无 --profile 时无 profile 的服务保留，布尔标志不得充当点名目标
+        engine = _parse(["config", "--services"])
+        assert set(engine.services) == {"web"}
+
+
 class TestFileDiscoveryErrors:
     def test_no_compose_file_exits_minus_one(self) -> None:
         with pytest.raises(SystemExit) as ctx:

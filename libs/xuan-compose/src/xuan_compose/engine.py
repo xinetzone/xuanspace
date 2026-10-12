@@ -380,6 +380,14 @@ class ComposeEngine:
         target_services = getattr(
             args, "services", None
         )  # example: command `build` can have several services
+        # 上游 1.6.0 缺陷（本库修复，D17 / findings-ledger U14）：config 子命令的
+        # --services 是 store_true 布尔（"逐行打印服务名"），与 build/up 等的
+        # 位置参数 services（nargs="*" 列表）共用同一 dest；直接取用时布尔会
+        # 作为 target 传入 _resolve_profiles 并在 `for service in target` 处抛
+        # TypeError（`config --services` 在上游必然崩溃）。位置参数 nargs="*"
+        # 的产物恒为 list；布尔/None 一律视为"未点名"。
+        if not isinstance(target_services, list):
+            target_services = None
 
         target = [target_service] if target_service else target_services or []
 
