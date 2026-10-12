@@ -8,8 +8,15 @@
 - 上游 ``repo_root()`` 取 vendor 仓根（文件 secret 期望
   ``<repo_root>/test_dirname/my_secret``）；移植版返回共享测试夹具的
   临时根 ``REPO_ROOT``，与 create_compose_mock 的绝对 ``dirname`` 对齐。
+
+Windows 路径适配：文件 secret 的主机侧源路径与生产代码一样逐行保留上游
+``realpath(join(dirname, expanduser(file)))`` 本机语义，由
+``file_secret_volume`` 以同一 ``os.path`` 原语拼接——POSIX 下与上游
+``repo_root()+"/test_dirname/my_secret"`` 逐字节一致，Windows 下为本机
+反斜杠绝对路径；冒号后的容器内目标与挂载选项恒为 POSIX 串，不随平台变化。
 """
 
+import os
 import unittest
 
 from parameterized import parameterized
@@ -20,6 +27,19 @@ from xuan_compose.translate.container_args import container_to_args
 
 def repo_root() -> str:
     return str(REPO_ROOT)
+
+
+def file_secret_volume(container_target: str, relabel: str = "") -> str:
+    """构造文件 secret 的 --volume 期望串。
+
+    主机侧源路径复刻上游 ``realpath(join(dirname, expanduser(file)))``
+    的本机路径语义；容器内目标与 ro,rprivate,rbind[,relabel] 选项恒为 POSIX。
+    """
+    host_src = os.path.realpath(os.path.join(repo_root(), "test_dirname", "my_secret"))
+    ref = f"{host_src}:{container_target}:ro,rprivate,rbind"
+    if relabel:
+        ref += "," + relabel
+    return ref
 
 
 class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
@@ -309,19 +329,19 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 }
             },
             "file_secret",
-            repo_root() + "/test_dirname/my_secret:/run/secrets/file_secret:ro,rprivate,rbind",
+            file_secret_volume("/run/secrets/file_secret"),
         ),
         (
             "relabel",
             {"file_secret": {"file": "./my_secret", "x-podman.relabel": "Z"}},
             "file_secret",
-            repo_root() + "/test_dirname/my_secret:/run/secrets/file_secret:ro,rprivate,rbind,Z",
+            file_secret_volume("/run/secrets/file_secret", "Z"),
         ),
         (
             "relabel",
             {"file_secret": {"file": "./my_secret", "x-podman.relabel": "z"}},
             "file_secret",
-            repo_root() + "/test_dirname/my_secret:/run/secrets/file_secret:ro,rprivate,rbind,z",
+            file_secret_volume("/run/secrets/file_secret", "z"),
         ),
         (
             "custom_target_name",
@@ -334,7 +354,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 "source": "file_secret",
                 "target": "custom_name",
             },
-            repo_root() + "/test_dirname/my_secret:/run/secrets/custom_name:ro,rprivate,rbind",
+            file_secret_volume("/run/secrets/custom_name"),
         ),
         (
             "no_custom_target_name",
@@ -346,7 +366,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
             {
                 "source": "file_secret",
             },
-            repo_root() + "/test_dirname/my_secret:/run/secrets/file_secret:ro,rprivate,rbind",
+            file_secret_volume("/run/secrets/file_secret"),
         ),
         (
             "custom_location",
@@ -359,7 +379,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 "source": "file_secret",
                 "target": "/etc/custom_location",
             },
-            repo_root() + "/test_dirname/my_secret:/etc/custom_location:ro,rprivate,rbind",
+            file_secret_volume("/etc/custom_location"),
         ),
     ])
     async def test_file_secret(
@@ -418,8 +438,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
                 "-d",
                 "--network=bridge:alias=service_name",
                 "--volume",
-                repo_root()
-                + "/test_dirname/my_secret:/run/secrets/unused_params_warning:ro,rprivate,rbind",
+                file_secret_volume("/run/secrets/unused_params_warning"),
                 "busybox",
             ],
         )

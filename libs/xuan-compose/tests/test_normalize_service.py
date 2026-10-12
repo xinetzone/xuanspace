@@ -1,6 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-only
-"""逐用例移植自上游 tests/unit/test_normalize_service.py（断言零削弱）。"""
+"""逐用例移植自上游 tests/unit/test_normalize_service.py（断言零削弱）。
 
+Windows 路径适配：sub_dir 用例的期望值与生产代码一样逐行保留上游
+``os.path.join``（build.context 分支另加 ``rstrip("/")``）的本机路径
+语义——期望侧改用同一 ``os.path`` 原语表达：POSIX 下与上游硬编码
+``./sub_dir/...`` 字符串逐字节一致，Windows 下得到等价的 ``.\\sub_dir\\...``。
+"""
+
+import os
 import unittest
 from typing import Any
 
@@ -41,25 +48,44 @@ class TestNormalizeService(unittest.TestCase):
     @parameterized.expand(
         [
             ({"test": "test"}, {"test": "test"}),
-            ({"build": "."}, {"build": {"context": "./sub_dir/."}}),
-            ({"build": "./dir-1"}, {"build": {"context": "./sub_dir/dir-1"}}),
-            ({"build": {"context": "./dir-1"}}, {"build": {"context": "./sub_dir/dir-1"}}),
+            (
+                {"build": "."},
+                {"build": {"context": os.path.join("./sub_dir", ".").rstrip("/")}},
+            ),
+            (
+                {"build": "./dir-1"},
+                {"build": {"context": os.path.join("./sub_dir", "dir-1").rstrip("/")}},
+            ),
+            (
+                {"build": {"context": "./dir-1"}},
+                {"build": {"context": os.path.join("./sub_dir", "dir-1").rstrip("/")}},
+            ),
             (
                 {"build": {"dockerfile": "dockerfile-1"}},
-                {"build": {"context": "./sub_dir", "dockerfile": "dockerfile-1"}},
+                {
+                    "build": {
+                        "context": os.path.join("./sub_dir", "").rstrip("/"),
+                        "dockerfile": "dockerfile-1",
+                    }
+                },
             ),
             (
                 {"build": {"context": "./dir-1", "dockerfile": "dockerfile-1"}},
-                {"build": {"context": "./sub_dir/dir-1", "dockerfile": "dockerfile-1"}},
+                {
+                    "build": {
+                        "context": os.path.join("./sub_dir", "dir-1").rstrip("/"),
+                        "dockerfile": "dockerfile-1",
+                    }
+                },
             ),
             (
                 {"volumes": ["./nested/relative:/mnt", "../dir-in-parent:/mnt", "..:/mnt", ".:/mnt"]},
                 {
                     "volumes": [
-                        "./sub_dir/./nested/relative:/mnt",
-                        "./sub_dir/../dir-in-parent:/mnt",
-                        "./sub_dir/..:/mnt",
-                        "./sub_dir/.:/mnt",
+                        os.path.join("./sub_dir", "./nested/relative:/mnt"),
+                        os.path.join("./sub_dir", "../dir-in-parent:/mnt"),
+                        os.path.join("./sub_dir", "..:/mnt"),
+                        os.path.join("./sub_dir", ".:/mnt"),
                     ]
                 },
             ),
@@ -73,7 +99,7 @@ class TestNormalizeService(unittest.TestCase):
                     "volumes": [
                         {
                             "type": "bind",
-                            "source": "./sub_dir/./nested/relative",
+                            "source": os.path.join("./sub_dir", "./nested/relative"),
                             "target": "/mnt",
                         }
                     ]
@@ -81,15 +107,24 @@ class TestNormalizeService(unittest.TestCase):
             ),
             (
                 {"env_file": "./.env"},
-                {"env_file": ["./sub_dir/./.env"]},
+                {"env_file": [os.path.join("./sub_dir", "./.env")]},
             ),
             (
                 {"env_file": ["./.env", "../shared.env"]},
-                {"env_file": ["./sub_dir/./.env", "./sub_dir/../shared.env"]},
+                {
+                    "env_file": [
+                        os.path.join("./sub_dir", "./.env"),
+                        os.path.join("./sub_dir", "../shared.env"),
+                    ]
+                },
             ),
             (
                 {"env_file": [{"path": "./.env", "required": False}]},
-                {"env_file": [{"path": "./sub_dir/./.env", "required": False}]},
+                {
+                    "env_file": [
+                        {"path": os.path.join("./sub_dir", "./.env"), "required": False}
+                    ]
+                },
             ),
         ]
     )

@@ -307,7 +307,9 @@ class TestGetMntDictAndGetMountArgs:
                 compose, {"_service": "web"}, {"type": "bind", "source": "/h", "target": "/c"}
             )
         )
-        assert args == ["-v", "/h:/c"]
+        # 上游 assert_volume 对 bind 源做 os.path.abspath 本机归一：
+        # POSIX 恒为 /h，Windows 解析为当前盘符 <盘符>:\h；容器目标 /c 不变
+        assert args == ["-v", f"{os.path.abspath('/h')}:/c"]
 
     def test_prefer_volume_tmpfs_form(self) -> None:
         compose = mock.Mock()

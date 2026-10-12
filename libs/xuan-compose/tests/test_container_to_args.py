@@ -12,6 +12,12 @@
 - 本模块的 ``create_compose_mock`` / ``get_minimal_container`` 供
   test_get_net_args / test_container_to_args_secrets 跨文件复用，
   与上游 tests.unit 的共享关系一致。
+
+Windows 路径适配：bind mount 源路径由上游 ``assert_volume`` 经
+``os.path.abspath(os.path.join(basedir, os.path.expanduser(...)))`` 归一，
+home_dir 用例期望侧同用该原语——POSIX 下对已是绝对路径的展开结果为恒等
+映射，字符串与上游 ``os.path.expanduser(...)`` 逐字节一致；Windows 下
+得到本机展开+盘符归一后的等价绝对路径。
 """
 
 import os
@@ -748,7 +754,8 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             "~/test_dirname/foo",
             [
                 "--mount",
-                f"type=bind,source={os.path.expanduser('~/test_dirname/foo')},destination=/mnt",
+                "type=bind,source="
+                f"{os.path.abspath(os.path.expanduser('~/test_dirname/foo'))},destination=/mnt",
             ],
         ),
     ])

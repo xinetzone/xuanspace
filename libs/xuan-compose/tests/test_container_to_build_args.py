@@ -8,6 +8,13 @@
   其中 ``dirname="test_dirname"`` 为相对路径：build ssh 路径拼接只做
   ``os.path.join`` 不做 realpath，期望保持上游原样（如
   ``id1=test_dirname/id1/test1``），故不可改为绝对夹具根。
+
+Windows 路径适配：ssh 与 containerfile 的期望路径改用与生产代码相同的
+``os.path.join``（containerfile 另经 ``os.path.normpath``）原语表达，
+POSIX 下与上游字面量逐字节一致，Windows 下得到本机反斜杠等价串；
+``test_build_ssh_path_home_dir`` 另在 Windows 注入 ``USERPROFILE``
+（``os.path.expanduser`` 在 nt 下读该变量），两平台期望同为
+``id1=/home/user/test1``。
 """
 
 import os
@@ -276,7 +283,7 @@ class TestContainerToBuildArgs(unittest.TestCase):
                 "-t",
                 "new-image",
                 "--ssh",
-                "id1=test_dirname/id1/test1",
+                "id1=" + os.path.join("test_dirname", "id1/test1"),
                 "--no-cache",
                 ".",
             ],
@@ -298,13 +305,18 @@ class TestContainerToBuildArgs(unittest.TestCase):
                 "-t",
                 "new-image",
                 "--ssh",
-                "id1=test_dirname/./test1",
+                "id1=" + os.path.join("test_dirname", "./test1"),
                 "--no-cache",
                 ".",
             ],
         )
 
-    @mock.patch.dict(os.environ, {"HOME": "/home/user"}, clear=True)
+    # Windows 下 expanduser 读 USERPROFILE，故 nt 额外注入；POSIX 装饰器与上游逐字一致
+    @mock.patch.dict(
+        os.environ,
+        {"HOME": "/home/user", **({"USERPROFILE": "/home/user"} if os.name == "nt" else {})},
+        clear=True,
+    )
     def test_build_ssh_path_home_dir(self) -> None:
         c = create_compose_mock()
 
@@ -321,7 +333,7 @@ class TestContainerToBuildArgs(unittest.TestCase):
                 "-t",
                 "new-image",
                 "--ssh",
-                "id1=/home/user/test1",
+                "id1=" + os.path.join("test_dirname", os.path.expanduser("~/test1")),
                 "--no-cache",
                 ".",
             ],
@@ -343,9 +355,9 @@ class TestContainerToBuildArgs(unittest.TestCase):
                 "-t",
                 "new-image",
                 "--ssh",
-                "id1=test_dirname/test1",
+                "id1=" + os.path.join("test_dirname", "test1"),
                 "--ssh",
-                "id2=test_dirname/test2",
+                "id2=" + os.path.join("test_dirname", "test2"),
                 "--no-cache",
                 ".",
             ],
@@ -367,9 +379,9 @@ class TestContainerToBuildArgs(unittest.TestCase):
                 "-t",
                 "new-image",
                 "--ssh",
-                "id1=test_dirname/test1",
+                "id1=" + os.path.join("test_dirname", "test1"),
                 "--ssh",
-                "id2=test_dirname/test2",
+                "id2=" + os.path.join("test_dirname", "test2"),
                 "--no-cache",
                 ".",
             ],
@@ -406,7 +418,7 @@ class TestContainerToBuildArgs(unittest.TestCase):
             args,
             [
                 "-f",
-                "subdir/Containerfile",
+                os.path.normpath(os.path.join("./subdir", "Containerfile")),
                 "-t",
                 "new-image",
                 "--no-cache",

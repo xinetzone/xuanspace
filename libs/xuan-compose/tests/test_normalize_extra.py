@@ -91,9 +91,10 @@ class TestNormalizeServiceBuild:
         assert svc["build"]["context"] == os.path.join("sub", "ctx")
 
     def test_subdir_with_empty_context(self) -> None:
-        # context="" + sub_dir：join 后 rstrip 仍非空，结果为 sub_dir 自身
+        # context="" + sub_dir：上游 build.context 分支 os.path.join 后 rstrip("/")，
+        # POSIX 得 "sub"，Windows 得 "sub\\"——以同一 os.path 原语表达期望
         svc = normalize_service({"build": {"context": ""}}, sub_dir="sub")
-        assert svc["build"]["context"] == "sub"
+        assert svc["build"]["context"] == os.path.join("sub", "").rstrip("/")
 
     def test_additional_contexts_dict_to_list(self) -> None:
         svc = normalize_service(

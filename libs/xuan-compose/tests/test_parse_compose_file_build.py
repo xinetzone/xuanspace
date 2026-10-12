@@ -16,6 +16,12 @@
   落在该目录；移植版在模块导入时创建独占临时根目录（与 T5
   test_container_to_args 的 REPO_ROOT 同模式），用例在其中 chdir 执行，
   并快照/还原 COMPOSE_*/PODMAN_* 进程环境；数据表与断言逐行不变。
+- Windows 路径适配：生产代码逐行保留上游对绝对 build context 的
+  ``os.path.abspath`` 归一（Windows 下 ``/workspace/absolute`` 按进程
+  当前盘符解析）。用例 chdir 到临时根（可能位于不同盘符）后才执行，
+  故期望值不能在模块导入时固化，而在断言前经
+  ``_native_abs_build_context`` 于同一 cwd/盘符下换算；POSIX 下
+  abspath 为恒等映射，断言字符串与上游逐字节一致。
 """
 
 import argparse
@@ -157,7 +163,7 @@ class TestParseComposeFileBuild(unittest.TestCase):
             actual_compose = podman_compose.original_configuration(
                 podman_compose.services["test-service"]
             )
-        self.assertEqual(actual_compose, expected)
+        self.assertEqual(actual_compose, _native_abs_build_context(expected))
 
     @parameterized.expand([
         (
@@ -273,7 +279,23 @@ class TestParseComposeFileBuild(unittest.TestCase):
             actual_compose = podman_compose.original_configuration(
                 podman_compose.services["test-service"]
             )
-        self.assertEqual(actual_compose, expected)
+        self.assertEqual(actual_compose, _native_abs_build_context(expected))
+
+
+def _native_abs_build_context(expected: dict) -> dict:
+    """按上游 ``os.path.abspath`` 本机语义换算期望 build.context。
+
+    用例已 chdir 至临时根（Windows 下可能与 pytest 启动目录不同盘符），
+    必须在此刻、同一 cwd 下计算；已是本机绝对路径的 context 经 abspath
+    为恒等映射，POSIX 下全部期望值与数据表字面量逐字节一致。
+    """
+    build = expected.get("build")
+    if not isinstance(build, dict) or "context" not in build:
+        return expected
+    return {
+        **expected,
+        "build": {**build, "context": os.path.abspath(build["context"])},
+    }
 
 
 def set_args(podman_compose: ComposeEngine, file_names: list[str], no_normalize: bool) -> None:

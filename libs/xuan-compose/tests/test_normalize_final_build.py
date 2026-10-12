@@ -10,6 +10,11 @@
 test_parse_when_multiple_composes 14 用例，及其 set_args/dump_yaml/清理函数）
 需要引擎层装配，按 tasks.md 分层在 T6 整体迁入
 tests/test_parse_compose_file_build.py，用例数据与断言原样保留。
+
+Windows 路径适配：``/workspace/absolute`` 用例的期望与生产代码一样逐行保留
+上游 ``os.path.abspath`` 本机语义——POSIX 下 abspath 为恒等映射，字符串与
+上游逐字节一致；Windows 下正斜杠开头的路径按当前盘符解析为
+``<当前盘符>:\\workspace\\absolute``。
 """
 
 import os
@@ -51,7 +56,7 @@ class TestNormalizeFinalBuild(unittest.TestCase):
             {"build": "/workspace/absolute"},
             {
                 "build": {
-                    "context": "/workspace/absolute",
+                    "context": os.path.abspath("/workspace/absolute"),
                 },
             },
         ),
