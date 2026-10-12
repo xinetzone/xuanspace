@@ -71,12 +71,14 @@ x-toml-ref: ".meta/toml/README.toml"
    **使用 pip（标准）：**
    ```bash
    pip install -e ".[dev]"
+   pip install -e tools/xs   # xs CLI 是未发布到 PyPI 的本地发行版，需单独安装（PDM 工作区会自动处理）
    xs --help
    ```
 
    **使用 uv（快速）：**
    ```bash
    uv pip install -e ".[dev]"
+   uv pip install -e tools/xs
    xs --help
    ```
 

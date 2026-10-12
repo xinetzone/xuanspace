@@ -26,11 +26,13 @@
    **使用 pip：**
    ```bash
    pip install -e ".[dev]"
+   pip install -e tools/xs   # 本地 CLI 发行版 xs-cli，未发布 PyPI，须单独安装
    ```
 
    **使用 uv：**
    ```bash
    uv pip install -e ".[dev]"
+   uv pip install -e tools/xs
    ```
 
 3. 验证安装：
