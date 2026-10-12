@@ -1,0 +1,2 @@
+# Sphinx 构建产物（本地手动构建；主仓 xs docs 不覆盖本目录）
+_build/
