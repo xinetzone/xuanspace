@@ -33,6 +33,24 @@ def _auto_build_enabled(project: ProjectInfo) -> bool:
     return bool(data.get("tool", {}).get("xs", {}).get("auto-build", True))
 
 
+def _provides_running_cli(project: ProjectInfo) -> bool:
+    """该项目是否声明了当前正在运行的 CLI 入口
+
+    批量构建时重装正在运行的 CLI 自身会自覆盖（Windows 上运行中的
+    xs.exe 被进程锁定，pip 卸载旧包后写入新 exe 失败，留下破损环境），
+    需跳过。
+    """
+    if project.pyproject_path is None:
+        return False
+    try:
+        data = load_pyproject(project.pyproject_path)
+        scripts = data.get("project", {}).get("scripts", {}) or {}
+        running = Path(sys.argv[0]).stem.lower()
+    except Exception:
+        return False
+    return bool(scripts) and any(name.lower() == running for name in scripts)
+
+
 def _build_python_project(project_path: Path) -> bool:
     """
     构建纯 Python 项目
@@ -219,13 +237,16 @@ def build_project(
         selected = []
 
     if build_type:
-        # 批量构建时尊重项目级 auto-build=false 退出声明
+        # 批量构建时尊重项目级 auto-build=false 退出声明，
+        # 并跳过定义了当前运行 CLI 入口的项目（避免自覆盖死锁）
         projects_to_build = []
         for p in selected:
-            if _auto_build_enabled(p):
-                projects_to_build.append(p)
-            else:
+            if not _auto_build_enabled(p):
                 console.print(f"[yellow]跳过 {p.name}（auto-build=false，需专用环境构建）[/yellow]")
+            elif _provides_running_cli(p):
+                console.print(f"[yellow]跳过 {p.name}（定义了当前运行中的 CLI 入口，避免自覆盖）[/yellow]")
+            else:
+                projects_to_build.append(p)
     elif project_name:
         project = find_project_by_name(projects, project_name)
         if project is None:
