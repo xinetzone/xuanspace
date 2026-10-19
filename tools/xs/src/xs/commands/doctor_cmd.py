@@ -3,7 +3,6 @@ xs doctor 命令模块
 检查开发环境配置和工具可用性
 """
 
-
 import re
 import subprocess
 import sys
@@ -59,7 +58,7 @@ def _run_command(cmd: list[str], cwd: Path | None = None) -> tuple[bool, str, st
             cwd=cwd,
         )
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except subprocess.TimeoutExpired, FileNotFoundError, OSError:
         return False, "", ""
 
 
@@ -76,7 +75,7 @@ def _get_version_from_output(output: str) -> str | None:
 def check_python() -> CheckResult:
     """检查 Python 版本"""
     version = get_python_version()
-    if check_python_version((3, 14)):
+    if check_python_version((3, 14, 0)):
         return CheckResult(
             name="Python",
             status="ok",
