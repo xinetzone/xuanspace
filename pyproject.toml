@@ -162,6 +162,7 @@ target-version = "py314"
 exclude = [
     "vendor",
     "libs/tvm-book",
+    "libs/mystx",
     "attic",
     ".agents",
     "build",
