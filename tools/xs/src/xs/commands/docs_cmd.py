@@ -19,9 +19,10 @@ console = Console()
 
 
 def _get_docs_dir(workspace_root: Path) -> Path:
-    docs_dir = workspace_root / "docs"
-    if not docs_dir.is_dir():
-        console.print("[red]错误: docs/ 目录不存在[/red]")
+    """定位 Sphinx 文档源目录，优先 doc/，兼容 docs/ 命名"""
+    docs_dir = next((d for name in ("doc", "docs") if (d := workspace_root / name).is_dir()), None)
+    if docs_dir is None:
+        console.print("[red]错误: doc/（或 docs/）目录不存在[/red]")
         raise typer.Exit(1)
     return docs_dir
 
@@ -111,7 +112,11 @@ def docs_clean() -> None:
     import shutil
 
     workspace_root = find_workspace_root()
-    build_dir = workspace_root / "docs" / "_build"
+    docs_dir = next((d for name in ("doc", "docs") if (d := workspace_root / name).is_dir()), None)
+    if docs_dir is None:
+        console.print("[dim]没有需要清理的构建产物[/dim]")
+        return
+    build_dir = docs_dir / "_build"
     if build_dir.exists():
         shutil.rmtree(build_dir)
         console.print(f"[green]✓ 已清理: {build_dir}[/green]")

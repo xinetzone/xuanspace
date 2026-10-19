@@ -169,7 +169,7 @@ def setup(app):
             setattr(app.extensions[ext_name], "parallel_read_safe", bool(pr))
             setattr(app.extensions[ext_name], "parallel_write_safe", bool(pw))
 
-    def _assert_parallel_ready(app, env):
+    def _assert_parallel_ready(app, env, docnames):
         if app.parallel > 0 and not app.is_parallel_allowed("read"):
             raise RuntimeError(
                 "Parallel read disabled. Check extensions missing "
