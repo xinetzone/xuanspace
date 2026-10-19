@@ -121,7 +121,7 @@ jobs:
 
       # --- 构建验证 ---
       - name: Build all projects
-        run: xs build
+        run: xs build --type all
 
       # --- Windows DLL 自检 (A3) ---
       - name: Run Windows DLL self-check

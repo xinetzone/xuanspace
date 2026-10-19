@@ -109,6 +109,11 @@ if.platform-system = "^darwin"
 CMAKE_MACOSX_RPATH = "ON"
 CMAKE_INSTALL_NAME_DIR = "@rpath"
 
+[tool.xs]
+# 依赖系统级 Protobuf>=7(CMake CONFIG) 与 BLAS，裸环境无法批量构建；
+# 构建走 Docker 黄金环境（apps/caffe-ffi-jupyter / scripts/conda_build）。
+auto-build = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 addopts = ["-v"]

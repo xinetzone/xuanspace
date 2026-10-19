@@ -11,10 +11,26 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ..config import ProjectType, find_workspace_root
-from ..discovery import discover_projects, find_project_by_name
+from ..config import ProjectType, find_workspace_root, load_pyproject
+from ..discovery import ProjectInfo, discover_projects, find_project_by_name
 
 console = Console()
+
+
+def _auto_build_enabled(project: ProjectInfo) -> bool:
+    """批量构建（--type all / --type <type>）时是否包含该项目
+
+    项目可在其 pyproject.toml 中声明 [tool.xs] auto-build = false，
+    用于标记依赖系统级 C++ 库（如 Protobuf/OpenBLAS）而无法在裸环境
+    批量构建的项目（如需 Docker 黄金环境构建的 caffe-ffi）。
+    """
+    if project.pyproject_path is None:
+        return True
+    try:
+        data = load_pyproject(project.pyproject_path)
+    except Exception:
+        return True
+    return bool(data.get("tool", {}).get("xs", {}).get("auto-build", True))
 
 
 def _build_python_project(project_path: Path) -> bool:
@@ -188,8 +204,21 @@ def build_project(
 
     projects = discover_projects(workspace_root)
 
-    if build_type and build_type != "all":
-        projects_to_build = [p for p in projects if p.project_type == build_type]
+    if build_type == "all":
+        selected = list(projects)
+    elif build_type:
+        selected = [p for p in projects if p.project_type == build_type]
+    else:
+        selected = []
+
+    if build_type:
+        # 批量构建时尊重项目级 auto-build=false 退出声明
+        projects_to_build = []
+        for p in selected:
+            if _auto_build_enabled(p):
+                projects_to_build.append(p)
+            else:
+                console.print(f"[yellow]跳过 {p.name}（auto-build=false，需专用环境构建）[/yellow]")
     elif project_name:
         project = find_project_by_name(projects, project_name)
         if project is None:
