@@ -54,6 +54,8 @@ def _build_python_project(project_path: Path) -> bool:
         return True
     except subprocess.CalledProcessError as e:
         console.print("[red]构建失败:[/red]")
+        if e.stdout:
+            console.print(f"[red]{e.stdout}[/red]")
         if e.stderr:
             console.print(f"[red]{e.stderr}[/red]")
         return False
@@ -78,7 +80,8 @@ def _build_native_project(project_path: Path) -> bool:
             text=True,
         )
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as first_err:
+        console.print("[yellow]pip install -e 失败，回退 python -m build --wheel[/yellow]")
         try:
             subprocess.run(
                 [sys.executable, "-m", "build", "--wheel"],
@@ -89,9 +92,13 @@ def _build_native_project(project_path: Path) -> bool:
             )
             return True
         except subprocess.CalledProcessError as e:
+            # ninja/CMake 的 FAILED: 详情写入 stdout，两路输出都必须保留
             console.print("[red]构建失败:[/red]")
-            if e.stderr:
-                console.print(f"[red]{e.stderr}[/red]")
+            for err in (first_err, e):
+                if err.stdout:
+                    console.print(f"[red]{err.stdout}[/red]")
+                if err.stderr:
+                    console.print(f"[red]{err.stderr}[/red]")
             return False
 
 
