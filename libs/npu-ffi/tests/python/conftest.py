@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 import pytest
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
@@ -17,6 +18,7 @@ if _PYTHON_ROOT not in sys.path:
 def cmd_handle():
     """Provide a valid VTA command handle."""
     from npu_ffi import vta
+
     return vta.tls_command_handle()
 
 
@@ -24,6 +26,7 @@ def cmd_handle():
 def buffer_1k():
     """Provide a pre-allocated 1KB buffer, auto-freed after test."""
     from npu_ffi import vta
+
     ptr = vta.buffer_alloc(1024)
     assert ptr != 0
     yield ptr

@@ -26,18 +26,14 @@ async def build_one(compose: Any, args: argparse.Namespace, cnt: dict[str, Any])
         return None
     if getattr(args, "if_not_exists", None):
         try:
-            img_id = await compose.podman.output(
-                [], "inspect", ["-t", "image", "-f", "{{.Id}}", cnt["image"]]
-            )
+            img_id = await compose.podman.output([], "inspect", ["-t", "image", "-f", "{{.Id}}", cnt["image"]])
         except CalledProcessError:
             img_id = None
         if img_id:
             return None
 
     cleanup_callbacks: list[Callable[[], object]] = []
-    build_args = container_to_build_args(
-        compose, cnt, args, os.path.exists, cleanup_callbacks=cleanup_callbacks
-    )
+    build_args = container_to_build_args(compose, cnt, args, os.path.exists, cleanup_callbacks=cleanup_callbacks)
     status = await compose.podman.run([], "build", build_args)
     for c in cleanup_callbacks:
         c()

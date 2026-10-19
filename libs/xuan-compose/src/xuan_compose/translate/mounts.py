@@ -32,9 +32,7 @@ __all__ = [
 ]
 
 dir_re = re.compile(r"^[~/\.]")
-propagation_re = re.compile(
-    "^(?:z|Z|O|U|r?shared|r?slave|r?private|r?unbindable|r?bind|(?:no)?(?:exec|dev|suid))$"
-)
+propagation_re = re.compile("^(?:z|Z|O|U|r?shared|r?slave|r?private|r?unbindable|r?bind|(?:no)?(?:exec|dev|suid))$")
 
 
 def parse_short_mount(mount_str: str, basedir: str) -> dict[str, Any]:
@@ -148,10 +146,7 @@ async def assert_volume(compose: Any, mount_dict: dict[str, Any]) -> None:
         if not os.path.exists(mount_src):
             bind_opts = mount_dict.get("bind", {})
             if "create_host_path" in bind_opts and not bind_opts["create_host_path"]:
-                raise ValueError(
-                    "invalid mount config for type 'bind': bind source path does not exist: "
-                    f"{mount_src}"
-                )
+                raise ValueError(f"invalid mount config for type 'bind': bind source path does not exist: {mount_src}")
             try:
                 os.makedirs(mount_src, exist_ok=True)
             except OSError:
@@ -172,8 +167,7 @@ async def assert_volume(compose: Any, mount_dict: dict[str, Any]) -> None:
     except CalledProcessError as e:
         if is_ext:
             raise PodmanComposeError(
-                f"External volume [{vol_name}] does not exist. "
-                f"Create it first with: podman volume create '{vol_name}'"
+                f"External volume [{vol_name}] does not exist. Create it first with: podman volume create '{vol_name}'"
             ) from e
         labels = vol.get("labels", [])
         args = [
@@ -293,9 +287,7 @@ def get_mnt_dict(compose: Any, cnt: dict[str, Any], volume: str | dict[str, Any]
     return fix_mount_dict(compose, volume, srv_name)
 
 
-async def get_mount_args(
-    compose: Any, cnt: dict[str, Any], volume: str | dict[str, Any]
-) -> list[str]:
+async def get_mount_args(compose: Any, cnt: dict[str, Any], volume: str | dict[str, Any]) -> list[str]:
     volume = get_mnt_dict(compose, cnt, volume)
     srv_name = cnt["_service"]
     mount_type = volume["type"]

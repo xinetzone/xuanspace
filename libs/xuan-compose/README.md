@@ -49,11 +49,11 @@ pip install -e ".[test,lint]"
 from xuan_compose.engine import ComposeEngine
 from xuan_compose.cli.parser import parse_args
 
-engine = ComposeEngine()                 # 纯状态对象：零子进程、零 argv 读取
+engine = ComposeEngine()  # 纯状态对象：零子进程、零 argv 读取
 # parse_args 纯解析（无文件也能跑）；args 即 argparse.Namespace，
 # engine.global_args 同步回写
 args = parse_args(engine, ["-f", "compose.yaml", "config", "--quiet"])
-print(args.command, args.file)           # -> config ['compose.yaml']
+print(args.command, args.file)  # -> config ['compose.yaml']
 
 # 以下需要当前目录存在 compose.yaml：加载/合并/规范化 compose 文件
 engine._parse_compose_file()

@@ -148,6 +148,7 @@ def _has_sphinx_app():
     """Delayed import so conf.py can still be read by pure config parsers."""
     try:
         from sphinx.application import Sphinx  # noqa: F401
+
         return True
     except Exception:
         return False

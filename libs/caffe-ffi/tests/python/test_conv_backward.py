@@ -25,23 +25,23 @@ Mathematical reference:
     db = sum(dy over N, Ho, Wo)
   Depthwise (groups=C): each channel has its own 1-channel filter, no cross-talk.
 """
+
 from __future__ import annotations
 
 import logging
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
-from ._numpy_conv_reference import conv_forward, conv_backward
+
 from ._grad_check_utils import (
     assert_grad_close,
-    compare_gradients,
     numerical_grad_for_blob,
     numerical_grad_for_input,
 )
+from ._numpy_conv_reference import conv_backward, conv_forward
+from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
 
@@ -50,13 +50,23 @@ EPS_NUMERICAL = 1e-3
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
-def _make_conv_prototxt(input_dims, num_output, kernel_size,
-                        pad=0, stride=1, dilation=1, groups=1,
-                        bias_term=True,
-                        weight_filler="constant", weight_value=0.0,
-                        bias_filler="constant", bias_value=0.0):
+
+def _make_conv_prototxt(
+    input_dims,
+    num_output,
+    kernel_size,
+    pad=0,
+    stride=1,
+    dilation=1,
+    groups=1,
+    bias_term=True,
+    weight_filler="constant",
+    weight_value=0.0,
+    bias_filler="constant",
+    bias_value=0.0,
+):
     """Create Input -> Convolution prototxt."""
-    dims_str = " ".join(str(d) for d in input_dims)
+    " ".join(str(d) for d in input_dims)
     bias_str = "true" if bias_term else "false"
     return textwrap.dedent(f"""\
         name: "test_conv_bw"
@@ -89,17 +99,42 @@ def _make_conv_prototxt(input_dims, num_output, kernel_size,
 # Network helpers
 # ---------------------------------------------------------------------------
 
-def _make_conv_net(N, Ci, H, W, Co, Kh, Kw=None, pad=0, stride=1, dilation=1,
-                   groups=1, bias=True, weight_filler="constant", weight_value=0.0,
-                   bias_filler="constant", bias_value=0.0):
+
+def _make_conv_net(
+    N,
+    Ci,
+    H,
+    W,
+    Co,
+    Kh,
+    Kw=None,
+    pad=0,
+    stride=1,
+    dilation=1,
+    groups=1,
+    bias=True,
+    weight_filler="constant",
+    weight_value=0.0,
+    bias_filler="constant",
+    bias_value=0.0,
+):
     if Kw is None:
         Kw = Kh
     input_dims = (N, Ci, H, W)
-    proto = _make_conv_prototxt(input_dims, Co, kernel_size=Kh,
-                                pad=pad, stride=stride, dilation=dilation,
-                                groups=groups, bias_term=bias,
-                                weight_filler=weight_filler, weight_value=weight_value,
-                                bias_filler=bias_filler, bias_value=bias_value)
+    proto = _make_conv_prototxt(
+        input_dims,
+        Co,
+        kernel_size=Kh,
+        pad=pad,
+        stride=stride,
+        dilation=dilation,
+        groups=groups,
+        bias_term=bias,
+        weight_filler=weight_filler,
+        weight_value=weight_value,
+        bias_filler=bias_filler,
+        bias_value=bias_value,
+    )
     return Net(proto)
 
 
@@ -114,16 +149,18 @@ def _set_conv_weights(net, W, b=None):
 _bw_logger = logging.getLogger("caffe_ffi.test.conv_bw")
 if not _bw_logger.handlers:
     _bh = logging.StreamHandler()
-    _bh.setFormatter(logging.Formatter(
-        "%(asctime)s [CONV-BW] %(message)s", datefmt="%H:%M:%S",
-    ))
+    _bh.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [CONV-BW] %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
     _bw_logger.addHandler(_bh)
     _bw_logger.propagate = False
 _bw_logger.setLevel(logging.INFO)
 
 
-def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, groups=1,
-                       log_label=""):
+def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, groups=1, log_label=""):
     """Run forward then backward, return (dX, dW, db) with detailed diagnostic logging."""
     N, Ci, H, W_dim = x.shape
     Co, Ci_per_g, Kh, Kw = W.shape
@@ -134,10 +171,19 @@ def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, group
     _bw_logger.info(
         "%s_conv_bw: X=%s W=%s b=%s dy=%s  groups=%d pad=%d stride=%d dilation=%d  "
         "expected Ho=%d Wo=%d Ci/g=%d Co/g=%d",
-        log_label, x.shape, W.shape,
-        b.shape if b is not None else None, dy.shape,
-        groups, pad, stride, dilation,
-        Ho, Wo, Ci_per_g, Co_per_g,
+        log_label,
+        x.shape,
+        W.shape,
+        b.shape if b is not None else None,
+        dy.shape,
+        groups,
+        pad,
+        stride,
+        dilation,
+        Ho,
+        Wo,
+        Ci_per_g,
+        Co_per_g,
     )
 
     _set_conv_weights(net, W, b)
@@ -147,14 +193,18 @@ def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, group
     y = fwd_out["conv"]
     _bw_logger.info(
         "%s_forward: output shape=%s  range=[%.3g, %.3g]  |y|=%.3g",
-        log_label, y.shape, float(y.min()), float(y.max()),
+        log_label,
+        y.shape,
+        float(y.min()),
+        float(y.max()),
         float(np.linalg.norm(y)),
     )
 
     # Check for NaN/Inf in forward output
     if np.any(np.isnan(y)) or np.any(np.isinf(y)):
         _bw_logger.warning(
-            "%s_forward: ⚠ NaN/Inf detected in forward output!", log_label,
+            "%s_forward: ⚠ NaN/Inf detected in forward output!",
+            log_label,
         )
 
     net.backward({"conv": dy.astype(np.float32)})
@@ -166,22 +216,34 @@ def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, group
 
     # Log gradient quality diagnostics
     _bw_logger.info(
-        "%s_backward: dX=%s range=[%.3g, %.3g] |dX|=%.3g  "
-        "dW=%s range=[%.3g, %.3g] |dW|=%.3g",
-        log_label, dX.shape, float(dX.min()), float(dX.max()), float(np.linalg.norm(dX)),
-        dW.shape, float(dW.min()), float(dW.max()), float(np.linalg.norm(dW)),
+        "%s_backward: dX=%s range=[%.3g, %.3g] |dX|=%.3g  dW=%s range=[%.3g, %.3g] |dW|=%.3g",
+        log_label,
+        dX.shape,
+        float(dX.min()),
+        float(dX.max()),
+        float(np.linalg.norm(dX)),
+        dW.shape,
+        float(dW.min()),
+        float(dW.max()),
+        float(np.linalg.norm(dW)),
     )
     if db is not None:
         _bw_logger.info(
             "%s_backward: db=%s range=[%.3g, %.3g] |db|=%.3g",
-            log_label, db.shape, float(db.min()), float(db.max()), float(np.linalg.norm(db)),
+            log_label,
+            db.shape,
+            float(db.min()),
+            float(db.max()),
+            float(np.linalg.norm(db)),
         )
 
     # Finite value checks
     for name, arr in [("dX", dX), ("dW", dW), ("db", db)]:
         if arr is not None and (np.any(np.isnan(arr)) or np.any(np.isinf(arr))):
             _bw_logger.warning(
-                "%s_backward: ⚠ NaN/Inf detected in %s!", log_label, name,
+                "%s_backward: ⚠ NaN/Inf detected in %s!",
+                log_label,
+                name,
             )
 
     return dX, dW, db
@@ -190,6 +252,7 @@ def _run_conv_backward(net, x, dy, W, b=None, pad=0, stride=1, dilation=1, group
 # ---------------------------------------------------------------------------
 # Test Class 1: 1x1 Conv backward (simplest case, no im2col needed)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConvBackward1x1:
@@ -201,15 +264,13 @@ class TestConvBackward1x1:
         net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
         W = np.eye(Co, Ci, dtype=np.float32).reshape(Co, Ci, 1, 1)
         b = np.zeros(Co, dtype=np.float32)
-        x = np.array([[[[1.0, 2.0], [3.0, 4.0]],
-                       [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
+        x = np.array([[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
         dy = np.ones((N, Co, H, W_dim), dtype=np.float32)
 
         dX, dW, db = _run_conv_backward(net, x, dy, W, b)
         np.testing.assert_allclose(dX, dy, rtol=1e-5)
         np.testing.assert_allclose(db, np.full(Co, 4.0, dtype=np.float32), rtol=1e-5)
-        expected_dW = np.array([[[[10.0]], [[26.0]]],
-                                [[[10.0]], [[26.0]]]], dtype=np.float32)
+        expected_dW = np.array([[[[10.0]], [[26.0]]], [[[10.0]], [[26.0]]]], dtype=np.float32)
         np.testing.assert_allclose(dW, expected_dW, rtol=1e-5)
 
     def test_conv1x1_analytical_dx_dw_db(self):
@@ -261,7 +322,13 @@ class TestConvBackward1x1:
         dx_analytic = net.blob_by_name("data").diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (1x1, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (1x1, num)",
         )
         assert_grad_close(dx_analytic, dx_numeric, name="dX (1x1)", rtol=1e-2, atol=1e-3)
 
@@ -282,12 +349,24 @@ class TestConvBackward1x1:
         db_analytic = net.layer_by_name("conv").blobs[1].diff
 
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (1x1, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (1x1, num)",
         )
         db_numeric = numerical_grad_for_blob(
-            net, "conv", 1, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="db (1x1, num)",
+            net,
+            "conv",
+            1,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="db (1x1, num)",
         )
         assert_grad_close(dw_analytic, dw_numeric, name="dW (1x1)", rtol=1e-3, atol=1e-4)
         assert_grad_close(db_analytic, db_numeric, name="db (1x1)", rtol=1e-3, atol=1e-4)
@@ -296,6 +375,7 @@ class TestConvBackward1x1:
 # ---------------------------------------------------------------------------
 # Test Class 2: 3x3 Conv with padding/stride
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConvBackward3x3:
@@ -358,7 +438,13 @@ class TestConvBackward3x3:
         dx_analytic = net.blob_by_name("data").diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (3x3 pad=1, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (3x3 pad=1, num)",
         )
         assert_grad_close(dx_analytic, dx_numeric, name="dX (3x3 pad=1)", rtol=1e-2, atol=1e-3)
 
@@ -382,7 +468,13 @@ class TestConvBackward3x3:
         dx_analytic = net.blob_by_name("data").diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (stride=2, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (stride=2, num)",
         )
         assert_grad_close(dx_analytic, dx_numeric, name="dX (stride=2)", rtol=2e-2, atol=2e-3)
 
@@ -390,6 +482,7 @@ class TestConvBackward3x3:
 # ---------------------------------------------------------------------------
 # Test Class 3: Dilated convolution (atrous)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConvBackwardDilation:
@@ -441,8 +534,19 @@ def _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups, name=""):
     Co_per_g = Co // groups
     Ci_per_g_check = C // groups
 
-    _group_logger.info("=== GroupConv diagnostic [%s]: groups=%d  dX=(%d,%d,%d,%d) dW=(%d,%d,%d,%d) ===",
-                       name, groups, N, C, H, W_dim, Co, Ci_per_g, Kh, Kw)
+    _group_logger.info(
+        "=== GroupConv diagnostic [%s]: groups=%d  dX=(%d,%d,%d,%d) dW=(%d,%d,%d,%d) ===",
+        name,
+        groups,
+        N,
+        C,
+        H,
+        W_dim,
+        Co,
+        Ci_per_g,
+        Kh,
+        Kw,
+    )
 
     for g in range(groups):
         # dX per group: channels [g*Ci/g : (g+1)*Ci/g]
@@ -469,8 +573,14 @@ def _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups, name=""):
 
         _group_logger.info(
             "  group %d: dX_max_err=%.2e (ch %d-%d)  dW_max_err=%.2e (och %d-%d)%s",
-            g, dx_max, g * Ci_per_g_check, (g + 1) * Ci_per_g_check - 1,
-            dw_max, g * Co_per_g, (g + 1) * Co_per_g - 1, db_err_str,
+            g,
+            dx_max,
+            g * Ci_per_g_check,
+            (g + 1) * Ci_per_g_check - 1,
+            dw_max,
+            g * Co_per_g,
+            (g + 1) * Co_per_g - 1,
+            db_err_str,
         )
 
 
@@ -505,10 +615,8 @@ class TestConvBackwardGroups:
         """
         N, Ci, H, W_dim, Co = 1, 2, 2, 2, 2
         groups = 2
-        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, groups=groups, bias=True,
-                             weight_value=1.0, bias_value=0.0)
-        x = np.array([[[[1.0, 2.0], [3.0, 4.0]],
-                       [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=1, groups=groups, bias=True, weight_value=1.0, bias_value=0.0)
+        x = np.array([[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
         W = np.ones((Co, Ci // groups, 1, 1), dtype=np.float32)
         b = np.zeros(Co, dtype=np.float32)
         dy = np.ones((N, Co, H, W_dim), dtype=np.float32)
@@ -516,8 +624,7 @@ class TestConvBackwardGroups:
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, groups=groups)
 
         _group_logger.info("test_conv_groups2_known_identity: dX=\n%s", dX[0])
-        _group_logger.info("test_conv_groups2_known_identity: dW=%s db=%s",
-                           dW.flatten(), db)
+        _group_logger.info("test_conv_groups2_known_identity: dW=%s db=%s", dW.flatten(), db)
 
         # dX should be all ones (each group's dX = dy = ones)
         np.testing.assert_allclose(dX, dy, rtol=1e-5)
@@ -540,8 +647,7 @@ class TestConvBackwardGroups:
         dX, dW, _ = _run_conv_backward(net, x, dy, W, b=None, groups=groups)
         dX_ref, dW_ref, _ = conv_backward(dy, x, W, b=None, groups=groups)
 
-        _log_group_diagnostics(dX, dW, None, dX_ref, dW_ref, None, groups,
-                               name="groups=2 1x1 analytical")
+        _log_group_diagnostics(dX, dW, None, dX_ref, dW_ref, None, groups, name="groups=2 1x1 analytical")
 
         assert_grad_close(dX, dX_ref, name="dX (groups=2, 1x1)", rtol=1e-4, atol=1e-5)
         assert_grad_close(dW, dW_ref, name="dW (groups=2, 1x1)", rtol=1e-4, atol=1e-5)
@@ -562,8 +668,7 @@ class TestConvBackwardGroups:
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, groups=groups)
 
-        _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups,
-                               name="groups=2 3x3 pad=1 analytical")
+        _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups, name="groups=2 3x3 pad=1 analytical")
 
         assert_grad_close(dX, dX_ref, name="dX (groups=2, 3x3)", rtol=5e-3, atol=5e-4)
         assert_grad_close(dW, dW_ref, name="dW (groups=2, 3x3)", rtol=5e-3, atol=5e-4)
@@ -588,15 +693,33 @@ class TestConvBackwardGroups:
         db_analytic = net.layer_by_name("conv").blobs[1].diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (groups=2, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (groups=2, num)",
         )
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (groups=2, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (groups=2, num)",
         )
         db_numeric = numerical_grad_for_blob(
-            net, "conv", 1, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="db (groups=2, num)",
+            net,
+            "conv",
+            1,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="db (groups=2, num)",
         )
 
         assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2)", rtol=1e-2, atol=1e-3)
@@ -624,21 +747,32 @@ class TestConvBackwardGroups:
         db_analytic = net.layer_by_name("conv").blobs[1].diff
 
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (groups=2, 3x3, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (groups=2, 3x3, num)",
         )
         db_numeric = numerical_grad_for_blob(
-            net, "conv", 1, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="db (groups=2, 3x3, num)",
+            net,
+            "conv",
+            1,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="db (groups=2, 3x3, num)",
         )
 
-        _group_logger.info("test_conv_groups2_3x3_numerical_dw_db: W shape=%s, b shape=%s",
-                           dw_analytic.shape, db_analytic.shape)
+        _group_logger.info(
+            "test_conv_groups2_3x3_numerical_dw_db: W shape=%s, b shape=%s", dw_analytic.shape, db_analytic.shape
+        )
 
-        assert_grad_close(dw_analytic, dw_numeric, name="dW (groups=2, 3x3)",
-                          rtol=2e-2, atol=2e-3)
-        assert_grad_close(db_analytic, db_numeric, name="db (groups=2, 3x3)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (groups=2, 3x3)", rtol=2e-2, atol=2e-3)
+        assert_grad_close(db_analytic, db_numeric, name="db (groups=2, 3x3)", rtol=1e-2, atol=1e-3)
 
     def test_conv_groups4_analytical(self):
         """groups=4 (depthwise-like), 1x1: analytical dX/dW/db vs numpy reference."""
@@ -654,8 +788,7 @@ class TestConvBackwardGroups:
         dX, dW, db = _run_conv_backward(net, x, dy, W, b, groups=groups)
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, groups=groups)
 
-        _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups,
-                               name="groups=4 1x1 analytical")
+        _log_group_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, groups, name="groups=4 1x1 analytical")
 
         assert_grad_close(dX, dX_ref, name="dX (groups=4)", rtol=1e-4, atol=1e-5)
         assert_grad_close(dW, dW_ref, name="dW (groups=4)", rtol=1e-4, atol=1e-5)
@@ -680,15 +813,33 @@ class TestConvBackwardGroups:
         db_analytic = net.layer_by_name("conv").blobs[1].diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (groups=4, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (groups=4, num)",
         )
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (groups=4, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (groups=4, num)",
         )
         db_numeric = numerical_grad_for_blob(
-            net, "conv", 1, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="db (groups=4, num)",
+            net,
+            "conv",
+            1,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="db (groups=4, num)",
         )
 
         assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=4)", rtol=1e-2, atol=1e-3)
@@ -703,8 +854,7 @@ class TestConvBackwardGroups:
         Kh = Kw = 3
         pad = 1
         stride = 2
-        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, stride=stride,
-                             groups=groups, bias=True)
+        net = _make_conv_net(N, Ci, H, W_dim, Co, Kh=Kh, pad=pad, stride=stride, groups=groups, bias=True)
         x = rng.randn(N, Ci, H, W_dim).astype(np.float32) * 0.2
         W = rng.randn(Co, Ci // groups, Kh, Kw).astype(np.float32) * 0.2
         b = rng.randn(Co).astype(np.float32) * 0.1
@@ -715,22 +865,26 @@ class TestConvBackwardGroups:
         net.forward({"data": x})
         net.backward({"conv": dy})
         dx_analytic = net.blob_by_name("data").diff
-        dx_ref, dw_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, stride=stride,
-                                                groups=groups)
+        dx_ref, dw_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, stride=stride, groups=groups)
 
         _group_logger.info(
             "test_conv_groups_stride2_numerical: input=%s output=%s",
-            x.shape, y.shape,
+            x.shape,
+            y.shape,
         )
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (groups=2, s=2, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (groups=2, s=2, num)",
         )
 
-        assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2, stride=2)",
-                          rtol=2e-2, atol=2e-3)
-        assert_grad_close(dx_analytic, dx_ref, name="dX (groups=2, stride=2, ref)",
-                          rtol=5e-3, atol=5e-4)
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2, stride=2)", rtol=2e-2, atol=2e-3)
+        assert_grad_close(dx_analytic, dx_ref, name="dX (groups=2, stride=2, ref)", rtol=5e-3, atol=5e-4)
 
     def test_conv_groups_no_bias_numerical(self):
         """groups=2, 1x1 no bias: numerical gradient for dX/dW."""
@@ -751,17 +905,27 @@ class TestConvBackwardGroups:
         assert len(net.layer_by_name("conv").blobs) == 1, "No bias blob expected"
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (groups=2, nobias, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (groups=2, nobias, num)",
         )
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (groups=2, nobias, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (groups=2, nobias, num)",
         )
 
-        assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2, no-bias)",
-                          rtol=1e-2, atol=1e-3)
-        assert_grad_close(dw_analytic, dw_numeric, name="dW (groups=2, no-bias)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (groups=2, no-bias)", rtol=1e-2, atol=1e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (groups=2, no-bias)", rtol=1e-2, atol=1e-3)
 
     def test_conv_groups_zero_dy(self):
         """groups=2: zero dy → zero dX, dW, db for all groups."""
@@ -804,7 +968,14 @@ def _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C, name=""):
     Co, Ci_per_g, Kh, Kw = dW.shape
     _dw_logger.info(
         "=== Depthwise diagnostic [%s]: C=%d dX=%s dW=%s  Ci/g=%d Co/g=%d Kh=%d Kw=%d ===",
-        name, C, dX.shape, dW.shape, Ci_per_g, Co // C, Kh, Kw,
+        name,
+        C,
+        dX.shape,
+        dW.shape,
+        Ci_per_g,
+        Co // C,
+        Kh,
+        Kw,
     )
     for c in range(C):
         dx_ch = dX[:, c]
@@ -819,8 +990,11 @@ def _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C, name=""):
             db_str = f"  db_err={db_err:.2e}"
         _dw_logger.info(
             "  ch %d: dX_max_err=%.2e  dW_max_err=%.2e  dW_range=[%.3g,%.3g]%s",
-            c, dx_err, dw_err,
-            float(dw_ch.min()), float(dw_ch.max()),
+            c,
+            dx_err,
+            dw_err,
+            float(dw_ch.min()),
+            float(dw_ch.max()),
             db_str,
         )
 
@@ -850,12 +1024,10 @@ class TestConvBackwardDepthwise:
         y = conv_forward(x, W, b, pad=pad, groups=groups)
         dy = rng.randn(*y.shape).astype(np.float32) * 0.3
 
-        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups,
-                                         log_label="depthwise_3x3_pad1")
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups, log_label="depthwise_3x3_pad1")
         dX_ref, dW_ref, db_ref = conv_backward(dy, x, W, b=b, pad=pad, groups=groups)
 
-        _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C,
-                                   name="depthwise 3x3 pad=1 analytical")
+        _log_depthwise_diagnostics(dX, dW, db, dX_ref, dW_ref, db_ref, C, name="depthwise 3x3 pad=1 analytical")
 
         assert_grad_close(dX, dX_ref, name="dX (depthwise 3x3 pad=1)", rtol=1e-3, atol=1e-4)
         assert_grad_close(dW, dW_ref, name="dW (depthwise 3x3 pad=1)", rtol=1e-3, atol=1e-4)
@@ -869,8 +1041,7 @@ class TestConvBackwardDepthwise:
         Kh = Kw = 3
         pad = 1
         stride = 2
-        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, stride=stride,
-                             groups=groups, bias=True)
+        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, stride=stride, groups=groups, bias=True)
         x = rng.randn(N, C, H, W_dim).astype(np.float32) * 0.2
         W = rng.randn(C, 1, Kh, Kw).astype(np.float32) * 0.2
         b = rng.randn(C).astype(np.float32) * 0.1
@@ -885,28 +1056,47 @@ class TestConvBackwardDepthwise:
         db_analytic = net.layer_by_name("conv").blobs[1].diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (depthwise s=2, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (depthwise s=2, num)",
         )
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (depthwise s=2, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (depthwise s=2, num)",
         )
         db_numeric = numerical_grad_for_blob(
-            net, "conv", 1, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="db (depthwise s=2, num)",
+            net,
+            "conv",
+            1,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="db (depthwise s=2, num)",
         )
 
         _dw_logger.info(
             "test_depthwise_3x3_s2: input=%s output=%s W=%s (W elements=%d dX elements=%d)",
-            x.shape, y.shape, W.shape, W.size, x.size,
+            x.shape,
+            y.shape,
+            W.shape,
+            W.size,
+            x.size,
         )
 
-        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise s=2)",
-                          rtol=2e-2, atol=2e-3)
-        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise s=2)",
-                          rtol=2e-2, atol=2e-3)
-        assert_grad_close(db_analytic, db_numeric, name="db (depthwise s=2)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise s=2)", rtol=2e-2, atol=2e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise s=2)", rtol=2e-2, atol=2e-3)
+        assert_grad_close(db_analytic, db_numeric, name="db (depthwise s=2)", rtol=1e-2, atol=1e-3)
 
     def test_depthwise_3x3_numerical_dx_dw(self):
         """Depthwise 3x3 pad=1 stride=1: numerical gradient for dX and dW on tiny tensor."""
@@ -928,17 +1118,27 @@ class TestConvBackwardDepthwise:
         dw_analytic = net.layer_by_name("conv").blobs[0].diff
 
         dx_numeric = numerical_grad_for_input(
-            net, "data", x, "conv", dy, h=EPS_NUMERICAL, name="dX (depthwise 3x3, num)",
+            net,
+            "data",
+            x,
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dX (depthwise 3x3, num)",
         )
         dw_numeric = numerical_grad_for_blob(
-            net, "conv", 0, {"data": x}, "conv", dy,
-            h=EPS_NUMERICAL, name="dW (depthwise 3x3, num)",
+            net,
+            "conv",
+            0,
+            {"data": x},
+            "conv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dW (depthwise 3x3, num)",
         )
 
-        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise 3x3)",
-                          rtol=2e-2, atol=2e-3)
-        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise 3x3)",
-                          rtol=2e-2, atol=2e-3)
+        assert_grad_close(dx_analytic, dx_numeric, name="dX (depthwise 3x3)", rtol=2e-2, atol=2e-3)
+        assert_grad_close(dw_analytic, dw_numeric, name="dW (depthwise 3x3)", rtol=2e-2, atol=2e-3)
 
     def test_depthwise_known_identity(self):
         """Depthwise 3x3 pad=1 with W=identity-center (1 at center, 0 elsewhere), b=0.
@@ -954,18 +1154,17 @@ class TestConvBackwardDepthwise:
         groups = C
         Kh = Kw = 3
         pad = 1
-        net = _make_conv_net(N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=True,
-                             weight_value=0.0, bias_value=0.0)
+        net = _make_conv_net(
+            N, C, H, W_dim, C, Kh=Kh, pad=pad, groups=groups, bias=True, weight_value=0.0, bias_value=0.0
+        )
         # Identity kernel: 1 at center position (Kh//2, Kw//2) = (1,1)
         W = np.zeros((C, 1, Kh, Kw), dtype=np.float32)
         W[:, 0, 1, 1] = 1.0
         b = np.zeros(C, dtype=np.float32)
-        x = np.array([[[[1,2,3],[4,5,6],[7,8,9]],
-                       [[9,8,7],[6,5,4],[3,2,1]]]], dtype=np.float32)
+        x = np.array([[[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[9, 8, 7], [6, 5, 4], [3, 2, 1]]]], dtype=np.float32)
         dy = np.ones((N, C, H, W_dim), dtype=np.float32)
 
-        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups,
-                                         log_label="depthwise_identity")
+        dX, dW, db = _run_conv_backward(net, x, dy, W, b, pad=pad, groups=groups, log_label="depthwise_identity")
 
         # dX should equal dy (identity kernel backward = dy)
         np.testing.assert_allclose(dX, dy, rtol=1e-5)
@@ -1011,6 +1210,7 @@ class TestConvBackwardDepthwise:
 # ---------------------------------------------------------------------------
 # Test Class 6: Common invariants
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConvBackwardInvariants:
@@ -1141,11 +1341,8 @@ class TestConvBackwardInvariants:
         # dW and db should be SUM over batch
         dW_sum = dW1 + dW2
         db_sum = db1 + db2
-        assert_grad_close(dW_batch, dW_sum, name="dW (batch accum)", rtol=1e-5, atol=1e-6,
-                          verbose=False)
-        assert_grad_close(db_batch, db_sum, name="db (batch accum)", rtol=1e-5, atol=1e-6,
-                          verbose=False)
+        assert_grad_close(dW_batch, dW_sum, name="dW (batch accum)", rtol=1e-5, atol=1e-6, verbose=False)
+        assert_grad_close(db_batch, db_sum, name="db (batch accum)", rtol=1e-5, atol=1e-6, verbose=False)
         # dX should be concatenation of per-sample dX
         dX_expected = np.concatenate([dX1, dX2], axis=0)
-        assert_grad_close(dX_batch, dX_expected, name="dX (batch accum)", rtol=1e-5, atol=1e-6,
-                          verbose=False)
+        assert_grad_close(dX_batch, dX_expected, name="dX (batch accum)", rtol=1e-5, atol=1e-6, verbose=False)

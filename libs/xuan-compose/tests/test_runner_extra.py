@@ -20,8 +20,7 @@ from xuan_compose.runner import (
 
 
 class _FakeProcess:
-    def __init__(self, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"",
-                 wait_side: object = None) -> None:
+    def __init__(self, returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"", wait_side: object = None) -> None:
         self._returncode = returncode
         self._stdout = stdout
         self._stderr = stderr
@@ -115,9 +114,7 @@ class TestOutput:
         assert list(factory.await_args.args) == ["podman", "--version"]
 
     def test_nonzero_raises_with_stderr(self, monkeypatch) -> None:
-        podman, _ = _podman(
-            monkeypatch, lambda *a, **kw: _FakeProcess(2, stderr=b"boom")
-        )
+        podman, _ = _podman(monkeypatch, lambda *a, **kw: _FakeProcess(2, stderr=b"boom"))
         with pytest.raises(CalledProcessError) as ctx:
             asyncio.run(podman.output([], "ps"))
         assert ctx.value.returncode == 2
@@ -152,9 +149,7 @@ class TestRun:
         tasks: set[asyncio.Task] = set()
         buf = io.StringIO()
         with redirect_stdout(buf):
-            code = asyncio.run(
-                podman.run(["logs"], "logs", log_formatter="web |", task_reference=tasks)
-            )
+            code = asyncio.run(podman.run(["logs"], "logs", log_formatter="web |", task_reference=tasks))
             # 让两个 _format_stream task 跑完
             asyncio.run(_drain(tasks))
         assert code == 0
@@ -211,15 +206,11 @@ class TestExec:
 
 class TestListingHelpers:
     def test_network_ls(self, monkeypatch) -> None:
-        podman, _ = _podman(
-            monkeypatch, lambda *a, **kw: _FakeProcess(0, stdout=b"a\nb\n")
-        )
+        podman, _ = _podman(monkeypatch, lambda *a, **kw: _FakeProcess(0, stdout=b"a\nb\n"))
         assert asyncio.run(podman.network_ls()) == ["a", "b"]
 
     def test_volume_ls(self, monkeypatch) -> None:
-        podman, _ = _podman(
-            monkeypatch, lambda *a, **kw: _FakeProcess(0, stdout=b"v1\n")
-        )
+        podman, _ = _podman(monkeypatch, lambda *a, **kw: _FakeProcess(0, stdout=b"v1\n"))
         assert asyncio.run(podman.volume_ls()) == ["v1"]
 
     def test_existing_containers_parses_json_rows(self, monkeypatch) -> None:

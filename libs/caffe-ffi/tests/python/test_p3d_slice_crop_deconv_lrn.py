@@ -12,19 +12,20 @@ Each test includes numpy reference implementations where applicable.
 Run with:
     pytest tests/python/test_p3d_slice_crop_deconv_lrn.py -v
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace
+from caffe_ffi import net_from_param, net_param_from_string
 
+from .conftest import require_cpp_extension
 
 # ═══════════════════════════════════════════════════════════════════════
 # Numpy Reference Implementations
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def slice_np(x, num_outs, axis=1, slice_points=None):
     """Numpy reference for Slice layer.
@@ -37,13 +38,13 @@ def slice_np(x, num_outs, axis=1, slice_points=None):
         slices = []
         for i in range(len(points) - 1):
             s = [slice(None)] * x.ndim
-            s[axis] = slice(points[i], points[i+1])
+            s[axis] = slice(points[i], points[i + 1])
             slices.append(x[tuple(s)])
         return slices
     else:
         size = x.shape[axis]
         assert size % num_outs == 0, f"Axis size {size} not divisible by {num_outs}"
-        part = size // num_outs
+        size // num_outs
         return np.split(x, num_outs, axis=axis)
 
 
@@ -76,15 +77,15 @@ def lrn_np(x, size=5, alpha=1e-4, beta=0.75, k=1.0):
     pre_pad = (size - 1) // 2
     # Pad channels with zeros
     padded = np.zeros((N, C + size - 1, H, W), dtype=np.float64)
-    padded[:, pre_pad:pre_pad + C, :, :] = x.astype(np.float64)
+    padded[:, pre_pad : pre_pad + C, :, :] = x.astype(np.float64)
 
     # Compute scale for each channel
     scale = np.ones_like(x, dtype=np.float64) * k
     for c in range(C):
-        window = padded[:, c:c + size, :, :]
-        scale[:, c, :, :] += (alpha / size) * np.sum(window ** 2, axis=1)
+        window = padded[:, c : c + size, :, :]
+        scale[:, c, :, :] += (alpha / size) * np.sum(window**2, axis=1)
 
-    return (x.astype(np.float64) / (scale ** beta)).astype(np.float32)
+    return (x.astype(np.float64) / (scale**beta)).astype(np.float32)
 
 
 def deconv1x1_np(x, weight, bias=None):
@@ -108,6 +109,7 @@ def deconv1x1_np(x, weight, bias=None):
 # ═══════════════════════════════════════════════════════════════════════
 # Test Helpers
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _make_slice_prototxt(num_tops, axis=1, slice_points=None):
     """Create minimal Input->Slice prototxt."""
@@ -223,6 +225,7 @@ layer {{
 # Tests: Slice Layer
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestSliceLayers:
     """Slice layer forward tests: equal division, explicit slice_points, N=1 identity, axis selection."""
@@ -303,6 +306,7 @@ class TestSliceLayers:
 # ═══════════════════════════════════════════════════════════════════════
 # Tests: Crop Layer
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestCropLayers:
@@ -404,6 +408,7 @@ class TestCropLayers:
 # Tests: LRN Layer
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestLRNLayers:
     """LRN layer forward tests: AlexNet defaults, custom params, uniform input."""
@@ -425,8 +430,7 @@ class TestLRNLayers:
 
     def test_lrn_custom_params(self, ptrace):
         """LRN with custom parameters: size=3, alpha=0.001, beta=0.5, k=2."""
-        proto = _make_lrn_prototxt(batch=1, channels=4, h=3, w=3,
-                                   size=3, alpha=0.001, beta=0.5, k=2.0)
+        proto = _make_lrn_prototxt(batch=1, channels=4, h=3, w=3, size=3, alpha=0.001, beta=0.5, k=2.0)
         with ptrace("Net(LRN custom)"):
             net = net_from_param(net_param_from_string(proto))
 
@@ -440,8 +444,7 @@ class TestLRNLayers:
 
     def test_lrn_uniform_input(self, ptrace):
         """LRN with uniform input x=c: y = c / (k + alpha*c^2)^beta."""
-        proto = _make_lrn_prototxt(batch=1, channels=6, h=2, w=2,
-                                   size=5, alpha=1e-4, beta=0.75, k=1.0)
+        proto = _make_lrn_prototxt(batch=1, channels=6, h=2, w=2, size=5, alpha=1e-4, beta=0.75, k=1.0)
         with ptrace("Net(LRN uniform)"):
             net = net_from_param(net_param_from_string(proto))
 
@@ -481,6 +484,7 @@ class TestLRNLayers:
 # ═══════════════════════════════════════════════════════════════════════
 # Tests: Deconvolution Layer (1x1 kernel, shape verification, bias)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestDeconvolutionLayers:
@@ -559,8 +563,9 @@ class TestDeconvolutionLayers:
             net = net_from_param(net_param_from_string(proto))
             inp = np.random.randn(1, c_in, h, w).astype(np.float32)
             out = net.forward({"data": inp})
-            assert out["deconv_out"].shape == (1, c_out, h, w), \
+            assert out["deconv_out"].shape == (1, c_out, h, w), (
                 f"Expected (1,{c_out},{h},{w}), got {out['deconv_out'].shape}"
+            )
 
     def test_deconv_stride2_shape(self, ptrace):
         """Deconv with stride=2 upsamples spatial dims: H_out = stride*(H-1) + kernel."""
@@ -593,14 +598,14 @@ layer {
             out = net.forward({"data": inp})
 
         # H_out = stride*(H-1) + kernel - 2*pad = 2*(3-1) + 2 - 0 = 6
-        assert out["deconv_out"].shape == (1, 2, 6, 6), \
-            f"Expected (1,2,6,6), got {out['deconv_out'].shape}"
+        assert out["deconv_out"].shape == (1, 2, 6, 6), f"Expected (1,2,6,6), got {out['deconv_out'].shape}"
         assert np.all(np.isfinite(out["deconv_out"]))
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Combination: Slice + Concat roundtrip
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestSliceConcatRoundtrip:

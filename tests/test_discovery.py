@@ -1,6 +1,5 @@
 """Tests for xs CLI discovery module."""
 
-
 from pathlib import Path
 
 from xs.config import ProjectType, find_workspace_root

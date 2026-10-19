@@ -85,9 +85,7 @@ def get_volume_names(compose: Any, cnt: dict[str, Any]) -> list[str]:
     return ls
 
 
-def compose_run_update_container_from_args(
-    compose: Any, cnt: dict[str, Any], args: argparse.Namespace
-) -> None:
+def compose_run_update_container_from_args(compose: Any, cnt: dict[str, Any], args: argparse.Namespace) -> None:
     # adjust one-off container options
     name0 = compose.format_name(args.service, f"tmp{random.randrange(0, 65536)}")
     cnt["name"] = args.name or cnt.get("container_name") or name0
@@ -145,9 +143,7 @@ def compose_cp_args(container_name: str, args: argparse.Namespace) -> list[str]:
     return podman_args
 
 
-def compose_exec_args(
-    cnt: dict[str, Any], container_name: str, args: argparse.Namespace
-) -> list[str]:
+def compose_exec_args(cnt: dict[str, Any], container_name: str, args: argparse.Namespace) -> list[str]:
     podman_args = ["--detach"] if args.detach else ["--interactive"]
     if args.privileged:
         podman_args += ["--privileged"]

@@ -13,13 +13,13 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 
 class Colors:
     """ANSI color codes for terminal output."""
+
     GREEN = "\033[92m"
     RED = "\033[91m"
     YELLOW = "\033[93m"
@@ -54,12 +54,10 @@ def find_project_root(start_path: Path | None = None) -> Path:
             break
         current = parent
 
-    raise FileNotFoundError(
-        "Could not find project root (must contain CMakeLists.txt and pyproject.toml)"
-    )
+    raise FileNotFoundError("Could not find project root (must contain CMakeLists.txt and pyproject.toml)")
 
 
-def find_possible_lib_dirs(build_dir: Path) -> List[Path]:
+def find_possible_lib_dirs(build_dir: Path) -> list[Path]:
     """Find all possible library output directories."""
     dirs = [build_dir / "lib"]
     src_dir = build_dir / "src"
@@ -73,13 +71,13 @@ def find_possible_lib_dirs(build_dir: Path) -> List[Path]:
     return dirs
 
 
-def extract_cpp_functions(src_dir: Path, verbose: bool = False) -> Dict[str, List[str]]:
+def extract_cpp_functions(src_dir: Path, verbose: bool = False) -> dict[str, list[str]]:
     """
     Extract all functions registered via tvm::ffi::reflection::GlobalDef() from C++ files.
 
     Returns a dict mapping prefix -> list of function names.
     """
-    prefix_to_funcs: Dict[str, List[str]] = {}
+    prefix_to_funcs: dict[str, list[str]] = {}
 
     if not src_dir.exists():
         return prefix_to_funcs
@@ -116,7 +114,7 @@ def extract_cpp_functions(src_dir: Path, verbose: bool = False) -> Dict[str, Lis
                         end_pos = i
                         break
 
-            block_content = content[brace_start + 1:end_pos]
+            block_content = content[brace_start + 1 : end_pos]
             pos = end_pos + 1
 
             for def_match in def_pattern.finditer(block_content):
@@ -139,14 +137,14 @@ def extract_cpp_functions(src_dir: Path, verbose: bool = False) -> Dict[str, Lis
     return prefix_to_funcs
 
 
-def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> Dict[str, Tuple[Path, str]]:
+def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> dict[str, tuple[Path, str]]:
     """
     Extract prefixes from _FFI_INIT_FUNC("prefix", __name__) calls in Python files.
 
     Returns a dict mapping prefix -> (file_path, python_module_path).
     The python_module_path is derived from the file's location relative to python/ dir.
     """
-    prefix_to_info: Dict[str, Tuple[Path, str]] = {}
+    prefix_to_info: dict[str, tuple[Path, str]] = {}
 
     if not python_dir.exists():
         return prefix_to_info
@@ -177,11 +175,11 @@ def extract_python_prefixes(python_dir: Path, verbose: bool = False) -> Dict[str
 
 def verify_python_imports(
     project_root: Path,
-    prefixes: Set[str],
-    cpp_funcs: Dict[str, List[str]],
-    prefix_to_info: Dict[str, Tuple[Path, str]],
-    verbose: bool = False
-) -> Tuple[bool, List[str]]:
+    prefixes: set[str],
+    cpp_funcs: dict[str, list[str]],
+    prefix_to_info: dict[str, tuple[Path, str]],
+    verbose: bool = False,
+) -> tuple[bool, list[str]]:
     """
     Dynamically import _ffi_api modules and verify all functions are accessible.
 
@@ -190,7 +188,7 @@ def verify_python_imports(
 
     Returns (all_passed, list_of_errors).
     """
-    errors: List[str] = []
+    errors: list[str] = []
     build_dir = project_root / "build"
     lib_dirs = find_possible_lib_dirs(build_dir)
 
@@ -206,7 +204,7 @@ def verify_python_imports(
             try:
                 if hasattr(os, "add_dll_directory"):
                     os.add_dll_directory(str(lib_dir))
-            except (OSError, AttributeError):
+            except OSError, AttributeError:
                 pass
             lib_str = str(lib_dir)
             if sys.platform == "win32":
@@ -219,7 +217,7 @@ def verify_python_imports(
     try:
         import importlib
 
-        ffi_module_to_prefixes: Dict[str, List[str]] = {}
+        ffi_module_to_prefixes: dict[str, list[str]] = {}
         for prefix in prefixes:
             if prefix in prefix_to_info:
                 _, mod_path = prefix_to_info[prefix]
@@ -238,10 +236,7 @@ def verify_python_imports(
                         for func_name in cpp_funcs[prefix]:
                             attr_name = func_name.split(".", 1)[1] if "." in func_name else func_name
                             if not hasattr(module, attr_name):
-                                errors.append(
-                                    f"Function '{func_name}' not registered on "
-                                    f"module {ffi_mod_path}"
-                                )
+                                errors.append(f"Function '{func_name}' not registered on module {ffi_mod_path}")
                             elif verbose:
                                 print(f"    Verified: {attr_name}")
 
@@ -256,8 +251,10 @@ def verify_python_imports(
                             attr_name = func_name.split(".", 1)[1] if "." in func_name else func_name
                             if not hasattr(wrapper_mod, attr_name):
                                 if verbose:
-                                    print(f"    [INFO] Wrapper {wrapper_mod_name}.{attr_name} "
-                                          f"not directly exposed (may be wrapped with Python logic)")
+                                    print(
+                                        f"    [INFO] Wrapper {wrapper_mod_name}.{attr_name} "
+                                        f"not directly exposed (may be wrapped with Python logic)"
+                                    )
                     except ImportError:
                         if verbose:
                             print(f"  [INFO] No wrapper module: {wrapper_mod_name}")
@@ -274,9 +271,7 @@ def verify_python_imports(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Check FFI prefix consistency between C++ and Python"
-    )
+    parser = argparse.ArgumentParser(description="Check FFI prefix consistency between C++ and Python")
     parser.add_argument(
         "--project-root",
         type=Path,
@@ -361,7 +356,7 @@ def main():
         for prefix in sorted(missing_in_python):
             print(f"      - {prefix} ({len(cpp_prefix_funcs[prefix])} C++ functions)")
     else:
-        print(color(f"    [PASS] All C++ prefixes initialized in Python", pass_color))
+        print(color("    [PASS] All C++ prefixes initialized in Python", pass_color))
 
     if missing_in_cpp:
         msg = f"    MISSING IN C++: {len(missing_in_cpp)} prefix(es)"
@@ -375,7 +370,7 @@ def main():
             fpath, _ = python_prefix_info[prefix]
             print(f"      - {prefix} ({fpath.name})")
     else:
-        print(color(f"    [PASS] All Python prefixes have C++ registrations", pass_color))
+        print(color("    [PASS] All Python prefixes have C++ registrations", pass_color))
 
     if matching_prefixes:
         print(color(f"    [INFO] Matching prefixes: {len(matching_prefixes)}", Colors.CYAN))
@@ -391,11 +386,10 @@ def main():
         print(color("==> Verifying dynamic imports...", step_color))
         try:
             imports_ok, import_errors = verify_python_imports(
-                project_root, matching_prefixes, cpp_prefix_funcs,
-                python_prefix_info, args.verbose
+                project_root, matching_prefixes, cpp_prefix_funcs, python_prefix_info, args.verbose
             )
             if imports_ok:
-                print(color(f"    [PASS] All functions registered and accessible", pass_color))
+                print(color("    [PASS] All functions registered and accessible", pass_color))
             else:
                 all_passed = False
                 print(color(f"    [FAIL] {len(import_errors)} import/access error(s)", fail_color))

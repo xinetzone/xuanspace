@@ -8,13 +8,13 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Optional
 
-import pytest
 import numpy as np
+import pytest
 
 # Resolve OpenMP duplicate library crash on Windows (multiple copies of
 # libiomp5md.dll loaded by numpy/BLAS + caffe-ffi). This is required before
@@ -28,8 +28,7 @@ _temp_dir = _project_root / "tests" / "python" / ".temp"
 if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
-from caffe_ffi import _ffi_api
-from caffe_ffi import set_log_level, LOG_LEVEL_ERROR
+from caffe_ffi import LOG_LEVEL_ERROR, _ffi_api, set_log_level  # noqa: E402  # 需先注入 sys.path
 
 # Suppress noisy C++ InsertSplits debug messages (logged at WARN level)
 # during test runs.  Set CAFFE_FFI_CPP_LOG_LEVEL=<0-4> to override.
@@ -47,7 +46,7 @@ _csv_flush_interval = 20  # flush every N rows to reduce I/O overhead
 _csv_row_count = 0
 
 
-import atexit
+import atexit  # noqa: E402  # 在 perf 日志状态初始化后注册退出钩子
 
 
 @atexit.register
@@ -71,13 +70,24 @@ def _ensure_csv():
     _csv_path = _temp_dir / f"perf_log_{ts}.csv"
     _csv_file = open(_csv_path, "w", newline="", encoding="utf-8")
     _csv_writer = csv.writer(_csv_file)
-    _csv_writer.writerow([
-        "timestamp", "test_class", "test_name", "operation",
-        "elapsed_ms", "delta_mem", "delta_blobs",
-        "rss_before_mb", "rss_after_mb", "rss_peak_mb",
-        "cow_events", "cow_bytes", "cow_saved_bytes",
-        "extra_fields"
-    ])
+    _csv_writer.writerow(
+        [
+            "timestamp",
+            "test_class",
+            "test_name",
+            "operation",
+            "elapsed_ms",
+            "delta_mem",
+            "delta_blobs",
+            "rss_before_mb",
+            "rss_after_mb",
+            "rss_peak_mb",
+            "cow_events",
+            "cow_bytes",
+            "cow_saved_bytes",
+            "extra_fields",
+        ]
+    )
     _csv_row_count = 0
     _csv_file.flush()
 
@@ -90,41 +100,76 @@ def _maybe_flush_csv(force: bool = False):
         _csv_file.flush()
 
 
-def _write_csv_row(test_class: str, test_name: str, operation: str,
-                   elapsed_ms: float, delta_mem: int, delta_blobs: int,
-                   extra: str = "", *,
-                   rss_before: int = 0, rss_after: int = 0, rss_peak: int = 0,
-                   cow_events: int = 0, cow_bytes: int = 0,
-                   cow_saved_bytes: int = 0):
+def _write_csv_row(
+    test_class: str,
+    test_name: str,
+    operation: str,
+    elapsed_ms: float,
+    delta_mem: int,
+    delta_blobs: int,
+    extra: str = "",
+    *,
+    rss_before: int = 0,
+    rss_after: int = 0,
+    rss_peak: int = 0,
+    cow_events: int = 0,
+    cow_bytes: int = 0,
+    cow_saved_bytes: int = 0,
+):
     """Write one row to the performance CSV file."""
     _ensure_csv()
-    _csv_writer.writerow([
-        datetime.now().isoformat(timespec="milliseconds"),
-        test_class, test_name, operation,
-        f"{elapsed_ms:.4f}", delta_mem, delta_blobs,
-        f"{rss_before/1024/1024:.2f}", f"{rss_after/1024/1024:.2f}", f"{rss_peak/1024/1024:.2f}",
-        cow_events, cow_bytes, cow_saved_bytes,
-        extra,
-    ])
+    _csv_writer.writerow(
+        [
+            datetime.now().isoformat(timespec="milliseconds"),
+            test_class,
+            test_name,
+            operation,
+            f"{elapsed_ms:.4f}",
+            delta_mem,
+            delta_blobs,
+            f"{rss_before / 1024 / 1024:.2f}",
+            f"{rss_after / 1024 / 1024:.2f}",
+            f"{rss_peak / 1024 / 1024:.2f}",
+            cow_events,
+            cow_bytes,
+            cow_saved_bytes,
+            extra,
+        ]
+    )
     _maybe_flush_csv(force=(operation == "END"))
 
 
-def _write_cow_csv_row(test_class: str, test_name: str, operation: str,
-                       refcount_before: int, copy_bytes: int, copy_us: float,
-                       blob_id: int = -1, extra: str = ""):
+def _write_cow_csv_row(
+    test_class: str,
+    test_name: str,
+    operation: str,
+    refcount_before: int,
+    copy_bytes: int,
+    copy_us: float,
+    blob_id: int = -1,
+    extra: str = "",
+):
     """Write a COW-specific event row to the performance CSV.
-    
+
     Records a Copy-on-Write trigger event with refcount and copy details.
     Use operation='COW-Data' or 'COW-Diff' to distinguish data vs diff COW.
     """
     _ensure_csv()
-    _csv_writer.writerow([
-        datetime.now().isoformat(timespec="milliseconds"),
-        test_class, test_name, operation,
-        f"{copy_us / 1000.0:.4f}", 0, 0,  # elapsed_ms, delta_mem, delta_blobs
-        1, copy_bytes, 0,  # cow_events=1, cow_bytes, cow_saved_bytes
-        f"blob_id={blob_id} refcount_before={refcount_before} copy_bytes={copy_bytes} copy_us={copy_us:.1f} {extra}",
-    ])
+    _csv_writer.writerow(
+        [
+            datetime.now().isoformat(timespec="milliseconds"),
+            test_class,
+            test_name,
+            operation,
+            f"{copy_us / 1000.0:.4f}",
+            0,
+            0,  # elapsed_ms, delta_mem, delta_blobs
+            1,
+            copy_bytes,
+            0,  # cow_events=1, cow_bytes, cow_saved_bytes
+            f"blob_id={blob_id} refcount_before={refcount_before} copy_bytes={copy_bytes} copy_us={copy_us:.1f} {extra}",
+        ]
+    )
     _maybe_flush_csv()
 
 
@@ -148,10 +193,12 @@ def cow_snapshot(blob) -> dict:
 if not _perf_logger.handlers:
     _perf_handler = logging.StreamHandler(sys.stderr)
     _perf_handler.setLevel(logging.INFO)
-    _perf_handler.setFormatter(logging.Formatter(
-        "%(asctime)s [PERF] %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    _perf_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [PERF] %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
     _perf_logger.addHandler(_perf_handler)
     _perf_logger.propagate = False
 _perf_logger.setLevel(logging.INFO)
@@ -170,7 +217,8 @@ def _mem_bytes_blobs(gc_mode: str = "quick"):
             - "off":    no GC; reads counters directly (~μs).  Use only inside
                         tight benchmark loops where GC would skew measurements.
     """
-    from caffe_ffi import total_allocated_bytes, live_blob_count
+    from caffe_ffi import live_blob_count, total_allocated_bytes
+
     if gc_mode == "full":
         for _ in range(3):
             gc.collect(0)
@@ -186,6 +234,7 @@ def _get_rss_bytes() -> int:
     """Return current process RSS in bytes using psutil (0 if unavailable)."""
     try:
         import psutil
+
         return psutil.Process().memory_info().rss
     except Exception:
         return 0
@@ -198,7 +247,7 @@ class _RSSPeakSampler:
         self._interval = interval_ms / 1000.0
         self._stop = threading.Event()
         self._peak = 0
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     def _run(self):
         while not self._stop.is_set():
@@ -245,8 +294,9 @@ _current_test_context = {"cls": "", "name": ""}
 
 
 @contextmanager
-def perf_trace(label: str, verbose: bool = True, *,
-               gc_mode: str | None = None, rss_peak: bool = False) -> Iterator[dict]:
+def perf_trace(
+    label: str, verbose: bool = True, *, gc_mode: str | None = None, rss_peak: bool = False
+) -> Iterator[dict]:
     """Context manager that measures wall-clock time, memory delta, and RSS for a block.
 
     Yields a dict that the caller may mutate to add extra fields (e.g. 'shape',
@@ -310,8 +360,16 @@ def perf_trace(label: str, verbose: bool = True, *,
         delta_rss = rss_after - rss_before
 
         # Build extra fields string (exclude internal keys)
-        _internal_keys = {"elapsed_ms", "delta_mem", "delta_blobs", "rss_before",
-                          "rss_after", "rss_peak", "delta_rss", "exception"}
+        _internal_keys = {
+            "elapsed_ms",
+            "delta_mem",
+            "delta_blobs",
+            "rss_before",
+            "rss_after",
+            "rss_peak",
+            "delta_rss",
+            "exception",
+        }
         extra_parts = [f"{k}={v}" for k, v in info.items() if k not in _internal_keys]
         extra_str = " ".join(extra_parts)
 
@@ -319,16 +377,27 @@ def perf_trace(label: str, verbose: bool = True, *,
             mem_str = _fmt_bytes(delta_mem)
             blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
             if rss_peak:
-                rss_str = (f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB "
-                           f"peak={rss_peak_val/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}")
+                rss_str = (
+                    f"RSS={rss_before / 1024 / 1024:.1f}→{rss_after / 1024 / 1024:.1f}MB "
+                    f"peak={rss_peak_val / 1024 / 1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}"
+                )
             else:
-                rss_str = f"RSS={rss_before/1024/1024:.1f}→{rss_after/1024/1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}"
+                rss_str = (
+                    f"RSS={rss_before / 1024 / 1024:.1f}→{rss_after / 1024 / 1024:.1f}MB Δrss={_fmt_bytes(delta_rss)}"
+                )
             if exc_info is not None:
                 status = "EXC" if not info.get("expected_error") else "EXP"
                 _perf_logger.info(
                     "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s  [%s] %s: %s  %s",
-                    label, elapsed_ms, mem_str, blob_str, rss_str, status,
-                    exc_info[0], exc_info[1][:100], extra_str,
+                    label,
+                    elapsed_ms,
+                    mem_str,
+                    blob_str,
+                    rss_str,
+                    status,
+                    exc_info[0],
+                    exc_info[1][:100],
+                    extra_str,
                 )
                 # Log full traceback at DEBUG level for diagnosis
                 if exc_tb_str:
@@ -336,12 +405,24 @@ def perf_trace(label: str, verbose: bool = True, *,
             else:
                 _perf_logger.info(
                     "%-40s Δtime=%7.2fms  Δmem=%8s  Δblobs=%4s  %s  %s",
-                    label, elapsed_ms, mem_str, blob_str, rss_str, extra_str,
+                    label,
+                    elapsed_ms,
+                    mem_str,
+                    blob_str,
+                    rss_str,
+                    extra_str,
                 )
         _write_csv_row(
-            _current_test_context["cls"], _current_test_context["name"],
-            label, elapsed_ms, delta_mem, delta_blobs, extra_str,
-            rss_before=rss_before, rss_after=rss_after, rss_peak=rss_peak_val,
+            _current_test_context["cls"],
+            _current_test_context["name"],
+            label,
+            elapsed_ms,
+            delta_mem,
+            delta_blobs,
+            extra_str,
+            rss_before=rss_before,
+            rss_after=rss_after,
+            rss_peak=rss_peak_val,
         )
         info["elapsed_ms"] = elapsed_ms
         info["delta_mem"] = delta_mem
@@ -351,16 +432,19 @@ def perf_trace(label: str, verbose: bool = True, *,
         info["rss_peak"] = rss_peak_val
         info["delta_rss"] = delta_rss
 
+
 # Configure memory stress test logger to output INFO logs during test runs
 _mem_stress_logger = logging.getLogger("caffe_ffi.test.memory_stress")
 _mem_stress_logger.setLevel(logging.INFO)
 if not _mem_stress_logger.handlers:
     _handler = logging.StreamHandler(sys.stderr)
     _handler.setLevel(logging.INFO)
-    _handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(name)s] %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    _handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(name)s] %(levelname)s %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
     _mem_stress_logger.addHandler(_handler)
     _mem_stress_logger.propagate = False
 
@@ -381,7 +465,8 @@ def _current_mem_state():
         leaks from long-lived objects with cross-generational cycles.
       - "off": no GC; read counters directly (~μs).  For raw perf runs.
     """
-    from caffe_ffi import total_allocated_bytes, live_blob_count
+    from caffe_ffi import live_blob_count, total_allocated_bytes
+
     mode = os.environ.get("CAFFE_FFI_LEAKCHECK_GC", "quick")
     if mode == "off":
         return (total_allocated_bytes(), live_blob_count())
@@ -398,12 +483,8 @@ def _current_mem_state():
 
 def pytest_configure(config):
     global _session_baseline
-    config.addinivalue_line(
-        "markers", "require_cpp_extension: mark test as requiring C++ extension"
-    )
-    config.addinivalue_line(
-        "markers", "leak_check: mark test to check for Blob memory leaks (default: autouse)"
-    )
+    config.addinivalue_line("markers", "require_cpp_extension: mark test as requiring C++ extension")
+    config.addinivalue_line("markers", "leak_check: mark test to check for Blob memory leaks (default: autouse)")
     if _ffi_api.is_available():
         _session_baseline = _current_mem_state()
 
@@ -413,8 +494,7 @@ def _check_cpp_extension_available() -> bool:
 
 
 require_cpp_extension = pytest.mark.skipif(
-    not _check_cpp_extension_available(),
-    reason="C++ extension not available, skipping test"
+    not _check_cpp_extension_available(), reason="C++ extension not available, skipping test"
 )
 
 
@@ -481,6 +561,7 @@ def pytest_sessionfinish(session, exitstatus):
     if not _ffi_api.is_available() or _session_baseline is None:
         return
     import warnings
+
     current = _current_mem_state()
     mem_before, blobs_before = _session_baseline
     mem_after, blobs_after = current
@@ -504,74 +585,126 @@ def ptrace():
 # ─── Test-level timing autouse (logs per-test wall time + memory) ──
 
 _P1_TEST_CLASSES = {
-    "TestLayerStandalone", "TestLayerFromNet",
-    "TestNetEmptyConstructor", "TestNetConstructorErrors",
-    "TestNetForwardBoundaries", "TestNetConsistency",
+    "TestLayerStandalone",
+    "TestLayerFromNet",
+    "TestNetEmptyConstructor",
+    "TestNetConstructorErrors",
+    "TestNetForwardBoundaries",
+    "TestNetConsistency",
 }
 
 _P2_TEST_CLASSES = {
-    "TestNetTopologies", "TestNetReshapeDynamics", "TestLargeScaleForward",
+    "TestNetTopologies",
+    "TestNetReshapeDynamics",
+    "TestLargeScaleForward",
 }
 
 _P2B_TEST_CLASSES = {
-    "TestExtremeValues", "TestDTypeErrors", "TestNonContiguousArrays",
-    "TestRecoveryAfterError", "TestSplitTopologies", "TestExtremeBoundaries",
-    "TestBlobCOWApi", "TestSplitCOWBehavior",
+    "TestExtremeValues",
+    "TestDTypeErrors",
+    "TestNonContiguousArrays",
+    "TestRecoveryAfterError",
+    "TestSplitTopologies",
+    "TestExtremeBoundaries",
+    "TestBlobCOWApi",
+    "TestSplitCOWBehavior",
 }
 
 _P3A_TEST_CLASSES = {
-    "TestConvolutionLayers", "TestPoolingLayers", "TestBatchNormLayers",
+    "TestConvolutionLayers",
+    "TestPoolingLayers",
+    "TestBatchNormLayers",
     "TestConvPoolBNCombination",
 }
 
 _P3B_TEST_CLASSES = {
-    "TestScaleLayers", "TestBiasLayers", "TestEltwiseLayers",
-    "TestConcatLayers", "TestDropoutLayers",
-    "TestSoftmaxWithLossLayers", "TestAccuracyLayers",
+    "TestScaleLayers",
+    "TestBiasLayers",
+    "TestEltwiseLayers",
+    "TestConcatLayers",
+    "TestDropoutLayers",
+    "TestSoftmaxWithLossLayers",
+    "TestAccuracyLayers",
     "TestScaleBiasEltwiseCombination",
 }
 
 _P3C_TEST_CLASSES = {
-    "TestReLULayers", "TestSigmoidLayers", "TestSigmoidBackward", "TestTanHLayers",
-    "TestELULayers", "TestPReLULayers",
-    "TestInnerProductLayers", "TestSoftmaxLayers",
-    "TestFlattenLayers", "TestReshapeLayers",
+    "TestReLULayers",
+    "TestSigmoidLayers",
+    "TestSigmoidBackward",
+    "TestTanHLayers",
+    "TestELULayers",
+    "TestPReLULayers",
+    "TestInnerProductLayers",
+    "TestSoftmaxLayers",
+    "TestFlattenLayers",
+    "TestReshapeLayers",
     "TestActivationIPCombination",
-    "TestPositionalEncoding", "TestSelfAttentionComponents",
-    "TestScaledDotProductAttention", "TestMultiHeadProjection",
+    "TestPositionalEncoding",
+    "TestSelfAttentionComponents",
+    "TestScaledDotProductAttention",
+    "TestMultiHeadProjection",
     "TestTransformerEncoderBlock",
     # Activation backward tests (test_activation_backward.py)
-    "TestReLUGradient", "TestSigmoidGradient", "TestTanHGradient",
-    "TestELUGradient", "TestPReLUGradient", "TestActivationPerfLogs",
+    "TestReLUGradient",
+    "TestSigmoidGradient",
+    "TestTanHGradient",
+    "TestELUGradient",
+    "TestPReLUGradient",
+    "TestActivationPerfLogs",
     # Conv backward tests (test_conv_backward.py)
-    "TestConvBackward1x1", "TestConvBackward3x3", "TestConvBackwardDilation",
-    "TestConvBackwardGroups", "TestConvBackwardDepthwise", "TestConvBackwardInvariants",
+    "TestConvBackward1x1",
+    "TestConvBackward3x3",
+    "TestConvBackwardDilation",
+    "TestConvBackwardGroups",
+    "TestConvBackwardDepthwise",
+    "TestConvBackwardInvariants",
     # InnerProduct backward tests (test_inner_product_backward.py)
-    "TestInnerProductBackward", "TestInnerProductBackwardNCHW",
-    "TestInnerProductBackwardTranspose", "TestInnerProductBackwardIdentity",
+    "TestInnerProductBackward",
+    "TestInnerProductBackwardNCHW",
+    "TestInnerProductBackwardTranspose",
+    "TestInnerProductBackwardIdentity",
     # BatchNorm backward tests (test_batch_norm_backward.py)
-    "TestBatchNormBackward", "TestBatchNormBackwardMultiChannel",
+    "TestBatchNormBackward",
+    "TestBatchNormBackwardMultiChannel",
     "TestBatchNormBackwardScaleFactor",
     # ELU kink stability tests (test_elu_kink_stability.py)
-    "TestELUKinkContinuity", "TestELUKinkNumericalGradient",
-    "TestELUAlpha1Smooth", "TestELUSaturatedRegime",
+    "TestELUKinkContinuity",
+    "TestELUKinkNumericalGradient",
+    "TestELUAlpha1Smooth",
+    "TestELUSaturatedRegime",
     # Pooling backward tests (test_pooling_backward.py)
-    "TestMaxPoolBackward2x2", "TestAvePoolBackward2x2",
-    "TestMaxPoolBackwardOverlapping", "TestAvePoolBackwardOverlapping",
-    "TestGlobalPoolBackward", "TestPoolBackwardDeterminism",
+    "TestMaxPoolBackward2x2",
+    "TestAvePoolBackward2x2",
+    "TestMaxPoolBackwardOverlapping",
+    "TestAvePoolBackwardOverlapping",
+    "TestGlobalPoolBackward",
+    "TestPoolBackwardDeterminism",
     # Deconv backward tests (test_deconv_backward.py)
-    "TestDeconvBackward1x1", "TestDeconvBackwardStride2",
+    "TestDeconvBackward1x1",
+    "TestDeconvBackwardStride2",
     "TestDeconvBackwardEdgeCases",
     # SoftmaxWithLoss backward tests (test_softmax_loss_backward.py)
     "TestSoftmaxWithLossBackward",
 }
 
 _P3D_TEST_CLASSES = {
-    "TestSliceLayers", "TestCropLayers", "TestLRNLayers",
-    "TestDeconvolutionLayers", "TestSliceConcatRoundtrip",
+    "TestSliceLayers",
+    "TestCropLayers",
+    "TestLRNLayers",
+    "TestDeconvolutionLayers",
+    "TestSliceConcatRoundtrip",
 }
 
-_PERF_TEST_CLASSES = _P1_TEST_CLASSES | _P2_TEST_CLASSES | _P2B_TEST_CLASSES | _P3A_TEST_CLASSES | _P3B_TEST_CLASSES | _P3C_TEST_CLASSES | _P3D_TEST_CLASSES
+_PERF_TEST_CLASSES = (
+    _P1_TEST_CLASSES
+    | _P2_TEST_CLASSES
+    | _P2B_TEST_CLASSES
+    | _P3A_TEST_CLASSES
+    | _P3B_TEST_CLASSES
+    | _P3C_TEST_CLASSES
+    | _P3D_TEST_CLASSES
+)
 
 
 @pytest.fixture(autouse=True)
@@ -620,11 +753,24 @@ def _test_timing_log(request):
     mem_before, blobs_before = _mem_bytes_blobs(gc_mode=_gc_mode)
     rss_before = _get_rss_bytes()
     t0 = time.perf_counter()
-    _perf_logger.info("─── BEGIN %s.%s ───  mem=%dB blobs=%d rss=%.1fMB",
-                      cls_name, test_name, mem_before, blobs_before, rss_before/1024/1024)
-    _write_csv_row(cls_name, test_name, "BEGIN", 0.0, 0, 0,
-                   f"mem={mem_before} blobs={blobs_before} rss_mb={rss_before/1024/1024:.1f}",
-                   rss_before=rss_before)
+    _perf_logger.info(
+        "─── BEGIN %s.%s ───  mem=%dB blobs=%d rss=%.1fMB",
+        cls_name,
+        test_name,
+        mem_before,
+        blobs_before,
+        rss_before / 1024 / 1024,
+    )
+    _write_csv_row(
+        cls_name,
+        test_name,
+        "BEGIN",
+        0.0,
+        0,
+        0,
+        f"mem={mem_before} blobs={blobs_before} rss_mb={rss_before / 1024 / 1024:.1f}",
+        rss_before=rss_before,
+    )
     yield
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     mem_after, blobs_after = _mem_bytes_blobs(gc_mode=_gc_mode)
@@ -636,12 +782,28 @@ def _test_timing_log(request):
     blob_str = f"+{delta_blobs}" if delta_blobs >= 0 else f"{delta_blobs}"
     _perf_logger.info(
         "─── END   %s.%s ───  Δtime=%.2fms  Δmem=%s  Δblobs=%s  Δrss=%s  total=%dB/%d blobs rss=%.1fMB",
-        cls_name, test_name, elapsed_ms, mem_str, blob_str, _fmt_bytes(delta_rss),
-        mem_after, blobs_after, rss_after/1024/1024,
+        cls_name,
+        test_name,
+        elapsed_ms,
+        mem_str,
+        blob_str,
+        _fmt_bytes(delta_rss),
+        mem_after,
+        blobs_after,
+        rss_after / 1024 / 1024,
     )
-    _write_csv_row(cls_name, test_name, "END", elapsed_ms, delta_mem, delta_blobs,
-                   f"total_mem={mem_after} total_blobs={blobs_after} rss_mb={rss_after/1024/1024:.1f}",
-                   rss_before=rss_before, rss_after=rss_after, rss_peak=rss_after)
+    _write_csv_row(
+        cls_name,
+        test_name,
+        "END",
+        elapsed_ms,
+        delta_mem,
+        delta_blobs,
+        f"total_mem={mem_after} total_blobs={blobs_after} rss_mb={rss_after / 1024 / 1024:.1f}",
+        rss_before=rss_before,
+        rss_after=rss_after,
+        rss_peak=rss_after,
+    )
 
     _current_test_context["cls"] = ""
     _current_test_context["name"] = ""
@@ -696,18 +858,24 @@ layer {
 def mlp_weights():
     """Manual weights for MLP testing."""
     np.random.seed(42)
-    W1 = np.array([
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-        [0.7, 0.8, 0.9],
-        [1.0, 1.1, 1.2],
-    ], dtype=np.float32)
+    W1 = np.array(
+        [
+            [0.1, 0.2, 0.3],
+            [0.4, 0.5, 0.6],
+            [0.7, 0.8, 0.9],
+            [1.0, 1.1, 1.2],
+        ],
+        dtype=np.float32,
+    )
     b1 = np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32)
 
-    W2 = np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.5, 0.6, 0.7, 0.8],
-    ], dtype=np.float32)
+    W2 = np.array(
+        [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8],
+        ],
+        dtype=np.float32,
+    )
     b2 = np.array([0.001, 0.002], dtype=np.float32)
 
     return {"W1": W1, "b1": b1, "W2": W2, "b2": b2}
@@ -716,31 +884,37 @@ def mlp_weights():
 @pytest.fixture
 def mlp_net(mlp_prototxt):
     """Create MLP network (uses C++ extension when available)."""
+
     from caffe_ffi import net_from_param, net_param_from_string
-    from caffe_ffi._core import Blob
 
     param = net_param_from_string(mlp_prototxt)
 
     if _ffi_api.is_available():
         net = net_from_param(param)
-        W1 = np.array([
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9],
-            [1.0, 1.1, 1.2],
-        ], dtype=np.float32)
+        W1 = np.array(
+            [
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5, 0.6],
+                [0.7, 0.8, 0.9],
+                [1.0, 1.1, 1.2],
+            ],
+            dtype=np.float32,
+        )
         b1 = np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32)
-        W2 = np.array([
-            [0.1, 0.2, 0.3, 0.4],
-            [0.5, 0.6, 0.7, 0.8],
-        ], dtype=np.float32)
+        W2 = np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+            ],
+            dtype=np.float32,
+        )
         b2 = np.array([0.001, 0.002], dtype=np.float32)
 
         layers = net.layers_array()
-        if len(layers) >= 1 and hasattr(layers[0], 'blobs') and len(layers[0].blobs) >= 2:
+        if len(layers) >= 1 and hasattr(layers[0], "blobs") and len(layers[0].blobs) >= 2:
             layers[0].blobs[0].from_numpy(W1)
             layers[0].blobs[1].from_numpy(b1.reshape(-1))
-        if len(layers) >= 3 and hasattr(layers[2], 'blobs') and len(layers[2].blobs) >= 2:
+        if len(layers) >= 3 and hasattr(layers[2], "blobs") and len(layers[2].blobs) >= 2:
             layers[2].blobs[0].from_numpy(W2)
             layers[2].blobs[1].from_numpy(b2.reshape(-1))
     else:
@@ -751,7 +925,7 @@ def mlp_net(mlp_prototxt):
 
 def _build_mlp_python(param):
     """Build a minimal MLP net in pure Python for testing (without C++ extension)."""
-    from caffe_ffi._core import Net, Blob, Layer
+    from caffe_ffi._core import Blob, Layer, Net
 
     net = Net.__new__(Net)
     net._py_name = param.name
@@ -784,17 +958,23 @@ def _build_mlp_python(param):
     net._py_blob_list.append(prob_blob)
     net._py_output_blobs.append(prob_blob)
 
-    W1 = np.array([
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-        [0.7, 0.8, 0.9],
-        [1.0, 1.1, 1.2],
-    ], dtype=np.float32)
+    W1 = np.array(
+        [
+            [0.1, 0.2, 0.3],
+            [0.4, 0.5, 0.6],
+            [0.7, 0.8, 0.9],
+            [1.0, 1.1, 1.2],
+        ],
+        dtype=np.float32,
+    )
     b1 = np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32)
-    W2 = np.array([
-        [0.1, 0.2, 0.3, 0.4],
-        [0.5, 0.6, 0.7, 0.8],
-    ], dtype=np.float32)
+    W2 = np.array(
+        [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8],
+        ],
+        dtype=np.float32,
+    )
     b2 = np.array([0.001, 0.002], dtype=np.float32)
 
     def _make_layer(name, type_str, weight_blobs=None):
@@ -847,6 +1027,7 @@ def _build_mlp_python(param):
         return {"prob": prob}
 
     import types
+
     net._forward_pure_python = types.MethodType(_forward_pure_python, net)
 
     return net

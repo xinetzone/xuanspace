@@ -40,9 +40,7 @@ class TestNormalizeServicesSimple(unittest.TestCase):
             ),
         ]
     )
-    def test_normalize_service_simple(
-        self, test_case: dict[str, Any], expected: dict[str, Any]
-    ) -> None:
+    def test_normalize_service_simple(self, test_case: dict[str, Any], expected: dict[str, Any]) -> None:
         copy.deepcopy(test_case)
         result = normalize_service(test_case)
         self.assertEqual(result, expected)

@@ -39,9 +39,7 @@ from xuan_compose.translate.container_args import container_to_args
 REPO_ROOT = Path(os.path.realpath(tempfile.mkdtemp(prefix="xuan-compose-tests-")))
 _ENV_DIR = REPO_ROOT / "tests/integration/env_file_tests/env-files"
 _ENV_DIR.mkdir(parents=True)
-(_ENV_DIR / "project-1.env").write_text(
-    "ZZVAR1=podman-rocks-123\nZZVAR2=podman-rocks-124\nZZVAR3=podman-rocks-125\n"
-)
+(_ENV_DIR / "project-1.env").write_text("ZZVAR1=podman-rocks-123\nZZVAR2=podman-rocks-124\nZZVAR3=podman-rocks-125\n")
 (_ENV_DIR / "project-2.env").write_text("ZZVAR1=podman-rocks-223\nZZVAR2=podman-rocks-224\n")
 
 
@@ -336,21 +334,23 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        # short syntax: only take this specific environment variable value from .env file
-        ("use_env_var_from_default_env_file_short_syntax", ["ZZVAR1"], "ZZVAR1=TEST1"),
-        # long syntax: environment variable value from .env file is taken through variable
-        # interpolation
-        # only the value required in 'environment:' compose file is sent to containers
-        # environment
-        ("use_env_var_from_default_env_file_long_syntax", ["ZZVAR1=TEST1"], "ZZVAR1=TEST1"),
-        # "environment:" section in compose file overrides environment variable value from .env file
-        (
-            "use_env_var_from_default_env_file_override_value",
-            ["ZZVAR1=NEW_TEST1"],
-            "ZZVAR1=NEW_TEST1",
-        ),
-    ])
+    @parameterized.expand(
+        [
+            # short syntax: only take this specific environment variable value from .env file
+            ("use_env_var_from_default_env_file_short_syntax", ["ZZVAR1"], "ZZVAR1=TEST1"),
+            # long syntax: environment variable value from .env file is taken through variable
+            # interpolation
+            # only the value required in 'environment:' compose file is sent to containers
+            # environment
+            ("use_env_var_from_default_env_file_long_syntax", ["ZZVAR1=TEST1"], "ZZVAR1=TEST1"),
+            # "environment:" section in compose file overrides environment variable value from .env file
+            (
+                "use_env_var_from_default_env_file_override_value",
+                ["ZZVAR1=NEW_TEST1"],
+                "ZZVAR1=NEW_TEST1",
+            ),
+        ]
+    )
     async def test_env_file(self, test_name: str, cnt_env: list, expected_var: str) -> None:
         c = create_compose_mock()
         # environment variables were set in .env file
@@ -642,29 +642,29 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            False,
-            "z",
-            [
-                "--mount",
-                f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt,z",
-            ],
-        ),
-        (
-            False,
-            "Z",
-            [
-                "--mount",
-                f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt,Z",
-            ],
-        ),
-        (True, "z", ["-v", f"{get_test_file_path('test_dirname/foo')}:/mnt:z"]),
-        (True, "Z", ["-v", f"{get_test_file_path('test_dirname/foo')}:/mnt:Z"]),
-    ])
-    async def test_selinux_volume(
-        self, prefer_volume: bool, selinux_type: str, expected_additional_args: list
-    ) -> None:
+    @parameterized.expand(
+        [
+            (
+                False,
+                "z",
+                [
+                    "--mount",
+                    f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt,z",
+                ],
+            ),
+            (
+                False,
+                "Z",
+                [
+                    "--mount",
+                    f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt,Z",
+                ],
+            ),
+            (True, "z", ["-v", f"{get_test_file_path('test_dirname/foo')}:/mnt:z"]),
+            (True, "Z", ["-v", f"{get_test_file_path('test_dirname/foo')}:/mnt:Z"]),
+        ]
+    )
+    async def test_selinux_volume(self, prefer_volume: bool, selinux_type: str, expected_additional_args: list) -> None:
         c = create_compose_mock()
         c.prefer_volume_over_mount = prefer_volume
 
@@ -714,11 +714,7 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
         ]
         expected_additional_args = [
             "--mount",
-            (
-                "type=glob,source="
-                f"{get_test_file_path('test_dirname/foo') + '/*.ext'},"
-                "destination=/mnt"
-            ),
+            (f"type=glob,source={get_test_file_path('test_dirname/foo') + '/*.ext'},destination=/mnt"),
         ]
         args = await container_to_args(c, cnt)
         self.assertEqual(
@@ -732,33 +728,34 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            "absolute_path",
-            get_test_file_path("test_dirname/foo"),
-            [
-                "--mount",
-                f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt",
-            ],
-        ),
-        (
-            "relative_path",
-            "./foo",
-            [
-                "--mount",
-                f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt",
-            ],
-        ),
-        (
-            "home_dir",
-            "~/test_dirname/foo",
-            [
-                "--mount",
-                "type=bind,source="
-                f"{os.path.abspath(os.path.expanduser('~/test_dirname/foo'))},destination=/mnt",
-            ],
-        ),
-    ])
+    @parameterized.expand(
+        [
+            (
+                "absolute_path",
+                get_test_file_path("test_dirname/foo"),
+                [
+                    "--mount",
+                    f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt",
+                ],
+            ),
+            (
+                "relative_path",
+                "./foo",
+                [
+                    "--mount",
+                    f"type=bind,source={get_test_file_path('test_dirname/foo')},destination=/mnt",
+                ],
+            ),
+            (
+                "home_dir",
+                "~/test_dirname/foo",
+                [
+                    "--mount",
+                    f"type=bind,source={os.path.abspath(os.path.expanduser('~/test_dirname/foo'))},destination=/mnt",
+                ],
+            ),
+        ]
+    )
     async def test_volumes_bind_mount_source(
         self, test_name: str, mount_source: str, expected_additional_args: list
     ) -> None:
@@ -789,21 +786,21 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            "without_subpath",
-            {},
-            "type=image,source=example:latest,destination=/mnt/example",
-        ),
-        (
-            "with_subpath",
-            {"image": {"subpath": "path/to/image/folder"}},
-            "type=image,source=example:latest,destination=/mnt/example,subpath=path/to/image/folder",
-        ),
-    ])
-    async def test_volumes_image_mount(
-        self, test_name: str, image_opts: dict, expected_mount_arg: str
-    ) -> None:
+    @parameterized.expand(
+        [
+            (
+                "without_subpath",
+                {},
+                "type=image,source=example:latest,destination=/mnt/example",
+            ),
+            (
+                "with_subpath",
+                {"image": {"subpath": "path/to/image/folder"}},
+                "type=image,source=example:latest,destination=/mnt/example,subpath=path/to/image/folder",
+            ),
+        ]
+    )
+    async def test_volumes_image_mount(self, test_name: str, image_opts: dict, expected_mount_arg: str) -> None:
         c = create_compose_mock()
         cnt = get_minimal_container()
         cnt["_service"] = cnt["service_name"]
@@ -830,21 +827,21 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            "without_subpath",
-            {},
-            "type=volume,source=volname,destination=/mnt/example",
-        ),
-        (
-            "with_subpath",
-            {"volume": {"subpath": "path/to/image/folder"}},
-            "type=volume,source=volname,destination=/mnt/example,subpath=path/to/image/folder",
-        ),
-    ])
-    async def test_volumes_mount(
-        self, test_name: str, volume_opts: dict, expected_mount_arg: str
-    ) -> None:
+    @parameterized.expand(
+        [
+            (
+                "without_subpath",
+                {},
+                "type=volume,source=volname,destination=/mnt/example",
+            ),
+            (
+                "with_subpath",
+                {"volume": {"subpath": "path/to/image/folder"}},
+                "type=volume,source=volname,destination=/mnt/example,subpath=path/to/image/folder",
+            ),
+        ]
+    )
+    async def test_volumes_mount(self, test_name: str, volume_opts: dict, expected_mount_arg: str) -> None:
         c = create_compose_mock()
         c.vols = {"volname": {"name": "volname"}}
 
@@ -873,16 +870,18 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            "create_host_path_set_to_true",
-            {"bind": {"create_host_path": True}},
-        ),
-        (
-            "create_host_path_default_true",
-            {},
-        ),
-    ])
+    @parameterized.expand(
+        [
+            (
+                "create_host_path_set_to_true",
+                {"bind": {"create_host_path": True}},
+            ),
+            (
+                "create_host_path_default_true",
+                {},
+            ),
+        ]
+    )
     async def test_volumes_bind_mount_create_source_dir(self, test_name: str, bind: dict) -> None:
         # creates a missing source dir
         c = create_compose_mock()
@@ -938,11 +937,13 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await container_to_args(c, cnt)
 
-    @parameterized.expand([
-        ("not_compat", False, "test_project_name", "test_project_name_network1"),
-        ("compat_no_dash", True, "test_project_name", "test_project_name_network1"),
-        ("compat_dash", True, "test_project-name", "test_projectname_network1"),
-    ])
+    @parameterized.expand(
+        [
+            ("not_compat", False, "test_project_name", "test_project_name_network1"),
+            ("compat_no_dash", True, "test_project_name", "test_project_name_network1"),
+            ("compat_dash", True, "test_project-name", "test_projectname_network1"),
+        ]
+    )
     async def test_network_default_name(
         self, name: str, is_compat: bool, project_name: str, expected_network_name: str
     ) -> None:
@@ -1246,16 +1247,18 @@ class TestContainerToArgs(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        "",
-        "container:ipc_test0_container",
-        "host",
-        "none",
-        "ns:namespace_id",
-        "private",
-        "shareable",
-        "container:ipc_test0_container",
-    ])
+    @parameterized.expand(
+        [
+            "",
+            "container:ipc_test0_container",
+            "host",
+            "none",
+            "ns:namespace_id",
+            "private",
+            "shareable",
+            "container:ipc_test0_container",
+        ]
+    )
     async def test_ipc_simple_modes(self, ipc_mode: str) -> None:
         """Pass simple ipc modes unchanged as --ipc parameter"""
 

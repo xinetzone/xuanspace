@@ -78,9 +78,7 @@ def test_trust_deriver_missing_bundle():
 
 
 def test_log_synthesizer_generate_with_log(tmp_path):
-    (tmp_path / "log.md").write_text(
-        "# Change Log\n\n## 2024-01-01\n- **Creation** x\n", encoding="utf-8"
-    )
+    (tmp_path / "log.md").write_text("# Change Log\n\n## 2024-01-01\n- **Creation** x\n", encoding="utf-8")
     ctx = Context()
     ctx.provide("bundle_accessor", Bundle(root=tmp_path))
     _instance(LogSynthesizer)(ctx, {})

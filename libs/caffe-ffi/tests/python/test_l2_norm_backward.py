@@ -17,6 +17,7 @@ Mathematical reference:
   Forward:  y[i] = x[i] / norm(g),  norm(g) = sqrt(sum_j x[j]^2 + eps)
   Backward: dx[i] = dy[i] / norm(g) - x[i] * (sum_j dy[j]*x[j]) / norm(g)^3
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -25,9 +26,10 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 1e-2  # float32 central-difference precision (matches _grad_check_utils)
 NUM_ATOL = 1e-3
 
@@ -35,6 +37,7 @@ NUM_ATOL = 1e-3
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_l2norm_prototxt(N=1, C=1, H=4, W=5, axis=1, eps=1e-5):
     """Create a minimal Input(N,C,H,W) -> L2Norm prototxt."""
@@ -64,6 +67,7 @@ def _make_l2norm_net(N=1, C=1, H=4, W=5, axis=1, eps=1e-5):
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
 
+
 def _l2norm_axes(x, axis):
     """Return the tuple of axes that are normalized together (axis..end).
 
@@ -77,7 +81,7 @@ def _l2norm_forward_np(x, axis=1, eps=1e-5):
     """Forward reference: y = x / ||x||_2 over [axis, ndim)."""
     x = np.asarray(x, dtype=np.float64)
     axes = _l2norm_axes(x, axis)
-    norm = np.sqrt(np.sum(x ** 2, axis=axes, keepdims=True) + eps)
+    norm = np.sqrt(np.sum(x**2, axis=axes, keepdims=True) + eps)
     return x / norm
 
 
@@ -86,10 +90,10 @@ def _l2norm_backward_np(x, dy, axis=1, eps=1e-5):
     x = np.asarray(x, dtype=np.float64)
     dy = np.asarray(dy, dtype=np.float64)
     axes = _l2norm_axes(x, axis)
-    norm = np.sqrt(np.sum(x ** 2, axis=axes, keepdims=True) + eps)
+    norm = np.sqrt(np.sum(x**2, axis=axes, keepdims=True) + eps)
     inv_norm = 1.0 / norm
     dot = np.sum(dy * x, axis=axes, keepdims=True)
-    coef = dot / (norm ** 3)
+    coef = dot / (norm**3)
     return dy * inv_norm - x * coef
 
 
@@ -116,6 +120,7 @@ def _num_grad(net, x, dy, h=EPS):
 # Tests: L2Norm Forward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestL2NormForward:
     """L2Norm forward correctness (known values + unit-norm property)."""
@@ -138,7 +143,7 @@ class TestL2NormForward:
         out = net.forward({"data": x})["out"]
         # axis=1 normalizes over [1, 4) = (C, H, W): per-sample unit norm.
         out = np.asarray(out)
-        norm = np.sqrt(np.sum(out ** 2, axis=(1, 2, 3)))
+        norm = np.sqrt(np.sum(out**2, axis=(1, 2, 3)))
         np.testing.assert_allclose(norm, 1.0, rtol=1e-4, atol=1e-4)
 
     def test_forward_unit_norm_spatial(self):
@@ -149,7 +154,7 @@ class TestL2NormForward:
         x = rng.randn(N, C, H, W).astype(np.float32)
         out = np.asarray(net.forward({"data": x})["out"])
         # axis=2 normalizes over [2, 4) = (H, W): per (n, c) unit norm.
-        norm = np.sqrt(np.sum(out ** 2, axis=(2, 3)))
+        norm = np.sqrt(np.sum(out**2, axis=(2, 3)))
         np.testing.assert_allclose(norm, 1.0, rtol=1e-4, atol=1e-4)
 
     def test_forward_all_zero(self):
@@ -174,6 +179,7 @@ class TestL2NormForward:
 # Tests: L2Norm Backward (analytical)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestL2NormGradient:
     """L2Norm backward analytical gradient tests."""
@@ -190,8 +196,7 @@ class TestL2NormGradient:
         dx = net.blob_by_name("data").diff
         expected = _l2norm_backward_np(x, dy, axis=1).astype(np.float32)
         np.testing.assert_allclose(dx, expected, rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(out, _l2norm_forward_np(x, axis=1).astype(np.float32),
-                                   rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(out, _l2norm_forward_np(x, axis=1).astype(np.float32), rtol=1e-5, atol=1e-6)
 
     def test_backward_axis_spatial(self):
         """Backward with axis=2 (spatial groups)."""
@@ -237,6 +242,7 @@ class TestL2NormGradient:
 # ---------------------------------------------------------------------------
 # Tests: L2Norm Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestL2NormNumericalGradient:

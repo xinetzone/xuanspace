@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
 
 from .. import (
-    LOG_LEVEL_TRACE,
     LOG_LEVEL_DEBUG,
+    LOG_LEVEL_TRACE,
     LOG_LEVEL_WARN,
     set_log_level,
 )
@@ -46,7 +45,7 @@ def _add_handler(handler: logging.Handler, level: int, fmt: str, datefmt: str) -
 
 def setup_debug(
     level: int = LOG_LEVEL_DEBUG,
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     python_level: int = logging.DEBUG,
     fmt: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt: str = "%H:%M:%S",
@@ -67,8 +66,7 @@ def setup_debug(
 
     _PY_LOGGER.setLevel(python_level)
     if not _PY_LOGGER.handlers or not any(
-        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
-        for h in _PY_LOGGER.handlers
+        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in _PY_LOGGER.handlers
     ):
         _add_handler(logging.StreamHandler(sys.stdout), python_level, fmt, datefmt)
 
@@ -78,11 +76,13 @@ def setup_debug(
     set_log_level(level)
     _PY_LOGGER.debug(
         "Debug logging enabled (C++ level=%d, Python level=%d, file=%s)",
-        level, python_level, log_file,
+        level,
+        python_level,
+        log_file,
     )
 
 
-def setup_memory_trace(log_file: Optional[str] = None) -> None:
+def setup_memory_trace(log_file: str | None = None) -> None:
     """Enable finest-grained memory tracing logs (TRACE level).
 
     Outputs all memory allocation/free/access details for diagnosing leaks,

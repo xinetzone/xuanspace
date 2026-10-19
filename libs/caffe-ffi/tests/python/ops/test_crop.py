@@ -16,8 +16,10 @@
 # under the License.
 
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -45,9 +47,7 @@ def test_forward_Crop(caffe_test_dir):
         [np.random.rand(10, 10, 120, 120), np.random.rand(10, 5, 50, 60)], caffe_test_dir, axis=1, offset=[1, 2, 4]
     )
     logger.debug("Testing Crop 4D, axis=2, offset=[2,4]")
-    _test_crop(
-        [np.random.rand(10, 10, 120, 120), np.random.rand(10, 5, 50, 60)], caffe_test_dir, axis=2, offset=[2, 4]
-    )
+    _test_crop([np.random.rand(10, 10, 120, 120), np.random.rand(10, 5, 50, 60)], caffe_test_dir, axis=2, offset=[2, 4])
     logger.debug("Testing Crop 3D, axis=1, offset=[2,4]")
     _test_crop([np.random.rand(10, 120, 120), np.random.rand(5, 50, 60)], caffe_test_dir, axis=1, offset=[2, 4])
     logger.debug("Testing Crop 2D, axis=0, offset=[2,4]")

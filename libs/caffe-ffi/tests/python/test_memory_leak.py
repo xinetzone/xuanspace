@@ -22,24 +22,25 @@
 - 主动泄漏/全局持引用相关用例标记 @pytest.mark.leak_check(False)，关闭
   conftest.py 的 autouse 泄漏检测，避免对故意构造的泄漏误判。
 """
+
 from __future__ import annotations
 
 import gc
-import os
 import sys
 import traceback
+from collections.abc import Iterator
 
 import pytest
-import numpy as np
+from caffe_ffi.tools import setup_debug, setup_quiet
+
 import caffe_ffi
 from caffe_ffi import Blob
-from caffe_ffi.tools import setup_debug, setup_quiet, blob_snapshot as memory_snapshot, mem_check as check_memory_baseline
 
 
 def header(title: str) -> None:
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {title}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 # ============================================================
@@ -141,7 +142,7 @@ def test_intentional_leak() -> None:
     gc.collect()
     mem = _rel_mem()
     assert mem >= 512, f"expected >=512, got {mem}"
-    print(f"  [INFO] Leaked object NOT destroyed (expected - ref held by global)")
+    print("  [INFO] Leaked object NOT destroyed (expected - ref held by global)")
     print(f"  [INFO] total_allocated_bytes={mem} (non-zero = leak detected)")
     setup_quiet()
 
@@ -252,7 +253,7 @@ def test_cleanup_leaks() -> None:
     gc.collect()
     mem = _rel_mem()
     assert mem == 0, f"got {mem}"
-    print(f"  [INFO] ~Blob() for leaked objects should appear above")
+    print("  [INFO] ~Blob() for leaked objects should appear above")
     setup_quiet()
 
 
@@ -261,7 +262,7 @@ def test_cleanup_leaks() -> None:
 # ============================================================
 @pytest.mark.skip(
     reason="进程退出时存活对象为进程级场景，无法在单个 pytest 用例中可靠复现/断言；"
-           "全局泄漏检测由 conftest.py 的 pytest_sessionfinish 钩子统一处理。"
+    "全局泄漏检测由 conftest.py 的 pytest_sessionfinish 钩子统一处理。"
 )
 def test_process_exit_alive_objects() -> None:
     """原独立脚本场景 8：进程退出时存活对象。

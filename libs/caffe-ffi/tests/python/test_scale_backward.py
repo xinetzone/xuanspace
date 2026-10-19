@@ -18,6 +18,7 @@ Covers:
   9. Forward output preserved after backward
   10. bias_term=false: only d_scale and dX
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -26,12 +27,13 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_blob,
     numerical_grad_for_input,
 )
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -41,6 +43,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Scale forward/backward
 # ---------------------------------------------------------------------------
+
 
 def scale_forward_np(x, alpha, beta=None, axis=1, num_axes=1):
     """Numpy reference: y = x * alpha + beta with broadcasting along axis."""
@@ -57,8 +60,7 @@ def scale_forward_np(x, alpha, beta=None, axis=1, num_axes=1):
     return y.astype(np.float32)
 
 
-def scale_backward_np(x, dy, alpha, beta=None, axis=1, num_axes=1,
-                      need_dx=True, need_dalpha=True, need_dbeta=True):
+def scale_backward_np(x, dy, alpha, beta=None, axis=1, num_axes=1, need_dx=True, need_dalpha=True, need_dbeta=True):
     """Numpy reference for Scale backward."""
     x64 = x.astype(np.float64)
     dy64 = dy.astype(np.float64)
@@ -91,8 +93,8 @@ def scale_backward_np(x, dy, alpha, beta=None, axis=1, num_axes=1,
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
-def _make_scale_prototxt(input_dims, axis=1, num_axes=1, bias_term=False,
-                         filler_value=1.0, bias_filler=0.0):
+
+def _make_scale_prototxt(input_dims, axis=1, num_axes=1, bias_term=False, filler_value=1.0, bias_filler=0.0):
     """Create Input -> Scale prototxt."""
     dims_lines = "\n".join(f"input_dim: {d}" for d in input_dims)
     bias_str = "true" if bias_term else "false"
@@ -116,16 +118,15 @@ def _make_scale_prototxt(input_dims, axis=1, num_axes=1, bias_term=False,
     """)
 
 
-def _make_scale_net(input_dims, axis=1, num_axes=1, bias_term=False,
-                    filler_value=1.0, bias_filler=0.0):
-    proto = _make_scale_prototxt(input_dims, axis, num_axes, bias_term,
-                                  filler_value, bias_filler)
+def _make_scale_net(input_dims, axis=1, num_axes=1, bias_term=False, filler_value=1.0, bias_filler=0.0):
+    proto = _make_scale_prototxt(input_dims, axis, num_axes, bias_term, filler_value, bias_filler)
     return Net(proto)
 
 
 # ---------------------------------------------------------------------------
 # Helper: set scale blobs and run backward
 # ---------------------------------------------------------------------------
+
 
 def _set_scale_blobs(net, alpha, beta=None):
     """Set scale layer blobs: blobs[0]=alpha, blobs[1]=beta (if bias)."""
@@ -150,6 +151,7 @@ def _run_scale_backward(net, x, dy, alpha, beta=None):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestScaleBackwardKnownValues:
@@ -202,8 +204,7 @@ class TestScaleBackwardKnownValues:
         N, D = 2, 3
         net = _make_scale_net((N, D), axis=1, bias_term=False)
         alpha = np.array([1.0, 2.0, 0.5], dtype=np.float32)
-        x = np.array([[1.0, 2.0, 4.0],
-                       [3.0, 0.0, -2.0]], dtype=np.float32)
+        x = np.array([[1.0, 2.0, 4.0], [3.0, 0.0, -2.0]], dtype=np.float32)
         dy = np.ones_like(x)
         _, d_alpha, _ = _run_scale_backward(net, x, dy, alpha)
         # d_alpha[d] = sum over n of dy[n,d]*x[n,d] = sum x[:,d]
@@ -217,8 +218,7 @@ class TestScaleBackwardKnownValues:
         alpha = np.array([1.0, 1.0, 1.0], dtype=np.float32)
         beta = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         x = np.zeros((N, D), dtype=np.float32)
-        dy = np.array([[1.0, 2.0, 3.0],
-                        [4.0, 5.0, 6.0]], dtype=np.float32)
+        dy = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         _, _, d_beta = _run_scale_backward(net, x, dy, alpha, beta)
         expected = dy.sum(axis=0)
         np.testing.assert_allclose(d_beta, expected, rtol=1e-5)
@@ -320,9 +320,15 @@ class TestScaleBackwardNumerical:
         analytic_dx = net.blob_by_name("data").diff.copy()
 
         num_dx = numerical_grad_for_input(
-            net, "data", x, "scale_out", dy, h=EPS, name="scale_dX",
+            net,
+            "data",
+            x,
+            "scale_out",
+            dy,
+            h=EPS,
+            name="scale_dX",
         )
-        assert_grad_close(analytic_dx, num_dx, name="scale_dX", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(analytic_dx, num_dx, name="scale_dX", rtol=RTOL, atol=ATOL * 10)
 
     def test_numerical_grad_dscale(self):
         """Numerical gradient for d_scale matches analytical (perturb alpha blob)."""
@@ -339,9 +345,16 @@ class TestScaleBackwardNumerical:
         analytic_ds = net.layer_by_name("scale").blobs[0].diff.copy()
 
         num_ds = numerical_grad_for_blob(
-            net, "scale", 0, {"data": x}, "scale_out", dy, h=EPS, name="scale_dAlpha",
+            net,
+            "scale",
+            0,
+            {"data": x},
+            "scale_out",
+            dy,
+            h=EPS,
+            name="scale_dAlpha",
         )
-        assert_grad_close(analytic_ds, num_ds, name="scale_dAlpha", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(analytic_ds, num_ds, name="scale_dAlpha", rtol=RTOL, atol=ATOL * 10)
 
     def test_numerical_grad_dbias(self):
         """Numerical gradient for d_bias matches analytical (perturb beta blob)."""
@@ -359,9 +372,16 @@ class TestScaleBackwardNumerical:
         analytic_db = net.layer_by_name("scale").blobs[1].diff.copy()
 
         num_db = numerical_grad_for_blob(
-            net, "scale", 1, {"data": x}, "scale_out", dy, h=EPS, name="scale_dBeta",
+            net,
+            "scale",
+            1,
+            {"data": x},
+            "scale_out",
+            dy,
+            h=EPS,
+            name="scale_dBeta",
         )
-        assert_grad_close(analytic_db, num_db, name="scale_dBeta", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(analytic_db, num_db, name="scale_dBeta", rtol=RTOL, atol=ATOL * 10)
 
 
 @require_cpp_extension

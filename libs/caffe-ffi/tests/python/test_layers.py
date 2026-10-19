@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import caffe_pb2, net_param_from_string, net_from_param, Blob, Layer
+from caffe_ffi import Blob, Layer, net_from_param, net_param_from_string
+
 from .conftest import require_cpp_extension
 
 
@@ -47,7 +47,7 @@ layer {
 """
         net = net_from_param(net_param_from_string(prototxt))
         inp = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        out = net.forward({"data": inp})
+        net.forward({"data": inp})
         np.testing.assert_array_equal(net["data"].data, inp)
 
 
@@ -173,7 +173,7 @@ class TestFlatten:
             end_axis = len(shape) + end_axis
         new_shape = list(shape[:axis])
         new_shape.append(-1)
-        new_shape.extend(shape[end_axis + 1:])
+        new_shape.extend(shape[end_axis + 1 :])
         return x.reshape(new_shape)
 
     @require_cpp_extension
@@ -419,6 +419,7 @@ class TestReshape:
 
 # ─── P1: Layer boundary tests ──────────────────────────────────────
 
+
 class TestLayerStandalone:
     """Boundary tests for Layer() constructor and standalone Layer objects."""
 
@@ -426,14 +427,14 @@ class TestLayerStandalone:
         """Standalone Layer() has empty string type."""
         with ptrace("Layer() constructor") as t:
             layer = Layer()
-            t['type'] = layer.type
+            t["type"] = layer.type
         assert layer.type == ""
 
     def test_standalone_layer_name_empty(self, ptrace):
         """Standalone Layer() has empty string name."""
         with ptrace("Layer() constructor") as t:
             layer = Layer()
-            t['name'] = layer.name
+            t["name"] = layer.name
         assert layer.name == ""
 
     def test_standalone_layer_blobs_empty(self, ptrace):
@@ -441,7 +442,7 @@ class TestLayerStandalone:
         with ptrace("Layer() constructor") as t:
             layer = Layer()
             blobs = layer.blobs
-            t['blobs_len'] = len(blobs)
+            t["blobs_len"] = len(blobs)
         assert isinstance(blobs, list)
         assert len(blobs) == 0
 
@@ -450,7 +451,7 @@ class TestLayerStandalone:
         with ptrace("Layer() + repr()") as t:
             layer = Layer()
             r = repr(layer)
-            t['repr_len'] = len(r)
+            t["repr_len"] = len(r)
         assert "Layer" in r
         assert "type=''" in r
 
@@ -458,7 +459,7 @@ class TestLayerStandalone:
         """Standalone Layer() created in Python-only mode is not native."""
         with ptrace("Layer() _is_native check") as t:
             layer = Layer()
-            t['is_native'] = layer._is_native
+            t["is_native"] = layer._is_native
         assert not layer._is_native
 
     def test_standalone_layer_multiple_calls_safe(self, ptrace):
@@ -469,7 +470,7 @@ class TestLayerStandalone:
                 assert layer.type == ""
                 assert layer.name == ""
                 assert len(layer.blobs) == 0
-            t['iterations'] = 10
+            t["iterations"] = 10
 
 
 @require_cpp_extension
@@ -487,8 +488,8 @@ layer { name: "ip2" type: "InnerProduct" bottom: "ip1" top: "ip2" inner_product_
 layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
 """
             net = net_from_param(net_param_from_string(prototxt))
-            t['layers'] = len(net.layers_array())
-            t['blobs'] = len(net.blobs_array())
+            t["layers"] = len(net.layers_array())
+            t["blobs"] = len(net.blobs_array())
         return net
 
     def test_input_layer_has_no_blobs(self, mlp_layers, ptrace):
@@ -513,14 +514,14 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
         """InnerProduct with bias_term=true has 2 blobs (weights + bias)."""
         with ptrace("layer_by_name('ip1') + blobs check") as t:
             ip1 = mlp_layers.layer_by_name("ip1")
-            t['blob_count'] = len(ip1.blobs)
+            t["blob_count"] = len(ip1.blobs)
         assert len(ip1.blobs) == 2
 
     def test_inner_product_no_bias_has_one_blob(self, mlp_layers, ptrace):
         """InnerProduct with bias_term=false has 1 blob (weights only)."""
         with ptrace("layer_by_name('ip2') + blobs check") as t:
             ip2 = mlp_layers.layer_by_name("ip2")
-            t['blob_count'] = len(ip2.blobs)
+            t["blob_count"] = len(ip2.blobs)
         assert len(ip2.blobs) == 1
 
     def test_layer_types_match(self, mlp_layers, ptrace):
@@ -536,7 +537,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
             for name, expected_type in expected.items():
                 layer = mlp_layers.layer_by_name(name)
                 assert layer.type == expected_type, f"{name} type mismatch"
-            t['checked'] = len(expected)
+            t["checked"] = len(expected)
 
     def test_layer_names_match(self, mlp_layers, ptrace):
         """All layer names match their prototxt definitions."""
@@ -544,7 +545,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
             layers = mlp_layers.layers_array()
             for layer in layers:
                 assert layer.name in ["data", "ip1", "relu1", "ip2", "prob"]
-            t['count'] = len(layers)
+            t["count"] = len(layers)
 
     def test_layer_blobs_are_blob_instances(self, mlp_layers, ptrace):
         """All layer blobs are Blob instances with valid shapes."""
@@ -556,7 +557,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
                     assert blob.ndim >= 1
                     assert blob.size > 0
                     total_blobs += 1
-            t['total_blobs'] = total_blobs
+            t["total_blobs"] = total_blobs
 
     def test_layer_repr_contains_name_and_type(self, mlp_layers, ptrace):
         """Layer repr includes name and type for named layers."""
@@ -576,12 +577,12 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
         with ptrace("load weights (W:4x3 + b:4)") as t:
             ip1.blobs[0].from_numpy(W)
             ip1.blobs[1].from_numpy(b)
-            t['W_shape'] = f"{W.shape}"
+            t["W_shape"] = f"{W.shape}"
 
         inp = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
         with ptrace("forward (2x3 input)") as t:
             mlp_layers.forward({"data": inp})
-            t['input_shape'] = f"{inp.shape}"
+            t["input_shape"] = f"{inp.shape}"
 
         with ptrace("verify weights unchanged after forward"):
             np.testing.assert_array_equal(ip1.blobs[0].to_numpy(), W)
@@ -602,7 +603,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
         with ptrace(f"forward x{n_iters}") as t:
             for _ in range(n_iters):
                 mlp_layers.forward({"data": inp})
-            t['iterations'] = n_iters
+            t["iterations"] = n_iters
 
         with ptrace("verify weights unchanged after 5 forwards"):
             np.testing.assert_array_equal(ip1.blobs[0].to_numpy(), W)
@@ -625,4 +626,3 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }
         assert len(blobs) == 0
         for blob in blobs:
             pass
-

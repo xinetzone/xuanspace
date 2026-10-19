@@ -19,16 +19,18 @@ function: central differences have full O(h^2) truncation error everywhere
 """
 
 import textwrap
+
 import numpy as np
 import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 1e-3  # Type-0 (C∞ smooth) tolerance
 NUM_ATOL = 1e-4
 
@@ -36,6 +38,7 @@ NUM_ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_softplus_prototxt(N=1, C=1, H=4, W=5):
     """Create a minimal Input(N,C,H,W) -> Softplus prototxt."""
@@ -58,6 +61,7 @@ def _make_softplus_prototxt(N=1, C=1, H=4, W=5):
 # ---------------------------------------------------------------------------
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
+
 
 def _softplus_ref(x):
     """Forward y = log(1+exp(x)) and backward factor dy/dx = sigmoid(x)."""
@@ -93,6 +97,7 @@ def _num_grad(net, x, dy, h=EPS):
 # Tests: Softplus Forward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSoftplusForward:
     """Softplus forward correctness (hand-computed known values)."""
@@ -107,10 +112,16 @@ class TestSoftplusForward:
         # y:                   ln2, ln(1+e), ln(1+1/e), ln(1+e^2), ln(1+1/e^2), ln(1+sqrt(e))
         x = np.array([0.0, 1.0, -1.0, 2.0, -2.0, 0.5], dtype=np.float32).reshape(1, 1, 1, 6)
         expected = np.array(
-            [np.log(2.0), np.log(1.0 + np.e), np.log(1.0 + np.exp(-1.0)),
-             np.log(1.0 + np.exp(2.0)), np.log(1.0 + np.exp(-2.0)),
-             np.log(1.0 + np.exp(0.5))],
-            dtype=np.float32).reshape(1, 1, 1, 6)
+            [
+                np.log(2.0),
+                np.log(1.0 + np.e),
+                np.log(1.0 + np.exp(-1.0)),
+                np.log(1.0 + np.exp(2.0)),
+                np.log(1.0 + np.exp(-2.0)),
+                np.log(1.0 + np.exp(0.5)),
+            ],
+            dtype=np.float32,
+        ).reshape(1, 1, 1, 6)
         out = net.forward({"data": x})["out"]
         np.testing.assert_allclose(out, expected, rtol=1e-6, atol=1e-6)
 
@@ -149,6 +160,7 @@ class TestSoftplusForward:
 # ---------------------------------------------------------------------------
 # Tests: Softplus Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftplusGradient:
@@ -254,6 +266,7 @@ class TestSoftplusGradient:
 # ---------------------------------------------------------------------------
 # Tests: Softplus Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftplusNumericalGradient:

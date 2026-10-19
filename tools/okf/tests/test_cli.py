@@ -49,9 +49,7 @@ def test_cmd_validate_sample_bundle_passes(sample_bundle_path, capsys):
 
 
 def test_cmd_list_all_concepts(sample_bundle_path, capsys):
-    code = _cmd_list(
-        argparse.Namespace(path=str(sample_bundle_path), type_filter=None, tag_filter=None)
-    )
+    code = _cmd_list(argparse.Namespace(path=str(sample_bundle_path), type_filter=None, tag_filter=None))
 
     assert code == 0
     out = capsys.readouterr().out
@@ -61,9 +59,7 @@ def test_cmd_list_all_concepts(sample_bundle_path, capsys):
 
 
 def test_cmd_list_filter_by_type(sample_bundle_path, capsys):
-    code = _cmd_list(
-        argparse.Namespace(path=str(sample_bundle_path), type_filter="Metric", tag_filter=None)
-    )
+    code = _cmd_list(argparse.Namespace(path=str(sample_bundle_path), type_filter="Metric", tag_filter=None))
 
     assert code == 0
     out = capsys.readouterr().out
@@ -74,9 +70,7 @@ def test_cmd_list_filter_by_type(sample_bundle_path, capsys):
 
 
 def test_cmd_list_filter_by_tag(sample_bundle_path, capsys):
-    code = _cmd_list(
-        argparse.Namespace(path=str(sample_bundle_path), type_filter=None, tag_filter="finance")
-    )
+    code = _cmd_list(argparse.Namespace(path=str(sample_bundle_path), type_filter=None, tag_filter="finance"))
 
     assert code == 0
     out = capsys.readouterr().out
@@ -94,9 +88,7 @@ def test_cmd_inspect_overview(sample_bundle_path, capsys):
 
 
 def test_cmd_inspect_detail(sample_bundle_path, capsys):
-    code = _cmd_inspect(
-        argparse.Namespace(path=str(sample_bundle_path), concept_id="concepts/metrics/revenue")
-    )
+    code = _cmd_inspect(argparse.Namespace(path=str(sample_bundle_path), concept_id="concepts/metrics/revenue"))
 
     assert code == 0
     out = capsys.readouterr().out
@@ -106,9 +98,7 @@ def test_cmd_inspect_detail(sample_bundle_path, capsys):
 
 
 def test_cmd_trust_single_concept(sample_bundle_path, capsys):
-    code = _cmd_trust(
-        argparse.Namespace(path=str(sample_bundle_path), concept_id="concepts/metrics/revenue")
-    )
+    code = _cmd_trust(argparse.Namespace(path=str(sample_bundle_path), concept_id="concepts/metrics/revenue"))
 
     assert code == 0
     out = capsys.readouterr().out
@@ -181,40 +171,30 @@ def test_cmd_index_service_missing(monkeypatch, tmp_path):
 
 def test_cmd_inspect_service_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
-    assert _cmd_inspect(
-        argparse.Namespace(path=str(tmp_path), concept_id=None)
-    ) == 1
+    assert _cmd_inspect(argparse.Namespace(path=str(tmp_path), concept_id=None)) == 1
 
 
 def test_cmd_trust_service_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
-    assert _cmd_trust(
-        argparse.Namespace(path=str(tmp_path), concept_id=None)
-    ) == 1
+    assert _cmd_trust(argparse.Namespace(path=str(tmp_path), concept_id=None)) == 1
 
 
 def test_cmd_list_service_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_module, "_get_service", lambda h, n: None)
-    assert _cmd_list(
-        argparse.Namespace(path=str(tmp_path), type_filter=None, tag_filter=None)
-    ) == 1
+    assert _cmd_list(argparse.Namespace(path=str(tmp_path), type_filter=None, tag_filter=None)) == 1
 
 
 # ── inspect / trust 概念不存在分支 ─────────────────────────────────────────
 
 
 def test_cmd_inspect_concept_not_found(sample_bundle_path, capsys):
-    code = _cmd_inspect(
-        argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent")
-    )
+    code = _cmd_inspect(argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent"))
     assert code == 1
     assert "概念不存在" in capsys.readouterr().err
 
 
 def test_cmd_trust_concept_not_found(sample_bundle_path, capsys):
-    code = _cmd_trust(
-        argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent")
-    )
+    code = _cmd_trust(argparse.Namespace(path=str(sample_bundle_path), concept_id="nonexistent"))
     assert code == 1
     assert "概念不存在" in capsys.readouterr().err
 

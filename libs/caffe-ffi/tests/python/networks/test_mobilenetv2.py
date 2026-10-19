@@ -17,6 +17,7 @@
 
 import numpy as np
 import pytest
+
 from .utils import (
     _CAFFE_FFI_AVAILABLE,
     _download_model,
@@ -30,12 +31,8 @@ def _test_mobilenetv2(data, model_dir):
         pytest.skip("caffe_ffi C++ extension is not available; network tests skipped")
     data_process = _preprocess_imagenet(data, scale=58.8)
 
-    proto_file_url = (
-        "https://github.com/shicai/MobileNet-Caffe/raw/master/mobilenet_v2_deploy.prototxt"
-    )
-    blob_file_url = (
-        "https://github.com/shicai/MobileNet-Caffe/blob/master/mobilenet_v2.caffemodel?raw=true"
-    )
+    proto_file_url = "https://github.com/shicai/MobileNet-Caffe/raw/master/mobilenet_v2_deploy.prototxt"
+    blob_file_url = "https://github.com/shicai/MobileNet-Caffe/blob/master/mobilenet_v2.caffemodel?raw=true"
     proto_file = _download_model(proto_file_url, "mobilenetv2.prototxt", model_dir)
     blob_file = _download_model(blob_file_url, "mobilenetv2.caffemodel", model_dir)
 

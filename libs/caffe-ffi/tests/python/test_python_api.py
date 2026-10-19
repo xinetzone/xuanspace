@@ -15,6 +15,7 @@ per-test execution duration measurement.  Run directly via plain Python:
 
     python tests/python/test_python_api.py
 """
+
 from __future__ import annotations
 
 import os
@@ -38,13 +39,16 @@ def _setup_path() -> None:
 
 _project_root = _setup_path()
 
-import numpy as np
+import numpy as np  # noqa: E402  # 需先执行 _setup_path() 注入 sys.path
 
-import caffe_ffi
-from caffe_ffi import (
-    Blob, Layer, Net,
-    net_param_from_string, net_from_param,
+import caffe_ffi  # noqa: E402
+from caffe_ffi import (  # noqa: E402
+    Blob,
+    Layer,
+    Net,
     _ffi_api,
+    net_from_param,
+    net_param_from_string,
 )
 
 
@@ -53,12 +57,12 @@ def _check_cpp_extension_available() -> bool:
 
 
 require_cpp_extension = unittest.skipIf(
-    not _check_cpp_extension_available(),
-    reason="C++ extension not available, skipping test"
+    not _check_cpp_extension_available(), reason="C++ extension not available, skipping test"
 )
 
 
 # ─── Timing infrastructure (mirrors C++ test_harness.hpp) ────────────
+
 
 class TimingTestResult(unittest.TextTestResult):
     """A TestResult that records per-test elapsed wall-clock time."""
@@ -78,12 +82,14 @@ class TimingTestResult(unittest.TextTestResult):
             elapsed = (time.perf_counter() - self._test_start_time) * 1000.0
             self._test_start_time = None
         passed = test not in (self.failures + self.errors)
-        self.test_timings.append((
-            test.__class__.__name__,
-            test._testMethodName,
-            elapsed,
-            passed,
-        ))
+        self.test_timings.append(
+            (
+                test.__class__.__name__,
+                test._testMethodName,
+                elapsed,
+                passed,
+            )
+        )
         super().stopTest(test)
 
 
@@ -102,8 +108,7 @@ class TimingTextTestRunner(unittest.TextTestRunner):
         failed = len(timings) - passed
 
         print()
-        print(f"[==========] {len(timings)} tests ran, {passed} passed, "
-              f"{failed} failed ({_elapsed_all:.2f} ms total)")
+        print(f"[==========] {len(timings)} tests ran, {passed} passed, {failed} failed ({_elapsed_all:.2f} ms total)")
 
         # Per-suite (class) summary
         suite_stats: dict[str, list[tuple[str, float]]] = {}
@@ -112,14 +117,14 @@ class TimingTextTestRunner(unittest.TextTestRunner):
         if suite_stats:
             print("[----------] Global test environment tear-down")
             print("[==========] Per-suite summary:")
-            for suite in sorted(suite_stats,
-                                key=lambda s: sum(ms for _, ms in suite_stats[s]),
-                                reverse=True):
+            for suite in sorted(suite_stats, key=lambda s: sum(ms for _, ms in suite_stats[s]), reverse=True):
                 tests_in_suite = suite_stats[suite]
                 total_ms = sum(ms for _, ms in tests_in_suite)
                 avg_ms = total_ms / len(tests_in_suite)
-                print(f"[  SUITE   ] {suite:<30s} {len(tests_in_suite):3d} tests, "
-                      f"{total_ms:8.2f} ms total, avg {avg_ms:6.2f} ms")
+                print(
+                    f"[  SUITE   ] {suite:<30s} {len(tests_in_suite):3d} tests, "
+                    f"{total_ms:8.2f} ms total, avg {avg_ms:6.2f} ms"
+                )
 
         # Top 5 slowest tests
         sorted_tests = sorted(timings, key=lambda x: x[2], reverse=True)
@@ -179,6 +184,7 @@ INVALID_PROTO = "this is not a valid prototext {{{{"
 
 
 # ─── Module-level API tests ──────────────────────────────────────────
+
 
 class TestModuleAPI(unittest.TestCase):
     """Tests for top-level module functions."""
@@ -242,7 +248,8 @@ class TestModuleAPI(unittest.TestCase):
         sys.meta_path and the real source path from sys.path, because the
         package is installed in editable mode during development.
         """
-        import tempfile, shutil
+        import shutil
+        import tempfile
 
         python_dir = _project_root / "python"
         pkg_dir = python_dir / "caffe_ffi"
@@ -251,9 +258,9 @@ class TestModuleAPI(unittest.TestCase):
             tmp_python = Path(tmpdir) / "python"
             tmp_pkg = tmp_python / "caffe_ffi"
             shutil.copytree(
-                pkg_dir, tmp_pkg,
-                ignore=shutil.ignore_patterns("*.so", "*.pyd", "*.dll",
-                                              "*.pyc", "__pycache__"),
+                pkg_dir,
+                tmp_pkg,
+                ignore=shutil.ignore_patterns("*.so", "*.pyd", "*.dll", "*.pyc", "__pycache__"),
             )
 
             child_code = textwrap.dedent(f"""
@@ -310,19 +317,21 @@ class TestModuleAPI(unittest.TestCase):
 
             result = subprocess.run(
                 [sys.executable, "-c", child_code],
-                capture_output=True, text=True, timeout=30,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1",
-                     "CAFFE_FFI_DISABLE_BACKTRACE": "1"},
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "CAFFE_FFI_DISABLE_BACKTRACE": "1"},
             )
             self.assertEqual(
-                result.returncode, 0,
-                f"Subprocess failed (exit {result.returncode}).\n"
-                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+                result.returncode,
+                0,
+                f"Subprocess failed (exit {result.returncode}).\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
             )
             self.assertIn("REGRESSION_OK", result.stdout)
 
 
 # ─── Blob native API tests ──────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestBlobNativeAPI(unittest.TestCase):
@@ -461,6 +470,7 @@ class TestBlobNativeAPI(unittest.TestCase):
 
 # ─── Net constructor tests ──────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestNetConstructor(unittest.TestCase):
     """Tests for Net construction paths (mirrors C++ NetTest)."""
@@ -515,6 +525,7 @@ class TestNetConstructor(unittest.TestCase):
 
 
 # ─── Net blob/layer access tests ────────────────────────────────────
+
 
 @require_cpp_extension
 class TestNetAccess(unittest.TestCase):
@@ -632,6 +643,7 @@ class TestNetAccess(unittest.TestCase):
 
 # ─── Net forward tests ─────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestNetForward(unittest.TestCase):
     """Tests for forward pass (mirrors C++ NetTest.ForwardSingleInput)."""
@@ -647,17 +659,23 @@ class TestNetForward(unittest.TestCase):
 
     def test_forward_mlp(self):
         net = Net(MLP_PROTO)
-        W1 = np.array([
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9],
-            [1.0, 1.1, 1.2],
-        ], dtype=np.float32)
+        W1 = np.array(
+            [
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5, 0.6],
+                [0.7, 0.8, 0.9],
+                [1.0, 1.1, 1.2],
+            ],
+            dtype=np.float32,
+        )
         b1 = np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32)
-        W2 = np.array([
-            [0.1, 0.2, 0.3, 0.4],
-            [0.5, 0.6, 0.7, 0.8],
-        ], dtype=np.float32)
+        W2 = np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+            ],
+            dtype=np.float32,
+        )
         b2 = np.array([0.001, 0.002], dtype=np.float32)
 
         ip1_layer = net.layer_by_name("ip1")
@@ -684,6 +702,7 @@ class TestNetForward(unittest.TestCase):
 
 
 # ─── Layer access via Net ───────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestLayerAccess(unittest.TestCase):
@@ -728,6 +747,7 @@ class TestLayerAccess(unittest.TestCase):
 
 
 # ─── Cross-mode: net_from_param matches Net(protoString) ─────────────
+
 
 @require_cpp_extension
 class TestConstructorEquivalence(unittest.TestCase):

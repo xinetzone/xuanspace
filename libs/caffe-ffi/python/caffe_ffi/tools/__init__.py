@@ -7,16 +7,16 @@ This subpackage provides:
 
 from .debug import (
     setup_debug,
-    setup_quiet,
-    setup_memory_trace,
     setup_file_logging,
+    setup_memory_trace,
+    setup_quiet,
 )
 from .memory import (
     BlobRef,
-    tracked_blob,
+    MemoryTrace,
     blob_snapshot,
     mem_check,
-    MemoryTrace,
+    tracked_blob,
 )
 
 __all__ = [

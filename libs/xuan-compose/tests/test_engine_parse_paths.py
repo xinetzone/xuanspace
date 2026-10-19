@@ -69,15 +69,11 @@ class TestConfigServicesFlag:
         engine = _parse(["config", "--services"])
         assert set(engine.services) == {"web", "db"}
 
-    def test_bool_flag_with_profiles_does_not_filter_or_crash(
-        self, _isolated_cwd_env
-    ) -> None:
+    def test_bool_flag_with_profiles_does_not_filter_or_crash(self, _isolated_cwd_env) -> None:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n"
-            "  web:\n    image: img\n"
-            "  debug:\n    image: img3\n    profiles: [debug]\n",
+            "services:\n  web:\n    image: img\n  debug:\n    image: img3\n    profiles: [debug]\n",
         )
         # 无 --profile 时无 profile 的服务保留，布尔标志不得充当点名目标
         engine = _parse(["config", "--services"])
@@ -115,9 +111,7 @@ class TestEnvLoading:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n"
-            "  web:\n    image: img\n"
-            "  db:\n    image: db\n    profiles: [p1]\n",
+            "services:\n  web:\n    image: img\n  db:\n    image: db\n    profiles: [p1]\n",
         )
         _write(tmp_path / "cli.env", "PODMAN_FOO=bar\nCOMPOSE_PROFILES=p1\n")
         engine = _parse(["--env-file", "cli.env", "-f", "compose.yaml", "ps"])
@@ -168,9 +162,7 @@ class TestNetworks:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n"
-            "  web:\n    image: img\n    networks: [used]\n"
-            "networks:\n  used: null\n  spare: null\n",
+            "services:\n  web:\n    image: img\n    networks: [used]\nnetworks:\n  used: null\n  spare: null\n",
         )
         with caplog.at_level("WARNING"):
             engine = _parse(["-f", "compose.yaml", "ps"])
@@ -181,8 +173,7 @@ class TestNetworks:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n  web:\n    image: img\n"
-            "networks:\n  solo: null\n",
+            "services:\n  web:\n    image: img\nnetworks:\n  solo: null\n",
         )
         engine = _parse(["-f", "compose.yaml", "ps"])
         assert engine.default_net == "solo"
@@ -191,8 +182,7 @@ class TestNetworks:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n  web:\n    image: img\n"
-            "networks:\n  a: null\n  b: null\n",
+            "services:\n  web:\n    image: img\nnetworks:\n  a: null\n  b: null\n",
         )
         engine = _parse(["-f", "compose.yaml", "ps"])
         assert engine.default_net is None
@@ -201,8 +191,7 @@ class TestNetworks:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n  web:\n    image: img\n"
-            "networks:\n  default: null\n  extra: null\n",
+            "services:\n  web:\n    image: img\nnetworks:\n  default: null\n  extra: null\n",
         )
         engine = _parse(["-f", "compose.yaml", "ps"])
         assert engine.default_net == "default"
@@ -213,7 +202,7 @@ class TestVolumesAndNaming:
         tmp_path, _ = _isolated_cwd_env
         _write(
             tmp_path / "compose.yaml",
-            "services:\n  web:\n    image: img\n    volumes: [\"named:/data\"]\n",
+            'services:\n  web:\n    image: img\n    volumes: ["named:/data"]\n',
         )
         with pytest.raises(RuntimeError, match=r"volume \[named\] not defined"):
             _parse(["-f", "compose.yaml", "ps"])
@@ -283,8 +272,7 @@ class TestNoNormalizeAndEnvAndExtends:
         proj.mkdir()
         _write(
             proj / "compose.yaml",
-            "services:\n"
-            "  web:\n    extends:\n      file: base.yaml\n      service: base\n",
+            "services:\n  web:\n    extends:\n      file: base.yaml\n      service: base\n",
         )
         _write(proj / "base.yaml", "services:\n  base:\n    image: base:1\n")
         # CWD 在父目录、以相对 -f 指向子目录里的 compose；若无 extends.file

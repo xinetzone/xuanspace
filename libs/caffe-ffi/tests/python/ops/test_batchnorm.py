@@ -16,8 +16,10 @@
 # under the License.
 
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,10 @@ logger = logging.getLogger(__name__)
 def _test_batchnorm(data, test_dir, moving_average_fraction=0.999, eps=1e-5, **kwargs):
     """One iteration of BatchNorm"""
     logger.info(f"Testing BatchNorm, input shape: {data.shape}")
-    logger.debug(
-        f"BatchNorm params - moving_average_fraction: {moving_average_fraction}, eps: {eps}, extra: {kwargs}"
+    logger.debug(f"BatchNorm params - moving_average_fraction: {moving_average_fraction}, eps: {eps}, extra: {kwargs}")
+    return _test_op(
+        data, L.BatchNorm, "BatchNorm", test_dir, moving_average_fraction=moving_average_fraction, eps=eps, **kwargs
     )
-    return _test_op(data, L.BatchNorm, "BatchNorm", test_dir, moving_average_fraction=moving_average_fraction, eps=eps, **kwargs)
 
 
 def test_forward_BatchNorm(caffe_test_dir):

@@ -61,9 +61,7 @@ class ServiceRegistry:
         """获取所有 ServiceProvider，不存在时返回空列表。"""
         return self._providers.get(name, [])
 
-    def lookup(
-        self, name: str, ctx: Context, config: dict | None = None
-    ) -> object | None:
+    def lookup(self, name: str, ctx: Context, config: dict | None = None) -> object | None:
         """查找并实例化服务。使用第一个注册的 Provider 创建实例。
 
         Parameters

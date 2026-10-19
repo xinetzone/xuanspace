@@ -12,6 +12,7 @@ Covers:
   6. Shape/finite/determinism checks
   7. Forward-Backward round-trip
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -20,8 +21,9 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import numerical_gradient
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -31,6 +33,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_split_prototxt(shape, num_tops):
     dims = "\n".join(f"          dim: {d}" for d in shape)
@@ -87,13 +90,13 @@ def _numerical_grad_input(net, x, dys, num_tops, h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy_stack, h=h,
-                              name="input:data", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy_stack, h=h, name="input:data", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSplitBackwardKnownValues:
@@ -134,17 +137,21 @@ class TestSplitBackwardKnownValues:
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSplitBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference (sum of top diffs)."""
 
-    @pytest.mark.parametrize("shape,num_tops", [
-        ((2, 3), 2),
-        ((2, 3), 3),
-        ((1, 4, 4), 2),
-        ((1, 2, 3, 4), 2),
-        ((3, 2, 2, 2), 4),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_tops",
+        [
+            ((2, 3), 2),
+            ((2, 3), 3),
+            ((1, 4, 4), 2),
+            ((1, 2, 3, 4), 2),
+            ((3, 2, 2, 2), 4),
+        ],
+    )
     def test_split_vs_numpy(self, shape, num_tops):
         """Split backward matches sum of top diffs for various shapes/fan-outs."""
         rng = np.random.RandomState(42)
@@ -163,15 +170,19 @@ class TestSplitBackwardNumpy:
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSplitBackwardNumerical:
     """Central finite difference numerical gradient checks."""
 
-    @pytest.mark.parametrize("shape,num_tops", [
-        ((2, 3), 2),
-        ((1, 2, 2), 2),
-        ((1, 2, 2, 2), 3),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_tops",
+        [
+            ((2, 3), 2),
+            ((1, 2, 2), 2),
+            ((1, 2, 2, 2), 3),
+        ],
+    )
     def test_numerical_grad(self, shape, num_tops):
         """Numerical gradient matches analytical dX."""
         rng = np.random.RandomState(789)
@@ -186,6 +197,7 @@ class TestSplitBackwardNumerical:
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSplitBackwardProperties:

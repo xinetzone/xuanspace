@@ -35,6 +35,7 @@ the 5 patterns from retrospective-caffe-ops-correctness-test-20260727:
 """
 
 import logging
+
 import numpy as np
 import pytest
 
@@ -86,9 +87,7 @@ class TestPermuteNotAvailable:
         for shape, order, desc in test_cases:
             x = np.random.randn(*shape).astype(np.float32)
             ref = _permute_ref(x, order)
-            assert ref.shape == tuple(shape[i] for i in order), (
-                f"Ref impl shape wrong for {desc}: {ref.shape}"
-            )
+            assert ref.shape == tuple(shape[i] for i in order), f"Ref impl shape wrong for {desc}: {ref.shape}"
 
     @pytest.mark.edge
     def test_permute_edge_cases(self, caffe_test_dir):

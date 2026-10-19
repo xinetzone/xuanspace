@@ -28,14 +28,15 @@ Mathematical references (from the C++ sources):
     forward: loss = -log(p_gt) ; normalizer default BATCH_SIZE
     backward: dL/dp[gt] = -scale/p_gt, others = 0
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 RTOL = 1e-3
@@ -46,6 +47,7 @@ EPS_NUMERICAL = 1e-3
 # ---------------------------------------------------------------------------
 # Numpy reference implementations
 # ---------------------------------------------------------------------------
+
 
 def _normalizer(kind: str, outer_num: int, inner_num: int, valid_count: int) -> float:
     """Normalizer for a loss layer given the LossParameter.normalization mode."""
@@ -60,8 +62,7 @@ def _normalizer(kind: str, outer_num: int, inner_num: int, valid_count: int) -> 
     raise ValueError(f"Unknown normalization: {kind}")
 
 
-def contrastive_loss_np(a, b, label, margin=1.0, normalization="BATCH_SIZE",
-                        legacy=False):
+def contrastive_loss_np(a, b, label, margin=1.0, normalization="BATCH_SIZE", legacy=False):
     """Numpy reference for ContrastiveLoss forward scalar loss."""
     a = np.asarray(a, dtype=np.float64).reshape(a.shape[0], -1)
     b = np.asarray(b, dtype=np.float64).reshape(b.shape[0], -1)
@@ -88,8 +89,7 @@ def contrastive_loss_np(a, b, label, margin=1.0, normalization="BATCH_SIZE",
     return total / max(1.0, norm)
 
 
-def contrastive_backward_np(a, b, label, loss_weight=1.0, margin=1.0,
-                            normalization="BATCH_SIZE", legacy=False):
+def contrastive_backward_np(a, b, label, loss_weight=1.0, margin=1.0, normalization="BATCH_SIZE", legacy=False):
     """Numpy reference for ContrastiveLoss backward (dA, dB)."""
     a = np.asarray(a, dtype=np.float64).reshape(a.shape[0], -1)
     b = np.asarray(b, dtype=np.float64).reshape(b.shape[0], -1)
@@ -146,8 +146,7 @@ def infogain_loss_np(logits, label, infogain=None, normalization="BATCH_SIZE"):
     return total / max(1.0, norm)
 
 
-def infogain_backward_np(logits, label, infogain=None, loss_weight=1.0,
-                         normalization="BATCH_SIZE"):
+def infogain_backward_np(logits, label, infogain=None, loss_weight=1.0, normalization="BATCH_SIZE"):
     """Numpy reference for InfogainLoss backward dL/dlogits (identity/H matrix)."""
     p = _softmax_rows(logits)
     label = np.asarray(label, dtype=np.int64).ravel()
@@ -201,6 +200,7 @@ def multinomial_backward_np(prob, label, loss_weight=1.0, normalization="BATCH_S
 # ---------------------------------------------------------------------------
 # Prototxt builders
 # ---------------------------------------------------------------------------
+
 
 def _make_contrastive_prototxt(N, D, margin=1.0, normalization=None):
     loss_param = ""
@@ -341,11 +341,12 @@ def _loss_num_grad(net, blob_name, inputs, h=EPS_NUMERICAL):
 # Test Class: ContrastiveLoss
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestContrastiveLoss:
     def test_registration(self):
         net = Net(_make_contrastive_prototxt(2, 3))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "ContrastiveLoss" in types
 
     def test_forward_known(self):
@@ -364,7 +365,7 @@ class TestContrastiveLoss:
         np.random.seed(1)
         N, D = 3, 2
         net = Net(_make_contrastive_prototxt(N, D, margin=1.0))
-        a = np.random.randn(N, D).astype(np.float32) * 0.1   # small dists
+        a = np.random.randn(N, D).astype(np.float32) * 0.1  # small dists
         b = np.random.randn(N, D).astype(np.float32) * 0.1
         label = np.array([0, 0, 0], dtype=np.float32)
         loss_cpp = _forward_loss(net, {"a": a, "b": b, "label": label})
@@ -388,8 +389,7 @@ class TestContrastiveLoss:
         a = np.random.randn(N, D).astype(np.float32) * 0.3
         b = np.random.randn(N, D).astype(np.float32) * 0.3
         label = np.array([1, 0, 1, 0], dtype=np.float32)
-        diffs = _run_backward(net, {"a": a, "b": b, "label": label},
-                              diff_blobs=("a", "b"))
+        diffs = _run_backward(net, {"a": a, "b": b, "label": label}, diff_blobs=("a", "b"))
         da_np, db_np = contrastive_backward_np(a, b, label)
         np.testing.assert_allclose(diffs["a"], da_np, rtol=RTOL, atol=ATOL)
         np.testing.assert_allclose(diffs["b"], db_np, rtol=RTOL, atol=ATOL)
@@ -401,8 +401,7 @@ class TestContrastiveLoss:
         a = np.random.randn(N, D).astype(np.float32)
         b = np.random.randn(N, D).astype(np.float32)
         label = np.array([1, 0, 1], dtype=np.float32)
-        dlabel = _run_backward(net, {"a": a, "b": b, "label": label},
-                               diff_blobs=("label",))["label"]
+        dlabel = _run_backward(net, {"a": a, "b": b, "label": label}, diff_blobs=("label",))["label"]
         np.testing.assert_allclose(dlabel, 0.0, atol=1e-6)
 
     def test_numerical_gradient(self):
@@ -429,8 +428,7 @@ class TestContrastiveLoss:
             net = Net(_make_contrastive_prototxt(N, D, normalization=mode))
             loss_cpp = _forward_loss(net, {"a": a, "b": b, "label": label})
             loss_np = contrastive_loss_np(a, b, label, normalization=mode)
-            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                       err_msg=f"normalization={mode}")
+            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg=f"normalization={mode}")
 
     def test_loss_weight_scaling(self):
         np.random.seed(6)
@@ -449,11 +447,12 @@ class TestContrastiveLoss:
 # Test Class: InfogainLoss
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInfogainLoss:
     def test_registration(self):
         net = Net(_make_infogain_prototxt(3, 4))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "InfogainLoss" in types
 
     def test_forward_identity(self):
@@ -473,11 +472,8 @@ class TestInfogainLoss:
         logits = np.random.randn(N, C).astype(np.float32)
         label = np.array([0, 1, 2], dtype=np.float32)
         # A non-identity infogain matrix (positive weights).
-        infogain = np.array([[1.0, 0.5, 0.2],
-                             [0.3, 1.0, 0.4],
-                             [0.1, 0.2, 1.0]], dtype=np.float32)
-        loss_cpp = _forward_loss(net, {"data": logits, "label": label,
-                                       "infogain": infogain})
+        infogain = np.array([[1.0, 0.5, 0.2], [0.3, 1.0, 0.4], [0.1, 0.2, 1.0]], dtype=np.float32)
+        loss_cpp = _forward_loss(net, {"data": logits, "label": label, "infogain": infogain})
         loss_np = infogain_loss_np(logits, label, infogain=infogain)
         np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL)
 
@@ -498,9 +494,7 @@ class TestInfogainLoss:
         net = Net(_make_infogain_prototxt(N, C, with_infogain=True))
         logits = np.random.randn(N, C).astype(np.float32)
         label = np.array([0, 2, 1], dtype=np.float32)
-        infogain = np.array([[1.0, 0.5, 0.2],
-                             [0.3, 1.0, 0.4],
-                             [0.1, 0.2, 1.0]], dtype=np.float32)
+        infogain = np.array([[1.0, 0.5, 0.2], [0.3, 1.0, 0.4], [0.1, 0.2, 1.0]], dtype=np.float32)
         inputs = {"data": logits, "label": label, "infogain": infogain}
         d = _run_backward(net, inputs, diff_blobs=("data",))["data"]
         d_np = infogain_backward_np(logits, label, infogain=infogain)
@@ -531,11 +525,12 @@ class TestInfogainLoss:
 # Test Class: MultinomialLogisticLoss
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestMultinomialLogisticLoss:
     def test_registration(self):
         net = Net(_make_multinomial_prototxt(3, 4))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "MultinomialLogisticLoss" in types
 
     def test_forward_known(self):
@@ -573,7 +568,7 @@ class TestMultinomialLogisticLoss:
         np.random.seed(22)
         N, C = 2, 3
         net = Net(_make_multinomial_prototxt(N, C))
-        prob = (np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5)
+        prob = np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5
         label = np.array([0, 2], dtype=np.float32)
         inputs = {"data": prob, "label": label}
         d = _run_backward(net, inputs, diff_blobs=("data",))["data"]
@@ -583,7 +578,7 @@ class TestMultinomialLogisticLoss:
     def test_backward_only_gt_channel_nonzero(self):
         N, C = 2, 3
         net = Net(_make_multinomial_prototxt(N, C))
-        prob = (np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5)
+        prob = np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5
         label = np.array([1, 2], dtype=np.float32)
         inputs = {"data": prob, "label": label}
         d = _run_backward(net, inputs, diff_blobs=("data",))["data"]
@@ -597,11 +592,10 @@ class TestMultinomialLogisticLoss:
     def test_normalization_modes(self):
         np.random.seed(23)
         N, C = 3, 2
-        prob = (np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5)
+        prob = np.abs(np.random.randn(N, C)).astype(np.float32) + 0.5
         label = np.array([0, 1, 0], dtype=np.float32)
         for mode in ["FULL", "VALID", "BATCH_SIZE", "NONE"]:
             net = Net(_make_multinomial_prototxt(N, C, normalization=mode))
             loss_cpp = _forward_loss(net, {"data": prob, "label": label})
             loss_np = multinomial_loss_np(prob, label, normalization=mode)
-            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                       err_msg=f"normalization={mode}")
+            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg=f"normalization={mode}")

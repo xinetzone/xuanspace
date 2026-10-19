@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 _init_logger = logging.getLogger("caffe_ffi.ffi_init")
 
@@ -48,7 +48,7 @@ def _get_search_dirs() -> list[Path]:
     ]
 
 
-def _find_lib_path() -> Optional[Path]:
+def _find_lib_path() -> Path | None:
     search_dirs = _get_search_dirs()
     lib_names = _get_lib_names_for_platform()
 
@@ -89,9 +89,9 @@ class _FFIInitDiagnostics:
         self.warnings: list[dict] = []
         self.search_dirs_checked: list[str] = []
         self.lib_names_searched: list[str] = []
-        self.tvm_ffi_importable: Optional[bool] = None
-        self.lib_path_found: Optional[Path] = None
-        self.load_module_error: Optional[str] = None
+        self.tvm_ffi_importable: bool | None = None
+        self.lib_path_found: Path | None = None
+        self.load_module_error: str | None = None
         self._strict_init: bool = os.environ.get("CAFFE_FFI_STRICT_INIT", "0") == "1"
 
     def record_search(self, search_dirs: list[Path], lib_names: list[str]):
@@ -103,55 +103,64 @@ class _FFIInitDiagnostics:
         """Record that no native library was found in any search directory."""
         existing_dirs = [d for d in self.search_dirs_checked if Path(d).exists()]
         missing_dirs = [d for d in self.search_dirs_checked if not Path(d).exists()]
-        self.errors.append({
-            "stage": "find_lib",
-            "code": "LIB_NOT_FOUND",
-            "message": (
-                f"No native library found. Searched {len(existing_dirs)} existing "
-                f"directories for {self.lib_names_searched}. "
-                f"{len(missing_dirs)} directories did not exist."
-            ),
-            "existing_dirs": existing_dirs,
-            "missing_dirs": missing_dirs,
-        })
+        self.errors.append(
+            {
+                "stage": "find_lib",
+                "code": "LIB_NOT_FOUND",
+                "message": (
+                    f"No native library found. Searched {len(existing_dirs)} existing "
+                    f"directories for {self.lib_names_searched}. "
+                    f"{len(missing_dirs)} directories did not exist."
+                ),
+                "existing_dirs": existing_dirs,
+                "missing_dirs": missing_dirs,
+            }
+        )
         self._maybe_raise_strict("Native library not found in any search directory")
 
     def record_tvm_ffi_import_error(self, error: ImportError):
         """Record that tvm_ffi could not be imported."""
         self.tvm_ffi_importable = False
-        self.errors.append({
-            "stage": "import_tvm_ffi",
-            "code": "TVM_FFI_IMPORT_ERROR",
-            "message": f"Failed to import tvm_ffi: {error}",
-            "exception_type": type(error).__name__,
-            "exception_msg": str(error),
-        })
+        self.errors.append(
+            {
+                "stage": "import_tvm_ffi",
+                "code": "TVM_FFI_IMPORT_ERROR",
+                "message": f"Failed to import tvm_ffi: {error}",
+                "exception_type": type(error).__name__,
+                "exception_msg": str(error),
+            }
+        )
         self._maybe_raise_strict(f"tvm_ffi import failed: {error}")
 
     def record_load_module_error(self, error: Exception):
         """Record that tvm_ffi.load_module() failed."""
         self.load_module_error = str(error)
-        self.errors.append({
-            "stage": "load_module",
-            "code": "LOAD_MODULE_FAILED",
-            "message": f"Failed to load native module via tvm_ffi: {error}",
-            "exception_type": type(error).__name__,
-            "exception_msg": str(error),
-            "lib_path": str(self.lib_path_found) if self.lib_path_found else None,
-        })
+        self.errors.append(
+            {
+                "stage": "load_module",
+                "code": "LOAD_MODULE_FAILED",
+                "message": f"Failed to load native module via tvm_ffi: {error}",
+                "exception_type": type(error).__name__,
+                "exception_msg": str(error),
+                "lib_path": str(self.lib_path_found) if self.lib_path_found else None,
+            }
+        )
         self._maybe_raise_strict(f"Native module load failed: {error}")
 
     def record_unexpected_error(self, error: Exception):
         """Record an unexpected error during initialization."""
         import traceback
-        self.errors.append({
-            "stage": "init",
-            "code": "UNEXPECTED_ERROR",
-            "message": f"Unexpected error during FFI init: {error}",
-            "exception_type": type(error).__name__,
-            "exception_msg": str(error),
-            "traceback": traceback.format_exc(),
-        })
+
+        self.errors.append(
+            {
+                "stage": "init",
+                "code": "UNEXPECTED_ERROR",
+                "message": f"Unexpected error during FFI init: {error}",
+                "exception_type": type(error).__name__,
+                "exception_msg": str(error),
+                "traceback": traceback.format_exc(),
+            }
+        )
         self._maybe_raise_strict(f"Unexpected FFI init error: {error}")
 
     def record_success(self, loaded_from: Path):
@@ -189,21 +198,20 @@ class _FFIInitDiagnostics:
             lines.append(f"\nError #{i} [{err['stage']}/{err['code']}]:")
             lines.append(f"  {err['message']}")
         if self.warnings:
-            lines.append(f"\nWarnings:")
+            lines.append("\nWarnings:")
             for w in self.warnings:
                 lines.append(f"  [{w['stage']}/{w['code']}] {w['message']}")
         lines.append("")
-        lines.append("Hint: Build the C++ extension with 'pip install -e .' or "
-                      "set CAFFE_FFI_STRICT_INIT=0 to suppress strict mode.")
+        lines.append(
+            "Hint: Build the C++ extension with 'pip install -e .' or "
+            "set CAFFE_FFI_STRICT_INIT=0 to suppress strict mode."
+        )
         return "\n".join(lines)
 
     def _maybe_raise_strict(self, message: str):
         """In strict mode (CI/testing), raise instead of silently falling back."""
         if self._strict_init:
-            raise RuntimeError(
-                f"[CAFFE_FFI_STRICT_INIT] {message}\n"
-                f"Diagnostics:\n{self.summary()}"
-            )
+            raise RuntimeError(f"[CAFFE_FFI_STRICT_INIT] {message}\nDiagnostics:\n{self.summary()}")
 
 
 _diagnostics = _FFIInitDiagnostics()
@@ -239,6 +247,7 @@ def _try_init_tvm_ffi():
         _diagnostics.record_search(_get_search_dirs(), _get_lib_names_for_platform())
 
         import tvm_ffi
+
         _diagnostics.tvm_ffi_importable = True
 
         if _lib_path is not None:
@@ -250,7 +259,8 @@ def _try_init_tvm_ffi():
                     os.add_dll_directory(str(lib_dir))
                 except (OSError, AttributeError) as e:
                     _diagnostics.record_warning(
-                        "dll_path", "ADD_DLL_DIR_FAILED",
+                        "dll_path",
+                        "ADD_DLL_DIR_FAILED",
                         f"os.add_dll_directory failed for {lib_dir}: {e}",
                     )
             try:
@@ -258,8 +268,8 @@ def _try_init_tvm_ffi():
             except Exception as load_err:
                 _diagnostics.record_load_module_error(load_err)
                 _init_logger.warning(
-                    "Failed to load caffe-ffi native library: %s. "
-                    "Falling back to Python-only mode.", load_err,
+                    "Failed to load caffe-ffi native library: %s. Falling back to Python-only mode.",
+                    load_err,
                 )
                 return False
             _init_logger.debug("Loaded caffe-ffi native library from %s", _lib_path)
@@ -279,13 +289,15 @@ def _try_init_tvm_ffi():
     except ImportError as e:
         _diagnostics.record_tvm_ffi_import_error(e)
         _init_logger.warning(
-            "Failed to import tvm_ffi: %s. Falling back to Python-only mode.", e,
+            "Failed to import tvm_ffi: %s. Falling back to Python-only mode.",
+            e,
         )
         return False
     except Exception as e:
         _diagnostics.record_unexpected_error(e)
         _init_logger.warning(
-            "Failed to load caffe-ffi native library: %s. Falling back to Python-only mode.", e,
+            "Failed to load caffe-ffi native library: %s. Falling back to Python-only mode.",
+            e,
         )
         return False
 
@@ -293,23 +305,23 @@ def _try_init_tvm_ffi():
 def _setup_windows_dll_paths():
     """Setup Windows DLL search paths to use current conda env DLLs, not base env."""
     prefix = Path(sys.prefix)
-    
+
     dll_dirs = [
         prefix / "Library" / "bin",
         prefix / "DLLs",
         prefix / "bin",
         prefix / "Lib" / "site-packages" / "tvm_ffi" / "lib",
     ]
-    
+
     path_entries = []
     for d in dll_dirs:
         if d.exists():
             try:
                 os.add_dll_directory(str(d))
-            except (OSError, AttributeError):
+            except OSError, AttributeError:
                 pass
             path_entries.append(str(d))
-    
+
     if path_entries:
         new_path = os.pathsep.join(path_entries) + os.pathsep + os.environ.get("PATH", "")
         os.environ["PATH"] = new_path
@@ -319,36 +331,33 @@ _try_init_tvm_ffi()
 
 
 class _FFIRegistry:
-    
     def __init__(self):
-        self._funcs: Dict[str, Any] = {}
-        self._types: Dict[str, type] = {}
+        self._funcs: dict[str, Any] = {}
+        self._types: dict[str, type] = {}
         self._Object = None
         self._register_object = None
         self._get_global_func = None
-        
+
         if _ffi_available:
             try:
                 import tvm_ffi
+
                 self._Object = tvm_ffi.Object
                 self._register_object = tvm_ffi.register_object
                 self._get_global_func = tvm_ffi.get_global_func
             except ImportError:
                 pass
-    
+
     @property
     def available(self) -> bool:
         return _ffi_available
-    
+
     @property
     def Object(self):
         if self._Object is None:
-            raise RuntimeError(
-                "tvm_ffi not available. C++ extension not loaded. "
-                "Please build caffe-ffi first."
-            )
+            raise RuntimeError("tvm_ffi not available. C++ extension not loaded. Please build caffe-ffi first.")
         return self._Object
-    
+
     def get_global_func(self, name: str) -> Any:
         if name not in self._funcs:
             if self._get_global_func is not None:
@@ -356,7 +365,7 @@ class _FFIRegistry:
             else:
                 self._funcs[name] = None
         return self._funcs[name]
-    
+
     def register_object(self, type_key: str, cls: type):
         if self._register_object is not None:
             self._register_object(type_key)(cls)
@@ -374,5 +383,5 @@ def is_available() -> bool:
     return registry.available
 
 
-def lib_path() -> Optional[Path]:
+def lib_path() -> Path | None:
     return _lib_path

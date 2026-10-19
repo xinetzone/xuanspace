@@ -25,24 +25,29 @@ Net initialization. Covered scenarios:
 Run with:
     pytest tests/python/test_insert_splits.py -v
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from .conftest import require_cpp_extension
 from .caffe_test_helpers import (
-    make_net, count_splits,
-    assert_split_exists, assert_split_after_producer,
-    assert_split_at_position, assert_split_order,
-    assert_no_split, assert_exact_split_name,
+    assert_exact_split_name,
     assert_forward_shapes,
+    assert_no_split,
+    assert_split_after_producer,
+    assert_split_at_position,
+    assert_split_exists,
+    assert_split_order,
+    count_splits,
+    make_net,
 )
-
+from .conftest import require_cpp_extension
 
 # ──────────────────────────────────────────────────────────────────────
 # Test class
 # ──────────────────────────────────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestInsertSplits:
@@ -179,10 +184,13 @@ layer { name: 'fc3' type: 'InnerProduct' bottom: 'data' top: 'fc3_out'
 """
         net = make_net(prototxt)
         outputs = net.Forward({})
-        assert_forward_shapes(outputs, {
-            "fc2_out": (2, 3),
-            "fc3_out": (2, 3),
-        })
+        assert_forward_shapes(
+            outputs,
+            {
+                "fc2_out": (2, 3),
+                "fc3_out": (2, 3),
+            },
+        )
 
     def test_multiple_external_inputs_order(self):
         """Multiple param.input() sources both split; splits appear in input declaration order."""
@@ -207,8 +215,7 @@ layer { name: 'scale2' type: 'Scale' bottom: 'out2' bottom: 'weight' top: 'scale
         assert_split_exists(names, "weight_input_")
         assert count_splits(net) == 2
         # Splits must be in input declaration order: data split before weight split
-        assert_split_order(names, "data_input_", "weight_input_",
-                           msg="data split should precede weight split")
+        assert_split_order(names, "data_input_", "weight_input_", msg="data split should precede weight split")
 
     def test_linear_chain_zero_splits(self):
         """Linear chain (no fan-out) produces zero splits."""
@@ -317,11 +324,14 @@ layer { name: 'fc3' type: 'InnerProduct' bottom: 'innerprod1' top: 'fc3_out'
         # Forward pass
         inp_data = np.random.randn(2, 4).astype(np.float32)
         outputs = net.Forward({"data": inp_data})
-        assert_forward_shapes(outputs, {
-            "innerprod2": (2, 3),
-            "fc2_out": (2, 3),
-            "fc3_out": (2, 3),
-        })
+        assert_forward_shapes(
+            outputs,
+            {
+                "innerprod2": (2, 3),
+                "fc2_out": (2, 3),
+                "fc3_out": (2, 3),
+            },
+        )
 
     def test_split_concat_split_nested(self):
         """Split→Concat→Split nesting (Inception-style topology).
@@ -364,10 +374,13 @@ layer { name: 'fc_d' type: 'InnerProduct' bottom: 'cat_out' top: 'fc_d_out'
         # Forward correctness
         inp = np.random.randn(2, 4).astype(np.float32)
         outputs = net.Forward({"data": inp})
-        assert_forward_shapes(outputs, {
-            "fc_c_out": (2, 3),
-            "fc_d_out": (2, 3),
-        })
+        assert_forward_shapes(
+            outputs,
+            {
+                "fc_c_out": (2, 3),
+                "fc_d_out": (2, 3),
+            },
+        )
 
     def test_multiple_layers_need_splits_positions(self):
         """Multiple independent splits: each inserted right after its producer."""
@@ -433,11 +446,14 @@ layer { name: 'fc3' type: 'InnerProduct' bottom: 'data' top: 'fc3_out'
         # Forward: all three branches produce output
         inp = np.random.randn(2, 4).astype(np.float32)
         outputs = net.Forward({"data": inp})
-        assert_forward_shapes(outputs, {
-            "fc1_out": (2, 3),
-            "fc2_out": (2, 3),
-            "fc3_out": (2, 3),
-        })
+        assert_forward_shapes(
+            outputs,
+            {
+                "fc1_out": (2, 3),
+                "fc2_out": (2, 3),
+                "fc3_out": (2, 3),
+            },
+        )
 
     def test_loss_weight_plus_multiple_consumers(self):
         """A layer top with loss_weight + 2 downstream consumers → split with 3 outputs."""

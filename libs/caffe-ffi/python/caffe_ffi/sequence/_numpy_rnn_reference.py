@@ -30,22 +30,21 @@ Weight layout (Caffe-compatible):
 """
 
 from __future__ import annotations
-import numpy as np
-from dataclasses import dataclass, field
-from typing import Optional
 
+import numpy as np
 
 # ---------------------------------------------------------------------------
 #  Vanilla RNN: h_t = act( W_ih @ x_t + b_ih + W_hh @ h_{t-1} + b_hh )
 # ---------------------------------------------------------------------------
 
+
 def rnn_forward(
     x: np.ndarray,
     W_ih: np.ndarray,
     W_hh: np.ndarray,
-    b_ih: Optional[np.ndarray] = None,
-    b_hh: Optional[np.ndarray] = None,
-    h0: Optional[np.ndarray] = None,
+    b_ih: np.ndarray | None = None,
+    b_hh: np.ndarray | None = None,
+    h0: np.ndarray | None = None,
     activation: str = "tanh",
     batch_first: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -101,20 +100,27 @@ def rnn_forward(
 #         h_t = o_t ⊙ tanh(c_t)
 # ---------------------------------------------------------------------------
 
+
 def lstm_forward(
     x: np.ndarray,
-    W_ii: np.ndarray, W_if: np.ndarray, W_io: np.ndarray, W_ig: np.ndarray,
-    W_hi: np.ndarray, W_hf: np.ndarray, W_ho: np.ndarray, W_hg: np.ndarray,
-    b_ii: Optional[np.ndarray] = None,
-    b_if: Optional[np.ndarray] = None,
-    b_io: Optional[np.ndarray] = None,
-    b_ig: Optional[np.ndarray] = None,
-    b_hi: Optional[np.ndarray] = None,
-    b_hf: Optional[np.ndarray] = None,
-    b_ho: Optional[np.ndarray] = None,
-    b_hg: Optional[np.ndarray] = None,
-    h0: Optional[np.ndarray] = None,
-    c0: Optional[np.ndarray] = None,
+    W_ii: np.ndarray,
+    W_if: np.ndarray,
+    W_io: np.ndarray,
+    W_ig: np.ndarray,
+    W_hi: np.ndarray,
+    W_hf: np.ndarray,
+    W_ho: np.ndarray,
+    W_hg: np.ndarray,
+    b_ii: np.ndarray | None = None,
+    b_if: np.ndarray | None = None,
+    b_io: np.ndarray | None = None,
+    b_ig: np.ndarray | None = None,
+    b_hi: np.ndarray | None = None,
+    b_hf: np.ndarray | None = None,
+    b_ho: np.ndarray | None = None,
+    b_hg: np.ndarray | None = None,
+    h0: np.ndarray | None = None,
+    c0: np.ndarray | None = None,
     batch_first: bool = False,
     bidirectional: bool = False,
 ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray]]:
@@ -140,11 +146,26 @@ def lstm_forward(
     if not bidirectional:
         return _lstm_unidirectional(
             x,
-            W_ii, W_if, W_io, W_ig,
-            W_hi, W_hf, W_ho, W_hg,
-            b_ii, b_if, b_io, b_ig,
-            b_hi, b_hf, b_ho, b_hg,
-            h0, c0, batch_first, reverse=False,
+            W_ii,
+            W_if,
+            W_io,
+            W_ig,
+            W_hi,
+            W_hf,
+            W_ho,
+            W_hg,
+            b_ii,
+            b_if,
+            b_io,
+            b_ig,
+            b_hi,
+            b_hf,
+            b_ho,
+            b_hg,
+            h0,
+            c0,
+            batch_first,
+            reverse=False,
         )
 
     # Bidirectional: forward + backward directions
@@ -155,18 +176,50 @@ def lstm_forward(
     c0_f, c0_b = _split_initial(c0, N, H)
 
     out_f, (hn_f, cn_f) = _lstm_unidirectional(
-        x, W_ii, W_if, W_io, W_ig,
-        W_hi, W_hf, W_ho, W_hg,
-        b_ii, b_if, b_io, b_ig,
-        b_hi, b_hf, b_ho, b_hg,
-        h0_f, c0_f, batch_first, reverse=False,
+        x,
+        W_ii,
+        W_if,
+        W_io,
+        W_ig,
+        W_hi,
+        W_hf,
+        W_ho,
+        W_hg,
+        b_ii,
+        b_if,
+        b_io,
+        b_ig,
+        b_hi,
+        b_hf,
+        b_ho,
+        b_hg,
+        h0_f,
+        c0_f,
+        batch_first,
+        reverse=False,
     )
     out_b, (hn_b, cn_b) = _lstm_unidirectional(
-        x, W_ii, W_if, W_io, W_ig,
-        W_hi, W_hf, W_ho, W_hg,
-        b_ii, b_if, b_io, b_ig,
-        b_hi, b_hf, b_ho, b_hg,
-        h0_b, c0_b, batch_first, reverse=True,
+        x,
+        W_ii,
+        W_if,
+        W_io,
+        W_ig,
+        W_hi,
+        W_hf,
+        W_ho,
+        W_hg,
+        b_ii,
+        b_if,
+        b_io,
+        b_ig,
+        b_hi,
+        b_hf,
+        b_ho,
+        b_hg,
+        h0_b,
+        c0_b,
+        batch_first,
+        reverse=True,
     )
     # Concatenate forward and backward along hidden dimension
     output = np.concatenate([out_f, out_b], axis=-1)
@@ -176,11 +229,27 @@ def lstm_forward(
 
 
 def _lstm_unidirectional(
-    x, W_ii, W_if, W_io, W_ig,
-    W_hi, W_hf, W_ho, W_hg,
-    b_ii, b_if, b_io, b_ig,
-    b_hi, b_hf, b_ho, b_hg,
-    h0, c0, batch_first, reverse=False,
+    x,
+    W_ii,
+    W_if,
+    W_io,
+    W_ig,
+    W_hi,
+    W_hf,
+    W_ho,
+    W_hg,
+    b_ii,
+    b_if,
+    b_io,
+    b_ig,
+    b_hi,
+    b_hf,
+    b_ho,
+    b_hg,
+    h0,
+    c0,
+    batch_first,
+    reverse=False,
 ):
     """Single-direction LSTM forward."""
     if batch_first:
@@ -190,10 +259,14 @@ def _lstm_unidirectional(
     H = W_ii.shape[0]
 
     for name, w, shape in [
-        ("W_ii", W_ii, (H, D)), ("W_if", W_if, (H, D)),
-        ("W_io", W_io, (H, D)), ("W_ig", W_ig, (H, D)),
-        ("W_hi", W_hi, (H, H)), ("W_hf", W_hf, (H, H)),
-        ("W_ho", W_ho, (H, H)), ("W_hg", W_hg, (H, H)),
+        ("W_ii", W_ii, (H, D)),
+        ("W_if", W_if, (H, D)),
+        ("W_io", W_io, (H, D)),
+        ("W_ig", W_ig, (H, D)),
+        ("W_hi", W_hi, (H, H)),
+        ("W_hf", W_hf, (H, H)),
+        ("W_ho", W_ho, (H, H)),
+        ("W_hg", W_hg, (H, H)),
     ]:
         assert w.shape == shape, f"{name} must be {shape}, got {w.shape}"
 
@@ -241,6 +314,7 @@ def _lstm_unidirectional(
 # ---------------------------------------------------------------------------
 #  Vanilla RNN backward (BPTT)
 # ---------------------------------------------------------------------------
+
 
 def rnn_backward(
     dy: np.ndarray,
@@ -342,13 +416,26 @@ def rnn_backward(
 #  LSTM backward (BPTT)
 # ---------------------------------------------------------------------------
 
+
 def lstm_backward(
     dy: np.ndarray,
     x: np.ndarray,
-    W_ii, W_if, W_io, W_ig,
-    W_hi, W_hf, W_ho, W_hg,
-    b_ii=None, b_if=None, b_io=None, b_ig=None,
-    b_hi=None, b_hf=None, b_ho=None, b_hg=None,
+    W_ii,
+    W_if,
+    W_io,
+    W_ig,
+    W_hi,
+    W_hf,
+    W_ho,
+    W_hg,
+    b_ii=None,
+    b_if=None,
+    b_io=None,
+    b_ig=None,
+    b_hi=None,
+    b_hf=None,
+    b_ho=None,
+    b_hg=None,
     h0=None,
     c0=None,
     batch_first: bool = False,
@@ -494,8 +581,8 @@ def lstm_backward(
         db_hg += dg_t.sum(axis=0)
 
         # Input gradient & recurrent hidden gradient
-        dX[t] = (di_t @ W_ii + df_t @ W_if + do_t @ W_io + dg_t @ W_ig)
-        dh_next = (di_t @ W_hi + df_t @ W_hf + do_t @ W_ho + dg_t @ W_hg)
+        dX[t] = di_t @ W_ii + df_t @ W_if + do_t @ W_io + dg_t @ W_ig
+        dh_next = di_t @ W_hi + df_t @ W_hf + do_t @ W_ho + dg_t @ W_hg
 
     grads = {
         "dX": dX.astype(np.float32),
@@ -527,11 +614,24 @@ def lstm_backward(
 #  Caffe-style packed weights helper
 # ---------------------------------------------------------------------------
 
+
 def pack_lstm_weights_caffe(
-    W_ii, W_if, W_io, W_ig,
-    W_hi, W_hf, W_ho, W_hg,
-    b_ii=None, b_if=None, b_io=None, b_ig=None,
-    b_hi=None, b_hf=None, b_ho=None, b_hg=None,
+    W_ii,
+    W_if,
+    W_io,
+    W_ig,
+    W_hi,
+    W_hf,
+    W_ho,
+    W_hg,
+    b_ii=None,
+    b_if=None,
+    b_io=None,
+    b_ig=None,
+    b_hi=None,
+    b_hf=None,
+    b_ho=None,
+    b_hg=None,
 ):
     """Pack LSTM weights into Caffe-style blob format.
 
@@ -560,12 +660,14 @@ def pack_lstm_weights_caffe(
     b_ho = _ensure_1d(b_ho, H, "b_ho")
     b_hg = _ensure_1d(b_hg, H, "b_hg")
 
-    b = np.concatenate([
-        b_ii + b_hi,
-        b_if + b_hf,
-        b_io + b_ho,
-        b_ig + b_hg,
-    ]).astype(np.float32)
+    b = np.concatenate(
+        [
+            b_ii + b_hi,
+            b_if + b_hf,
+            b_io + b_ho,
+            b_ig + b_hg,
+        ]
+    ).astype(np.float32)
 
     return W, b
 
@@ -582,19 +684,25 @@ def unpack_lstm_weights_caffe(W: np.ndarray, b: np.ndarray, D: int, H: int):
     Returns:
         Dict with keys W_ii/W_if/W_io/W_ig/W_hi/W_hf/W_ho/W_hg/b_i/b_f/b_o/b_g.
     """
-    assert W.shape == (4 * H, D + H), f"Expected ({4*H},{D+H}), got {W.shape}"
-    assert b.shape == (4 * H,), f"Expected ({4*H},), got {b.shape}"
+    assert W.shape == (4 * H, D + H), f"Expected ({4 * H},{D + H}), got {W.shape}"
+    assert b.shape == (4 * H,), f"Expected ({4 * H},), got {b.shape}"
 
-    W_ih = W[:, :D]   # (4*H, D)
-    W_hh = W[:, D:]   # (4*H, H)
+    W_ih = W[:, :D]  # (4*H, D)
+    W_hh = W[:, D:]  # (4*H, H)
 
     return {
-        "W_ii": W_ih[0*H:1*H], "W_if": W_ih[1*H:2*H],
-        "W_io": W_ih[2*H:3*H], "W_ig": W_ih[3*H:4*H],
-        "W_hi": W_hh[0*H:1*H], "W_hf": W_hh[1*H:2*H],
-        "W_ho": W_hh[2*H:3*H], "W_hg": W_hh[3*H:4*H],
-        "b_ii": b[0*H:1*H], "b_if": b[1*H:2*H],
-        "b_io": b[2*H:3*H], "b_ig": b[3*H:4*H],
+        "W_ii": W_ih[0 * H : 1 * H],
+        "W_if": W_ih[1 * H : 2 * H],
+        "W_io": W_ih[2 * H : 3 * H],
+        "W_ig": W_ih[3 * H : 4 * H],
+        "W_hi": W_hh[0 * H : 1 * H],
+        "W_hf": W_hh[1 * H : 2 * H],
+        "W_ho": W_hh[2 * H : 3 * H],
+        "W_hg": W_hh[3 * H : 4 * H],
+        "b_ii": b[0 * H : 1 * H],
+        "b_if": b[1 * H : 2 * H],
+        "b_io": b[2 * H : 3 * H],
+        "b_ig": b[3 * H : 4 * H],
         # b_hi/b_hf/b_ho/b_hg are zero when unpacked from Caffe format
         # (Caffe combines biases into single per-gate bias)
         "b_hi": np.zeros(H, dtype=np.float32),
@@ -608,13 +716,23 @@ def unpack_lstm_weights_caffe(W: np.ndarray, b: np.ndarray, D: int, H: int):
 #  LSTM Cell (single timestep) — useful for unrolled network debugging
 # ---------------------------------------------------------------------------
 
+
 def lstm_cell(
     x_t: np.ndarray,
     h_prev: np.ndarray,
     c_prev: np.ndarray,
-    W_ii, W_if, W_io, W_ig,
-    W_hi, W_hf, W_ho, W_hg,
-    b_i=None, b_f=None, b_o=None, b_g=None,
+    W_ii,
+    W_if,
+    W_io,
+    W_ig,
+    W_hi,
+    W_hf,
+    W_ho,
+    W_hg,
+    b_i=None,
+    b_f=None,
+    b_o=None,
+    b_g=None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """Single LSTM cell step.
 
@@ -662,6 +780,7 @@ def lstm_cell(
 #  Weight initialization helpers
 # ---------------------------------------------------------------------------
 
+
 def init_rnn_weights(D: int, H: int, seed: int = 42, scale: float = 0.1):
     """Initialize vanilla RNN weights with small random values.
 
@@ -701,6 +820,7 @@ def init_lstm_weights(D: int, H: int, seed: int = 42, scale: float = 0.1):
 #  Known-value verification (self-test)
 # ---------------------------------------------------------------------------
 
+
 def _known_values_rnn():
     """Return known inputs/weights/outputs for RNN verification.
 
@@ -732,8 +852,7 @@ def _known_values_lstm():
     D = 1
     W = {g: np.zeros((H, D), dtype=np.float32) for g in ("W_ii", "W_if", "W_io", "W_ig")}
     W.update({g: np.zeros((H, H), dtype=np.float32) for g in ("W_hi", "W_hf", "W_ho", "W_hg")})
-    b = {g: np.zeros(H, dtype=np.float32) for g in (
-        "b_ii", "b_if", "b_io", "b_ig", "b_hi", "b_hf", "b_ho", "b_hg")}
+    b = {g: np.zeros(H, dtype=np.float32) for g in ("b_ii", "b_if", "b_io", "b_ig", "b_hi", "b_hf", "b_ho", "b_hg")}
     # With zero weights/biases: all gates = sigmoid(0)=0.5, g=tanh(0)=0
     # c1 = 0.5*0 + 0.5*0 = 0 → h1 = 0.5*tanh(0) = 0
     expected_h = np.zeros((1, 1), dtype=np.float32)
@@ -744,6 +863,7 @@ def _known_values_lstm():
 # ---------------------------------------------------------------------------
 #  Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _ensure_1d(b, H, name):
     if b is None:
@@ -779,9 +899,11 @@ def _activation_derivative(name: str):
     ``relu`` is subgradient 0 at x <= 0, 1 at x > 0 (matching C++ convention).
     """
     if name == "tanh":
+
         def d(x):
             t = np.tanh(x)
             return 1.0 - t * t
+
         return d
     elif name == "relu":
         return lambda x: (x > 0).astype(np.float64)
@@ -806,9 +928,9 @@ def _split_initial(state, N, H):
 #  Self-test
 # ---------------------------------------------------------------------------
 
+
 def _self_test():
     """Run built-in verification."""
-    import sys
 
     print("=== numpy RNN/LSTM self-test ===\n")
 
@@ -816,7 +938,7 @@ def _self_test():
     print("[1] RNN known-value check ...", end=" ")
     x, W_ih, W_hh, b_ih, b_hh, expected = _known_values_rnn()
     out, h_n = rnn_forward(x, W_ih, W_hh, b_ih, b_hh)
-    assert np.allclose(out[0, 0], expected, atol=1e-6), f"RNN failed: {out[0,0]} vs {expected}"
+    assert np.allclose(out[0, 0], expected, atol=1e-6), f"RNN failed: {out[0, 0]} vs {expected}"
     assert np.allclose(h_n[0], expected, atol=1e-6)
     print("OK")
 
@@ -824,9 +946,8 @@ def _self_test():
     print("[2] LSTM known-value (zero weights) ...", end=" ")
     x, W, b, exp_h, exp_c = _known_values_lstm()
     out, (h_n, c_n) = lstm_forward(
-        x, W["W_ii"], W["W_if"], W["W_io"], W["W_ig"],
-        W["W_hi"], W["W_hf"], W["W_ho"], W["W_hg"],
-        **b)
+        x, W["W_ii"], W["W_if"], W["W_io"], W["W_ig"], W["W_hi"], W["W_hf"], W["W_ho"], W["W_hg"], **b
+    )
     assert np.allclose(h_n, exp_h, atol=1e-6), f"LSTM h_n failed: {h_n}"
     assert np.allclose(c_n, exp_c, atol=1e-6), f"LSTM c_n failed: {c_n}"
     print("OK")
@@ -838,10 +959,23 @@ def _self_test():
     x = rng.randn(T, N, D).astype(np.float32)
     w = init_lstm_weights(D, H, seed=42)
     out, (h_n, c_n) = lstm_forward(
-        x, w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        x,
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
     )
     assert out.shape == (T, N, H), f"Expected ({T},{N},{H}), got {out.shape}"
     assert h_n.shape == (N, H), f"Expected ({N},{H}), got {h_n.shape}"
@@ -852,10 +986,23 @@ def _self_test():
     # Test 4: Bidirectional LSTM
     print("[4] Bidirectional LSTM shape check ...", end=" ")
     out_bi, (hn_bi, cn_bi) = lstm_forward(
-        x, w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        x,
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
         bidirectional=True,
     )
     assert out_bi.shape == (T, N, 2 * H)
@@ -866,10 +1013,22 @@ def _self_test():
     # Test 5: Caffe weight pack/unpack roundtrip
     print("[5] Caffe weight pack/unpack roundtrip ...", end=" ")
     W_caffe, b_caffe = pack_lstm_weights_caffe(
-        w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
     )
     assert W_caffe.shape == (4 * H, D + H), f"W_caffe shape {W_caffe.shape}"
     assert b_caffe.shape == (4 * H,)
@@ -884,9 +1043,7 @@ def _self_test():
     print("[6] Batch-first RNN shape check ...", end=" ")
     x_bf = rng.randn(N, T, D).astype(np.float32)
     w_rnn = init_rnn_weights(D, H, seed=99)
-    out_bf, hn_bf = rnn_forward(x_bf, w_rnn["W_ih"], w_rnn["W_hh"],
-                                 w_rnn["b_ih"], w_rnn["b_hh"],
-                                 batch_first=True)
+    out_bf, hn_bf = rnn_forward(x_bf, w_rnn["W_ih"], w_rnn["W_hh"], w_rnn["b_ih"], w_rnn["b_hh"], batch_first=True)
     assert out_bf.shape == (N, T, H)
     assert hn_bf.shape == (N, H)
     print("OK")
@@ -897,9 +1054,17 @@ def _self_test():
     h0 = np.zeros((N, H), dtype=np.float32)
     c0 = np.zeros((N, H), dtype=np.float32)
     h1, c1, cache = lstm_cell(
-        x_t, h0, c0,
-        w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
+        x_t,
+        h0,
+        c0,
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
     )
     assert h1.shape == (N, H)
     assert c1.shape == (N, H)
@@ -913,22 +1078,48 @@ def _self_test():
     # Test 8: Determinism (same inputs → same outputs)
     print("[8] Determinism check ...", end=" ")
     out1, (hn1, cn1) = lstm_forward(
-        x, w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        x,
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
     )
     out2, (hn2, cn2) = lstm_forward(
-        x, w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        x,
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
     )
     assert np.array_equal(out1, out2), "LSTM not deterministic"
     assert np.array_equal(hn1, hn2)
     print("OK")
 
-    print(f"\n=== All 8 self-tests PASSED ===")
+    print("\n=== All 8 self-tests PASSED ===")
     return True
 
 

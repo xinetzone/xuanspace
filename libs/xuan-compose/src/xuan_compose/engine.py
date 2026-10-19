@@ -179,9 +179,7 @@ class ComposeEngine:
         # - Command line --in-pod
         # - docker-compose.yml x-podman.in_pod
         # - Default value of true
-        in_pod_arg = self.global_args.in_pod or self.x_podman.get(
-            XPodmanSettingKey.IN_POD, True
-        )
+        in_pod_arg = self.global_args.in_pod or self.x_podman.get(XPodmanSettingKey.IN_POD, True)
 
         in_pod_arg_parsed = try_parse_bool(in_pod_arg)
         if in_pod_arg_parsed is True:
@@ -199,9 +197,7 @@ class ComposeEngine:
         # - Default value
         if self.global_args.pod_args is not None:
             return shlex.split(self.global_args.pod_args)
-        return self.x_podman.get(
-            XPodmanSettingKey.POD_ARGS, ["--infra=false", "--share="]
-        )
+        return self.x_podman.get(XPodmanSettingKey.POD_ARGS, ["--infra=false", "--share="])
 
     def join_name_parts(self, *parts: str) -> str:
         setting = self.x_podman.get(XPodmanSettingKey.NAME_SEPARATOR_COMPAT, False)
@@ -257,9 +253,7 @@ class ComposeEngine:
                 if key not in self.x_podman:
                     self.x_podman[key] = value
 
-            set_if_not_already_set(
-                XPodmanSettingKey.DEFAULT_NET_BEHAVIOR_COMPAT, True
-            )
+            set_if_not_already_set(XPodmanSettingKey.DEFAULT_NET_BEHAVIOR_COMPAT, True)
             set_if_not_already_set(XPodmanSettingKey.NAME_SEPARATOR_COMPAT, True)
             set_if_not_already_set(XPodmanSettingKey.IN_POD, False)
 
@@ -311,10 +305,7 @@ class ComposeEngine:
 
         files = args.file
         if not files:
-            log.fatal(
-                "no compose.yaml, docker-compose.yml or container-compose.yml file found, "
-                "pass files with -f"
-            )
+            log.fatal("no compose.yaml, docker-compose.yml or container-compose.yml file found, pass files with -f")
             sys.exit(-1)
         # 上游为 map/zip 惰性对，此处等价收敛为列表推导（T10 差异表）
         missing = [fn for fn in files if not (fn == "-" or os.path.exists(fn))]
@@ -350,36 +341,34 @@ class ComposeEngine:
                     sys.exit(1)
                 dotenv_dict.update(dotenv_to_dict(dotenv_path))
 
-        os.environ.update({
-            key: value  # type: ignore[misc]
-            for key, value in dotenv_dict.items()
-            if key.startswith("PODMAN_")  # type: ignore[misc]
-        })
+        os.environ.update(
+            {
+                key: value  # type: ignore[misc]
+                for key, value in dotenv_dict.items()
+                if key.startswith("PODMAN_")  # type: ignore[misc]
+            }
+        )
         self.environ = dotenv_dict  # type: ignore[assignment]
         self.environ.update(dict(os.environ))
         # see: https://docs.docker.com/compose/reference/envvars/
         # see: https://docs.docker.com/compose/env-file/
-        self.environ.update({
-            "COMPOSE_PROJECT_DIR": dirname,
-            "COMPOSE_FILE": pathsep.join(relative_files),
-            "COMPOSE_PATH_SEPARATOR": pathsep,
-        })
+        self.environ.update(
+            {
+                "COMPOSE_PROJECT_DIR": dirname,
+                "COMPOSE_FILE": pathsep.join(relative_files),
+                "COMPOSE_PATH_SEPARATOR": pathsep,
+            }
+        )
 
         if args and "env" in args and args.env:
             env_vars = norm_as_dict(args.env)
             self.environ.update(env_vars)  # type: ignore[arg-type]
 
-        profiles_from_env = {
-            p.strip() for p in self.environ.get("COMPOSE_PROFILES", "").split(",") if p.strip()
-        }
+        profiles_from_env = {p.strip() for p in self.environ.get("COMPOSE_PROFILES", "").split(",") if p.strip()}
         requested_profiles = set(args.profile).union(profiles_from_env)
 
-        target_service = getattr(
-            args, "service", None
-        )  # example: command `run` can only have one service
-        target_services = getattr(
-            args, "services", None
-        )  # example: command `build` can have several services
+        target_service = getattr(args, "service", None)  # example: command `run` can only have one service
+        target_services = getattr(args, "services", None)  # example: command `build` can have several services
         # 上游 1.6.0 缺陷（本库修复，D17 / findings-ledger U14）：config 子命令的
         # --services 是 store_true 布尔（"逐行打印服务名"），与 build/up 等的
         # 位置参数 services（nargs="*" 列表）共用同一 dest；直接取用时布尔会
@@ -463,12 +452,8 @@ class ComposeEngine:
             if isinstance(content_services := content.get("services"), dict):
                 for service in content_services.values():
                     if not isinstance(service, OverrideTag) and not isinstance(service, ResetTag):
-                        if "extends" in service and (
-                            service_file := service["extends"].get("file")
-                        ):
-                            service["extends"]["file"] = os.path.join(
-                                os.path.dirname(filename), service_file
-                            )
+                        if "extends" in service and (service_file := service["extends"].get("file")):
+                            service["extends"]["file"] = os.path.join(os.path.dirname(filename), service_file)
 
             rec_merge(compose, content)
             # If `include` is used, append included files to files
@@ -490,15 +475,11 @@ class ComposeEngine:
                         if isinstance(path, str):
                             new_includes.append(os.path.join(os.path.dirname(filename), path))
                         elif isinstance(path, list):
-                            new_includes.extend(
-                                os.path.join(os.path.dirname(filename), p) for p in path
-                            )
+                            new_includes.extend(os.path.join(os.path.dirname(filename), p) for p in path)
                         else:
                             raise RuntimeError("'path' must be a string or a list of strings")
                     else:
-                        raise RuntimeError(
-                            "Items in `include` must be strings or dictionaries with a 'path' key"
-                        )
+                        raise RuntimeError("Items in `include` must be strings or dictionaries with a 'path' key")
                 files.extend(new_includes)
                 include_origin_files.update(new_includes)
                 # As compose obj is updated and tested with every loop, not deleting `include`
@@ -507,17 +488,13 @@ class ComposeEngine:
                 # Solution is to remove 'include' key from compose obj. This doesn't break
                 # having `include` present and correctly processed in included files
                 del compose["include"]
-        resolved_services = self._resolve_profiles(
-            compose.get("services") or {}, target, requested_profiles
-        )
+        resolved_services = self._resolve_profiles(compose.get("services") or {}, target, requested_profiles)
         compose["services"] = resolved_services
         if not getattr(args, "no_normalize", None):
             compose = normalize_final(compose, self.dirname)
         compose.pop("version", None)
         self.merged_yaml = yaml.safe_dump(compose)
-        merged_json_b = json.dumps(
-            self.original_configuration(compose), separators=(",", ":")
-        ).encode("utf-8")
+        merged_json_b = json.dumps(self.original_configuration(compose), separators=(",", ":")).encode("utf-8")
         self.yaml_hash = hashlib.sha256(merged_json_b).hexdigest()
         compose["_dirname"] = dirname
         # debug mode
@@ -568,9 +545,7 @@ class ComposeEngine:
         allnets = set()
         for name, srv in services.items():
             srv_nets = srv.get("networks", self.default_net)
-            srv_nets = (
-                list(srv_nets.keys()) if isinstance(srv_nets, dict) else norm_as_list(srv_nets)
-            )
+            srv_nets = list(srv_nets.keys()) if isinstance(srv_nets, dict) else norm_as_list(srv_nets)
             allnets.update(srv_nets)
         given_nets = set(nets.keys())
         missing_nets = allnets - given_nets
@@ -645,12 +620,14 @@ class ComposeEngine:
                 labels = norm_as_list(cnt.get("labels"))
                 cnt["ports"] = norm_ports(cnt.get("ports"))
                 labels.extend(podman_compose_labels)
-                labels.extend([
-                    f"io.podman.compose.config-hash={self.config_hash(service_desc)}",
-                    f"com.docker.compose.container-number={num}",
-                    f"io.podman.compose.service={service_name}",
-                    f"com.docker.compose.service={service_name}",
-                ])
+                labels.extend(
+                    [
+                        f"io.podman.compose.config-hash={self.config_hash(service_desc)}",
+                        f"com.docker.compose.container-number={num}",
+                        f"io.podman.compose.service={service_name}",
+                        f"com.docker.compose.service={service_name}",
+                    ]
+                )
                 cnt["labels"] = labels
                 cnt["_service"] = service_name
                 cnt["_project"] = project_name
@@ -659,9 +636,7 @@ class ComposeEngine:
                 for volume in volumes:
                     mnt_dict = get_mnt_dict(self, cnt, volume)
                     if (
-                        mnt_dict.get("type") == "volume"
-                        and mnt_dict["source"]
-                        and mnt_dict["source"] not in self.vols  # type: ignore[operator]
+                        mnt_dict.get("type") == "volume" and mnt_dict["source"] and mnt_dict["source"] not in self.vols  # type: ignore[operator]
                     ):
                         vol_name = mnt_dict["source"]
                         raise RuntimeError(f"volume [{vol_name}] not defined in top level")

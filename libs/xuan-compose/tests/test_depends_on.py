@@ -51,18 +51,12 @@ class TestDependsOn(unittest.TestCase):
     ) -> None:
         flat_deps(services)
         self.assertEqual(
-            {
-                name: set([x.name for x in value.get("_deps", set())])
-                for name, value in services.items()
-            },
+            {name: set([x.name for x in value.get("_deps", set())]) for name, value in services.items()},
             deps,
             msg="Dependencies do not match",
         )
         self.assertEqual(
-            {
-                name: set([x.name for x in value.get("_dependents", set())])
-                for name, value in services.items()
-            },
+            {name: set([x.name for x in value.get("_dependents", set())]) for name, value in services.items()},
             dependents,
             msg="Dependents do not match",
         )

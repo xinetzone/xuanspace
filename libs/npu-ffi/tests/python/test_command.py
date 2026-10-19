@@ -1,8 +1,6 @@
 """Tests for VTA CommandContext and command handle management."""
 
-import gc
 import pytest
-
 from npu_ffi import vta
 from npu_ffi.vta import Buffer, CommandContext, command_handle, get_command_handle
 
@@ -47,7 +45,7 @@ class TestCommandContextBasic:
 
     def test_command_context_repr_active(self):
         ctx = CommandContext()
-        with ctx as cmd:
+        with ctx:
             repr_str = repr(ctx)
             assert "active" in repr_str
             assert "wait_cycles=0" in repr_str
@@ -61,14 +59,14 @@ class TestCommandContextBasic:
 
     def test_double_synchronize_safe(self):
         ctx = CommandContext()
-        with ctx as cmd:
+        with ctx:
             ctx.synchronize()
             ctx.synchronize()
         assert ctx._cmd is None
 
     def test_synchronize_before_exit(self):
         ctx = CommandContext()
-        with ctx as cmd:
+        with ctx:
             ctx.synchronize()
             assert ctx._cmd is None
 
@@ -93,14 +91,8 @@ class TestCommandContextWorkflow:
             assert wgt.data != 0
             assert acc.data != 0
 
-            vta.load_buffer_2d(
-                cmd, inp.data, 0, 16, 8, 32,
-                0, 0, 0, 0, 0, int(vta.MemoryType.INP)
-            )
-            vta.load_buffer_2d(
-                cmd, wgt.data, 0, 16, 8, 32,
-                0, 0, 0, 0, 0, int(vta.MemoryType.WGT)
-            )
+            vta.load_buffer_2d(cmd, inp.data, 0, 16, 8, 32, 0, 0, 0, 0, 0, int(vta.MemoryType.INP))
+            vta.load_buffer_2d(cmd, wgt.data, 0, 16, 8, 32, 0, 0, 0, 0, 0, int(vta.MemoryType.WGT))
 
             vta.uop_loop_begin(1, 0, 0, 0)
             vta.uop_push(0, 1, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
@@ -108,10 +100,7 @@ class TestCommandContextWorkflow:
 
             vta.push_gemm_op()
 
-            vta.store_buffer_2d(
-                cmd, 0, int(vta.MemoryType.ACC),
-                acc.data, 0, 16, 8, 32
-            )
+            vta.store_buffer_2d(cmd, 0, int(vta.MemoryType.ACC), acc.data, 0, 16, 8, 32)
 
             inp.write_barrier(cmd, 32, 0, 8)
             acc.read_barrier(cmd, 32, 0, 8)
@@ -150,10 +139,7 @@ class TestCommandContextWithDebug:
 
     def test_debug_mode_combined_flags(self):
         with CommandContext() as cmd:
-            flags = (
-                int(vta.DebugFlag.DUMP_INSN) |
-                int(vta.DebugFlag.DUMP_UOP)
-            )
+            flags = int(vta.DebugFlag.DUMP_INSN) | int(vta.DebugFlag.DUMP_UOP)
             vta.set_debug_mode(cmd, flags)
 
 

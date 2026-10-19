@@ -25,9 +25,8 @@ Usage:
 from __future__ import annotations
 
 import sys
-import weakref
 from contextlib import contextmanager
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .. import Blob
 from .. import total_allocated_bytes as _total_allocated_bytes
@@ -141,12 +140,9 @@ def tracked_blob(shape, label: str = "blob", verbose: bool = True):
     expected = b.data_tensor.nbytes + b.diff_tensor.nbytes
     dp = b.data_tensor.ctypes.data
     dfp = b.diff_tensor.ctypes.data
-    exception_info: Optional[str] = None
+    exception_info: str | None = None
     if verbose:
-        print(
-            f"[TRACK:{label}] created, data_ptr=0x{dp:016x}, "
-            f"diff_ptr=0x{dfp:016x}, nbytes={expected}"
-        )
+        print(f"[TRACK:{label}] created, data_ptr=0x{dp:016x}, diff_ptr=0x{dfp:016x}, nbytes={expected}")
     try:
         yield b
     except Exception:
@@ -176,10 +172,7 @@ def tracked_blob(shape, label: str = "blob", verbose: bool = True):
                         f"beyond this blob (other blobs freed concurrently){exc_note}"
                     )
                 else:
-                    print(
-                        f"[TRACK:{label}] LEAK? +{delta} bytes "
-                        f"(unexpected allocations during block){exc_note}"
-                    )
+                    print(f"[TRACK:{label}] LEAK? +{delta} bytes (unexpected allocations during block){exc_note}")
 
 
 class MemoryTrace:
@@ -199,7 +192,7 @@ class MemoryTrace:
         self.mem_after: int = 0
         self.delta: int = 0
 
-    def __enter__(self) -> "MemoryTrace":
+    def __enter__(self) -> MemoryTrace:
         self.mem_before = _total_allocated_bytes()
         return self
 
@@ -209,10 +202,7 @@ class MemoryTrace:
         if self.verbose:
             prefix = f"[{self.label}] " if self.label else ""
             status = "OK" if self.delta <= 0 else f"+{self.delta} bytes"
-            print(
-                f"[MEM-TRACE] {prefix}before={self.mem_before}, "
-                f"after={self.mem_after}, delta={status}"
-            )
+            print(f"[MEM-TRACE] {prefix}before={self.mem_before}, after={self.mem_after}, delta={status}")
 
 
 def blob_snapshot(label: str = "", verbose: bool = True) -> int:
@@ -228,10 +218,7 @@ def blob_snapshot(label: str = "", verbose: bool = True) -> int:
     nbytes = _total_allocated_bytes()
     if verbose:
         prefix = f"[{label}] " if label else ""
-        print(
-            f"[MEM-SNAPSHOT] {prefix}total_allocated_bytes={nbytes} "
-            f"({nbytes/1024:.2f} KB)"
-        )
+        print(f"[MEM-SNAPSHOT] {prefix}total_allocated_bytes={nbytes} ({nbytes / 1024:.2f} KB)")
     return nbytes
 
 

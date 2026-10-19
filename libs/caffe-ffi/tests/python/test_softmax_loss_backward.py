@@ -22,14 +22,15 @@ Mathematical reference:
     where N = valid_count (number of non-ignored labels)
     With loss_weight w: dx_j = w * (p_j - 1{j==y}) / N
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
@@ -40,6 +41,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference implementations
 # ---------------------------------------------------------------------------
+
 
 def softmax_np(x, axis=1):
     """Numpy reference for softmax along a given axis."""
@@ -65,13 +67,12 @@ def softmax_loss_backward_np(score, label, axis=1, loss_weight=1.0, ignore_label
             probs: Softmax probabilities (same shape as score).
     """
     probs = softmax_np(score.astype(np.float64), axis=axis)
-    ndim = score.ndim
     outer_num = int(np.prod(score.shape[:axis]))
-    inner_num = int(np.prod(score.shape[axis+1:]))
+    inner_num = int(np.prod(score.shape[axis + 1 :]))
     channels = score.shape[axis]
 
     label_flat = label.reshape(-1)
-    score_t = np.moveaxis(score, axis, 1).reshape(outer_num, channels, inner_num)
+    np.moveaxis(score, axis, 1).reshape(outer_num, channels, inner_num)
     probs_t = np.moveaxis(probs, axis, 1).reshape(outer_num, channels, inner_num)
 
     loss = 0.0
@@ -95,14 +96,14 @@ def softmax_loss_backward_np(score, label, axis=1, loss_weight=1.0, ignore_label
     dX_t *= scale
 
     # Reshape back to original layout
-    dX = np.moveaxis(dX_t.reshape([outer_num, channels] + list(score.shape[axis+1:])),
-                     1, axis)
+    dX = np.moveaxis(dX_t.reshape([outer_num, channels] + list(score.shape[axis + 1 :])), 1, axis)
     return avg_loss, dX.astype(np.float32), probs.astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_sml_prototxt(N, C, H=1, W=1, axis=1, ignore_label=None):
     """Create Input(data) -> Input(label) -> SoftmaxWithLoss(loss) prototxt."""
@@ -154,6 +155,7 @@ def _run_sml_backward(net, x, label, loss_weight=1.0):
 # Numerical gradient helper
 # ---------------------------------------------------------------------------
 
+
 def _num_grad_dx(net, x, label, loss_weight=1.0, h=EPS_NUMERICAL, ignore_label=None):
     """Numerical gradient of loss w.r.t. x via central finite differences.
 
@@ -194,6 +196,7 @@ def _num_grad_dx(net, x, label, loss_weight=1.0, h=EPS_NUMERICAL, ignore_label=N
 # Test Class 1: SoftmaxWithLoss Backward core tests
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSoftmaxWithLossBackward:
     """Core SoftmaxWithLoss backward gradient tests."""
@@ -211,10 +214,10 @@ class TestSoftmaxWithLossBackward:
         # Loss should be near 0 (softmax gives ~1 for class 1)
         assert loss < 1e-4, f"Expected near-zero loss for perfect prediction, got {loss}"
         # dX at class 1 should be ~0 (p-1 ~ 0)
-        assert abs(dX[0, 1, 0, 0]) < 1e-3, f"Expected ~0 grad at true class, got {dX[0,1,0,0]}"
+        assert abs(dX[0, 1, 0, 0]) < 1e-3, f"Expected ~0 grad at true class, got {dX[0, 1, 0, 0]}"
         # dX at other classes should be ~p_j/N ≈ 0 (since p_j ≈ 0 for j≠1)
         for c in [0, 2]:
-            assert abs(dX[0, c, 0, 0]) < 1e-4, f"Expected ~0 grad at class {c}, got {dX[0,c,0,0]}"
+            assert abs(dX[0, c, 0, 0]) < 1e-4, f"Expected ~0 grad at class {c}, got {dX[0, c, 0, 0]}"
 
     def test_sml_known_uniform(self):
         """Uniform logits: p_j = 1/C for all j, loss = -log(1/C) = log(C).
@@ -264,10 +267,8 @@ class TestSoftmaxWithLossBackward:
         loss_cpp, dX_cpp = _run_sml_backward(net, x, label)
         loss_np, dX_np, _ = softmax_loss_backward_np(x, label)
 
-        np.testing.assert_allclose(loss_cpp, loss_np, rtol=1e-4,
-                                    err_msg="Loss mismatch vs numpy")
-        np.testing.assert_allclose(dX_cpp, dX_np, rtol=RTOL, atol=ATOL,
-                                    err_msg="dX mismatch vs numpy reference")
+        np.testing.assert_allclose(loss_cpp, loss_np, rtol=1e-4, err_msg="Loss mismatch vs numpy")
+        np.testing.assert_allclose(dX_cpp, dX_np, rtol=RTOL, atol=ATOL, err_msg="dX mismatch vs numpy reference")
 
     def test_sml_numerical_gradient(self):
         """Numerical gradient check on small tensor (N=2, C=3)."""
@@ -280,8 +281,9 @@ class TestSoftmaxWithLossBackward:
         loss_cpp, dX_analytic = _run_sml_backward(net, x, label)
         dX_numerical = _num_grad_dx(net, x, label, h=EPS_NUMERICAL)
 
-        np.testing.assert_allclose(dX_analytic, dX_numerical, rtol=1e-2, atol=1e-3,
-                                    err_msg="Numerical gradient check failed for dX")
+        np.testing.assert_allclose(
+            dX_analytic, dX_numerical, rtol=1e-2, atol=1e-3, err_msg="Numerical gradient check failed for dX"
+        )
 
     def test_sml_numerical_gradient_spatial(self):
         """Numerical gradient check with spatial dims (N=1, C=4, H=2, W=2)."""
@@ -294,8 +296,9 @@ class TestSoftmaxWithLossBackward:
         _, dX_analytic = _run_sml_backward(net, x, label)
         dX_numerical = _num_grad_dx(net, x, label, h=EPS_NUMERICAL)
 
-        np.testing.assert_allclose(dX_analytic, dX_numerical, rtol=1e-2, atol=1e-3,
-                                    err_msg="Numerical gradient check failed for spatial dX")
+        np.testing.assert_allclose(
+            dX_analytic, dX_numerical, rtol=1e-2, atol=1e-3, err_msg="Numerical gradient check failed for spatial dX"
+        )
 
     def test_sml_loss_weight_scaling(self):
         """Gradient scales linearly with loss_weight."""
@@ -310,8 +313,7 @@ class TestSoftmaxWithLossBackward:
         net2 = _make_sml_net(N, C)
         _, dX_w2 = _run_sml_backward(net2, x, label, loss_weight=2.0)
 
-        np.testing.assert_allclose(dX_w2, 2.0 * dX_w1, rtol=1e-5,
-                                    err_msg="dX should scale linearly with loss_weight")
+        np.testing.assert_allclose(dX_w2, 2.0 * dX_w1, rtol=1e-5, err_msg="dX should scale linearly with loss_weight")
 
     def test_sml_ignore_label(self):
         """Ignored labels should have zero gradient across all channels."""

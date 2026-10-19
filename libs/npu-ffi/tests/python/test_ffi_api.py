@@ -1,8 +1,5 @@
 """Tests for low-level VTA FFI API bindings."""
 
-import gc
-import pytest
-
 from npu_ffi import vta
 
 
@@ -103,49 +100,26 @@ class Test2DLoadStore:
     """Tests for 2D buffer load/store operations."""
 
     def test_load_buffer_2d(self, cmd_handle, buffer_1k):
-        vta.load_buffer_2d(
-            cmd_handle, buffer_1k, 0,
-            16, 8, 32,
-            0, 0, 0, 0,
-            0, int(vta.MemoryType.INP)
-        )
+        vta.load_buffer_2d(cmd_handle, buffer_1k, 0, 16, 8, 32, 0, 0, 0, 0, 0, int(vta.MemoryType.INP))
 
     def test_store_buffer_2d(self, cmd_handle, buffer_1k):
-        vta.store_buffer_2d(
-            cmd_handle, 0, int(vta.MemoryType.ACC),
-            buffer_1k, 0,
-            16, 8, 32
-        )
+        vta.store_buffer_2d(cmd_handle, 0, int(vta.MemoryType.ACC), buffer_1k, 0, 16, 8, 32)
 
     def test_load_buffer_2d_with_padding(self, cmd_handle, buffer_1k):
-        vta.load_buffer_2d(
-            cmd_handle, buffer_1k, 0,
-            8, 4, 16,
-            1, 1, 1, 1,
-            1, int(vta.MemoryType.WGT)
-        )
+        vta.load_buffer_2d(cmd_handle, buffer_1k, 0, 8, 4, 16, 1, 1, 1, 1, 1, int(vta.MemoryType.WGT))
 
 
 class TestUopOperations:
     """Tests for micro-op push operations."""
 
     def test_uop_push_gemm_mode(self):
-        vta.uop_push(
-            0, 1, 0, 0, 0,
-            int(vta.ALUOpcode.ADD), 0, 0
-        )
+        vta.uop_push(0, 1, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
 
     def test_uop_push_alu_mode(self):
-        vta.uop_push(
-            1, 0, 0, 0, 0,
-            int(vta.ALUOpcode.ADD), 0, 0
-        )
+        vta.uop_push(1, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
 
     def test_uop_push_with_immediate(self):
-        vta.uop_push(
-            1, 0, 0, 0, 0,
-            int(vta.ALUOpcode.ADD), 1, 42
-        )
+        vta.uop_push(1, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 1, 42)
 
     def test_uop_loop_begin_end(self):
         vta.uop_loop_begin(4, 1, 1, 1)
@@ -206,10 +180,7 @@ class TestDebugMode:
         vta.set_debug_mode(cmd_handle, int(vta.DebugFlag.DUMP_INSN))
 
     def test_set_debug_mode_all_flags(self, cmd_handle):
-        all_flags = (
-            int(vta.DebugFlag.DUMP_INSN) |
-            int(vta.DebugFlag.DUMP_UOP)
-        )
+        all_flags = int(vta.DebugFlag.DUMP_INSN) | int(vta.DebugFlag.DUMP_UOP)
         vta.set_debug_mode(cmd_handle, all_flags)
 
 

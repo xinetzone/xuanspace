@@ -11,28 +11,31 @@ Tests cover:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-import caffe_ffi
-from caffe_ffi import Blob, net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace, cow_snapshot
+from caffe_ffi import Blob, net_from_param, net_param_from_string
 
+from .conftest import cow_snapshot, require_cpp_extension
 
 # ─── Prototxt builders ──────────────────────────────────────────────
+
 
 def _make_basic_split_prototxt(num_top: int = 2, feat_dim: int = 4) -> str:
     lines = [
         'name: "basic_split"',
-        'layer {',
-        '  name: "data"', '  type: "Input"', '  top: "data"',
-        f'  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}',
-        '}',
-        'layer {',
-        '  name: "split"', '  type: "Split"', '  bottom: "data"',
+        "layer {",
+        '  name: "data"',
+        '  type: "Input"',
+        '  top: "data"',
+        f"  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}",
+        "}",
+        "layer {",
+        '  name: "split"',
+        '  type: "Split"',
+        '  bottom: "data"',
     ]
     for i in range(num_top):
         lines.append(f'  top: "split_{i}"')
-    lines.append('}')
+    lines.append("}")
     return "\n".join(lines)
 
 
@@ -107,6 +110,7 @@ layer {{
 # ═══════════════════════════════════════════════════════════════════════
 # Test Class 1: Blob-level COW API (Python side)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestBlobCOWApi:
@@ -197,8 +201,7 @@ class TestBlobCOWApi:
         assert new_ptr != old_ptr
 
         # Data content preserved
-        np.testing.assert_array_equal(
-            np.asarray(mt), [10.0, 20.0, 30.0, 40.0])
+        np.testing.assert_array_equal(np.asarray(mt), [10.0, 20.0, 30.0, 40.0])
 
     def test_mutable_diff_tensor_triggers_COW(self):
         """mutable_diff_tensor() triggers COW for diff tensor."""
@@ -208,7 +211,7 @@ class TestBlobCOWApi:
         dst.ShareDiff(src)
         assert dst.IsDiffShared()
 
-        mt = dst.mutable_diff_tensor()
+        dst.mutable_diff_tensor()
         assert not dst.IsDiffShared()
         assert dst.DiffRefCount() == 1
 
@@ -284,6 +287,7 @@ class TestBlobCOWApi:
 # Test Class 2: Split-layer COW Integration Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestSplitCOWBehavior:
     """COW behavior verification in Split layer topologies."""
@@ -291,8 +295,7 @@ class TestSplitCOWBehavior:
     def test_n1_split_zero_copy_data_shared(self, ptrace):
         """N=1 Split: top blob shares data pointer with bottom (Phase 1 zero-copy)."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_n1_split_passthrough_prototxt(feat_dim)))
+        net = net_from_param(net_param_from_string(_make_n1_split_passthrough_prototxt(feat_dim)))
         inp = np.random.RandomState(77).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n1_split_cow)"):
             net.Forward({"data": inp})
@@ -301,22 +304,18 @@ class TestSplitCOWBehavior:
         pass_blob = net.blob_by_name("passthrough")
 
         # N=1 Split uses ShareData → zero-copy sharing
-        assert pass_blob.IsDataShared(), \
-            "N=1 Split: passthrough blob must share data tensor"
-        assert pass_blob.SharesDataWith(data_blob), \
-            "N=1 Split: passthrough must share data with bottom"
+        assert pass_blob.IsDataShared(), "N=1 Split: passthrough blob must share data tensor"
+        assert pass_blob.SharesDataWith(data_blob), "N=1 Split: passthrough must share data with bottom"
 
         # Pointers must be equal (zero-copy)
         data_ptr = data_blob.data_tensor.ctypes.data
         pass_ptr = pass_blob.data_tensor.ctypes.data
-        assert data_ptr == pass_ptr, \
-            f"N=1 zero-copy broken: data=0x{data_ptr:x}, pass=0x{pass_ptr:x}"
+        assert data_ptr == pass_ptr, f"N=1 zero-copy broken: data=0x{data_ptr:x}, pass=0x{pass_ptr:x}"
 
     def test_n2_split_data_shared_before_write(self, ptrace):
         """N=2 Split: both top blobs share data with bottom BEFORE any write."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
         inp = np.random.RandomState(42).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n2_split_cow)"):
             net.Forward({"data": inp})
@@ -326,10 +325,8 @@ class TestSplitCOWBehavior:
         split_1 = net.blob_by_name("split_1")
 
         # Phase 2: N>=2 Split uses ShareData → zero-copy sharing
-        assert split_0.IsDataShared(), \
-            "N=2 Split: split_0 must share data tensor (Phase 2 COW)"
-        assert split_1.IsDataShared(), \
-            "N=2 Split: split_1 must share data tensor (Phase 2 COW)"
+        assert split_0.IsDataShared(), "N=2 Split: split_0 must share data tensor (Phase 2 COW)"
+        assert split_1.IsDataShared(), "N=2 Split: split_1 must share data tensor (Phase 2 COW)"
         assert split_0.SharesDataWith(data_blob)
         assert split_1.SharesDataWith(data_blob)
         assert split_0.SharesDataWith(split_1)
@@ -342,8 +339,7 @@ class TestSplitCOWBehavior:
         """N=2 Split: writing to split_0 via mutable_data_tensor triggers COW,
         isolating it from split_1 and data."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
         inp = np.random.RandomState(99).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n2_split_cow_iso)"):
             net.Forward({"data": inp})
@@ -361,31 +357,26 @@ class TestSplitCOWBehavior:
         mt0[0, 0] = 999.0
 
         # split_0 must break sharing after COW
-        assert not split_0.IsDataShared(), \
-            "split_0 must break sharing after COW-triggered write"
+        assert not split_0.IsDataShared(), "split_0 must break sharing after COW-triggered write"
         assert split_0.DataRefCount() == 1
 
         # split_1 and data must still share (unaffected)
-        assert split_1.IsDataShared(), \
-            "split_1 must remain shared after sibling COW"
+        assert split_1.IsDataShared(), "split_1 must remain shared after sibling COW"
         assert split_1.SharesDataWith(data_blob)
 
         # Data isolation: split_1 still has original values
         split_1_data = split_1.to_numpy()
-        np.testing.assert_array_equal(split_1_data, inp,
-            err_msg="COW on split_0 must not affect split_1 data")
+        np.testing.assert_array_equal(split_1_data, inp, err_msg="COW on split_0 must not affect split_1 data")
 
         # split_0 has the modified value
         split_0_data = split_0.to_numpy()
-        assert split_0_data[0, 0] == 999.0, \
-            "split_0 must have the modified value after COW"
+        assert split_0_data[0, 0] == 999.0, "split_0 must have the modified value after COW"
 
     def test_n4_split_cow_isolation_after_write(self, ptrace):
         """N=4 Split: writing to one branch triggers COW for that branch only."""
         feat_dim = 6
         num_tops = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=num_tops, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=num_tops, feat_dim=feat_dim)))
         inp = np.random.RandomState(55).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n4_split_cow)"):
             net.Forward({"data": inp})
@@ -408,11 +399,11 @@ class TestSplitCOWBehavior:
 
         # Other splits: still shared
         for i in [0, 1, 3]:
-            assert splits[i].IsDataShared(), \
-                f"split_{i} must remain shared after sibling COW"
+            assert splits[i].IsDataShared(), f"split_{i} must remain shared after sibling COW"
             assert splits[i].SharesDataWith(data_blob)
-            np.testing.assert_array_equal(splits[i].to_numpy(), inp,
-                err_msg=f"COW on split_2 must not affect split_{i}")
+            np.testing.assert_array_equal(
+                splits[i].to_numpy(), inp, err_msg=f"COW on split_2 must not affect split_{i}"
+            )
 
         # split_2 has modified value
         assert splits[2].to_numpy()[0, 0] == 777.0
@@ -420,8 +411,7 @@ class TestSplitCOWBehavior:
     def test_n2_split_const_access_no_cow(self, ptrace):
         """N=2 Split: const data_tensor access does NOT trigger COW."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
         inp = np.random.RandomState(33).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n2_const_no_cow)"):
             net.Forward({"data": inp})
@@ -445,8 +435,7 @@ class TestSplitCOWBehavior:
     def test_n2_split_cow_after_inplace_relu(self, ptrace):
         """N=2 Split with in-place ReLU on one branch: COW isolates sibling."""
         feat_dim = 8
-        net = net_from_param(net_param_from_string(
-            _make_split_inplace_branch_prototxt(feat_dim)))
+        net = net_from_param(net_param_from_string(_make_split_inplace_branch_prototxt(feat_dim)))
 
         # Set random weights for InnerProduct layers
         rng = np.random.RandomState(55)
@@ -468,13 +457,13 @@ class TestSplitCOWBehavior:
 
         # After in-place ReLU, relu_branch should have triggered COW
         # (ReLU writes to relu_branch in-place, which triggers COW)
-        assert not relu_branch.IsDataShared(), \
-            "In-place ReLU must trigger COW, breaking sharing"
+        assert not relu_branch.IsDataShared(), "In-place ReLU must trigger COW, breaking sharing"
 
         # raw_branch must still contain original data (isolated by COW)
         raw_data = raw_branch.to_numpy()
-        np.testing.assert_array_equal(raw_data, inp,
-            err_msg="In-place ReLU on sibling must not corrupt raw_branch (COW isolation)")
+        np.testing.assert_array_equal(
+            raw_data, inp, err_msg="In-place ReLU on sibling must not corrupt raw_branch (COW isolation)"
+        )
 
         # relu_branch must have ReLU'd values
         relu_data = relu_branch.to_numpy()
@@ -483,8 +472,7 @@ class TestSplitCOWBehavior:
     def test_n2_split_cow_refcount_after_multiple_writes(self, ptrace):
         """N=2 Split: multiple writes to same branch trigger COW only once."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
         inp = np.random.RandomState(11).randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n2_multi_write)"):
             net.Forward({"data": inp})
@@ -511,14 +499,13 @@ class TestSplitCOWBehavior:
     def test_cow_snapshot_before_after_forward(self, ptrace):
         """cow_snapshot() before and after Split forward shows correct state."""
         feat_dim = 4
-        net = net_from_param(net_param_from_string(
-            _make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
+        net = net_from_param(net_param_from_string(_make_basic_split_prototxt(num_top=2, feat_dim=feat_dim)))
         inp = np.random.RandomState(22).randn(2, feat_dim).astype(np.float32)
 
         with ptrace("Forward(cow_snapshot)"):
             net.Forward({"data": inp})
 
-        data_blob = net.blob_by_name("data")
+        net.blob_by_name("data")
         split_0 = net.blob_by_name("split_0")
         split_1 = net.blob_by_name("split_1")
 
@@ -543,6 +530,7 @@ class TestSplitCOWBehavior:
 # ═══════════════════════════════════════════════════════════════════════
 # Test Class 3: Dropout inference-mode COW sharing (S5 optimization)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _make_dropout_prototxt(input_dims, dropout_ratio=0.5):
     """Build Input -> Dropout prototxt (non-inplace, same shape)."""
@@ -593,8 +581,7 @@ class TestDropoutCOWBehavior:
 
     def test_inference_forward_zerocopy_data_shared(self, ptrace):
         """Inference non-inplace forward: top shares bottom's data pointer."""
-        net = net_from_param(net_param_from_string(
-            _make_dropout_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_dropout_prototxt((2, 8))))
         inp = np.random.RandomState(7).randn(2, 8).astype(np.float32)
         with ptrace("Forward(dropout_cow_zerocopy)"):
             net.Forward({"data": inp})
@@ -603,12 +590,11 @@ class TestDropoutCOWBehavior:
         drop_blob = net.blob_by_name("drop")
 
         # COW zero-copy: top shares bottom's data tensor.
-        assert drop_blob.IsDataShared(), \
-            "Inference Dropout: top must share data tensor (zero-copy)"
-        assert drop_blob.SharesDataWith(data_blob), \
-            "Inference Dropout: top must share data with bottom"
-        assert drop_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, \
+        assert drop_blob.IsDataShared(), "Inference Dropout: top must share data tensor (zero-copy)"
+        assert drop_blob.SharesDataWith(data_blob), "Inference Dropout: top must share data with bottom"
+        assert drop_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, (
             "Inference Dropout: pointers must be equal (zero-copy)"
+        )
 
         # Identity output preserved.
         np.testing.assert_array_equal(drop_blob.to_numpy(), inp)
@@ -616,22 +602,19 @@ class TestDropoutCOWBehavior:
     def test_inference_forward_identity_preserved(self, ptrace):
         """Identity forward still holds after COW sharing (y == x)."""
         dims = (3, 4, 5)
-        net = net_from_param(net_param_from_string(
-            _make_dropout_prototxt(dims, dropout_ratio=0.3)))
+        net = net_from_param(net_param_from_string(_make_dropout_prototxt(dims, dropout_ratio=0.3)))
         inp = np.random.RandomState(21).randn(*dims).astype(np.float32)
         with ptrace("Forward(dropout_cow_identity)"):
             net.Forward({"data": inp})
         drop_blob = net.blob_by_name("drop")
         # .data returns a copy; const access must not trigger COW.
         np.testing.assert_array_equal(drop_blob.data, inp)
-        assert drop_blob.IsDataShared(), \
-            "const .data access must not trigger COW"
+        assert drop_blob.IsDataShared(), "const .data access must not trigger COW"
 
     def test_inference_downstream_inplace_relu_cow_isolation(self, ptrace):
         """In-place ReLU downstream triggers COW; bottom data stays intact."""
         dims = (2, 8)
-        net = net_from_param(net_param_from_string(
-            _make_dropout_relu_prototxt(dims, dropout_ratio=0.5)))
+        net = net_from_param(net_param_from_string(_make_dropout_relu_prototxt(dims, dropout_ratio=0.5)))
         inp = np.random.RandomState(33).randn(*dims).astype(np.float32)
         with ptrace("Forward(dropout_cow_relu)"):
             net.Forward({"data": inp})
@@ -640,8 +623,7 @@ class TestDropoutCOWBehavior:
         drop_blob = net.blob_by_name("drop")
 
         # In-place ReLU wrote to drop -> COW triggered, drop isolated.
-        assert not drop_blob.IsDataShared(), \
-            "In-place ReLU on drop must trigger COW, breaking sharing"
+        assert not drop_blob.IsDataShared(), "In-place ReLU on drop must trigger COW, breaking sharing"
         assert drop_blob.data_tensor.ctypes.data != data_blob.data_tensor.ctypes.data
         # bottom (data) unchanged.
         np.testing.assert_array_equal(data_blob.to_numpy(), inp)
@@ -650,8 +632,7 @@ class TestDropoutCOWBehavior:
 
     def test_inference_backward_zerocopy_diff_shared(self, ptrace):
         """Inference backward (non-inplace): bottom diff shares top diff."""
-        net = net_from_param(net_param_from_string(
-            _make_dropout_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_dropout_prototxt((2, 8))))
         inp = np.random.RandomState(5).randn(2, 8).astype(np.float32)
         dy = np.random.RandomState(6).randn(2, 8).astype(np.float32)
         with ptrace("Forward(dropout_cow_bw)"):
@@ -661,25 +642,21 @@ class TestDropoutCOWBehavior:
         data_blob = net.blob_by_name("data")
         drop_blob = net.blob_by_name("drop")
 
-        assert data_blob.IsDiffShared(), \
-            "Inference Dropout backward: bottom diff must be shared"
-        assert data_blob.SharesDiffWith(drop_blob), \
-            "Inference Dropout backward: bottom diff shares top diff"
+        assert data_blob.IsDiffShared(), "Inference Dropout backward: bottom diff must be shared"
+        assert data_blob.SharesDiffWith(drop_blob), "Inference Dropout backward: bottom diff shares top diff"
         # Identity dx == dy.
         np.testing.assert_array_equal(data_blob.diff, dy)
 
     def test_training_forward_no_cow_share(self):
         """Training forward must NOT share (masked copy), default behavior kept."""
-        net = net_from_param(net_param_from_string(
-            _make_dropout_prototxt((4, 16))))
+        net = net_from_param(net_param_from_string(_make_dropout_prototxt((4, 16))))
         layer = net.layer_by_name("drop")
         layer.set_train_mode(True)
         x = np.full((4, 16), 1.0, dtype=np.float32)
         net.Forward({"data": x})
         drop_blob = net.blob_by_name("drop")
         # Training performs a real masked copy -> no COW sharing with bottom.
-        assert not drop_blob.IsDataShared(), \
-            "Training Dropout must not share data tensor with bottom"
+        assert not drop_blob.IsDataShared(), "Training Dropout must not share data tensor with bottom"
 
     def test_inplace_dropout_no_share(self):
         """Inplace Dropout (top == bottom) needs no COW sharing."""
@@ -705,10 +682,11 @@ layer {
 
 # ─── Prototxt builders for TS31-B4 identity-layer COW promotion ──────────
 
+
 def _make_scale_identity_prototxt(dims, bias_term=True) -> str:
     """Input -> Scale with scale=1.0 and bias=0.0 (identity)."""
     bias_str = "true" if bias_term else "false"
-    bias_filler = "bias_filler { type: \"constant\" value: 0.0 }" if bias_term else ""
+    bias_filler = 'bias_filler { type: "constant" value: 0.0 }' if bias_term else ""
     return f"""name: "scale_cow"
 input: "data"
 input_dim: {dims[0]}
@@ -849,25 +827,22 @@ class TestIdentityLayerCOWBehavior:
 
     def test_scale_identity_forward_zerocopy(self, ptrace):
         """Scale(scale=1, no bias) forward: top shares bottom's data pointer."""
-        net = net_from_param(net_param_from_string(
-            _make_scale_identity_prototxt((2, 8), bias_term=False)))
+        net = net_from_param(net_param_from_string(_make_scale_identity_prototxt((2, 8), bias_term=False)))
         inp = np.random.RandomState(11).randn(2, 8).astype(np.float32)
         with ptrace("Forward(scale_cow_identity)"):
             net.Forward({"data": inp})
         data_blob = net.blob_by_name("data")
         scale_blob = net.blob_by_name("scale_out")
-        assert scale_blob.IsDataShared(), \
-            "Identity Scale: top must share data tensor (zero-copy)"
-        assert scale_blob.SharesDataWith(data_blob), \
-            "Identity Scale: top must share data with bottom"
-        assert scale_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, \
+        assert scale_blob.IsDataShared(), "Identity Scale: top must share data tensor (zero-copy)"
+        assert scale_blob.SharesDataWith(data_blob), "Identity Scale: top must share data with bottom"
+        assert scale_blob.data_tensor.ctypes.data == data_blob.data_tensor.ctypes.data, (
             "Identity Scale: pointers must be equal (zero-copy)"
+        )
         np.testing.assert_array_equal(scale_blob.to_numpy(), inp)
 
     def test_scale_identity_with_bias_zero_zerocopy(self, ptrace):
         """Scale(scale=1, bias=0) forward: also zero-copy."""
-        net = net_from_param(net_param_from_string(
-            _make_scale_identity_prototxt((2, 8), bias_term=True)))
+        net = net_from_param(net_param_from_string(_make_scale_identity_prototxt((2, 8), bias_term=True)))
         inp = np.random.RandomState(12).randn(2, 8).astype(np.float32)
         with ptrace("Forward(scale_cow_bias_zero)"):
             net.Forward({"data": inp})
@@ -879,21 +854,18 @@ class TestIdentityLayerCOWBehavior:
 
     def test_scale_nonidentity_no_cow(self):
         """Scale(scale=2.0) forward: real copy, no COW sharing."""
-        net = net_from_param(net_param_from_string(
-            _make_scale_nonidentity_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_scale_nonidentity_prototxt((2, 8))))
         inp = np.random.RandomState(13).randn(2, 8).astype(np.float32)
         net.Forward({"data": inp})
         data_blob = net.blob_by_name("data")
         scale_blob = net.blob_by_name("scale_out")
-        assert not scale_blob.IsDataShared(), \
-            "Non-identity Scale must not share data tensor"
+        assert not scale_blob.IsDataShared(), "Non-identity Scale must not share data tensor"
         assert not scale_blob.SharesDataWith(data_blob)
         np.testing.assert_allclose(scale_blob.to_numpy(), 2.0 * inp, rtol=1e-6)
 
     def test_scale_identity_backward_zerocopy(self, ptrace):
         """Identity Scale backward: bottom diff shares top diff."""
-        net = net_from_param(net_param_from_string(
-            _make_scale_identity_prototxt((2, 8), bias_term=False)))
+        net = net_from_param(net_param_from_string(_make_scale_identity_prototxt((2, 8), bias_term=False)))
         inp = np.random.RandomState(14).randn(2, 8).astype(np.float32)
         dy = np.random.RandomState(15).randn(2, 8).astype(np.float32)
         with ptrace("FwdBwd(scale_cow_bw)"):
@@ -901,32 +873,27 @@ class TestIdentityLayerCOWBehavior:
             net.backward({"scale_out": dy})
         data_blob = net.blob_by_name("data")
         scale_blob = net.blob_by_name("scale_out")
-        assert data_blob.IsDiffShared(), \
-            "Identity Scale backward: bottom diff must be shared"
-        assert data_blob.SharesDiffWith(scale_blob), \
-            "Identity Scale backward: bottom diff shares top diff"
+        assert data_blob.IsDiffShared(), "Identity Scale backward: bottom diff must be shared"
+        assert data_blob.SharesDiffWith(scale_blob), "Identity Scale backward: bottom diff shares top diff"
         np.testing.assert_array_equal(data_blob.diff, dy)
 
     def test_scale_downstream_inplace_relu_cow_isolation(self, ptrace):
         """In-place ReLU downstream triggers COW; bottom data stays intact."""
         dims = (2, 8)
-        net = net_from_param(net_param_from_string(
-            _make_scale_relu_prototxt(dims)))
+        net = net_from_param(net_param_from_string(_make_scale_relu_prototxt(dims)))
         inp = np.random.RandomState(16).randn(*dims).astype(np.float32)
         with ptrace("Forward(scale_cow_relu)"):
             net.Forward({"data": inp})
         data_blob = net.blob_by_name("data")
         scale_blob = net.blob_by_name("scale_out")
-        assert not scale_blob.IsDataShared(), \
-            "In-place ReLU on scale_out must trigger COW, breaking sharing"
+        assert not scale_blob.IsDataShared(), "In-place ReLU on scale_out must trigger COW, breaking sharing"
         assert scale_blob.data_tensor.ctypes.data != data_blob.data_tensor.ctypes.data
         np.testing.assert_array_equal(data_blob.to_numpy(), inp)
         np.testing.assert_array_equal(scale_blob.to_numpy(), np.maximum(inp, 0))
 
     def test_bias_identity_forward_zerocopy(self, ptrace):
         """Bias(bias=0) forward: top shares bottom's data pointer."""
-        net = net_from_param(net_param_from_string(
-            _make_bias_identity_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_bias_identity_prototxt((2, 8))))
         inp = np.random.RandomState(17).randn(2, 8).astype(np.float32)
         with ptrace("Forward(bias_cow_identity)"):
             net.Forward({"data": inp})
@@ -939,8 +906,7 @@ class TestIdentityLayerCOWBehavior:
 
     def test_bias_nonidentity_no_cow(self):
         """Bias(bias=2.0) forward: real copy, no COW sharing."""
-        net = net_from_param(net_param_from_string(
-            _make_bias_nonidentity_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_bias_nonidentity_prototxt((2, 8))))
         inp = np.random.RandomState(18).randn(2, 8).astype(np.float32)
         net.Forward({"data": inp})
         data_blob = net.blob_by_name("data")
@@ -951,8 +917,7 @@ class TestIdentityLayerCOWBehavior:
 
     def test_bias_identity_backward_zerocopy(self, ptrace):
         """Identity Bias backward: bottom diff shares top diff."""
-        net = net_from_param(net_param_from_string(
-            _make_bias_identity_prototxt((2, 8))))
+        net = net_from_param(net_param_from_string(_make_bias_identity_prototxt((2, 8))))
         inp = np.random.RandomState(19).randn(2, 8).astype(np.float32)
         dy = np.random.RandomState(20).randn(2, 8).astype(np.float32)
         with ptrace("FwdBwd(bias_cow_bw)"):
@@ -966,8 +931,7 @@ class TestIdentityLayerCOWBehavior:
 
     def test_eltwise_identity_forward_zerocopy(self, ptrace):
         """Single-bottom Eltwise(coeff=1) forward: top shares bottom's data."""
-        net = net_from_param(net_param_from_string(
-            _make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
+        net = net_from_param(net_param_from_string(_make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
         inp = np.random.RandomState(21).randn(2, 8).astype(np.float32)
         with ptrace("Forward(eltwise_cow_identity)"):
             net.Forward({"data": inp})
@@ -980,8 +944,7 @@ class TestIdentityLayerCOWBehavior:
 
     def test_eltwise_nonidentity_no_cow(self):
         """Single-bottom Eltwise(coeff=2.0) forward: real copy, no COW sharing."""
-        net = net_from_param(net_param_from_string(
-            _make_eltwise_identity_prototxt((2, 8), coeff=2.0)))
+        net = net_from_param(net_param_from_string(_make_eltwise_identity_prototxt((2, 8), coeff=2.0)))
         inp = np.random.RandomState(22).randn(2, 8).astype(np.float32)
         net.Forward({"data": inp})
         data_blob = net.blob_by_name("data")
@@ -992,8 +955,7 @@ class TestIdentityLayerCOWBehavior:
 
     def test_eltwise_identity_backward_zerocopy(self, ptrace):
         """Identity Eltwise backward: bottom diff shares top diff."""
-        net = net_from_param(net_param_from_string(
-            _make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
+        net = net_from_param(net_param_from_string(_make_eltwise_identity_prototxt((2, 8), coeff=1.0)))
         inp = np.random.RandomState(23).randn(2, 8).astype(np.float32)
         dy = np.random.RandomState(24).randn(2, 8).astype(np.float32)
         with ptrace("FwdBwd(eltwise_cow_bw)"):

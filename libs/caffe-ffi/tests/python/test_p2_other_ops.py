@@ -26,15 +26,15 @@ Reference semantics from the C++ sources under
   * WindowData    - invokes a data-io callback registered under ``"WindowData.<name>"``
                     with the top blobs' writable tensors; zeros fallback w/o a callback.
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
+from .caffe_test_helpers import dump_net_state, make_net, make_net_with_diag
 from .conftest import require_cpp_extension
-from .caffe_test_helpers import make_net, make_net_with_diag, dump_net_state
 
 RTOL = 1e-3
 ATOL = 1e-4
@@ -44,6 +44,7 @@ EPS_NUMERICAL = 1e-3
 # ---------------------------------------------------------------------------
 # Shared FFI helpers
 # ---------------------------------------------------------------------------
+
 
 def _ffi_get(name: str):
     from caffe_ffi import _ffi_api
@@ -84,6 +85,7 @@ def _fill_constant_cb(value: float, label: float = 0.0):
 # Upsample
 # ---------------------------------------------------------------------------
 
+
 def _make_upsample_prototxt(N, C, H, W, scale):
     return textwrap.dedent(f"""\
         name: "test_upsample"
@@ -110,8 +112,7 @@ def _upsample_numpy(x, scale):
     out = np.zeros((n, c, h * scale, w * scale), dtype=np.float64)
     for i in range(h):
         for j in range(w):
-            out[:, :, i * scale:(i + 1) * scale,
-                     j * scale:(j + 1) * scale] = x[:, :, i:i + 1, j:j + 1]
+            out[:, :, i * scale : (i + 1) * scale, j * scale : (j + 1) * scale] = x[:, :, i : i + 1, j : j + 1]
     return out
 
 
@@ -119,20 +120,16 @@ def _upsample_numpy(x, scale):
 class TestUpsample:
     def test_registration(self):
         net = make_net(_make_upsample_prototxt(1, 1, 2, 2, 2))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "Upsample" in types
 
     def test_forward_nearest_neighbor(self):
         x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)  # (1,1,2,2)
-        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2),
-                                    tag="upsample_nearest")
+        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2), tag="upsample_nearest")
         dump_net_state(net, tag="upsample_nearest_before_fwd")
         out = net.Forward({"data": x})["out"].to_numpy()
         dump_net_state(net, tag="upsample_nearest_after_fwd")
-        expected = np.array([[[[1, 1, 2, 2],
-                               [1, 1, 2, 2],
-                               [3, 3, 4, 4],
-                               [3, 3, 4, 4]]]], dtype=np.float32)
+        expected = np.array([[[[1, 1, 2, 2], [1, 1, 2, 2], [3, 3, 4, 4], [3, 3, 4, 4]]]], dtype=np.float32)
         np.testing.assert_array_equal(out, expected)
 
     def test_forward_scale3_shape(self):
@@ -145,8 +142,7 @@ class TestUpsample:
 
     def test_backward_gradient_sums_over_block(self):
         x = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
-        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2),
-                                    tag="upsample_bwd")
+        net, _ = make_net_with_diag(_make_upsample_prototxt(1, 1, 2, 2, 2), tag="upsample_bwd")
         dy = np.ones((1, 1, 4, 4), dtype=np.float32)
         dump_net_state(net, tag="upsample_bwd_before_fwd")
         net.Forward({"data": x})
@@ -155,8 +151,7 @@ class TestUpsample:
         dump_net_state(net, tag="upsample_bwd_after_bwd")
         dx = net.blob_by_name("data").diff
         # Each 2x2 block sums to 4.
-        np.testing.assert_allclose(dx, np.full((1, 1, 2, 2), 4.0),
-                                   rtol=RTOL, atol=ATOL)
+        np.testing.assert_allclose(dx, np.full((1, 1, 2, 2), 4.0), rtol=RTOL, atol=ATOL)
 
     def test_numerical_gradient(self):
         np.random.seed(31)
@@ -186,13 +181,13 @@ class TestUpsample:
             xm.ravel()[i] = orig - EPS_NUMERICAL
             lm = _loss(xm)
             flat_grad[i] = (lp - lm) / (2.0 * EPS_NUMERICAL)
-        np.testing.assert_allclose(dx, grad.astype(np.float32),
-                                   rtol=1e-2, atol=1e-3)
+        np.testing.assert_allclose(dx, grad.astype(np.float32), rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # MemoryData
 # ---------------------------------------------------------------------------
+
 
 def _make_memorydata_prototxt(batch, channels, height, width):
     return textwrap.dedent(f"""\
@@ -215,12 +210,11 @@ def _make_memorydata_prototxt(batch, channels, height, width):
 class TestMemoryData:
     def test_registration(self):
         net = make_net(_make_memorydata_prototxt(2, 3, 4, 4))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "MemoryData" in types
 
     def test_forward_zeros_when_no_data(self):
-        net, _ = make_net_with_diag(_make_memorydata_prototxt(2, 3, 4, 5),
-                                    tag="memdata_zeros")
+        net, _ = make_net_with_diag(_make_memorydata_prototxt(2, 3, 4, 5), tag="memdata_zeros")
         dump_net_state(net, tag="memdata_zeros_before_fwd")
         out = net.Forward({})["out"].to_numpy()
         dump_net_state(net, tag="memdata_zeros_after_fwd")
@@ -231,6 +225,7 @@ class TestMemoryData:
 # ---------------------------------------------------------------------------
 # DummyData
 # ---------------------------------------------------------------------------
+
 
 def _make_dummydata_prototxt(shape_dims, filler):
     dims = " ".join(f"dim: {d}" for d in shape_dims)
@@ -252,7 +247,7 @@ def _make_dummydata_prototxt(shape_dims, filler):
 class TestDummyData:
     def test_registration(self):
         net = make_net(_make_dummydata_prototxt([2, 3], 'type: "constant" value: 1.0'))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "DummyData" in types
 
     def test_forward_constant(self):
@@ -285,6 +280,7 @@ class TestDummyData:
 # Python
 # ---------------------------------------------------------------------------
 
+
 def _make_python_prototxt(module, layer):
     return textwrap.dedent(f"""\
         name: "test_python"
@@ -304,14 +300,13 @@ def _make_python_prototxt(module, layer):
 class TestPythonLayer:
     def test_registration(self):
         net = make_net(_make_python_prototxt("mymod", "mylayer"))
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "Python" in types
 
     def test_forward_no_op_without_callback(self):
         # No callback registered for "mymod.mylayer" -> layer degrades to no-op
         # and Forward must complete without error.
-        net, _ = make_net_with_diag(_make_python_prototxt("mymod", "mylayer"),
-                                    tag="python_nocb")
+        net, _ = make_net_with_diag(_make_python_prototxt("mymod", "mylayer"), tag="python_nocb")
         dump_net_state(net, tag="python_nocb_before_fwd")
         net.Forward({})  # should not raise
         dump_net_state(net, tag="python_nocb_after_fwd")
@@ -326,8 +321,7 @@ class TestPythonLayer:
             calls["count"] += 1
 
         _register_python_layer("mod", "layer", _cb)
-        net, _ = make_net_with_diag(_make_python_prototxt("mod", "layer"),
-                                    tag="python_cb")
+        net, _ = make_net_with_diag(_make_python_prototxt("mod", "layer"), tag="python_cb")
         dump_net_state(net, tag="python_cb_before_fwd")
         net.Forward({})
         dump_net_state(net, tag="python_cb_after_fwd")
@@ -338,16 +332,19 @@ class TestPythonLayer:
 # HDF5Output
 # ---------------------------------------------------------------------------
 
+
 def _make_hdf5output_prototxt(layer_name="h5out", file_name="out.h5", with_label=True):
     label_layer = ""
     label_bottom = ""
     if with_label:
-        label_layer = ('  layer {\n'
-                       '    name: "label"\n'
-                       '    type: "Input"\n'
-                       '    top: "label"\n'
-                       '    input_param { shape { dim: 2 } }\n'
-                       '  }\n')
+        label_layer = (
+            "  layer {\n"
+            '    name: "label"\n'
+            '    type: "Input"\n'
+            '    top: "label"\n'
+            "    input_param { shape { dim: 2 } }\n"
+            "  }\n"
+        )
         label_bottom = '  bottom: "label"\n'
     return textwrap.dedent(f"""\
         name: "test_hdf5output"
@@ -370,7 +367,7 @@ def _make_hdf5output_prototxt(layer_name="h5out", file_name="out.h5", with_label
 class TestHDF5Output:
     def test_registration(self):
         net = make_net(_make_hdf5output_prototxt())
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "HDF5Output" in types
 
     def test_forward_invokes_callback_with_bottom(self):
@@ -384,8 +381,7 @@ class TestHDF5Output:
             seen["label"] = np.from_dlpack(tensors[1]).copy()
 
         _register_data_io("HDF5Output.h5out", _cb)
-        net, _ = make_net_with_diag(_make_hdf5output_prototxt(),
-                                    tag="hdf5_cb")
+        net, _ = make_net_with_diag(_make_hdf5output_prototxt(), tag="hdf5_cb")
         dump_net_state(net, tag="hdf5_cb_before_fwd")
         x = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         y = np.array([0.0, 1.0], dtype=np.float32)
@@ -396,8 +392,7 @@ class TestHDF5Output:
         np.testing.assert_allclose(seen["label"], y, rtol=RTOL, atol=ATOL)
 
     def test_forward_no_callback_skips_write(self):
-        net, _ = make_net_with_diag(_make_hdf5output_prototxt(layer_name="h5_nocb"),
-                                    tag="hdf5_nocb")
+        net, _ = make_net_with_diag(_make_hdf5output_prototxt(layer_name="h5_nocb"), tag="hdf5_nocb")
         dump_net_state(net, tag="hdf5_nocb_before_fwd")
         x = np.random.randn(2, 3).astype(np.float32)
         y = np.random.randn(2).astype(np.float32)
@@ -408,6 +403,7 @@ class TestHDF5Output:
 # ---------------------------------------------------------------------------
 # WindowData
 # ---------------------------------------------------------------------------
+
 
 def _make_windowdata_prototxt(layer_name="win", batch_size=2):
     return textwrap.dedent(f"""\
@@ -429,44 +425,42 @@ def _make_windowdata_prototxt(layer_name="win", batch_size=2):
 class TestWindowData:
     def test_registration(self):
         net = make_net(_make_windowdata_prototxt())
-        types = [l.type for l in net.layers_array()]
+        types = [layer.type for layer in net.layers_array()]
         assert "WindowData" in types
 
     def test_forward_fills_data_and_label(self):
         _register_data_io("WindowData.fill_win", _fill_constant_cb(3.5, label=2.0))
-        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="fill_win", batch_size=2),
-                                    tag="window_cb")
+        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="fill_win", batch_size=2), tag="window_cb")
         dump_net_state(net, tag="window_cb_before_fwd")
         net.Forward({})
         dump_net_state(net, tag="window_cb_after_fwd")
         d = net.blob_by_name("data").to_numpy()
-        l = net.blob_by_name("label").to_numpy()
+        label = net.blob_by_name("label").to_numpy()
         # WindowData Reshape: top[0] -> [batch,3,1,1], top[1] -> [batch].
         assert tuple(d.shape) == (2, 3, 1, 1)
-        assert tuple(l.shape) == (2,)
+        assert tuple(label.shape) == (2,)
         np.testing.assert_allclose(d, 3.5, rtol=RTOL, atol=ATOL)
-        np.testing.assert_allclose(l, 2.0, rtol=RTOL, atol=ATOL)
+        np.testing.assert_allclose(label, 2.0, rtol=RTOL, atol=ATOL)
 
     def test_forward_no_callback_zeros(self):
-        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="win_nocb", batch_size=2),
-                                    tag="window_nocb")
+        net, _ = make_net_with_diag(_make_windowdata_prototxt(layer_name="win_nocb", batch_size=2), tag="window_nocb")
         dump_net_state(net, tag="window_nocb_before_fwd")
         net.Forward({})
         dump_net_state(net, tag="window_nocb_after_fwd")
         d = net.blob_by_name("data").to_numpy()
-        l = net.blob_by_name("label").to_numpy()
+        label = net.blob_by_name("label").to_numpy()
         np.testing.assert_allclose(d, 0.0, rtol=0, atol=0)
-        np.testing.assert_allclose(l, 0.0, rtol=0, atol=0)
+        np.testing.assert_allclose(label, 0.0, rtol=0, atol=0)
 
 
 # ---------------------------------------------------------------------------
 # Cross-layer registration sanity (LayerTypeList contains the P2 operators)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 def test_p2_other_operators_registered_in_layer_factory():
     fn = _ffi_get("caffe_ffi.LayerTypeList")
     types = set(fn())
-    for op in ("Upsample", "MemoryData", "DummyData", "Python",
-               "HDF5Output", "WindowData"):
+    for op in ("Upsample", "MemoryData", "DummyData", "Python", "HDF5Output", "WindowData"):
         assert op in types, f"{op} not registered in LayerTypeList"

@@ -1,7 +1,5 @@
 """Math operations module with C++ accelerated implementations via FFI."""
 
-from typing import List, Tuple
-
 from . import _ffi_api as _LIB
 
 
@@ -38,7 +36,7 @@ def is_prime(n: int) -> bool:
     return bool(_LIB.is_prime(int(n)))
 
 
-def vec_add(a: List[float], b: List[float]) -> List[float]:
+def vec_add(a: list[float], b: list[float]) -> list[float]:
     """Element-wise addition of two vectors.
 
     Args:
@@ -54,7 +52,7 @@ def vec_add(a: List[float], b: List[float]) -> List[float]:
     return list(_value_error_call(_LIB.vec_add, list(a), list(b)))
 
 
-def vec_scale(v: List[float], factor: float) -> List[float]:
+def vec_scale(v: list[float], factor: float) -> list[float]:
     """Multiply each element of vector v by factor.
 
     Args:
@@ -67,7 +65,7 @@ def vec_scale(v: List[float], factor: float) -> List[float]:
     return list(_LIB.vec_scale(list(v), float(factor)))
 
 
-def vec_dot(a: List[float], b: List[float]) -> float:
+def vec_dot(a: list[float], b: list[float]) -> float:
     """Compute the dot product of two vectors.
 
     Args:
@@ -83,7 +81,7 @@ def vec_dot(a: List[float], b: List[float]) -> float:
     return float(_value_error_call(_LIB.vec_dot, list(a), list(b)))
 
 
-def vec_l2_norm(v: List[float]) -> float:
+def vec_l2_norm(v: list[float]) -> float:
     """Compute the L2 (Euclidean) norm of a vector.
 
     Args:
@@ -95,7 +93,7 @@ def vec_l2_norm(v: List[float]) -> float:
     return float(_LIB.vec_l2_norm(list(v)))
 
 
-def vec_stats(v: List[float]) -> Tuple[float, float, float, float]:
+def vec_stats(v: list[float]) -> tuple[float, float, float, float]:
     """Compute basic descriptive statistics of a vector.
 
     Args:
@@ -162,7 +160,7 @@ def lcm(a: int, b: int) -> int:
     return int(_LIB.lcm(int(a), int(b)))
 
 
-def sieve_primes(limit: int) -> List[int]:
+def sieve_primes(limit: int) -> list[int]:
     """Generate all prime numbers up to `limit` using the Sieve of Eratosthenes.
 
     Args:
@@ -186,7 +184,7 @@ def sigmoid(x: float) -> float:
     return float(_LIB.sigmoid(float(x)))
 
 
-def vec_sigmoid(v: List[float]) -> List[float]:
+def vec_sigmoid(v: list[float]) -> list[float]:
     """Apply sigmoid element-wise to a vector.
 
     Args:
@@ -198,7 +196,7 @@ def vec_sigmoid(v: List[float]) -> List[float]:
     return list(_LIB.vec_sigmoid(list(v)))
 
 
-def binary_search(sorted_arr: List[float], target: float) -> int:
+def binary_search(sorted_arr: list[float], target: float) -> int:
     """Binary search for target in a sorted ascending array.
 
     Args:

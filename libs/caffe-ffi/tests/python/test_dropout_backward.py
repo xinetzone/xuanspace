@@ -21,6 +21,7 @@ Covers:
 Dropout has NO learnable parameters (no weight/bias blobs), so only dX needs
 verification.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -29,11 +30,12 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_input,
 )
+from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
 
@@ -41,6 +43,7 @@ EPS_NUMERICAL = 1e-3
 # ---------------------------------------------------------------------------
 # Numpy reference for Dropout backward (inference identity)
 # ---------------------------------------------------------------------------
+
 
 def dropout_backward_np(dy, dropout_ratio=0.5):
     """Numpy reference for inference-mode Dropout backward.
@@ -53,6 +56,7 @@ def dropout_backward_np(dy, dropout_ratio=0.5):
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_dropout_prototxt(input_dims, dropout_ratio=0.5):
     """Create Input -> Dropout prototxt."""
@@ -89,6 +93,7 @@ def _run_dropout_backward(net, x, dy):
 # ---------------------------------------------------------------------------
 # Test Class 1: Identity forward/backward known values
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestDropoutIdentity:
@@ -129,6 +134,7 @@ class TestDropoutIdentity:
 # Test Class 2: 4D tensor (NCHW) backward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestDropout4DBackward:
     """Dropout backward on 4D NCHW tensors (typical convnet use)."""
@@ -157,16 +163,22 @@ class TestDropout4DBackward:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "drop", dy, h=EPS_NUMERICAL,
-            name="dropout_4d_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "drop",
+            dy,
+            h=EPS_NUMERICAL,
+            name="dropout_4d_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(Dropout 4D)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(Dropout 4D)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 3: Numerical gradient for 2D (InnerProduct-style)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestDropout2DNumerical:
@@ -186,16 +198,22 @@ class TestDropout2DNumerical:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "drop", dy, h=EPS_NUMERICAL,
-            name=f"dropout_2d_r{ratio}_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "drop",
+            dy,
+            h=EPS_NUMERICAL,
+            name=f"dropout_2d_r{ratio}_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name=f"dX(Dropout 2D r={ratio})",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name=f"dX(Dropout 2D r={ratio})", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 4: Edge cases
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestDropoutEdgeCases:
@@ -283,6 +301,7 @@ class TestDropoutEdgeCases:
 # for stochastic dropout, so training-mode gradient is verified analytically.
 # ---------------------------------------------------------------------------
 
+
 def _make_train_net(input_dims, dropout_ratio=0.5):
     """Build a Dropout net and return (net, layer) with train mode pre-enabled."""
     net = _make_dropout_net(input_dims, dropout_ratio)
@@ -323,8 +342,7 @@ class TestDropoutTrainMode:
         np.testing.assert_allclose(y, x * mask * scale, rtol=1e-6, atol=1e-6)
         # Empirically estimate the kept fraction against (1 - ratio).
         kept = float(mask.mean())
-        assert abs(kept - (1.0 - ratio)) < 0.1, \
-            f"kept fraction {kept:.3f} deviates from {1.0 - ratio:.3f}"
+        assert abs(kept - (1.0 - ratio)) < 0.1, f"kept fraction {kept:.3f} deviates from {1.0 - ratio:.3f}"
 
     def test_forward_train_ratio0_no_drop(self):
         """ratio=0: scale=1, mask all ones, output identical to input."""

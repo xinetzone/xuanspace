@@ -29,7 +29,9 @@ class TestUndeclaredAndEnvironment:
     def test_environment_secret_at_build_time_with_target(self) -> None:
         c = _compose({"token": {"environment": "TOKEN_VAR"}})
         out = get_secret_args(
-            c, {"_service": "web"}, {"source": "token", "target": "build-token"},
+            c,
+            {"_service": "web"},
+            {"source": "token", "target": "build-token"},
             podman_is_building=True,
         )
         assert out == ["--secret", "id=build-token,env=TOKEN_VAR"]
@@ -50,7 +52,9 @@ class TestBuildFileSecrets:
     def test_plain_target_becomes_id(self) -> None:
         c = _compose({"cfg": {"file": "./cfg.txt"}})
         out = get_secret_args(
-            c, {"_service": "web"}, {"source": "cfg", "target": "renamed.txt"},
+            c,
+            {"_service": "web"},
+            {"source": "cfg", "target": "renamed.txt"},
             podman_is_building=True,
         )
         assert out[1].startswith("id=renamed.txt,src=")
@@ -59,7 +63,9 @@ class TestBuildFileSecrets:
         c = _compose({"cfg": {"file": "./cfg.txt"}})
         with pytest.raises(ValueError, match="invalid target"):
             get_secret_args(
-                c, {"_service": "web"}, {"source": "cfg", "target": "dir/cfg.txt"},
+                c,
+                {"_service": "web"},
+                {"source": "cfg", "target": "dir/cfg.txt"},
                 podman_is_building=True,
             )
 
@@ -73,16 +79,12 @@ class TestRunFileSecrets:
 
     def test_relative_target(self) -> None:
         c = _compose({"cfg": {"file": "./cfg.txt"}})
-        out = get_secret_args(
-            c, {"_service": "web"}, {"source": "cfg", "target": "my.cfg"}
-        )
+        out = get_secret_args(c, {"_service": "web"}, {"source": "cfg", "target": "my.cfg"})
         assert out[1].endswith(":/run/secrets/my.cfg:ro,rprivate,rbind")
 
     def test_absolute_target_used_verbatim(self) -> None:
         c = _compose({"cfg": {"file": "./cfg.txt"}})
-        out = get_secret_args(
-            c, {"_service": "web"}, {"source": "cfg", "target": "/etc/my.cfg"}
-        )
+        out = get_secret_args(c, {"_service": "web"}, {"source": "cfg", "target": "/etc/my.cfg"})
         assert out[1].endswith(":/etc/my.cfg:ro,rprivate,rbind")
 
     @pytest.mark.parametrize("relabel,expected", [("z", ",z"), ("Z", ",Z")])
@@ -100,7 +102,8 @@ class TestRunFileSecrets:
         c = _compose({"cfg": {"file": "./cfg.txt"}})
         with caplog.at_level("WARNING"):
             out = get_secret_args(
-                c, {"_service": "web"},
+                c,
+                {"_service": "web"},
                 {"source": "cfg", "uid": "1000", "gid": "1000", "mode": 0o400},
             )
         assert "not supported" in caplog.text
@@ -111,9 +114,9 @@ class TestExternalSecrets:
     def test_external_with_all_options(self) -> None:
         c = _compose({"ext": {"external": True}})
         out = get_secret_args(
-            c, {"_service": "web"},
-            {"source": "ext", "uid": "1000", "gid": "1000", "mode": "0400",
-             "type": "a", "target": "/t"},
+            c,
+            {"_service": "web"},
+            {"source": "ext", "uid": "1000", "gid": "1000", "mode": "0400", "type": "a", "target": "/t"},
         )
         assert out == [
             "--secret",

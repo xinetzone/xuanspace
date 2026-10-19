@@ -4,57 +4,76 @@ Tests cover:
 - TestExtremeBoundaries: large input dimensions, NaN/Inf/zero inputs, extreme weights,
   deep networks, repeated reshape, lifecycle stress, high-concurrency-like serial loops
 """
+
 from __future__ import annotations
 
 import gc
+
 import numpy as np
 import pytest
 
 import caffe_ffi
 from caffe_ffi import (
-    Net, Blob,
-    net_param_from_string, net_from_param,
-    total_allocated_bytes, live_blob_count,
+    Net,
+    live_blob_count,
+    net_from_param,
+    net_param_from_string,
+    total_allocated_bytes,
 )
-from .conftest import require_cpp_extension, perf_trace
 
+from .conftest import require_cpp_extension
 
 # ─── Prototxt builders ─────────────────────────────────────────────
+
 
 def _make_mlp_prototxt(batch: int, input_dim: int, hidden_dim: int, n_hidden: int) -> str:
     """Deep MLP: Input -> (IP->ReLU) * n_hidden -> IP -> Softmax."""
     lines = [
         'name: "extreme_mlp"',
-        'layer {',
-        '  name: "data"', '  type: "Input"', '  top: "data"',
-        f'  input_param {{ shape {{ dim: {batch} dim: {input_dim} }} }}',
-        '}',
+        "layer {",
+        '  name: "data"',
+        '  type: "Input"',
+        '  top: "data"',
+        f"  input_param {{ shape {{ dim: {batch} dim: {input_dim} }} }}",
+        "}",
     ]
     prev = "data"
     for i in range(n_hidden):
-        lines.extend([
-            'layer {',
-            f'  name: "ip{i}"', '  type: "InnerProduct"',
-            f'  bottom: "{prev}"', f'  top: "ip{i}"',
-            f'  inner_product_param {{ num_output: {hidden_dim} bias_term: true }}',
-            '}',
-            'layer {',
-            f'  name: "relu{i}"', '  type: "ReLU"',
-            f'  bottom: "ip{i}"', f'  top: "ip{i}"',
-            '}',
-        ])
+        lines.extend(
+            [
+                "layer {",
+                f'  name: "ip{i}"',
+                '  type: "InnerProduct"',
+                f'  bottom: "{prev}"',
+                f'  top: "ip{i}"',
+                f"  inner_product_param {{ num_output: {hidden_dim} bias_term: true }}",
+                "}",
+                "layer {",
+                f'  name: "relu{i}"',
+                '  type: "ReLU"',
+                f'  bottom: "ip{i}"',
+                f'  top: "ip{i}"',
+                "}",
+            ]
+        )
         prev = f"ip{i}"
-    lines.extend([
-        'layer {',
-        '  name: "ip_out"', '  type: "InnerProduct"',
-        f'  bottom: "{prev}"', '  top: "ip_out"',
-        '  inner_product_param { num_output: 10 bias_term: true }',
-        '}',
-        'layer {',
-        '  name: "prob"', '  type: "Softmax"',
-        '  bottom: "ip_out"', '  top: "prob"',
-        '}',
-    ])
+    lines.extend(
+        [
+            "layer {",
+            '  name: "ip_out"',
+            '  type: "InnerProduct"',
+            f'  bottom: "{prev}"',
+            '  top: "ip_out"',
+            "  inner_product_param { num_output: 10 bias_term: true }",
+            "}",
+            "layer {",
+            '  name: "prob"',
+            '  type: "Softmax"',
+            '  bottom: "ip_out"',
+            '  top: "prob"',
+            "}",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -62,43 +81,57 @@ def _make_split_mlp_prototxt(batch: int, input_dim: int, n_branches: int) -> str
     """Split-based MLP: Input -> Split -> N branches (each IP) -> Concat -> IP -> Softmax."""
     lines = [
         'name: "split_extreme"',
-        'layer {',
-        '  name: "data"', '  type: "Input"', '  top: "data"',
-        f'  input_param {{ shape {{ dim: {batch} dim: {input_dim} }} }}',
-        '}',
-        'layer {',
-        '  name: "split"', '  type: "Split"', '  bottom: "data"',
+        "layer {",
+        '  name: "data"',
+        '  type: "Input"',
+        '  top: "data"',
+        f"  input_param {{ shape {{ dim: {batch} dim: {input_dim} }} }}",
+        "}",
+        "layer {",
+        '  name: "split"',
+        '  type: "Split"',
+        '  bottom: "data"',
     ]
     for i in range(n_branches):
         lines.append(f'  top: "b{i}"')
-    lines.append('}')
+    lines.append("}")
     for i in range(n_branches):
-        lines.extend([
-            'layer {',
-            f'  name: "ip_b{i}"', '  type: "InnerProduct"',
-            f'  bottom: "b{i}"', f'  top: "b{i}_out"',
-            f'  inner_product_param {{ num_output: {input_dim} bias_term: false }}',
-            '}',
-        ])
-    lines.append('layer {')
+        lines.extend(
+            [
+                "layer {",
+                f'  name: "ip_b{i}"',
+                '  type: "InnerProduct"',
+                f'  bottom: "b{i}"',
+                f'  top: "b{i}_out"',
+                f"  inner_product_param {{ num_output: {input_dim} bias_term: false }}",
+                "}",
+            ]
+        )
+    lines.append("layer {")
     lines.append('  name: "concat"')
     lines.append('  type: "Concat"')
     for i in range(n_branches):
         lines.append(f'  bottom: "b{i}_out"')
     lines.append('  top: "concat"')
-    lines.append('  concat_param { axis: 1 }')
-    lines.append('}')
-    lines.extend([
-        'layer {',
-        '  name: "ip_out"', '  type: "InnerProduct"',
-        '  bottom: "concat"', '  top: "ip_out"',
-        '  inner_product_param { num_output: 10 bias_term: true }',
-        '}',
-        'layer {',
-        '  name: "prob"', '  type: "Softmax"',
-        '  bottom: "ip_out"', '  top: "prob"',
-        '}',
-    ])
+    lines.append("  concat_param { axis: 1 }")
+    lines.append("}")
+    lines.extend(
+        [
+            "layer {",
+            '  name: "ip_out"',
+            '  type: "InnerProduct"',
+            '  bottom: "concat"',
+            '  top: "ip_out"',
+            "  inner_product_param { num_output: 10 bias_term: true }",
+            "}",
+            "layer {",
+            '  name: "prob"',
+            '  type: "Softmax"',
+            '  bottom: "ip_out"',
+            '  top: "prob"',
+            "}",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -128,6 +161,7 @@ def _set_constant_weights(net: Net, value: float) -> None:
 
 # ─── Test Class ────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestExtremeBoundaries:
     """Extreme boundary condition tests for memory stability and correctness."""
@@ -148,9 +182,9 @@ class TestExtremeBoundaries:
         inp = rng.randn(batch, feat).astype(np.float32) * 0.01
         with ptrace(f"Forward(large_mlp_b{batch}_d{feat})") as t:
             net.Forward({"data": inp})
-            t['batch'] = batch
-            t['feat_dim'] = feat
-            t['nbytes_input'] = batch * feat * 4
+            t["batch"] = batch
+            t["feat_dim"] = feat
+            t["nbytes_input"] = batch * feat * 4
 
         prob = net.blob_by_name("prob").to_numpy()
         assert prob.shape == (batch, 10)
@@ -170,7 +204,7 @@ class TestExtremeBoundaries:
         inp = rng.randn(batch, feat).astype(np.float32) * 0.01
         with ptrace(f"Forward(split_large_b{batch}_d{feat})") as t:
             net.Forward({"data": inp})
-            t['total_copied_bytes'] = batch * feat * 4 * n_branches
+            t["total_copied_bytes"] = batch * feat * 4 * n_branches
 
         prob = net.blob_by_name("prob").to_numpy()
         assert prob.shape == (batch, 10)
@@ -273,15 +307,15 @@ class TestExtremeBoundaries:
         """20-layer MLP forward succeeds without memory issues."""
         batch, feat, hidden, n_hidden = 4, 16, 16, 18
         proto = _make_mlp_prototxt(batch=batch, input_dim=feat, hidden_dim=hidden, n_hidden=n_hidden)
-        with ptrace(f"Net(deep{n_hidden+2})"):
+        with ptrace(f"Net(deep{n_hidden + 2})"):
             param = net_param_from_string(proto)
             net = net_from_param(param)
         _set_random_weights_all(net, seed=6, scale=0.1)
 
         inp = np.random.RandomState(7).randn(batch, feat).astype(np.float32) * 0.1
-        with ptrace(f"Forward(deep{n_hidden+2})") as t:
+        with ptrace(f"Forward(deep{n_hidden + 2})") as t:
             net.Forward({"data": inp})
-            t['n_layers'] = len(net.layers_array())
+            t["n_layers"] = len(net.layers_array())
 
         prob = net.blob_by_name("prob").to_numpy()
         assert prob.shape == (batch, 10)
@@ -331,10 +365,8 @@ class TestExtremeBoundaries:
         gc.collect()
         blobs_after = live_blob_count()
         mem_after = total_allocated_bytes()
-        assert blobs_after == blobs_before, \
-            f"Blob count grew: {blobs_before} -> {blobs_after}"
-        assert mem_after <= mem_before + 4096, \
-            f"Memory grew by {mem_after - mem_before} bytes over 100 forwards"
+        assert blobs_after == blobs_before, f"Blob count grew: {blobs_before} -> {blobs_after}"
+        assert mem_after <= mem_before + 4096, f"Memory grew by {mem_after - mem_before} bytes over 100 forwards"
 
     # ── Minimal input ──────────────────────────────────────────────
 

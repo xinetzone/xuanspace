@@ -11,12 +11,14 @@ Tested layers: ReLU, Sigmoid, TanH, ELU, PReLU
 """
 
 import textwrap
+
 import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from .caffe_test_helpers import avoid_c1_discontinuity
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -104,6 +106,7 @@ def _num_grad(net, x, dy, h=EPS):
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
 
+
 def _relu_ref(x, negative_slope=0.0):
     y = np.where(x > 0, x, negative_slope * x)
     dx_factor = np.where(x > 0, 1.0, negative_slope)
@@ -154,6 +157,7 @@ def _prelu_ref(x, slope, channel_shared, shape):
 # Tests: ReLU Backward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestReLUGradient:
     """ReLU backward gradient tests."""
@@ -161,7 +165,7 @@ class TestReLUGradient:
     def _make_net(self, negative_slope=0.0):
         params = ""
         if negative_slope != 0.0:
-            params = f'relu_param {{ negative_slope: {negative_slope} }}'
+            params = f"relu_param {{ negative_slope: {negative_slope} }}"
         return Net(_make_activation_prototxt("ReLU", params))
 
     # ---- analytical correctness ----
@@ -169,9 +173,31 @@ class TestReLUGradient:
     def test_relu_backward_analytical_positive(self):
         """x > 0 => dx = dy exactly."""
         net = self._make_net()
-        x = np.array([1.0, 2.0, 3.0, 0.5, 0.1, -1.0, -0.5, 0.0,
-                      4.0, -2.0, 1.5, -3.0, 0.01, -0.01, 10.0, -10.0,
-                      2.5, -0.001, 0.001, -5.0], dtype=np.float32).reshape(1, 1, 4, 5)
+        x = np.array(
+            [
+                1.0,
+                2.0,
+                3.0,
+                0.5,
+                0.1,
+                -1.0,
+                -0.5,
+                0.0,
+                4.0,
+                -2.0,
+                1.5,
+                -3.0,
+                0.01,
+                -0.01,
+                10.0,
+                -10.0,
+                2.5,
+                -0.001,
+                0.001,
+                -5.0,
+            ],
+            dtype=np.float32,
+        ).reshape(1, 1, 4, 5)
         dy = np.random.RandomState(42).randn(*x.shape).astype(np.float32)
         net.forward({"data": x})
         net.backward({"out": dy})
@@ -267,6 +293,7 @@ class TestReLUGradient:
 # Tests: Sigmoid Backward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSigmoidGradient:
     """Sigmoid backward gradient tests."""
@@ -334,6 +361,7 @@ class TestSigmoidGradient:
 # ---------------------------------------------------------------------------
 # Tests: TanH Backward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestTanHGradient:
@@ -406,12 +434,13 @@ class TestTanHGradient:
 # Tests: ELU Backward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestELUGradient:
     """ELU backward gradient tests."""
 
     def _make_net(self, alpha=1.0):
-        params = f'elu_param {{ alpha: {alpha} }}' if alpha != 1.0 else ""
+        params = f"elu_param {{ alpha: {alpha} }}" if alpha != 1.0 else ""
         return Net(_make_activation_prototxt("ELU", params))
 
     def test_elu_backward_analytical(self):
@@ -484,6 +513,7 @@ class TestELUGradient:
 # ---------------------------------------------------------------------------
 # Tests: PReLU Backward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestPReLUGradient:
@@ -563,7 +593,7 @@ class TestPReLUGradient:
 
     def test_prelu_shared_numerical_gradient(self):
         """Numerical gradient check for PReLU shared (avoids C¹ kink at x=0)."""
-        net = Net(_make_prelu_prototxt(channel_shared=True, filler=0.25))
+        Net(_make_prelu_prototxt(channel_shared=True, filler=0.25))
         rng = np.random.RandomState(99)
         # Use small shape for speed; (2,3,4,5)=120 is okay but slow for numeric
         # Instead create a smaller PReLU net via inline prototxt
@@ -601,8 +631,10 @@ class TestPReLUGradient:
         flat_x = x.ravel()
         for i in range(flat_x.size):
             orig = flat_x[i]
-            xp = x.copy(); xp.ravel()[i] = orig + h
-            xm = x.copy(); xm.ravel()[i] = orig - h
+            xp = x.copy()
+            xp.ravel()[i] = orig + h
+            xm = x.copy()
+            xm.ravel()[i] = orig - h
             lp = float(np.sum(dy * net_small.forward({"data": xp.astype(np.float32)})["out"]))
             lm = float(np.sum(dy * net_small.forward({"data": xm.astype(np.float32)})["out"]))
             dx_numeric.ravel()[i] = (lp - lm) / (2.0 * h)
@@ -616,8 +648,9 @@ class TestPReLUGradient:
         net.forward({"data": x})
         net.backward({"out": dy})
         slope_diff = net.layer_by_name("prelu").blobs[0].diff
-        assert slope_diff.size == 1 or slope_diff.shape == (1,), \
+        assert slope_diff.size == 1 or slope_diff.shape == (1,), (
             f"shared slope_diff should be size 1, got shape {slope_diff.shape}"
+        )
 
     def test_prelu_slope_diff_shape_per_channel(self):
         """per-channel slope_diff is (C,) = (3,)."""
@@ -634,6 +667,7 @@ class TestPReLUGradient:
 # Tests: Performance log verification
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestActivationPerfLogs:
     """Verify [ACTIVATION-PERF] backward log structure (when INFO logs enabled)."""
@@ -643,12 +677,12 @@ class TestActivationPerfLogs:
         """All activation backends should run without crashing on random data."""
         proto_extra = ""
         if layer_type == "ReLU":
-            proto_extra = 'relu_param { negative_slope: 0.01 }'
+            proto_extra = "relu_param { negative_slope: 0.01 }"
         net = Net(_make_activation_prototxt(layer_type, proto_extra))
         rng = np.random.RandomState(12345)
         x = rng.randn(1, 1, 4, 5).astype(np.float32)
         dy = rng.randn(*x.shape).astype(np.float32)
-        out = net.forward({"data": x})
+        net.forward({"data": x})
         net.backward({"out": dy})
         dx = net.blob_by_name("data").diff
         assert dx.shape == x.shape

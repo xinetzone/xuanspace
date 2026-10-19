@@ -29,14 +29,15 @@ Usage:
     python _numpy_bn_reference.py          # run self-tests
     from _numpy_bn_reference import bn_forward, bn_backward  # import
 """
+
 from __future__ import annotations
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Core implementations (float64 for numerical accuracy)
 # ---------------------------------------------------------------------------
+
 
 def bn_forward(
     x: np.ndarray,
@@ -70,7 +71,7 @@ def bn_forward(
     sf = 1.0 if scale_factor == 0.0 else scale_factor
 
     # Effective mean and variance
-    eff_mean = mean64 * sf          # (C,)
+    eff_mean = mean64 * sf  # (C,)
     eff_var = np.maximum(var64 * sf, 0.0)  # (C,), clamped to >= 0
     inv_std = 1.0 / np.sqrt(eff_var + eps)  # (C,)
 
@@ -162,6 +163,7 @@ def bn_get_inv_std(
 # Numerical gradient check (central finite differences)
 # ---------------------------------------------------------------------------
 
+
 def numerical_grad_x(x, mean, variance, dy, count=1.0, eps_bn=1e-5, h=1e-3, axis=1):
     """Compute numerical gradient dL/dx via central finite differences.
 
@@ -191,6 +193,7 @@ def numerical_grad_x(x, mean, variance, dy, count=1.0, eps_bn=1e-5, h=1e-3, axis
 # Self-tests
 # ---------------------------------------------------------------------------
 
+
 def _self_test():
     """Run self-tests to verify forward and backward correctness."""
     print("=== numpy BatchNorm forward/backward self-test ===\n")
@@ -201,7 +204,7 @@ def _self_test():
     # [1] Known value: zero mean, unit variance, count=1 → y = x / sqrt(1+eps)
     total += 1
     print("[1] Known value: zero mean, unit var, count=1 ...", end=" ")
-    N, C, H, W = 1, 2, 1, 3
+    _N, C, _H, _W = 1, 2, 1, 3
     x = np.array([[[[1.0, 2.0, 3.0]], [[0.0, -1.0, 1.0]]]], dtype=np.float32)
     mean = np.zeros(C, dtype=np.float32)
     var = np.ones(C, dtype=np.float32)
@@ -251,8 +254,8 @@ def _self_test():
     total += 1
     print("[5] Zero dy → zero dx ...", end=" ")
     C5 = 4
-    x5 = np.random.randn(2, C5, 3, 3).astype(np.float32) * 2.0
-    mean5 = np.random.randn(C5).astype(np.float32) * 0.5
+    np.random.randn(2, C5, 3, 3).astype(np.float32) * 2.0
+    np.random.randn(C5).astype(np.float32) * 0.5
     var5 = np.abs(np.random.randn(C5).astype(np.float32)) + 0.5
     dy5 = np.zeros((2, C5, 3, 3), dtype=np.float32)
     dx5 = bn_backward(dy5, var5)
@@ -293,8 +296,8 @@ def _self_test():
     total += 1
     print("[8] Per-channel scaling verification ...", end=" ")
     N8, C8 = 2, 3
-    x8 = np.random.randn(N8, C8, 2, 2).astype(np.float32)
-    mean8 = np.zeros(C8, dtype=np.float32)
+    np.random.randn(N8, C8, 2, 2).astype(np.float32)
+    np.zeros(C8, dtype=np.float32)
     var8 = np.array([1.0, 4.0, 9.0], dtype=np.float32)  # inv_std: 1, 0.5, 1/3
     dy8 = np.ones((N8, C8, 2, 2), dtype=np.float32)
     dx8 = bn_backward(dy8, var8, count=1.0, eps=0.0)
@@ -303,7 +306,7 @@ def _self_test():
     # Channel 1: inv_std = 1/2 = 0.5
     np.testing.assert_allclose(dx8[:, 1, :, :], np.full((N8, 2, 2), 0.5, dtype=np.float32), rtol=1e-6)
     # Channel 2: inv_std = 1/3 ≈ 0.333...
-    np.testing.assert_allclose(dx8[:, 2, :, :], np.full((N8, 2, 2), 1.0/3, dtype=np.float32), rtol=1e-5)
+    np.testing.assert_allclose(dx8[:, 2, :, :], np.full((N8, 2, 2), 1.0 / 3, dtype=np.float32), rtol=1e-5)
     print("OK")
     passed += 1
 
@@ -363,8 +366,9 @@ def _self_test():
     dx_eps_small = bn_backward(dy12, var12, count=1.0, eps=1e-5)
     dx_eps_large = bn_backward(dy12, var12, count=1.0, eps=1.0)
     # With var=0: inv_std = 1/sqrt(0+eps). Larger eps → smaller inv_std.
-    assert dx_eps_large[0, 0, 0, 0] < dx_eps_small[0, 0, 0, 0], \
-        f"Expected smaller grad with larger eps, got {dx_eps_large[0,0,0,0]} vs {dx_eps_small[0,0,0,0]}"
+    assert dx_eps_large[0, 0, 0, 0] < dx_eps_small[0, 0, 0, 0], (
+        f"Expected smaller grad with larger eps, got {dx_eps_large[0, 0, 0, 0]} vs {dx_eps_small[0, 0, 0, 0]}"
+    )
     print("OK")
     passed += 1
 

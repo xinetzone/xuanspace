@@ -28,9 +28,7 @@ class TestCommandsImportSmoke(IsolatedAsyncioTestCase):
             assert "import subprocess" not in source, (
                 f"{path.name}: 子进程异常须经 xuan_compose.runner.CalledProcessError 再导出"
             )
-            assert "subprocess." not in source, (
-                f"{path.name}: 命令层不得直接发起子进程，唯一边界是 runner.Podman"
-            )
+            assert "subprocess." not in source, f"{path.name}: 命令层不得直接发起子进程，唯一边界是 runner.Podman"
 
     def test_no_engine_instantiation_or_import(self) -> None:
         for path in sorted(COMMANDS_DIR.glob("*.py")):

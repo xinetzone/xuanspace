@@ -90,9 +90,7 @@ class TestParserRegistry(IsolatedAsyncioTestCase):
     def test_systemd_help_derived_from_handler_docstring(self) -> None:
         from xuan_compose.cli.parser import COMMAND_HELP
 
-        assert COMMAND_HELP["systemd"] == (
-            "create systemd unit file and register its compose stacks"
-        )
+        assert COMMAND_HELP["systemd"] == ("create systemd unit file and register its compose stacks")
 
 
 class TestHelpEveryCommand(IsolatedAsyncioTestCase):
@@ -457,9 +455,7 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
         # dry-run 下二进制不存在只警告不退出（上游 44-46 行）
         buf = io.StringIO()
         with redirect_stdout(buf):
-            await async_main(
-                ["--dry-run", "--podman-path", "/no/such/podman-bin", "version", "--short"]
-            )
+            await async_main(["--dry-run", "--podman-path", "/no/such/podman-bin", "version", "--short"])
         from xuan_compose import __version__
 
         assert buf.getvalue().strip() == __version__
@@ -489,9 +485,7 @@ class TestAsyncMainAssembly(IsolatedAsyncioTestCase):
         # （版本探测失败的终局与 FileNotFoundError 一致，都是 exit 1）
         pod = mock.Mock()
         pod.run = mock.AsyncMock(return_value=0)
-        pod.output = mock.AsyncMock(
-            side_effect=CalledProcessError(125, ["podman"], output=b"podman: boom\n")
-        )
+        pod.output = mock.AsyncMock(side_effect=CalledProcessError(125, ["podman"], output=b"podman: boom\n"))
         with mock.patch("xuan_compose.cli.main.Podman", return_value=pod):
             with self.assertRaises(SystemExit) as ctx:
                 await async_main(["version"])

@@ -13,6 +13,7 @@ Covers:
   6. Shape/finite/determinism checks
   7. Forward-Backward round-trip
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -21,8 +22,9 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import numerical_gradient
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -33,6 +35,7 @@ ATOL = 1e-4
 # Numpy reference
 # ---------------------------------------------------------------------------
 
+
 def slice_backward_np(dys, axis):
     """Numpy reference for Slice backward: concatenate top diffs along axis."""
     return np.concatenate([d.astype(np.float32) for d in dys], axis=axis)
@@ -41,6 +44,7 @@ def slice_backward_np(dys, axis):
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_slice_prototxt(shape, num_tops, axis, slice_points=None):
     dims = "\n".join(f"          dim: {d}" for d in shape)
@@ -116,13 +120,13 @@ def _numerical_grad_input(net, x, dys, num_tops, h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy_flat, h=h,
-                              name="input:data", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy_flat, h=h, name="input:data", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSliceBackwardKnownValues:
@@ -183,17 +187,21 @@ class TestSliceBackwardKnownValues:
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSliceBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference (concatenation)."""
 
-    @pytest.mark.parametrize("shape,num_tops,axis", [
-        ((2, 6), 2, 1),
-        ((2, 6), 3, 1),
-        ((1, 6, 4), 2, 1),
-        ((1, 2, 6, 4), 2, 2),
-        ((1, 2, 3, 6), 3, 3),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_tops,axis",
+        [
+            ((2, 6), 2, 1),
+            ((2, 6), 3, 1),
+            ((1, 6, 4), 2, 1),
+            ((1, 2, 6, 4), 2, 2),
+            ((1, 2, 3, 6), 3, 3),
+        ],
+    )
     def test_slice_vs_numpy(self, shape, num_tops, axis):
         """Slice backward matches numpy concatenation for various shapes/axes."""
         rng = np.random.RandomState(42)
@@ -219,16 +227,20 @@ class TestSliceBackwardNumpy:
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSliceBackwardNumerical:
     """Central finite difference numerical gradient checks."""
 
-    @pytest.mark.parametrize("shape,num_tops,axis", [
-        ((4,), 2, 0),
-        ((2, 6), 2, 1),
-        ((2, 6), 3, 1),
-        ((1, 2, 6, 2), 2, 2),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_tops,axis",
+        [
+            ((4,), 2, 0),
+            ((2, 6), 2, 1),
+            ((2, 6), 3, 1),
+            ((1, 2, 6, 2), 2, 2),
+        ],
+    )
     def test_numerical_grad(self, shape, num_tops, axis):
         """Numerical gradient matches analytical dX."""
         rng = np.random.RandomState(789)
@@ -247,6 +259,7 @@ class TestSliceBackwardNumerical:
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSliceBackwardProperties:

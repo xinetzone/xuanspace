@@ -17,6 +17,7 @@
 
 import numpy as np
 import pytest
+
 from .utils import (
     _CAFFE_FFI_AVAILABLE,
     _download_model,
@@ -30,12 +31,8 @@ def _test_resnet50(data, model_dir):
         pytest.skip("caffe_ffi C++ extension is not available; network tests skipped")
     data_process = _preprocess_imagenet(data)
 
-    proto_file_url = (
-        "https://github.com/fernchen/CaffeModels/raw/master/resnet/ResNet-50-deploy.prototxt"
-    )
-    blob_file_url = (
-        "https://github.com/fernchen/CaffeModels/raw/master/resnet/ResNet-50-model.caffemodel"
-    )
+    proto_file_url = "https://github.com/fernchen/CaffeModels/raw/master/resnet/ResNet-50-deploy.prototxt"
+    blob_file_url = "https://github.com/fernchen/CaffeModels/raw/master/resnet/ResNet-50-model.caffemodel"
     proto_file = _download_model(proto_file_url, "resnet50.prototxt", model_dir)
     blob_file = _download_model(blob_file_url, "resnet50.caffemodel", model_dir)
 

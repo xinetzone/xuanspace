@@ -18,6 +18,7 @@ Covers:
   6. Zero dy -> zero gradients
   7. Shape/finite/determinism checks
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -26,11 +27,12 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_gradient,
 )
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -40,6 +42,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Eltwise forward/backward
 # ---------------------------------------------------------------------------
+
 
 def eltwise_forward_np(inputs, op="SUM", coeffs=None):
     """Numpy reference: element-wise operation across inputs.
@@ -111,7 +114,7 @@ def eltwise_backward_np(inputs, dy, op="SUM", coeffs=None):
             winners[mask] = j
         # Assign gradients
         for j in range(n):
-            mask = (winners == j)
+            mask = winners == j
             dXj = np.where(mask, dy64 * coeffs[j], 0.0)
             dXs.append(dXj.astype(np.float32))
 
@@ -125,6 +128,7 @@ def eltwise_backward_np(inputs, dy, op="SUM", coeffs=None):
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
+
 def _make_eltwise_prototxt(shape, num_inputs=2, op="SUM", coeffs=None):
     """Create multi-Input -> Eltwise prototxt.
 
@@ -135,11 +139,12 @@ def _make_eltwise_prototxt(shape, num_inputs=2, op="SUM", coeffs=None):
         coeffs: optional list of coefficients.
     """
     dims_lines = "\n".join(f"          dim: {d}" for d in shape)
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
 
     input_layers = []
     for name in input_names:
-        input_layers.append(textwrap.dedent(f"""\
+        input_layers.append(
+            textwrap.dedent(f"""\
             layer {{
               name: "{name}"
               type: "Input"
@@ -147,7 +152,8 @@ def _make_eltwise_prototxt(shape, num_inputs=2, op="SUM", coeffs=None):
               input_param {{ shape {{
 {dims_lines}
               }} }}
-            }}"""))
+            }}""")
+        )
     input_layers_str = "\n".join(input_layers)
 
     bottoms_str = "\n".join(f'  bottom: "{name}"' for name in input_names)
@@ -178,9 +184,10 @@ def _make_eltwise_net(shape, num_inputs=2, op="SUM", coeffs=None):
 # Helper: run forward+backward
 # ---------------------------------------------------------------------------
 
+
 def _run_eltwise_backward(net, inputs, dy, num_inputs=2):
     """Run forward then backward, return list of dX arrays and output."""
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
     input_dict = {name: x.astype(np.float32) for name, x in zip(input_names, inputs)}
     out = net.forward(input_dict)
     net.backward({"out": dy.astype(np.float32)})
@@ -191,7 +198,7 @@ def _run_eltwise_backward(net, inputs, dy, num_inputs=2):
 def _numerical_grad_input(net, inputs, input_idx, dy, output_name="out", h=EPS):
     """Compute numerical gradient w.r.t. one input (holding others fixed)."""
     num_inputs = len(inputs)
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
     target_name = input_names[input_idx]
     current = inputs[input_idx].astype(np.float32).copy()
 
@@ -212,13 +219,13 @@ def _numerical_grad_input(net, inputs, input_idx, dy, output_name="out", h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy, h=h,
-                              name=f"input:{target_name}", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy, h=h, name=f"input:{target_name}", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestEltwiseBackwardKnownValues:
@@ -276,16 +283,20 @@ class TestEltwiseBackwardKnownValues:
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestEltwiseBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference."""
 
-    @pytest.mark.parametrize("shape,num_inputs", [
-        ((2, 3), 2),
-        ((1, 1, 4, 4), 2),
-        ((2, 3, 4), 2),
-        ((2, 3), 3),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_inputs",
+        [
+            ((2, 3), 2),
+            ((1, 1, 4, 4), 2),
+            ((2, 3, 4), 2),
+            ((2, 3), 3),
+        ],
+    )
     def test_sum_vs_numpy(self, shape, num_inputs):
         """SUM: caffe-ffi dX matches numpy reference for various shapes."""
         rng = np.random.RandomState(42)
@@ -297,10 +308,13 @@ class TestEltwiseBackwardNumpy:
         for j, (dx, dx_ref) in enumerate(zip(dXs, dXs_ref)):
             np.testing.assert_allclose(dx, dx_ref, rtol=RTOL, atol=ATOL)
 
-    @pytest.mark.parametrize("shape,coeffs", [
-        ((2, 3), [2.0, 0.5]),
-        ((1, 2, 3), [1.0, -1.0]),
-    ])
+    @pytest.mark.parametrize(
+        "shape,coeffs",
+        [
+            ((2, 3), [2.0, 0.5]),
+            ((1, 2, 3), [1.0, -1.0]),
+        ],
+    )
     def test_sum_coeffs_vs_numpy(self, shape, coeffs):
         """SUM with coefficients: caffe-ffi dX matches numpy reference."""
         rng = np.random.RandomState(123)
@@ -312,11 +326,14 @@ class TestEltwiseBackwardNumpy:
         for j, (dx, dx_ref) in enumerate(zip(dXs, dXs_ref)):
             np.testing.assert_allclose(dx, dx_ref, rtol=RTOL, atol=ATOL)
 
-    @pytest.mark.parametrize("shape,num_inputs", [
-        ((2, 3), 2),
-        ((1, 1, 3, 3), 2),
-        ((2, 3), 3),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_inputs",
+        [
+            ((2, 3), 2),
+            ((1, 1, 3, 3), 2),
+            ((2, 3), 3),
+        ],
+    )
     def test_prod_vs_numpy(self, shape, num_inputs):
         """PROD: caffe-ffi dX matches numpy reference (using positive inputs to avoid zero issues)."""
         rng = np.random.RandomState(99)
@@ -331,11 +348,14 @@ class TestEltwiseBackwardNumpy:
         for j, (dx, dx_ref) in enumerate(zip(dXs, dXs_ref)):
             np.testing.assert_allclose(dx, dx_ref, rtol=RTOL, atol=ATOL)
 
-    @pytest.mark.parametrize("shape,num_inputs", [
-        ((2, 3), 2),
-        ((1, 1, 2, 4), 2),
-        ((2, 2, 2), 3),
-    ])
+    @pytest.mark.parametrize(
+        "shape,num_inputs",
+        [
+            ((2, 3), 2),
+            ((1, 1, 2, 4), 2),
+            ((2, 2, 2), 3),
+        ],
+    )
     def test_max_vs_numpy(self, shape, num_inputs):
         """MAX: caffe-ffi dX matches numpy reference (winner-take-all)."""
         rng = np.random.RandomState(77)
@@ -343,7 +363,7 @@ class TestEltwiseBackwardNumpy:
         inputs = []
         for i in range(num_inputs):
             scale = 1.0 + i * 0.5
-            inputs.append((rng.randn(*shape).astype(np.float32) * scale + i * 2.0))
+            inputs.append(rng.randn(*shape).astype(np.float32) * scale + i * 2.0)
         dy = rng.randn(*shape).astype(np.float32)
         net = _make_eltwise_net(shape, num_inputs=num_inputs, op="MAX")
         dXs, out = _run_eltwise_backward(net, inputs, dy, num_inputs=num_inputs)
@@ -357,6 +377,7 @@ class TestEltwiseBackwardNumpy:
 # ---------------------------------------------------------------------------
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestEltwiseBackwardNumerical:
@@ -372,8 +393,7 @@ class TestEltwiseBackwardNumerical:
         net = _make_eltwise_net(shape, num_inputs=2, op="SUM")
         dXs, _ = _run_eltwise_backward(net, inputs, dy, num_inputs=2)
         num_grad = _numerical_grad_input(net, inputs, input_idx, dy)
-        assert_grad_close(dXs[input_idx], num_grad,
-                          name=f"SUM dX[{input_idx}]", rtol=RTOL, atol=ATOL)
+        assert_grad_close(dXs[input_idx], num_grad, name=f"SUM dX[{input_idx}]", rtol=RTOL, atol=ATOL)
 
     @pytest.mark.parametrize("input_idx", [0, 1])
     def test_prod_numerical_grad(self, input_idx):
@@ -385,8 +405,7 @@ class TestEltwiseBackwardNumerical:
         net = _make_eltwise_net(shape, num_inputs=2, op="PROD")
         dXs, _ = _run_eltwise_backward(net, inputs, dy, num_inputs=2)
         num_grad = _numerical_grad_input(net, inputs, input_idx, dy)
-        assert_grad_close(dXs[input_idx], num_grad,
-                          name=f"PROD dX[{input_idx}]", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(dXs[input_idx], num_grad, name=f"PROD dX[{input_idx}]", rtol=RTOL, atol=ATOL * 10)
 
     @pytest.mark.parametrize("input_idx", [0, 1])
     def test_max_numerical_grad(self, input_idx):
@@ -403,8 +422,7 @@ class TestEltwiseBackwardNumerical:
         dXs, _ = _run_eltwise_backward(net, inputs, dy, num_inputs=2)
         num_grad = _numerical_grad_input(net, inputs, input_idx, dy)
         # MAX has C^0 kinks at equality points; use looser tolerance and avoid kinks
-        assert_grad_close(dXs[input_idx], num_grad,
-                          name=f"MAX dX[{input_idx}]", rtol=5e-3, atol=1e-3)
+        assert_grad_close(dXs[input_idx], num_grad, name=f"MAX dX[{input_idx}]", rtol=5e-3, atol=1e-3)
 
     def test_sum_coeffs_numerical_grad(self):
         """SUM with coeffs: numerical gradient matches analytic."""
@@ -417,8 +435,7 @@ class TestEltwiseBackwardNumerical:
         dXs, _ = _run_eltwise_backward(net, inputs, dy, num_inputs=2)
         for j in range(2):
             num_grad = _numerical_grad_input(net, inputs, j, dy)
-            assert_grad_close(dXs[j], num_grad,
-                              name=f"SUM(coeffs) dX[{j}]", rtol=RTOL, atol=ATOL)
+            assert_grad_close(dXs[j], num_grad, name=f"SUM(coeffs) dX[{j}]", rtol=RTOL, atol=ATOL)
 
     def test_three_inputs_sum_numerical_grad(self):
         """SUM with 3 inputs: numerical gradient matches for all three."""
@@ -430,13 +447,13 @@ class TestEltwiseBackwardNumerical:
         dXs, _ = _run_eltwise_backward(net, inputs, dy, num_inputs=3)
         for j in range(3):
             num_grad = _numerical_grad_input(net, inputs, j, dy)
-            assert_grad_close(dXs[j], num_grad,
-                              name=f"SUM(3) dX[{j}]", rtol=RTOL, atol=ATOL)
+            assert_grad_close(dXs[j], num_grad, name=f"SUM(3) dX[{j}]", rtol=RTOL, atol=ATOL)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestEltwiseBackwardProperties:
@@ -509,7 +526,7 @@ class TestEltwiseBackwardProperties:
             inputs = [rng.randn(*shape).astype(np.float32) * 0.5 + 1.0 for _ in range(2)]
             dy = rng.randn(*shape).astype(np.float32)
             net = _make_eltwise_net(shape, num_inputs=2, op=op)
-            input_names = [chr(ord('a') + i) for i in range(2)]
+            input_names = [chr(ord("a") + i) for i in range(2)]
             input_dict = {n: x for n, x in zip(input_names, inputs)}
             out_before = net.forward(input_dict)["out"].copy()
             net.backward({"out": dy})

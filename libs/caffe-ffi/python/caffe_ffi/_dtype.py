@@ -9,6 +9,7 @@ These functions are NOT public API — they are internal helpers for the
 binding layer. External code should use ``blob.data = arr`` or
 ``net.forward({...})`` which already enforce dtype validation.
 """
+
 from __future__ import annotations
 
 from typing import Any

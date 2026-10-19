@@ -19,6 +19,7 @@ Mathematical reference (per (n, c) group of size M):
   dx = inv_std * (dy*gamma - d_one - (x-mean)*inv_std^2*d_two)
   dgamma = sum(dy * (x-mean) * inv_std);  dbeta = sum(dy)
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -27,10 +28,11 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
-from ._grad_check_utils import numerical_grad_for_blob
 
-EPS = 1e-3       # central finite-difference step
+from ._grad_check_utils import numerical_grad_for_blob
+from .conftest import require_cpp_extension
+
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 1e-2  # float32 central-difference precision (matches _grad_check_utils)
 NUM_ATOL = 1e-3
 
@@ -38,6 +40,7 @@ NUM_ATOL = 1e-3
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_instnorm_prototxt(N=1, C=1, H=4, W=5, eps=1e-5, affine=False):
     """Create a minimal Input(N,C,H,W) -> InstanceNorm prototxt."""
@@ -66,6 +69,7 @@ def _make_instnorm_net(N=1, C=1, H=4, W=5, eps=1e-5, affine=False):
 # ---------------------------------------------------------------------------
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
+
 
 def _instnorm_forward_np(x, gamma=None, beta=None, eps=1e-5):
     """Forward reference: per-(n,c) mean/var normalization + optional affine."""
@@ -106,7 +110,7 @@ def _instnorm_backward_np(x, dy, gamma=None, eps=1e-5):
     sum_dy_x = np.sum(dy_g * (x - mean), axis=(2, 3), keepdims=True)
     d_one = sum_dy / M
     d_two = sum_dy_x / M
-    dx = inv_std * (dy_g - d_one - (x - mean) * inv_std ** 2 * d_two)
+    dx = inv_std * (dy_g - d_one - (x - mean) * inv_std**2 * d_two)
     return dx, dgamma, dbeta
 
 
@@ -132,6 +136,7 @@ def _num_grad(net, x, dy, h=EPS):
 # ---------------------------------------------------------------------------
 # Tests: InstanceNorm Forward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestInstanceNormForward:
@@ -185,6 +190,7 @@ class TestInstanceNormForward:
 # Tests: InstanceNorm Backward (analytical)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInstanceNormGradient:
     """InstanceNorm backward analytical gradient tests."""
@@ -201,8 +207,7 @@ class TestInstanceNormGradient:
         dx = net.blob_by_name("data").diff
         expected, _, _ = _instnorm_backward_np(x, dy)
         np.testing.assert_allclose(dx, expected.astype(np.float32), rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(out, _instnorm_forward_np(x).astype(np.float32),
-                                   rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(out, _instnorm_forward_np(x).astype(np.float32), rtol=1e-5, atol=1e-6)
 
     def test_backward_analytical_affine(self):
         """dx matches numpy reference (affine=true, default gamma=1, beta=0)."""
@@ -227,7 +232,7 @@ class TestInstanceNormGradient:
         net.forward({"data": x})
         net.backward({"out": dy})
         gamma = net.layer_by_name("instnorm").blobs[0].data.copy()
-        beta = net.layer_by_name("instnorm").blobs[1].data.copy()
+        net.layer_by_name("instnorm").blobs[1].data.copy()
         _, dgamma_ref, dbeta_ref = _instnorm_backward_np(x, dy, gamma=gamma, eps=1e-5)
         dgamma = net.layer_by_name("instnorm").blobs[0].diff
         dbeta = net.layer_by_name("instnorm").blobs[1].diff
@@ -250,6 +255,7 @@ class TestInstanceNormGradient:
 # ---------------------------------------------------------------------------
 # Tests: InstanceNorm Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestInstanceNormNumericalGradient:
@@ -279,7 +285,13 @@ class TestInstanceNormNumericalGradient:
         net.backward({"out": dy})
         dgamma_analytic = net.layer_by_name("instnorm").blobs[0].diff
         dgamma_num = numerical_grad_for_blob(
-            net, "instnorm", 0, {"data": x}, "out", dy, h=EPS,
+            net,
+            "instnorm",
+            0,
+            {"data": x},
+            "out",
+            dy,
+            h=EPS,
             name="instnorm.gamma",
         )
         np.testing.assert_allclose(dgamma_analytic, dgamma_num, rtol=NUM_RTOL, atol=NUM_ATOL)
@@ -295,7 +307,13 @@ class TestInstanceNormNumericalGradient:
         net.backward({"out": dy})
         dbeta_analytic = net.layer_by_name("instnorm").blobs[1].diff
         dbeta_num = numerical_grad_for_blob(
-            net, "instnorm", 1, {"data": x}, "out", dy, h=EPS,
+            net,
+            "instnorm",
+            1,
+            {"data": x},
+            "out",
+            dy,
+            h=EPS,
             name="instnorm.beta",
         )
         np.testing.assert_allclose(dbeta_analytic, dbeta_num, rtol=NUM_RTOL, atol=NUM_ATOL)

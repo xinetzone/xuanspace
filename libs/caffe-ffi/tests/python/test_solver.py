@@ -18,6 +18,7 @@ net stub (built on real ``Blob`` objects) so they run identically with and witho
 the C++ extension. The end-to-end ``Solver`` loop requires the native extension
 and is gated with ``@require_cpp_extension``.
 """
+
 from __future__ import annotations
 
 import math
@@ -25,25 +26,25 @@ import types
 
 import numpy as np
 import pytest
-
-from caffe_ffi import Blob
 from caffe_ffi.solver import (
+    SGD,
     Adam,
     CosineAnnealingLR,
     ExponentialLR,
     LRScheduler,
     MultiStepLR,
-    SGD,
-    StepLR,
     Solver,
+    StepLR,
 )
 
-from .conftest import require_cpp_extension
+from caffe_ffi import Blob
 
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Helpers: a single-learnable-blob net stub backed by real Blob objects
 # ---------------------------------------------------------------------------
+
 
 def make_single_param_net(shape):
     """Return ``(net, blob)`` where ``net`` has one learnable layer ``fc``.
@@ -76,6 +77,7 @@ def make_optimizer_dummy():
 # ---------------------------------------------------------------------------
 # SGD
 # ---------------------------------------------------------------------------
+
 
 class TestSGD:
     def test_no_momentum_plain_sgd(self):
@@ -163,6 +165,7 @@ class TestSGD:
 # Adam
 # ---------------------------------------------------------------------------
 
+
 class TestAdam:
     def test_matches_numpy_reference(self):
         net, blob = make_single_param_net((3,))
@@ -178,8 +181,8 @@ class TestAdam:
             opt.step(net)
             m = 0.9 * m + 0.1 * grad
             v = 0.999 * v + 0.001 * (grad * grad)
-            mhat = m / (1 - 0.9 ** t)
-            vhat = v / (1 - 0.999 ** t)
+            mhat = m / (1 - 0.9**t)
+            vhat = v / (1 - 0.999**t)
             data = data - 0.001 * mhat / (np.sqrt(vhat) + 1e-8)
             np.testing.assert_allclose(blob.data_tensor, data, rtol=1e-5)
 
@@ -206,6 +209,7 @@ class TestAdam:
 # Learning-rate schedulers
 # ---------------------------------------------------------------------------
 
+
 class TestLRScheduler:
     def test_step_lr(self):
         opt = make_optimizer_dummy()
@@ -227,7 +231,7 @@ class TestLRScheduler:
         opt = make_optimizer_dummy()
         sched = ExponentialLR(opt, gamma=0.9)
         for epoch in range(5):
-            assert sched.step() == pytest.approx(0.1 * 0.9 ** epoch)
+            assert sched.step() == pytest.approx(0.1 * 0.9**epoch)
 
     def test_cosine_annealing_lr(self):
         opt = make_optimizer_dummy()
@@ -255,7 +259,7 @@ class TestLRScheduler:
 # Solver (end-to-end, requires native C++ extension)
 # ---------------------------------------------------------------------------
 
-TINY_MLP_PROTO = '''
+TINY_MLP_PROTO = """
 name: "tiny_mlp"
 layer { name: "data" type: "Input" top: "data"
   input_param { shape { dim: 4 dim: 8 } } }
@@ -267,7 +271,7 @@ layer { name: "relu1" type: "ReLU" bottom: "fc1" top: "fc1" }
 layer { name: "fc2" type: "InnerProduct" bottom: "fc1" top: "fc2"
   inner_product_param { num_output: 3 weight_filler { type: "msra" } } }
 layer { name: "loss" type: "SoftmaxWithLoss" bottom: "fc2" bottom: "label" top: "loss" }
-'''
+"""
 
 
 class TestSolver:
@@ -290,7 +294,7 @@ class TestSolver:
 
         history = solver.fit(batches, epochs=2, log_interval=0)
         assert len(history["loss"]) == 40
-        assert all(np.isfinite(l) for l in history["loss"])
+        assert all(np.isfinite(loss) for loss in history["loss"])
         assert history["loss"][-1] < history["loss"][0]
 
     @require_cpp_extension
@@ -309,10 +313,12 @@ class TestSolver:
                 blob.data_tensor[:] = rng.randn(*blob.shape).astype(np.float32) * 0.1
 
         weights_before = solver.net.layer_by_name("fc1").blobs[0].data.copy()
-        loss = solver.step({
-            "data": rng.randn(4, 8).astype(np.float32),
-            "label": rng.randint(0, 3, size=(4, 1)).astype(np.float32),
-        })
+        loss = solver.step(
+            {
+                "data": rng.randn(4, 8).astype(np.float32),
+                "label": rng.randint(0, 3, size=(4, 1)).astype(np.float32),
+            }
+        )
         assert np.isfinite(loss)
         weights_after = solver.net.layer_by_name("fc1").blobs[0].data
         assert not np.array_equal(weights_before, weights_after)
@@ -347,8 +353,7 @@ class TestSolver:
         solver = Solver(net, SGD(lr=0.01), loss_blob="loss")
 
         val_batches = [
-            {"data": np.zeros((4, 8), dtype=np.float32), "label": np.zeros((4, 1), dtype=np.float32)}
-            for _ in range(3)
+            {"data": np.zeros((4, 8), dtype=np.float32), "label": np.zeros((4, 1), dtype=np.float32)} for _ in range(3)
         ]
         score = solver.validate(val_batches)
         assert np.isfinite(score)

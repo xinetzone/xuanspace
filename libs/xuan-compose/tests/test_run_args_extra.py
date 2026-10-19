@@ -45,9 +45,7 @@ class TestGetExcluded:
         assert result == {"c"}
 
     def test_no_deps_excludes_entire_tree_except_targets(self) -> None:
-        compose = mock.Mock(
-            services={"a": {DependField.DEPENDENCIES: [_Named("b")]}, "b": {}, "c": {}}
-        )
+        compose = mock.Mock(services={"a": {DependField.DEPENDENCIES: [_Named("b")]}, "b": {}, "c": {}})
         result = get_excluded(compose, _ns(services=["a"], no_deps=True))
         assert result == {"b", "c"}
 

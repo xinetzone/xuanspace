@@ -8,18 +8,20 @@ Covers 17 test cases for the SetShapeOnly lazy allocation API:
 Usage:
   pytest tests/python/test_phase3_set_shape_only.py -v
 """
-import pytest
+
 import numpy as np
+import pytest
+
 import caffe_ffi
 from caffe_ffi import Blob
-from .conftest import require_cpp_extension
-
 
 # ── Prototxt helpers ──────────────────────────────────────────────────
+
 
 def _dims_str(dims):
     """Convert a dimension tuple to protobuf text format repeated dim entries."""
     return " ".join(f"dim: {d}" for d in dims)
+
 
 def _make_split_prototxt(num_top, dims, name="test_split"):
     """Build a minimal Input + Split prototxt string."""
@@ -99,6 +101,7 @@ layer {{
 # TestSetShapeOnly — Blob-level unit tests (7 cases)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestSetShapeOnly:
     """Blob-level SetShapeOnly unit tests."""
 
@@ -127,10 +130,7 @@ class TestSetShapeOnly:
         blob.set_shape_only([100, 100, 100])
         bytes_after = caffe_ffi.total_allocated_bytes()
 
-        assert bytes_after == bytes_before, (
-            f"SetShapeOnly allocated {bytes_after - bytes_before} bytes, "
-            f"expected 0"
-        )
+        assert bytes_after == bytes_before, f"SetShapeOnly allocated {bytes_after - bytes_before} bytes, expected 0"
 
     # ── Case 3: DataAccessReturnsNone (semantic: lazy flag set) ──
 
@@ -181,10 +181,8 @@ class TestSetShapeOnly:
         blob.set_shape_only([4, 8])
         assert blob.is_lazy_allocated()
 
-        mt = blob.mutable_data_tensor()
-        assert not blob.is_lazy_allocated(), (
-            "mutable_data_tensor() should allocate and clear lazy flag"
-        )
+        blob.mutable_data_tensor()
+        assert not blob.is_lazy_allocated(), "mutable_data_tensor() should allocate and clear lazy flag"
         assert blob.data_tensor.shape == (4, 8)
         assert blob.count() == 32
 
@@ -203,6 +201,7 @@ class TestSetShapeOnly:
 # TestSplitLazyReshape — Split layer integration tests (4 cases)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestSplitLazyReshape:
     """Split layer lazy reshape integration tests."""
 
@@ -217,19 +216,14 @@ class TestSplitLazyReshape:
         net = caffe_ffi.Net(prototxt)
 
         # After construction (which calls Reshape), check tops are lazy
-        lazy_count = sum(
-            1 for i in range(N)
-            if net.blob_by_name(f"split_{i}").is_lazy_allocated()
-        )
-        assert lazy_count == N, (
-            f"Expected {N} lazy blobs after Reshape for N=64, got {lazy_count}"
-        )
+        lazy_count = sum(1 for i in range(N) if net.blob_by_name(f"split_{i}").is_lazy_allocated())
+        assert lazy_count == N, f"Expected {N} lazy blobs after Reshape for N=64, got {lazy_count}"
 
         # Memory should be close to 0 additional from the 64 split tops
         # (just the input blob)
         inp = np.random.randn(1, 3, 32, 32).astype(np.float32)
         bytes_before = caffe_ffi.total_allocated_bytes()
-        out = net.Forward({"data": inp})
+        net.Forward({"data": inp})
         bytes_after = caffe_ffi.total_allocated_bytes()
 
         # With lazy allocation during Reshape, tops don't allocate until Forward's
@@ -239,8 +233,7 @@ class TestSplitLazyReshape:
         actual_delta = bytes_after - bytes_before
         # After Forward, all tops share bottom data, so delta should be small
         assert actual_delta < expected_full_alloc, (
-            f"Memory increase {actual_delta} >= expected_full {expected_full_alloc}, "
-            f"lazy allocation may not be working"
+            f"Memory increase {actual_delta} >= expected_full {expected_full_alloc}, lazy allocation may not be working"
         )
 
     # ── Case 9: ForwardTransitionsToNormal ──
@@ -259,10 +252,7 @@ class TestSplitLazyReshape:
             assert key in out, f"Missing output '{key}'"
             blob = net.blob_by_name(key)
             assert not blob.is_lazy_allocated(), f"split_{i} should not be lazy after Forward"
-            np.testing.assert_array_almost_equal(
-                blob.to_numpy(), inp,
-                err_msg=f"split_{i} output differs from input"
-            )
+            np.testing.assert_array_almost_equal(blob.to_numpy(), inp, err_msg=f"split_{i} output differs from input")
 
     # ── Case 10: SmallNStaysNormal ──
 
@@ -275,13 +265,8 @@ class TestSplitLazyReshape:
         net = caffe_ffi.Net(prototxt)
 
         # N=4 < 16, so tops should NOT be lazy after Reshape
-        lazy_count = sum(
-            1 for i in range(N)
-            if net.blob_by_name(f"split_{i}").is_lazy_allocated()
-        )
-        assert lazy_count == 0, (
-            f"N=4 should not use lazy allocation, but {lazy_count}/4 blobs are lazy"
-        )
+        lazy_count = sum(1 for i in range(N) if net.blob_by_name(f"split_{i}").is_lazy_allocated())
+        assert lazy_count == 0, f"N=4 should not use lazy allocation, but {lazy_count}/4 blobs are lazy"
 
         inp = np.random.randn(1, C).astype(np.float32)
         out = net.Forward({"data": inp})
@@ -289,9 +274,7 @@ class TestSplitLazyReshape:
         for i in range(N):
             key = f"split_{i}"
             assert key in out
-            np.testing.assert_array_almost_equal(
-                net.blob_by_name(key).to_numpy(), inp
-            )
+            np.testing.assert_array_almost_equal(net.blob_by_name(key).to_numpy(), inp)
 
     # ── Case 11: DownstreamLayerCompatibility ──
 
@@ -307,14 +290,14 @@ class TestSplitLazyReshape:
         assert "relu_out" in out, "ReLU output missing"
         expected_relu = np.maximum(0, inp)
         np.testing.assert_array_almost_equal(
-            net.blob_by_name("relu_out").to_numpy(), expected_relu,
-            err_msg="ReLU output differs from expected"
+            net.blob_by_name("relu_out").to_numpy(), expected_relu, err_msg="ReLU output differs from expected"
         )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Extended tests — edge cases & regression (6 cases)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestSetShapeOnlyExtended:
     """Extended edge case and regression tests for SetShapeOnly."""
@@ -396,13 +379,8 @@ class TestSetShapeOnlyExtended:
         prototxt = _make_split_prototxt(N, (1, C), name=f"test_boundary_N{N}")
         net = caffe_ffi.Net(prototxt)
 
-        lazy_count = sum(
-            1 for i in range(N)
-            if net.blob_by_name(f"split_{i}").is_lazy_allocated()
-        )
-        assert lazy_count == N, (
-            f"N=16 (threshold) should use lazy allocation, {lazy_count}/{N} are lazy"
-        )
+        lazy_count = sum(1 for i in range(N) if net.blob_by_name(f"split_{i}").is_lazy_allocated())
+        assert lazy_count == N, f"N=16 (threshold) should use lazy allocation, {lazy_count}/{N} are lazy"
 
         inp = np.random.randn(1, C).astype(np.float32)
         out = net.Forward({"data": inp})
@@ -410,29 +388,29 @@ class TestSetShapeOnlyExtended:
         for i in range(N):
             key = f"split_{i}"
             assert key in out
-            np.testing.assert_array_almost_equal(
-                net.blob_by_name(key).to_numpy(), inp
-            )
+            np.testing.assert_array_almost_equal(net.blob_by_name(key).to_numpy(), inp)
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Parametrized compatibility test for downstream layers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestDownstreamLayerCompatibility:
     """Verify downstream layers work with lazy-allocated->shared blobs."""
 
-    @pytest.mark.parametrize("layer_type,output_key", [
-        ("ReLU", "downstream_out"),
-        ("Sigmoid", "downstream_out"),
-        ("TanH", "downstream_out"),
-    ])
+    @pytest.mark.parametrize(
+        "layer_type,output_key",
+        [
+            ("ReLU", "downstream_out"),
+            ("Sigmoid", "downstream_out"),
+            ("TanH", "downstream_out"),
+        ],
+    )
     def test_activation_after_lazy_split(self, layer_type, output_key):
         """Activation layers after lazy Split should work."""
         N = 100
-        prototxt = _make_split_activation_prototxt(
-            N, (1, 64, 28, 28), layer_type, output_key
-        )
+        prototxt = _make_split_activation_prototxt(N, (1, 64, 28, 28), layer_type, output_key)
         net = caffe_ffi.Net(prototxt)
         inp = np.random.randn(1, 64, 28, 28).astype(np.float32)
 
@@ -440,13 +418,12 @@ class TestDownstreamLayerCompatibility:
 
         assert output_key in out, f"{layer_type} output '{output_key}' missing"
         result = net.blob_by_name(output_key).to_numpy()
-        assert result.shape == inp.shape, (
-            f"{layer_type} output shape {result.shape} != input shape {inp.shape}"
-        )
+        assert result.shape == inp.shape, f"{layer_type} output shape {result.shape} != input shape {inp.shape}"
 
 
 # ── Manual verification ────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import pytest as _pytest
+
     _pytest.main([__file__, "-v", "-s"])

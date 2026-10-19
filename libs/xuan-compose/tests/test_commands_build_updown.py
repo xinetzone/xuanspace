@@ -76,8 +76,10 @@ class TestBuildOne(IsolatedAsyncioTestCase):
         compose = mock.Mock(podman=podman)
         cnt = {"image": "ghcr.io/a:latest", "build": {"context": "."}}
         cleanup_marker = mock.Mock()
-        def fake_build_args(_c: object, _cnt: object, _a: object, _exists: object,
-                            cleanup_callbacks: list) -> list[str]:
+
+        def fake_build_args(
+            _c: object, _cnt: object, _a: object, _exists: object, cleanup_callbacks: list
+        ) -> list[str]:
             cleanup_callbacks.append(cleanup_marker)
             return ["ctx"]
 
@@ -97,9 +99,7 @@ class TestComposeBuild(IsolatedAsyncioTestCase):
         compose.podman = _podman()
         compose.services = services
         compose.containers = containers
-        compose.container_names_by_service = {
-            cnt["service_name"]: [cnt["name"]] for cnt in containers
-        }
+        compose.container_names_by_service = {cnt["service_name"]: [cnt["name"]] for cnt in containers}
         compose.container_by_name = {cnt["name"]: cnt for cnt in containers}
         compose.assert_services = mock.Mock()
         return compose
@@ -107,9 +107,7 @@ class TestComposeBuild(IsolatedAsyncioTestCase):
     async def test_builds_named_service_via_registry_path(self) -> None:
         cnt = {"name": "p_a_1", "service_name": "a", "build": {"context": "."}}
         compose = self._compose({"a": {"build": {"context": "."}}}, [cnt])
-        with mock.patch(
-            "xuan_compose.commands.build.build_one", mock.AsyncMock(return_value=0)
-        ) as b1:
+        with mock.patch("xuan_compose.commands.build.build_one", mock.AsyncMock(return_value=0)) as b1:
             result = await compose_build(compose, Namespace(services=["a"], if_not_exists=False))
         assert result == 0
         b1.assert_awaited_once()
@@ -132,21 +130,15 @@ class TestComposeBuild(IsolatedAsyncioTestCase):
             built_order.append(cnt["service_name"])
             return 0
 
-        with mock.patch(
-            "xuan_compose.commands.build.build_one", side_effect=fake_build_one
-        ):
-            result = await compose_build(
-                compose, Namespace(services=[], if_not_exists=False)
-            )
+        with mock.patch("xuan_compose.commands.build.build_one", side_effect=fake_build_one):
+            result = await compose_build(compose, Namespace(services=[], if_not_exists=False))
         assert result == 0
         assert built_order == ["b", "a"]
 
     async def test_failed_build_aborts_batch(self) -> None:
         cnt = {"name": "p_a_1", "service_name": "a", "build": {}}
         compose = self._compose({"a": {"build": {"build_deps": set()}}}, [cnt])
-        with mock.patch(
-            "xuan_compose.commands.build.build_one", mock.AsyncMock(return_value=2)
-        ):
+        with mock.patch("xuan_compose.commands.build.build_one", mock.AsyncMock(return_value=2)):
             result = await compose_build(compose, Namespace(services=[], if_not_exists=False))
         assert result == 2
 
@@ -191,8 +183,7 @@ class TestCreateSecrets(IsolatedAsyncioTestCase):
         # L0 固化：上游报错串第二个片段漏 f 前缀，'{secret_name}' 为字面量；
         # 上游若补 f 修复，本断言变红以提示对等偏离（见 parity/upstream-quirks.md）。
         assert str(ctx.exception) == (
-            "Environment variable 'MY_TOKEN' required"
-            " by secret '{secret_name}' is not set in the process environment."
+            "Environment variable 'MY_TOKEN' required by secret '{secret_name}' is not set in the process environment."
         )
 
     async def test_creates_named_secret_from_environment(self) -> None:
@@ -256,11 +247,7 @@ class TestDown(IsolatedAsyncioTestCase):
             ]
         )
         await compose_down(compose, _down_args())
-        stop_targets = [
-            call.args[2][-1]
-            for call in compose.podman.run.await_args_list
-            if call.args[1] == "stop"
-        ]
+        stop_targets = [call.args[2][-1] for call in compose.podman.run.await_args_list if call.args[1] == "stop"]
         # 上游逆序停止（含默认 stop_grace_period 的 -t 参数）
         assert stop_targets == ["p_b_1", "p_a_1"]
         stop_full = compose.podman.run.await_args_list[0].args[2]
@@ -282,20 +269,14 @@ class TestDown(IsolatedAsyncioTestCase):
         compose.podman.volume_ls = mock.AsyncMock(return_value=["proj_vol1"])
         compose.podman.network_ls = mock.AsyncMock(return_value=["proj_net"])
         await compose_down(compose, _down_args(volumes=True, rmi="local"))
-        rmi_call = next(
-            c for c in compose.podman.run.await_args_list if c.args[1] == "rmi"
-        )
+        rmi_call = next(c for c in compose.podman.run.await_args_list if c.args[1] == "rmi")
         rmi_images = rmi_call.args[2]
         assert "localhost/a:latest" in rmi_images
         assert "ghcr.io/b:latest" not in rmi_images
-        vol_call = next(
-            c for c in compose.podman.run.await_args_list
-            if c.args[1] == "volume" and c.args[2][0] == "rm"
-        )
+        vol_call = next(c for c in compose.podman.run.await_args_list if c.args[1] == "volume" and c.args[2][0] == "rm")
         assert vol_call.args[2] == ["rm", "proj_vol1"]
         net_call = next(
-            c for c in compose.podman.run.await_args_list
-            if c.args[1] == "network" and c.args[2][0] == "rm"
+            c for c in compose.podman.run.await_args_list if c.args[1] == "network" and c.args[2][0] == "rm"
         )
         assert net_call.args[2] == ["rm", "proj_net"]
 
@@ -379,9 +360,7 @@ class TestUpDetached(IsolatedAsyncioTestCase):
                 mock.AsyncMock(return_value=[]),
             ),
         ):
-            result = await compose_up(
-                compose, _up_args(force_recreate=True, no_recreate=True)
-            )
+            result = await compose_up(compose, _up_args(force_recreate=True, no_recreate=True))
         assert result == 1
         compose.commands["down"].assert_not_called()
 
@@ -426,9 +405,7 @@ class TestRunCpExec(IsolatedAsyncioTestCase):
             extra_args=[],
         )
         with (
-            mock.patch(
-                "xuan_compose.commands.runexec.compose_run_update_container_from_args"
-            ) as update,
+            mock.patch("xuan_compose.commands.runexec.compose_run_update_container_from_args") as update,
             mock.patch(
                 "xuan_compose.commands.runexec.container_to_args",
                 mock.AsyncMock(return_value=["img"]),
@@ -451,13 +428,15 @@ class TestRunCpExec(IsolatedAsyncioTestCase):
         compose.assert_services = mock.Mock()
         compose.commands = {"up": mock.AsyncMock(), "build": mock.AsyncMock(return_value=0)}
         args = Namespace(
-            service="svc", no_deps=True, detach=False, rm=True, build=False,
+            service="svc",
+            no_deps=True,
+            detach=False,
+            rm=True,
+            build=False,
             extra_args=[],
         )
         with (
-            mock.patch(
-                "xuan_compose.commands.runexec.compose_run_update_container_from_args"
-            ),
+            mock.patch("xuan_compose.commands.runexec.compose_run_update_container_from_args"),
             mock.patch(
                 "xuan_compose.commands.runexec.container_to_args",
                 mock.AsyncMock(return_value=["img"]),
@@ -474,9 +453,7 @@ class TestRunCpExec(IsolatedAsyncioTestCase):
         compose.container_names_by_service = {"svc": ["p_svc_1"]}
         compose.assert_services = mock.Mock()
         args = Namespace(src="svc:/in", dst="/out", archive=False)
-        with mock.patch(
-            "xuan_compose.commands.runexec.compose_cp_args", return_value=["x", "y"]
-        ):
+        with mock.patch("xuan_compose.commands.runexec.compose_cp_args", return_value=["x", "y"]):
             with self.assertRaises(SystemExit) as ctx:
                 await compose_cp(compose, args)
         assert ctx.exception.code == 7
@@ -494,17 +471,23 @@ class TestRunCpExec(IsolatedAsyncioTestCase):
         compose.container_names_by_service = {"svc": ["p_svc_1", "p_svc_2"]}
         compose.container_by_name = {"p_svc_2": cnt}
         compose.assert_services = mock.Mock()
-        args = Namespace(service="svc", index=2, command="sh", tty=True, interactive=True,
-                        privileged=False, user=None, detach=False, env=[], workdir=None,
-                        extra_args=[])
-        with mock.patch(
-            "xuan_compose.commands.runexec.compose_exec_args", return_value=["-it", "p_svc_2"]
-        ):
+        args = Namespace(
+            service="svc",
+            index=2,
+            command="sh",
+            tty=True,
+            interactive=True,
+            privileged=False,
+            user=None,
+            detach=False,
+            env=[],
+            workdir=None,
+            extra_args=[],
+        )
+        with mock.patch("xuan_compose.commands.runexec.compose_exec_args", return_value=["-it", "p_svc_2"]):
             with self.assertRaises(SystemExit):
                 await compose_exec(compose, args)
-        compose.podman.run.assert_awaited_once_with(
-            [], "exec", ["-it", "p_svc_2"], pass_stdin=True
-        )
+        compose.podman.run.assert_awaited_once_with([], "exec", ["-it", "p_svc_2"], pass_stdin=True)
 
 
 class TestStartStopRestart(IsolatedAsyncioTestCase):
@@ -521,9 +504,7 @@ class TestStartStopRestart(IsolatedAsyncioTestCase):
     async def test_stop_reverses_targets_with_grace_period(self) -> None:
         compose = self._compose()
         await compose_stop(compose, Namespace(services=[], timeout=None))
-        stop_args = [
-            c.args[2] for c in compose.podman.run.await_args_list if c.args[1] == "stop"
-        ]
+        stop_args = [c.args[2] for c in compose.podman.run.await_args_list if c.args[1] == "stop"]
         assert stop_args[0][-1] == "p_b_1"
         assert stop_args[1][-1] == "p_a_1"
         assert stop_args[0][:2] == ["-t", "10"]

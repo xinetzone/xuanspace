@@ -122,39 +122,39 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
             await container_to_args(c, cnt)
         self.assertIn("ERROR: unparsable secret: ", str(context.exception))
 
-    @parameterized.expand([
-        (
-            "secret_no_name",
-            {"my_secret": "my_secret_name", "external": "true"},
-            {},  # must have a name
-        ),
-        (
-            "no_secret_name_in_declared_secrets",
-            {},  # must have a name
-            {
-                "source": "my_secret_name",
-            },
-        ),
-        (
-            "secret_name_does_not_match_declared_secrets_name",
-            {
-                "wrong_name": "my_secret_name",
-            },
-            {
-                "source": "name",  # secret name must match the one in declared_secrets
-            },
-        ),
-        (
-            "secret_name_empty_string",
-            {"": "my_secret_name"},
-            {
-                "source": "",  # can not be empty string
-            },
-        ),
-    ])
-    async def test_secret_name(
-        self, test_name: str, declared_secrets: dict, add_to_minimal_container: dict
-    ) -> None:
+    @parameterized.expand(
+        [
+            (
+                "secret_no_name",
+                {"my_secret": "my_secret_name", "external": "true"},
+                {},  # must have a name
+            ),
+            (
+                "no_secret_name_in_declared_secrets",
+                {},  # must have a name
+                {
+                    "source": "my_secret_name",
+                },
+            ),
+            (
+                "secret_name_does_not_match_declared_secrets_name",
+                {
+                    "wrong_name": "my_secret_name",
+                },
+                {
+                    "source": "name",  # secret name must match the one in declared_secrets
+                },
+            ),
+            (
+                "secret_name_empty_string",
+                {"": "my_secret_name"},
+                {
+                    "source": "",  # can not be empty string
+                },
+            ),
+        ]
+    )
+    async def test_secret_name(self, test_name: str, declared_secrets: dict, add_to_minimal_container: dict) -> None:
         c = create_compose_mock()
         c.declared_secrets = declared_secrets
 
@@ -279,9 +279,7 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
         }
         cnt = get_minimal_container()
         cnt["_service"] = "test-service"
-        cnt["secrets"] = [
-            {"source": "my_secret_name", "target": "does_not_equal_secret_name", "type": "env"}
-        ]
+        cnt["secrets"] = [{"source": "my_secret_name", "target": "does_not_equal_secret_name", "type": "env"}]
 
         args = await container_to_args(c, cnt)
         self.assertEqual(
@@ -320,68 +318,70 @@ class TestContainerToArgsSecrets(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    @parameterized.expand([
-        (
-            "no_secret_target",
-            {
-                "file_secret": {
-                    "file": "./my_secret",
-                }
-            },
-            "file_secret",
-            file_secret_volume("/run/secrets/file_secret"),
-        ),
-        (
-            "relabel",
-            {"file_secret": {"file": "./my_secret", "x-podman.relabel": "Z"}},
-            "file_secret",
-            file_secret_volume("/run/secrets/file_secret", "Z"),
-        ),
-        (
-            "relabel",
-            {"file_secret": {"file": "./my_secret", "x-podman.relabel": "z"}},
-            "file_secret",
-            file_secret_volume("/run/secrets/file_secret", "z"),
-        ),
-        (
-            "custom_target_name",
-            {
-                "file_secret": {
-                    "file": "./my_secret",
-                }
-            },
-            {
-                "source": "file_secret",
-                "target": "custom_name",
-            },
-            file_secret_volume("/run/secrets/custom_name"),
-        ),
-        (
-            "no_custom_target_name",
-            {
-                "file_secret": {
-                    "file": "./my_secret",
-                }
-            },
-            {
-                "source": "file_secret",
-            },
-            file_secret_volume("/run/secrets/file_secret"),
-        ),
-        (
-            "custom_location",
-            {
-                "file_secret": {
-                    "file": "./my_secret",
-                }
-            },
-            {
-                "source": "file_secret",
-                "target": "/etc/custom_location",
-            },
-            file_secret_volume("/etc/custom_location"),
-        ),
-    ])
+    @parameterized.expand(
+        [
+            (
+                "no_secret_target",
+                {
+                    "file_secret": {
+                        "file": "./my_secret",
+                    }
+                },
+                "file_secret",
+                file_secret_volume("/run/secrets/file_secret"),
+            ),
+            (
+                "relabel",
+                {"file_secret": {"file": "./my_secret", "x-podman.relabel": "Z"}},
+                "file_secret",
+                file_secret_volume("/run/secrets/file_secret", "Z"),
+            ),
+            (
+                "relabel",
+                {"file_secret": {"file": "./my_secret", "x-podman.relabel": "z"}},
+                "file_secret",
+                file_secret_volume("/run/secrets/file_secret", "z"),
+            ),
+            (
+                "custom_target_name",
+                {
+                    "file_secret": {
+                        "file": "./my_secret",
+                    }
+                },
+                {
+                    "source": "file_secret",
+                    "target": "custom_name",
+                },
+                file_secret_volume("/run/secrets/custom_name"),
+            ),
+            (
+                "no_custom_target_name",
+                {
+                    "file_secret": {
+                        "file": "./my_secret",
+                    }
+                },
+                {
+                    "source": "file_secret",
+                },
+                file_secret_volume("/run/secrets/file_secret"),
+            ),
+            (
+                "custom_location",
+                {
+                    "file_secret": {
+                        "file": "./my_secret",
+                    }
+                },
+                {
+                    "source": "file_secret",
+                    "target": "/etc/custom_location",
+                },
+                file_secret_volume("/etc/custom_location"),
+            ),
+        ]
+    )
     async def test_file_secret(
         self,
         test_name: str,

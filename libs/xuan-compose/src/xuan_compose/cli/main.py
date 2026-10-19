@@ -72,9 +72,7 @@ async def async_main(argv: list[str] | None = None) -> None:
         # just to make sure podman is running
         try:
             assert engine.podman is not None
-            engine.podman_version = (
-                await engine.podman.output(["--version"], "", [])
-            ).decode("utf-8").strip() or ""
+            engine.podman_version = (await engine.podman.output(["--version"], "", [])).decode("utf-8").strip() or ""
             engine.podman_version = (engine.podman_version.split() or [""])[-1]
         except (CalledProcessError, FileNotFoundError) as e:
             msg = str(e)
@@ -83,16 +81,11 @@ async def async_main(argv: list[str] | None = None) -> None:
             log.error("failed to check if podman is installed: %s", msg)
             engine.podman_version = None
         if not engine.podman_version:
-            log.fatal(
-                "It seems that you either do not have `podman` installed "
-                "or the `podman version` command failed."
-            )
+            log.fatal("It seems that you either do not have `podman` installed or the `podman version` command failed.")
             sys.exit(1)
         log.info("using podman version: %s", engine.podman_version)
     cmd_name = args.command
-    compose_required = cmd_name != "version" and (
-        cmd_name != "systemd" or args.action != "create-unit"
-    )
+    compose_required = cmd_name != "version" and (cmd_name != "systemd" or args.action != "create-unit")
     if compose_required:
         # 引擎就绪保障：仅真实执行需要服务端的命令时触发；dry-run 与
         # --no-machine-start（或 XC_NO_MACHINE_START=1）显式跳过。

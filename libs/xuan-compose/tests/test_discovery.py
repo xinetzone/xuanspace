@@ -43,9 +43,7 @@ def test_respects_custom_candidate_order_and_names(tmp_path) -> None:
     (tmp_path / "docker-compose.yml").write_text("x: 1", encoding="utf-8")
     (tmp_path / "compose.yaml").write_text("x: 1", encoding="utf-8")
 
-    result = find_compose_files_recursively(
-        str(tmp_path), ["docker-compose.yml", "compose.yaml"]
-    )
+    result = find_compose_files_recursively(str(tmp_path), ["docker-compose.yml", "compose.yaml"])
 
     assert result is not None
     assert [os.path.basename(p) for p in result[0]] == [

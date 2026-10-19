@@ -22,19 +22,20 @@ Run with:
     pytest tests/python/test_p3c_activations_ip.py -v
     pytest tests/python/test_p3c_activations_ip.py -v -s  # verbose with [PERF] logs
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace
+from caffe_ffi import net_from_param, net_param_from_string
 
+from .conftest import require_cpp_extension
 
 # ═══════════════════════════════════════════════════════════════════════
 # Numpy Reference Implementations
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def relu_np(x, negative_slope=0.0):
     """Numpy reference for ReLU/LeakyReLU: y = max(x,0) + negative_slope*min(x,0)."""
@@ -100,7 +101,7 @@ def inner_product_np(x, W, b=None, axis=1):
     x64 = x.astype(np.float64)
     W64 = W.astype(np.float64)
     shape = x64.shape
-    ndim = len(shape)
+    len(shape)
     M = int(np.prod(shape[:axis]))
     K = int(np.prod(shape[axis:]))
     N = W64.shape[0]
@@ -127,9 +128,9 @@ def flatten_np(x, start_axis=1, end_axis=-1):
         end_axis = ndim + end_axis
     shape = list(x.shape)
     new_shape = list(shape[:start_axis])
-    flattened_dim = int(np.prod(shape[start_axis:end_axis + 1]))
+    flattened_dim = int(np.prod(shape[start_axis : end_axis + 1]))
     new_shape.append(flattened_dim)
-    new_shape.extend(shape[end_axis + 1:])
+    new_shape.extend(shape[end_axis + 1 :])
     return x.reshape(new_shape)
 
 
@@ -146,7 +147,7 @@ def reshape_np(x, shape_spec):
         shape_spec: List/tuple of dims.
     """
     in_shape = x.shape
-    ndim = len(in_shape)
+    len(in_shape)
     shape = list(shape_spec)
     # Resolve 0s: copy from input
     for i in range(len(shape)):
@@ -169,6 +170,7 @@ def reshape_np(x, shape_spec):
 # Helper: build net from prototxt
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _make_net(prototxt: str):
     """Create a net from prototxt string."""
     return net_from_param(net_param_from_string(prototxt))
@@ -177,6 +179,7 @@ def _make_net(prototxt: str):
 # ═══════════════════════════════════════════════════════════════════════
 # ReLU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestReLULayers:
@@ -222,7 +225,7 @@ layer { name: "relu" type: "ReLU" bottom: "data" top: "out" relu_param { negativ
         inp = np.random.randn(4, 8, 6, 6).astype(np.float32) * 5.0
         with ptrace("relu numpy match forward") as t:
             out = net.forward({"data": inp})
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - relu_np(inp))))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - relu_np(inp))))
         np.testing.assert_allclose(out["out"], relu_np(inp), rtol=1e-6, atol=1e-6)
 
     def test_relu_leaky_numpy_match(self, ptrace):
@@ -276,6 +279,7 @@ layer { name: "relu" type: "ReLU" bottom: "data" top: "out" relu_param { negativ
 # Sigmoid Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestSigmoidLayers:
     """Tests for the Sigmoid layer's forward computation."""
@@ -294,9 +298,9 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         result = out["out"]
         assert result[0, 0, 0, 2] == pytest.approx(0.5, abs=1e-6)
         # In float32, sigmoid(-100) = 1/(1+exp(100)) = 1/inf = exactly 0.0
-        assert result[0, 0, 0, 0] == 0.0, f"sigmoid(-100) should be exactly 0.0 in float32, got {result[0,0,0,0]}"
+        assert result[0, 0, 0, 0] == 0.0, f"sigmoid(-100) should be exactly 0.0 in float32, got {result[0, 0, 0, 0]}"
         # In float32, sigmoid(100) = 1/(1+exp(-100)) ≈ 1-3.7e-44, rounds to exactly 1.0
-        assert result[0, 0, 0, 4] == 1.0, f"sigmoid(100) should be exactly 1.0 in float32, got {result[0,0,0,4]}"
+        assert result[0, 0, 0, 4] == 1.0, f"sigmoid(100) should be exactly 1.0 in float32, got {result[0, 0, 0, 4]}"
         assert result[0, 0, 0, 1] == pytest.approx(1.0 / (1.0 + np.e), rel=1e-5)
         assert result[0, 0, 0, 3] == pytest.approx(np.e / (1.0 + np.e), rel=1e-5)
 
@@ -312,7 +316,7 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         inp = np.random.randn(4, 6, 5, 5).astype(np.float32) * 2.0
         with ptrace("sigmoid numpy match forward") as t:
             out = net.forward({"data": inp})
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - sigmoid_np(inp))))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - sigmoid_np(inp))))
         np.testing.assert_allclose(out["out"], sigmoid_np(inp), rtol=1e-5, atol=1e-6)
 
     def test_sigmoid_output_range(self, ptrace):
@@ -356,18 +360,16 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         result = out["out"]
         # sigmoid(-88) ≈ 6e-39 in float32 (subnormal, not exactly 0)
         assert result[0, 0, 0, 0] < 1e-37, (
-            f"sigmoid(-88) should be < 1e-37 (effectively zero), got {result[0,0,0,0]}"
+            f"sigmoid(-88) should be < 1e-37 (effectively zero), got {result[0, 0, 0, 0]}"
         )
         # sigmoid(-80) ≈ 1.8e-35 in float32 (subnormal, not exactly 0)
         assert result[0, 0, 0, 1] < 1e-30, (
-            f"sigmoid(-80) should be < 1e-30 (effectively zero), got {result[0,0,0,1]}"
+            f"sigmoid(-80) should be < 1e-30 (effectively zero), got {result[0, 0, 0, 1]}"
         )
         # sigmoid(80) is exactly 1.0 in float32 (exp(-80)≈1.8e-35 ≪ ULP(1.0)/2≈6e-8)
-        assert result[0, 0, 0, 2] == 1.0, (
-            f"sigmoid(80) should be exactly 1.0 in float32, got {result[0,0,0,2]}"
-        )
+        assert result[0, 0, 0, 2] == 1.0, f"sigmoid(80) should be exactly 1.0 in float32, got {result[0, 0, 0, 2]}"
         # sigmoid(88) is exactly 1.0 in float32
-        assert result[0, 0, 0, 3] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result[0,0,0,3]}"
+        assert result[0, 0, 0, 3] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result[0, 0, 0, 3]}"
         # No NaN or Inf
         assert not np.any(np.isnan(result))
         assert not np.any(np.isinf(result))
@@ -393,15 +395,13 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
         result = out["out"]
         # For x <= 14, output should be strictly < 1.0 (not yet saturated)
         for i in range(5):
-            assert result.flat[i] < 1.0, (
-                f"sigmoid({x_values.flat[i]}) should be < 1.0, got {result.flat[i]}"
-            )
+            assert result.flat[i] < 1.0, f"sigmoid({x_values.flat[i]}) should be < 1.0, got {result.flat[i]}"
         # At x=88 it must be exactly 1.0
         assert result.flat[9] == 1.0, f"sigmoid(88) should be exactly 1.0, got {result.flat[9]}"
         # Monotonicity: output should be non-decreasing as x increases
         for i in range(9):
-            assert result.flat[i+1] >= result.flat[i], (
-                f"Sigmoid not monotonic at index {i}: {result.flat[i]} -> {result.flat[i+1]}"
+            assert result.flat[i + 1] >= result.flat[i], (
+                f"Sigmoid not monotonic at index {i}: {result.flat[i]} -> {result.flat[i + 1]}"
             )
         # No NaN or Inf anywhere
         assert not np.any(np.isnan(result)), "Sigmoid produced NaN"
@@ -484,6 +484,7 @@ layer { name: "sig" type: "Sigmoid" bottom: "data" top: "out" }
 # Sigmoid Layer Backward Tests (P3-D: Gradient & Saturation Counter)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def sigmoid_grad_np(x):
     """Numpy reference for sigmoid gradient: sigmoid'(x) = y * (1 - y)."""
     y = sigmoid_np(x)
@@ -562,7 +563,7 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
         # Verify gradient is max at 0.25 for all elements
         dx = net.blob_by_name("data").diff
         np.testing.assert_allclose(dx, np.full_like(dx, 0.25), rtol=1e-6)
-        t['note'] = 'All elements at y=0.5, max gradient, zero saturation'
+        t["note"] = "All elements at y=0.5, max gradient, zero saturation"
 
     def test_sigmoid_backward_saturation_counter_all_saturated_positive(self, ptrace):
         """All large positive inputs (x=20): y≈1 for all → all saturated.
@@ -586,8 +587,8 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
         dx = net.blob_by_name("data").diff
         # All gradients should be near zero (vanishing)
         assert np.all(np.abs(dx) < 1e-4), f"Expected near-zero gradients, max|dx|={np.abs(dx).max()}"
-        t['max_dx'] = float(np.abs(dx).max())
-        t['note'] = f'All {N} elements in positive saturation zone, vanishing gradients'
+        t["max_dx"] = float(np.abs(dx).max())
+        t["note"] = f"All {N} elements in positive saturation zone, vanishing gradients"
 
     def test_sigmoid_backward_saturation_counter_all_saturated_negative(self, ptrace):
         """All large negative inputs (x=-20): y≈0 for all → all saturated.
@@ -608,8 +609,8 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
             net.backward({"out": dy})
         dx = net.blob_by_name("data").diff
         assert np.all(np.abs(dx) < 1e-4), f"Expected near-zero gradients, max|dx|={np.abs(dx).max()}"
-        t['max_dx'] = float(np.abs(dx).max())
-        t['note'] = f'All {N} elements in negative saturation zone, vanishing gradients'
+        t["max_dx"] = float(np.abs(dx).max())
+        t["note"] = f"All {N} elements in negative saturation zone, vanishing gradients"
 
     def test_sigmoid_backward_saturation_counter_mixed(self, ptrace):
         """Mixed inputs: precisely control how many elements are saturated.
@@ -648,9 +649,9 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
         assert np.all(np.abs(dx.flat[20:]) < 1e-4), "Pos saturated gradients should vanish"
         # Linear elements: gradient ≈ 0.25 (max gradient at x=0)
         np.testing.assert_allclose(dx.flat[10:20], np.full(10, 0.25, dtype=np.float32), rtol=1e-5)
-        t['expected_saturated'] = expected_saturated
-        t['expected_linear'] = expected_linear
-        t['note'] = f'Mixed: {expected_saturated} saturated (near-zero dx), {expected_linear} linear (dx≈0.25)'
+        t["expected_saturated"] = expected_saturated
+        t["expected_linear"] = expected_linear
+        t["note"] = f"Mixed: {expected_saturated} saturated (near-zero dx), {expected_linear} linear (dx≈0.25)"
 
     def test_sigmoid_backward_saturation_boundary_threshold(self, ptrace):
         """Test exact threshold boundary: elements just inside/outside saturation.
@@ -682,13 +683,13 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
             net.backward({"out": dy})
         dx = net.blob_by_name("data").diff
         # Elements 0 and 3 (indices 0,3) should have near-zero gradients
-        assert np.abs(dx.flat[0]) < 1e-4, f"Saturated element 0 should have near-zero dx"
-        assert np.abs(dx.flat[3]) < 1e-4, f"Saturated element 3 should have near-zero dx"
+        assert np.abs(dx.flat[0]) < 1e-4, "Saturated element 0 should have near-zero dx"
+        assert np.abs(dx.flat[3]) < 1e-4, "Saturated element 3 should have near-zero dx"
         # Elements 1 and 2 (indices 1,2) should have non-trivial gradients
-        assert np.abs(dx.flat[1]) > 1e-4, f"Non-saturated element 1 should have non-zero dx"
-        assert np.abs(dx.flat[2]) > 1e-4, f"Non-saturated element 2 should have non-zero dx"
-        t['saturated_indices'] = [0, 3]
-        t['non_saturated_indices'] = [1, 2]
+        assert np.abs(dx.flat[1]) > 1e-4, "Non-saturated element 1 should have non-zero dx"
+        assert np.abs(dx.flat[2]) > 1e-4, "Non-saturated element 2 should have non-zero dx"
+        t["saturated_indices"] = [0, 3]
+        t["non_saturated_indices"] = [1, 2]
 
     def test_sigmoid_backward_large_tensor_saturation_stats(self, ptrace):
         """Large tensor mixed distribution: verify saturation statistics.
@@ -715,10 +716,10 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
         dx = net.blob_by_name("data").diff
         expected_dx = (y * (1.0 - y)).astype(np.float32)
         np.testing.assert_allclose(dx, expected_dx, rtol=1e-5, atol=1e-6)
-        t['total_elements'] = N
-        t['expected_saturated'] = expected_saturated
-        t['expected_ratio'] = float(expected_ratio)
-        t['note'] = f'Large tensor: {expected_saturated}/{N} saturated ({expected_ratio:.2%})'
+        t["total_elements"] = N
+        t["expected_saturated"] = expected_saturated
+        t["expected_ratio"] = float(expected_ratio)
+        t["note"] = f"Large tensor: {expected_saturated}/{N} saturated ({expected_ratio:.2%})"
         # Sanity: with std=5, expect roughly 5-10% saturation
         assert 0.01 < expected_ratio < 0.30, (
             f"Expected saturation ratio between 1-30% for N(0,5) inputs, got {expected_ratio:.2%}"
@@ -764,6 +765,7 @@ layer {{ name: "sig" type: "Sigmoid" bottom: "data" top: "out" }}
 # TanH Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestTanHLayers:
     """Tests for the TanH layer's forward computation."""
@@ -781,8 +783,8 @@ layer { name: "th" type: "TanH" bottom: "data" top: "out" }
             out = net.forward({"data": inp})
         result = out["out"]
         assert result[0, 0, 0, 2] == pytest.approx(0.0, abs=1e-6)
-        assert result[0, 0, 0, 4] == 1.0, f"tanh(100) should be exactly 1.0 in float32, got {result[0,0,0,4]}"
-        assert result[0, 0, 0, 0] == -1.0, f"tanh(-100) should be exactly -1.0 in float32, got {result[0,0,0,0]}"
+        assert result[0, 0, 0, 4] == 1.0, f"tanh(100) should be exactly 1.0 in float32, got {result[0, 0, 0, 4]}"
+        assert result[0, 0, 0, 0] == -1.0, f"tanh(-100) should be exactly -1.0 in float32, got {result[0, 0, 0, 0]}"
         assert result[0, 0, 0, 3] == pytest.approx(np.tanh(1.0), rel=1e-5)
         assert result[0, 0, 0, 1] == pytest.approx(np.tanh(-1.0), rel=1e-5)
 
@@ -798,7 +800,7 @@ layer { name: "th" type: "TanH" bottom: "data" top: "out" }
         inp = np.random.randn(4, 6, 5, 5).astype(np.float32) * 2.0
         with ptrace("tanh numpy match forward") as t:
             out = net.forward({"data": inp})
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - tanh_np(inp))))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - tanh_np(inp))))
         np.testing.assert_allclose(out["out"], tanh_np(inp), rtol=1e-5, atol=1e-6)
 
     def test_tanh_output_range(self, ptrace):
@@ -855,6 +857,7 @@ layer { name: "th" type: "TanH" bottom: "data" top: "out" }
 # ELU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestELULayers:
     """Tests for the ELU layer's forward computation."""
@@ -870,7 +873,7 @@ layer { name: "elu" type: "ELU" bottom: "data" top: "out" }
         inp = np.array([[[[-1.0, 0.0, 1.0, 2.0]]]], dtype=np.float32)
         with ptrace("elu known forward"):
             out = net.forward({"data": inp})
-        expected = np.array([[[[np.e**(-1) - 1, 0.0, 1.0, 2.0]]]], dtype=np.float32)
+        expected = np.array([[[[np.e ** (-1) - 1, 0.0, 1.0, 2.0]]]], dtype=np.float32)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5)
 
     def test_elu_custom_alpha(self, ptrace):
@@ -884,7 +887,7 @@ layer { name: "elu" type: "ELU" bottom: "data" top: "out" elu_param { alpha: 0.5
         inp = np.array([[[[-1.0, 0.0, 3.0]]]], dtype=np.float32)
         with ptrace("elu custom alpha forward"):
             out = net.forward({"data": inp})
-        expected = np.array([[[[0.5 * (np.e**(-1) - 1), 0.0, 3.0]]]], dtype=np.float32)
+        expected = np.array([[[[0.5 * (np.e ** (-1) - 1), 0.0, 3.0]]]], dtype=np.float32)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5)
 
     def test_elu_numpy_match_default_alpha(self, ptrace):
@@ -899,7 +902,7 @@ layer { name: "elu" type: "ELU" bottom: "data" top: "out" }
         inp = np.random.randn(3, 5, 4, 4).astype(np.float32) * 3.0
         with ptrace("elu numpy match forward") as t:
             out = net.forward({"data": inp})
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - elu_np(inp))))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - elu_np(inp))))
         np.testing.assert_allclose(out["out"], elu_np(inp), rtol=1e-5, atol=1e-5)
 
     def test_elu_numpy_match_custom_alpha(self, ptrace):
@@ -957,6 +960,7 @@ layer { name: "elu" type: "ELU" bottom: "data" top: "out" elu_param { alpha: 1.0
 # PReLU Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestPReLULayers:
     """Tests for the PReLU layer's forward computation."""
@@ -1005,9 +1009,9 @@ layer {{ name: "prelu" type: "PReLU" bottom: "data" top: "out" }}
         # Channel 0: slope=0.0 → same as ReLU
         # Channel 1: slope=0.1 → leaky ReLU
         # Channel 2: slope=0.5 → half negative
-        inp = np.array([[[[-1.0, 2.0], [0.5, -3.0]],
-                          [[-1.0, 2.0], [0.5, -3.0]],
-                          [[-1.0, 2.0], [0.5, -3.0]]]], dtype=np.float32)
+        inp = np.array(
+            [[[[-1.0, 2.0], [0.5, -3.0]], [[-1.0, 2.0], [0.5, -3.0]], [[-1.0, 2.0], [0.5, -3.0]]]], dtype=np.float32
+        )
         with ptrace("prelu custom slopes forward"):
             out = net.forward({"data": inp})
         expected = prelu_np(inp, slopes, channel_shared=False)
@@ -1044,7 +1048,7 @@ layer {{ name: "prelu" type: "PReLU" bottom: "data" top: "out" }}
         inp = np.random.randn(N, C, H, W).astype(np.float32) * 4.0
         with ptrace("prelu numpy match forward") as t:
             out = net.forward({"data": inp})
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - prelu_np(inp, slopes))))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - prelu_np(inp, slopes))))
         np.testing.assert_allclose(out["out"], prelu_np(inp, slopes), rtol=1e-5)
 
     def test_prelu_repeated_forward(self, ptrace):
@@ -1072,6 +1076,7 @@ layer { name: "prelu" type: "PReLU" bottom: "data" top: "out" }
 # InnerProduct (Fully Connected) Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestInnerProductLayers:
     """Tests for the InnerProduct (Fully Connected) layer's forward computation."""
@@ -1089,8 +1094,7 @@ layer { name: "ip" type: "InnerProduct" bottom: "data" top: "out"
             net = _make_net(prototxt)
         W = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)  # (N=2, K=3)
         net.layer_by_name("ip").blobs[0].from_numpy(W)
-        inp = np.array([[[[1]], [[2]], [[3]]],
-                         [[[4]], [[5]], [[6]]]], dtype=np.float32)  # (2,3,1,1)
+        inp = np.array([[[[1]], [[2]], [[3]]], [[[4]], [[5]], [[6]]]], dtype=np.float32)  # (2,3,1,1)
         with ptrace("ip known no bias forward"):
             out = net.forward({"data": inp})
         # y[0] = [1,2] (first two features), y[1] = [4,5]
@@ -1136,7 +1140,7 @@ layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "out"
         with ptrace("ip numpy match forward") as t:
             out = net.forward({"data": inp})
             expected = inner_product_np(inp, W, b)
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - expected)))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - expected)))
         np.testing.assert_allclose(out["out"], expected, rtol=1e-4, atol=1e-5)
 
     def test_ip_numpy_match_no_bias(self, ptrace):
@@ -1224,6 +1228,7 @@ layer {{ name: "ip" type: "InnerProduct" bottom: "data" top: "out"
 # Softmax Layer Tests (standalone, separate from SoftmaxWithLoss)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestSoftmaxLayers:
     """Tests for the standalone Softmax layer's forward computation."""
@@ -1270,7 +1275,7 @@ layer {{ name: "sm" type: "Softmax" bottom: "data" top: "out" }}
         with ptrace("softmax numpy match forward") as t:
             out = net.forward({"data": inp})
             expected = softmax_np(inp, axis=1)
-            t['max_abs_diff'] = float(np.max(np.abs(out["out"] - expected)))
+            t["max_abs_diff"] = float(np.max(np.abs(out["out"] - expected)))
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5, atol=1e-6)
 
     def test_softmax_sums_to_one(self, ptrace):
@@ -1325,6 +1330,7 @@ layer { name: "sm" type: "Softmax" bottom: "data" top: "out" }
 # ═══════════════════════════════════════════════════════════════════════
 # Flatten Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestFlattenLayers:
@@ -1400,7 +1406,7 @@ layer { name: "flat" type: "Flatten" bottom: "data" top: "out" }
 """
         with ptrace("Net(flatten preserves values)"):
             net = _make_net(prototxt)
-        inp = np.arange(2*3*2*2, dtype=np.float32).reshape(2, 3, 2, 2)
+        inp = np.arange(2 * 3 * 2 * 2, dtype=np.float32).reshape(2, 3, 2, 2)
         with ptrace("flatten preserves values forward"):
             out = net.forward({"data": inp})
         # Total count should match
@@ -1429,6 +1435,7 @@ layer { name: "flat" type: "Flatten" bottom: "data" top: "out" }
 # ═══════════════════════════════════════════════════════════════════════
 # Reshape Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestReshapeLayers:
@@ -1466,7 +1473,7 @@ layer { name: "rsh" type: "Reshape" bottom: "data" top: "out"
 """
         with ptrace("Net(reshape inferred)"):
             net = _make_net(prototxt)
-        inp = np.arange(2*3*4*4, dtype=np.float32).reshape(2, 3, 4, 4)
+        inp = np.arange(2 * 3 * 4 * 4, dtype=np.float32).reshape(2, 3, 4, 4)
         with ptrace("reshape inferred forward"):
             out = net.forward({"data": inp})
         # total = 96, dim0=2(copy), dim2=8, so dim1 = 96/(2*8) = 6
@@ -1488,9 +1495,9 @@ layer {{ name: "rsh" type: "Reshape" bottom: "data" top: "out"
         with ptrace("reshape numpy match forward"):
             out = net.forward({"data": inp})
         # shape_spec: [0, -1, 1, 1] — dim0=3(copy), total=3*4*5*6=360, so dim1=360/(3*1*1)=120
-        expected = reshape_np(inp, [0, -1, 1, 1])
+        reshape_np(inp, [0, -1, 1, 1])
         # 0 in spec means copy from input
-        expected_shape = [N] + [N*C*H*W//N] + [1, 1]
+        expected_shape = [N] + [N * C * H * W // N] + [1, 1]
         assert out["out"].shape == tuple(expected_shape)
         np.testing.assert_array_equal(out["out"].flatten(), inp.flatten())
 
@@ -1503,7 +1510,7 @@ layer { name: "rsh" type: "Reshape" bottom: "data" top: "out"
 """
         with ptrace("Net(reshape preserves values)"):
             net = _make_net(prototxt)
-        inp = np.arange(2*3*2*2, dtype=np.float32).reshape(2, 3, 2, 2)
+        inp = np.arange(2 * 3 * 2 * 2, dtype=np.float32).reshape(2, 3, 2, 2)
         with ptrace("reshape preserves values forward"):
             out = net.forward({"data": inp})
         assert out["out"].size == inp.size
@@ -1532,6 +1539,7 @@ layer { name: "rsh" type: "Reshape" bottom: "data" top: "out"
 # ═══════════════════════════════════════════════════════════════════════
 # Combination / Pipeline Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestActivationIPCombination:
@@ -1567,8 +1575,8 @@ layer {{ name: "prob" type: "Softmax" bottom: "logits" top: "probs" }}
         inp = np.random.randn(N, K, 1, 1).astype(np.float32) * 0.5
         with ptrace("MLP pipeline forward") as t:
             out = net.forward({"data": inp})
-            t['probs_sum_max_err'] = float(np.max(np.abs(np.sum(out["probs"], axis=1) - 1.0)))
-            t['probs_min'] = float(np.min(out["probs"]))
+            t["probs_sum_max_err"] = float(np.max(np.abs(np.sum(out["probs"], axis=1) - 1.0)))
+            t["probs_min"] = float(np.min(out["probs"]))
         # Softmax output must sum to 1
         assert out["probs"].shape == (N, C)
         np.testing.assert_allclose(np.sum(out["probs"], axis=1), np.ones((N,)), rtol=1e-5)

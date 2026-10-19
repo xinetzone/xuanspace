@@ -16,19 +16,19 @@ Run with:
     pytest tests/python/test_p3b_eltwise_scale.py -v
     pytest tests/python/test_p3b_eltwise_scale.py -v -s  # verbose with [PERF] logs
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace
+from caffe_ffi import net_from_param, net_param_from_string
 
+from .conftest import require_cpp_extension
 
 # ═══════════════════════════════════════════════════════════════════════
 # Numpy Reference Implementations
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def scale_np(x, scale, bias=None, axis=1, num_axes=1):
     """Numpy reference for Scale layer: y = x * scale + bias (with broadcasting).
@@ -112,16 +112,15 @@ def softmax_np(x, axis=1):
 def softmax_loss_np(score, label, axis=1, ignore_label=None):
     """Numpy reference for SoftmaxWithLoss: returns (loss, probs)."""
     probs = softmax_np(score.astype(np.float64), axis=axis)
-    ndim = score.ndim
     outer_num = int(np.prod(score.shape[:axis]))
-    inner_num = int(np.prod(score.shape[axis+1:]))
+    inner_num = int(np.prod(score.shape[axis + 1 :]))
     channels = score.shape[axis]
 
     loss = 0.0
     count = 0
     label_flat = label.reshape(-1)
     # Reshape score/probs to (outer_num, channels, inner_num) for indexing
-    score_transposed = np.moveaxis(score, axis, 1).reshape(outer_num, channels, inner_num)
+    np.moveaxis(score, axis, 1).reshape(outer_num, channels, inner_num)
     probs_transposed = np.moveaxis(probs, axis, 1).reshape(outer_num, channels, inner_num)
 
     idx = 0
@@ -141,9 +140,8 @@ def softmax_loss_np(score, label, axis=1, ignore_label=None):
 
 def accuracy_np(score, label, top_k=1, axis=1, ignore_label=None):
     """Numpy reference for Accuracy layer: returns top-k accuracy."""
-    ndim = score.ndim
     outer_num = int(np.prod(score.shape[:axis]))
-    inner_num = int(np.prod(score.shape[axis+1:]))
+    inner_num = int(np.prod(score.shape[axis + 1 :]))
     channels = score.shape[axis]
 
     count = 0
@@ -172,6 +170,7 @@ def accuracy_np(score, label, top_k=1, axis=1, ignore_label=None):
 # Helper: build net from prototxt and create/load weights
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _make_net(prototxt: str):
     """Create a net from prototxt string."""
     return net_from_param(net_param_from_string(prototxt))
@@ -180,6 +179,7 @@ def _make_net(prototxt: str):
 # ═══════════════════════════════════════════════════════════════════════
 # Scale Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestScaleLayers:
@@ -196,8 +196,8 @@ layer { name: "scale" type: "Scale" bottom: "data" top: "out" }
         inp = np.random.randn(2, 3, 4, 4).astype(np.float32)
         with ptrace("scale identity forward") as t:
             out = net.forward({"data": inp})
-            t['input_shape'] = f"{inp.shape}"
-            t['output_shape'] = f"{out['out'].shape}"
+            t["input_shape"] = f"{inp.shape}"
+            t["output_shape"] = f"{out['out'].shape}"
         np.testing.assert_allclose(out["out"], inp, rtol=1e-6, atol=1e-6)
 
     def test_scale_per_channel(self, ptrace):
@@ -214,7 +214,7 @@ layer {{ name: "scale" type: "Scale" bottom: "data" top: "out" }}
         scale_layer = net.layer_by_name("scale")
         with ptrace("load scale weights") as t:
             scale_layer.blobs[0].from_numpy(scale_factors)
-            t['scale_shape'] = f"{scale_factors.shape}"
+            t["scale_shape"] = f"{scale_factors.shape}"
         inp = np.random.randn(2, C, 3, 3).astype(np.float32)
         with ptrace("scale per-channel forward") as t:
             out = net.forward({"data": inp})
@@ -236,9 +236,7 @@ layer {{ name: "scale" type: "Scale" bottom: "data" top: "out" scale_param {{ bi
         with ptrace("load scale+bias weights"):
             scale_layer.blobs[0].from_numpy(scale_factors)
             scale_layer.blobs[1].from_numpy(bias_values)
-        inp = np.array([[[[1, 2], [3, 4]],
-                         [[5, 6], [7, 8]],
-                         [[9, 10], [11, 12]]]], dtype=np.float32)
+        inp = np.array([[[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]]], dtype=np.float32)
         with ptrace("scale+bias forward"):
             out = net.forward({"data": inp})
         expected = scale_np(inp, scale_factors, bias=bias_values, axis=1)
@@ -280,7 +278,7 @@ layer {{ name: "scale" type: "Scale" bottom: "data" top: "out" scale_param {{ bi
         inp = np.random.randn(2, C, 3, 3).astype(np.float32)
         results = []
         for i in range(5):
-            with ptrace(f"scale forward #{i+1}"):
+            with ptrace(f"scale forward #{i + 1}"):
                 out = net.forward({"data": inp})
             results.append(out["out"].copy())
         for i in range(1, 5):
@@ -313,6 +311,7 @@ layer {{ name: "scale" type: "Scale" bottom: "data" top: "out" scale_param {{ bi
 # Bias Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestBiasLayers:
     """Tests for the Bias layer's forward computation."""
@@ -328,7 +327,7 @@ layer { name: "bias" type: "Bias" bottom: "data" top: "out" }
         inp = np.random.randn(2, 3, 4, 4).astype(np.float32)
         with ptrace("bias zero forward") as t:
             out = net.forward({"data": inp})
-            t['input_shape'] = f"{inp.shape}"
+            t["input_shape"] = f"{inp.shape}"
         np.testing.assert_allclose(out["out"], inp, rtol=1e-6, atol=1e-6)
 
     def test_bias_per_channel(self, ptrace):
@@ -344,7 +343,7 @@ layer {{ name: "bias" type: "Bias" bottom: "data" top: "out" }}
         bias_layer = net.layer_by_name("bias")
         with ptrace("load bias weights") as t:
             bias_layer.blobs[0].from_numpy(bias_values)
-            t['bias_shape'] = f"{bias_values.shape}"
+            t["bias_shape"] = f"{bias_values.shape}"
         inp = np.random.randn(2, C, 3, 3).astype(np.float32)
         with ptrace("bias per-channel forward"):
             out = net.forward({"data": inp})
@@ -363,8 +362,7 @@ layer {{ name: "bias" type: "Bias" bottom: "data" top: "out" }}
         bias_values = np.array([10.0, -10.0], dtype=np.float32)
         bias_layer = net.layer_by_name("bias")
         bias_layer.blobs[0].from_numpy(bias_values)
-        inp = np.array([[[[1, 2], [3, 4]],
-                         [[5, 6], [7, 8]]]], dtype=np.float32)
+        inp = np.array([[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]], dtype=np.float32)
         with ptrace("bias known forward"):
             out = net.forward({"data": inp})
         expected = inp.copy()
@@ -406,7 +404,7 @@ layer {{ name: "bias" type: "Bias" bottom: "data" top: "out" }}
         inp = np.random.randn(2, C, 3, 3).astype(np.float32)
         results = []
         for i in range(5):
-            with ptrace(f"bias forward #{i+1}"):
+            with ptrace(f"bias forward #{i + 1}"):
                 out = net.forward({"data": inp})
             results.append(out["out"].copy())
         for i in range(1, 5):
@@ -434,6 +432,7 @@ layer {{ name: "bias" type: "Bias" bottom: "data" top: "out" }}
 # ═══════════════════════════════════════════════════════════════════════
 # Eltwise Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestEltwiseLayers:
@@ -466,8 +465,9 @@ layer { name: "ew" type: "Eltwise" bottom: "a" bottom: "b" top: "out"
 """
         with ptrace("Net(eltwise sum coeffs)"):
             net = _make_net(prototxt)
-        a = np.array([[[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-                        [[10, 11, 12], [13, 14, 15], [16, 17, 18]]]], dtype=np.float32)
+        a = np.array(
+            [[[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[10, 11, 12], [13, 14, 15], [16, 17, 18]]]], dtype=np.float32
+        )
         b = np.ones_like(a) * 4.0
         with ptrace("eltwise sum coeffs forward"):
             out = net.forward({"a": a, "b": b})
@@ -589,7 +589,7 @@ layer { name: "ew" type: "Eltwise" bottom: "a" bottom: "b" top: "out"
         b = np.random.randn(2, 3, 2, 2).astype(np.float32)
         results = []
         for i in range(10):
-            with ptrace(f"eltwise forward #{i+1}"):
+            with ptrace(f"eltwise forward #{i + 1}"):
                 out = net.forward({"a": a, "b": b})
             results.append(out["out"].copy())
         for i in range(1, 10):
@@ -599,6 +599,7 @@ layer { name: "ew" type: "Eltwise" bottom: "a" bottom: "b" top: "out"
 # ═══════════════════════════════════════════════════════════════════════
 # Concat Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestConcatLayers:
@@ -618,7 +619,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
         b = np.random.randn(2, 5, 4, 4).astype(np.float32)
         with ptrace("concat axis=1 forward") as t:
             out = net.forward({"a": a, "b": b})
-            t['output_shape'] = f"{out['out'].shape}"
+            t["output_shape"] = f"{out['out'].shape}"
         assert out["out"].shape == (2, 8, 4, 4)
         expected = concat_np([a, b], axis=1)
         np.testing.assert_array_equal(out["out"], expected)
@@ -637,7 +638,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
         b = np.random.randn(2, 2, 4, 4).astype(np.float32)
         with ptrace("concat axis=0 forward") as t:
             out = net.forward({"a": a, "b": b})
-            t['output_shape'] = f"{out['out'].shape}"
+            t["output_shape"] = f"{out['out'].shape}"
         assert out["out"].shape == (5, 2, 4, 4)
         expected = concat_np([a, b], axis=0)
         np.testing.assert_array_equal(out["out"], expected)
@@ -656,7 +657,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
         b = np.random.randn(1, 2, 5, 4).astype(np.float32)
         with ptrace("concat axis=2 forward") as t:
             out = net.forward({"a": a, "b": b})
-            t['output_shape'] = f"{out['out'].shape}"
+            t["output_shape"] = f"{out['out'].shape}"
         assert out["out"].shape == (1, 2, 8, 4)
         expected = concat_np([a, b], axis=2)
         np.testing.assert_array_equal(out["out"], expected)
@@ -713,7 +714,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
         b = np.random.randn(2, 4, 2, 2).astype(np.float32)
         results = []
         for i in range(10):
-            with ptrace(f"concat forward #{i+1}"):
+            with ptrace(f"concat forward #{i + 1}"):
                 out = net.forward({"a": a, "b": b})
             results.append(out["out"].copy())
         for i in range(1, 10):
@@ -723,6 +724,7 @@ layer { name: "cat" type: "Concat" bottom: "a" bottom: "b" top: "out"
 # ═══════════════════════════════════════════════════════════════════════
 # Dropout Layer Tests (inference mode = identity)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestDropoutLayers:
@@ -809,7 +811,7 @@ layer { name: "drop" type: "Dropout" bottom: "data" top: "out"
         inp = np.random.randn(2, 3, 4, 4).astype(np.float32)
         results = []
         for i in range(20):
-            with ptrace(f"dropout forward #{i+1}"):
+            with ptrace(f"dropout forward #{i + 1}"):
                 out = net.forward({"data": inp})
             results.append(out["out"].copy())
         for i in range(1, 20):
@@ -819,6 +821,7 @@ layer { name: "drop" type: "Dropout" bottom: "data" top: "out"
 # ═══════════════════════════════════════════════════════════════════════
 # SoftmaxWithLoss Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestSoftmaxWithLossLayers:
@@ -836,7 +839,7 @@ layer { name: "sm" type: "SoftmaxWithLoss" bottom: "data" top: "probs" }
         inp = np.array([[[[10.0]], [[1.0]], [[0.0]]]], dtype=np.float32)
         with ptrace("softmax probs forward") as t:
             out = net.forward({"data": inp})
-            t['output_shape'] = f"{out['probs'].shape}"
+            t["output_shape"] = f"{out['probs'].shape}"
         probs = out["probs"]
         # Probabilities should sum to 1 along axis=1
         np.testing.assert_allclose(probs.sum(axis=1), 1.0, rtol=1e-5)
@@ -863,7 +866,7 @@ layer { name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top:
         label = np.array([[[[0]]], [[[2]]], [[[3]]]], dtype=np.float32)
         with ptrace("softmax perfect forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['loss'] = float(out["loss"][0])
+            t["loss"] = float(out["loss"][0])
         loss = float(out["loss"][0])
         assert loss < 1e-4, f"Expected near-zero loss for perfect predictions, got {loss}"
 
@@ -882,7 +885,7 @@ layer {{ name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top
         label = np.array([[[[i % C]]] for i in range(N)], dtype=np.float32)
         with ptrace("softmax uniform forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['loss'] = float(out["loss"][0])
+            t["loss"] = float(out["loss"][0])
         expected_loss = -np.log(1.0 / C)
         np.testing.assert_allclose(out["loss"][0], expected_loss, rtol=1e-4, atol=1e-4)
 
@@ -918,7 +921,7 @@ layer {{ name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top
         label = np.array([[[[0]]], [[[2]]], [[[1]]]], dtype=np.float32)
         with ptrace("softmax 2-top forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['output_keys'] = str(list(out.keys()))
+            t["output_keys"] = str(list(out.keys()))
         assert "loss" in out
         assert "probs" in out
         assert out["loss"].shape == (1,)
@@ -939,7 +942,7 @@ layer {{ name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top
         label = np.array([[[[0]]], [[[1]]]], dtype=np.float32)
         losses = []
         for i in range(10):
-            with ptrace(f"softmax forward #{i+1}"):
+            with ptrace(f"softmax forward #{i + 1}"):
                 out = net.forward({"data": inp, "label": label})
             losses.append(float(out["loss"][0]))
         for i in range(1, 10):
@@ -949,6 +952,7 @@ layer {{ name: "loss" type: "SoftmaxWithLoss" bottom: "data" bottom: "label" top
 # ═══════════════════════════════════════════════════════════════════════
 # Accuracy Layer Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestAccuracyLayers:
@@ -972,7 +976,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         label = labels.reshape(N, 1, 1, 1)
         with ptrace("accuracy perfect forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['accuracy'] = float(out["accuracy"][0])
+            t["accuracy"] = float(out["accuracy"][0])
         np.testing.assert_allclose(out["accuracy"][0], 1.0, rtol=1e-6)
 
     def test_accuracy_zero(self, ptrace):
@@ -991,7 +995,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         label = np.array([[[[1]]], [[[2]]], [[[1]]]], dtype=np.float32)
         with ptrace("accuracy zero forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['accuracy'] = float(out["accuracy"][0])
+            t["accuracy"] = float(out["accuracy"][0])
         np.testing.assert_allclose(out["accuracy"][0], 0.0, atol=1e-6)
 
     def test_accuracy_partial(self, ptrace):
@@ -1013,7 +1017,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         label = np.array([[[[0]]], [[[1]]], [[[2]]], [[[0]]]], dtype=np.float32)
         with ptrace("accuracy partial forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['accuracy'] = float(out["accuracy"][0])
+            t["accuracy"] = float(out["accuracy"][0])
         np.testing.assert_allclose(out["accuracy"][0], 0.5, rtol=1e-6)
 
     def test_accuracy_topk(self, ptrace):
@@ -1045,9 +1049,9 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         label = np.array([[[[2]]], [[[4]]], [[[1]]]], dtype=np.float32)
         with ptrace("accuracy top-k forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['accuracy'] = float(out["accuracy"][0])
+            t["accuracy"] = float(out["accuracy"][0])
         # 2 out of 3 correct (samples 0 and 2)
-        np.testing.assert_allclose(out["accuracy"][0], 2.0/3.0, rtol=1e-5)
+        np.testing.assert_allclose(out["accuracy"][0], 2.0 / 3.0, rtol=1e-5)
 
     def test_accuracy_spatial(self, ptrace):
         """Accuracy with spatial predictions (N,C,H,W format)."""
@@ -1061,8 +1065,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
             net = _make_net(prototxt)
         inp = np.zeros((N, C, H, W), dtype=np.float32)
         # 8 positions total, 5 correct (positions marked correct below)
-        label = np.array([[[[0, 1], [2, 0]]],
-                          [[[1, 2], [0, 1]]]], dtype=np.float32)
+        label = np.array([[[[0, 1], [2, 0]]], [[[1, 2], [0, 1]]]], dtype=np.float32)
         inp[0, 0, 0, 0] = 10.0  # correct (label=0) ✓
         inp[0, 0, 0, 1] = 10.0  # wrong (label=1, predicts 0) ✗
         inp[0, 2, 1, 0] = 10.0  # correct (label=2) ✓
@@ -1073,8 +1076,8 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         inp[1, 0, 1, 1] = 10.0  # wrong (label=1, predicts 0) ✗
         with ptrace("accuracy spatial forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['accuracy'] = float(out["accuracy"][0])
-        np.testing.assert_allclose(out["accuracy"][0], 5.0/8.0, rtol=1e-5)
+            t["accuracy"] = float(out["accuracy"][0])
+        np.testing.assert_allclose(out["accuracy"][0], 5.0 / 8.0, rtol=1e-5)
 
     def test_accuracy_numpy_match(self, ptrace):
         """Accuracy should match numpy reference on random data."""
@@ -1109,7 +1112,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
         label = np.random.randint(0, C, (N, 1, 1, 1)).astype(np.float32)
         accs = []
         for i in range(10):
-            with ptrace(f"accuracy forward #{i+1}"):
+            with ptrace(f"accuracy forward #{i + 1}"):
                 out = net.forward({"data": inp, "label": label})
             accs.append(float(out["accuracy"][0]))
         for i in range(1, 10):
@@ -1119,6 +1122,7 @@ layer {{ name: "acc" type: "Accuracy" bottom: "data" bottom: "label" top: "accur
 # ═══════════════════════════════════════════════════════════════════════
 # Combined Pipeline Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestScaleBiasEltwiseCombination:
@@ -1141,7 +1145,7 @@ layer {{ name: "bias" type: "Bias" bottom: "scaled" top: "out" }}
         inp = np.random.randn(2, C, 4, 4).astype(np.float32)
         with ptrace("scale->bias forward") as t:
             out = net.forward({"data": inp})
-            t['output_shape'] = f"{out['out'].shape}"
+            t["output_shape"] = f"{out['out'].shape}"
         expected = bias_np(scale_np(inp, scale_factors, axis=1), bias_values, axis=1)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5, atol=1e-5)
 
@@ -1161,7 +1165,7 @@ layer {{ name: "scale" type: "Scale" bottom: "sum" top: "out" }}
         net.layer_by_name("scale").blobs[0].from_numpy(scale_factors)
         a = np.random.randn(1, C, 3, 3).astype(np.float32)
         b = np.random.randn(1, C, 3, 3).astype(np.float32)
-        with ptrace("eltwise->scale forward") as t:
+        with ptrace("eltwise->scale forward"):
             out = net.forward({"a": a, "b": b})
         expected = scale_np(eltwise_np([a, b], op="SUM"), scale_factors, axis=1)
         np.testing.assert_allclose(out["out"], expected, rtol=1e-5, atol=1e-5)
@@ -1200,8 +1204,8 @@ layer {{ name: "acc" type: "Accuracy" bottom: "score_acc" bottom: "label_acc" to
         net.layer_by_name("score").blobs[1].from_numpy(score_bias)
         with ptrace("classification pipeline forward") as t:
             out = net.forward({"data": inp, "label": label})
-            t['loss'] = float(out["loss"][0])
-            t['accuracy'] = float(out["accuracy"][0])
+            t["loss"] = float(out["loss"][0])
+            t["accuracy"] = float(out["accuracy"][0])
         # First half correct -> accuracy ~= 0.5, loss < -log(0.25) = 1.386
         assert out["loss"].shape == (1,)
         assert out["accuracy"].shape == (1,)
@@ -1225,7 +1229,7 @@ layer {{ name: "drop" type: "Dropout" bottom: "b_out" top: "d_out" }}
         inp = np.random.randn(N, C, 2, 2).astype(np.float32)
         prev_out = None
         for i in range(20):
-            with ptrace(f"P3-B stress iter #{i+1}"):
+            with ptrace(f"P3-B stress iter #{i + 1}"):
                 out = net.forward({"data": inp})
             if prev_out is not None:
                 np.testing.assert_array_equal(out["d_out"], prev_out)

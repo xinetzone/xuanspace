@@ -30,7 +30,7 @@ class TestOverrideTagConstruction:
 
     def test_sequence_form_becomes_list(self) -> None:
         # from_yaml 经 construct_sequence(deep=True) 深度构造
-        tag = yaml.safe_load("x: !override [\"a\", \"b\"]\n")["x"]
+        tag = yaml.safe_load('x: !override ["a", "b"]\n')["x"]
         assert isinstance(tag, OverrideTag)
         assert tag.value == ["a", "b"]
 
@@ -169,9 +169,7 @@ class TestRecMergeListSemantics:
 
     def test_command_and_entrypoint_replace_not_extend(self) -> None:
         assert rec_merge_one({"command": ["a"]}, {"command": ["b"]}) == {"command": ["b"]}
-        assert rec_merge_one({"entrypoint": ["sh"]}, {"entrypoint": ["bash"]}) == {
-            "entrypoint": ["bash"]
-        }
+        assert rec_merge_one({"entrypoint": ["sh"]}, {"entrypoint": ["bash"]}) == {"entrypoint": ["bash"]}
 
     def test_none_target_merges_into_dict(self) -> None:
         result = rec_merge_one({"labels": None}, {"labels": {"a": "1"}})
@@ -238,10 +236,7 @@ class TestResolveExtends:
         # file 形式按进程 CWD 解析（与上游 open(filename) 一致），切换 CWD 后还原
         base_file = tmp_path / "base.yaml"
         base_file.write_text(
-            "services:\n"
-            "  base:\n"
-            "    image: base:${TAG}\n"
-            "    command: [\"sleep\", \"1\"]\n",
+            'services:\n  base:\n    image: base:${TAG}\n    command: ["sleep", "1"]\n',
             encoding="utf-8",
         )
         services = {

@@ -16,6 +16,7 @@ Covers:
   4. Shape/finite/determinism checks
   5. Forward-Backward consistency
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -24,8 +25,9 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import numerical_gradient
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 2e-3
@@ -36,17 +38,18 @@ ATOL = 1e-4
 # Numpy reference
 # ---------------------------------------------------------------------------
 
+
 def lrn_forward_np(x, size=5, alpha=1e-4, beta=0.75, k=1.0):
     """Numpy reference for LRN forward (ACROSS_CHANNELS)."""
     N, C, H, W = x.shape
     pre_pad = (size - 1) // 2
     padded = np.zeros((N, C + size - 1, H, W), dtype=np.float64)
-    padded[:, pre_pad:pre_pad + C, :, :] = x.astype(np.float64)
+    padded[:, pre_pad : pre_pad + C, :, :] = x.astype(np.float64)
     scale = np.ones_like(x, dtype=np.float64) * k
     for c in range(C):
-        window = padded[:, c:c + size, :, :]
-        scale[:, c, :, :] += (alpha / size) * np.sum(window ** 2, axis=1)
-    return x.astype(np.float64) / (scale ** beta), scale
+        window = padded[:, c : c + size, :, :]
+        scale[:, c, :, :] += (alpha / size) * np.sum(window**2, axis=1)
+    return x.astype(np.float64) / (scale**beta), scale
 
 
 def lrn_backward_np(dy, x, size=5, alpha=1e-4, beta=0.75, k=1.0):
@@ -61,9 +64,9 @@ def lrn_backward_np(dy, x, size=5, alpha=1e-4, beta=0.75, k=1.0):
 
     # Accumulate term: -cache_ratio * x[c] * sum_{c' in window(c)} dy[c'] * y[c'] / scale[c']
     padded = np.zeros((N, C + size - 1, H, W), dtype=np.float64)
-    padded[:, pre_pad:pre_pad + C, :, :] = (dy.astype(np.float64) * y / scale)
+    padded[:, pre_pad : pre_pad + C, :, :] = dy.astype(np.float64) * y / scale
     for c in range(C):
-        window = padded[:, c:c + size, :, :]
+        window = padded[:, c : c + size, :, :]
         dx[:, c, :, :] -= cache_ratio * x[:, c, :, :] * np.sum(window, axis=1)
     return dx.astype(np.float32)
 
@@ -71,6 +74,7 @@ def lrn_backward_np(dy, x, size=5, alpha=1e-4, beta=0.75, k=1.0):
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_lrn_prototxt(batch=1, channels=6, h=4, w=4, size=5, alpha=1e-4, beta=0.75, k=1.0):
     return textwrap.dedent(f"""\
@@ -112,16 +116,20 @@ def _run_lrn_backward(net, x, dy):
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestLRNBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference."""
 
-    @pytest.mark.parametrize("channels,size,alpha,beta,k", [
-        (4, 3, 0.001, 0.5, 2.0),
-        (6, 5, 1e-4, 0.75, 1.0),
-        (8, 3, 5e-3, 0.5, 1.0),
-        (5, 5, 1e-4, 0.75, 1.0),
-    ])
+    @pytest.mark.parametrize(
+        "channels,size,alpha,beta,k",
+        [
+            (4, 3, 0.001, 0.5, 2.0),
+            (6, 5, 1e-4, 0.75, 1.0),
+            (8, 3, 5e-3, 0.5, 1.0),
+            (5, 5, 1e-4, 0.75, 1.0),
+        ],
+    )
     def test_lrn_vs_numpy(self, channels, size, alpha, beta, k):
         """LRN backward matches numpy reference for various params."""
         rng = np.random.RandomState(42)
@@ -148,14 +156,18 @@ class TestLRNBackwardNumpy:
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestLRNBackwardNumerical:
     """Central finite difference numerical gradient checks."""
 
-    @pytest.mark.parametrize("channels,size,alpha,beta,k", [
-        (4, 3, 0.001, 0.5, 2.0),
-        (6, 5, 1e-4, 0.75, 1.0),
-    ])
+    @pytest.mark.parametrize(
+        "channels,size,alpha,beta,k",
+        [
+            (4, 3, 0.001, 0.5, 2.0),
+            (6, 5, 1e-4, 0.75, 1.0),
+        ],
+    )
     def test_numerical_grad(self, channels, size, alpha, beta, k):
         """Numerical gradient matches analytical dX."""
         rng = np.random.RandomState(789)
@@ -176,14 +188,14 @@ class TestLRNBackwardNumerical:
             nonlocal current
             np.copyto(current, arr)
 
-        num_dx = numerical_gradient(_forward, _get, _set, dy, h=EPS,
-                                    name="input:data", verbose=False)
+        num_dx = numerical_gradient(_forward, _get, _set, dy, h=EPS, name="input:data", verbose=False)
         np.testing.assert_allclose(dX, num_dx, rtol=RTOL, atol=ATOL)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestLRNBackwardProperties:

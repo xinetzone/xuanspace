@@ -51,25 +51,17 @@ class TestGpuResArgs:
         assert self._gpu_args([{"driver": "nvidia"}]) == []
 
     def test_non_nvidia_driver_skipped(self) -> None:
-        assert self._gpu_args(
-            [{"driver": "amd", "capabilities": ["gpu"], "count": "all"}]
-        ) == []
+        assert self._gpu_args([{"driver": "amd", "capabilities": ["gpu"], "count": "all"}]) == []
 
     def test_nvidia_without_gpu_capability_skipped(self) -> None:
-        assert self._gpu_args(
-            [{"driver": "nvidia", "capabilities": ["compute"], "count": "all"}]
-        ) == []
+        assert self._gpu_args([{"driver": "nvidia", "capabilities": ["compute"], "count": "all"}]) == []
 
     def test_all_devices(self) -> None:
-        out = self._gpu_args(
-            [{"driver": "nvidia", "capabilities": ["gpu"], "count": "all"}]
-        )
+        out = self._gpu_args([{"driver": "nvidia", "capabilities": ["gpu"], "count": "all"}])
         assert out == ["--device", "nvidia.com/gpu=all", "--security-opt=label=disable"]
 
     def test_integer_count_expands(self) -> None:
-        out = self._gpu_args(
-            [{"driver": "nvidia", "capabilities": ["gpu"], "count": 2}]
-        )
+        out = self._gpu_args([{"driver": "nvidia", "capabilities": ["gpu"], "count": 2}])
         assert out == [
             "--device",
             "nvidia.com/gpu=0",
@@ -80,12 +72,14 @@ class TestGpuResArgs:
 
     def test_explicit_device_ids(self) -> None:
         out = self._gpu_args(
-            [{
-                "driver": "nvidia",
-                "capabilities": ["gpu"],
-                "device_ids": ["0", "3"],
-                "count": "all",
-            }]
+            [
+                {
+                    "driver": "nvidia",
+                    "capabilities": ["gpu"],
+                    "device_ids": ["0", "3"],
+                    "count": "all",
+                }
+            ]
         )
         assert out == [
             "--device",
@@ -97,12 +91,14 @@ class TestGpuResArgs:
 
     def test_empty_device_ids_falls_back_to_count(self) -> None:
         out = self._gpu_args(
-            [{
-                "driver": "nvidia",
-                "capabilities": ["gpu"],
-                "device_ids": [],
-                "count": 1,
-            }]
+            [
+                {
+                    "driver": "nvidia",
+                    "capabilities": ["gpu"],
+                    "device_ids": [],
+                    "count": 1,
+                }
+            ]
         )
         assert out == ["--device", "nvidia.com/gpu=0", "--security-opt=label=disable"]
 
@@ -117,9 +113,7 @@ class TestCpuResArgs:
         assert ["--cpus", "1.5"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--cpu-shares", "100"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["-m", "1g"] in [out[i : i + 2] for i in range(len(out) - 1)]
-        assert ["--memory-reservation", "256m"] in [
-            out[i : i + 2] for i in range(len(out) - 1)
-        ]
+        assert ["--memory-reservation", "256m"] in [out[i : i + 2] for i in range(len(out) - 1)]
 
     def test_v3_deploy_fields_take_effect(self) -> None:
         out: list[str] = []

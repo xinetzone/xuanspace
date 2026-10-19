@@ -16,15 +16,7 @@ class TestParseFrontmatter:
         assert body == "# Body\n"
 
     def test_scalars(self) -> None:
-        text = (
-            "---\n"
-            "title: Hello\n"
-            "description: World\n"
-            "count: 42\n"
-            "active: true\n"
-            "inactive: false\n"
-            "---\n"
-        )
+        text = "---\ntitle: Hello\ndescription: World\ncount: 42\nactive: true\ninactive: false\n---\n"
         data, _ = parse_frontmatter(text)
         assert data["title"] == "Hello"
         assert data["description"] == "World"
@@ -43,14 +35,7 @@ class TestParseFrontmatter:
         assert data["generated"] == {"by": "pipeline", "at": "2024-01-15"}
 
     def test_nested_block_map(self) -> None:
-        text = (
-            "---\n"
-            "type: Metric\n"
-            "generated:\n"
-            "  by: pipeline\n"
-            "  at: 2024-01-15\n"
-            "---\n"
-        )
+        text = "---\ntype: Metric\ngenerated:\n  by: pipeline\n  at: 2024-01-15\n---\n"
         data, _ = parse_frontmatter(text)
         assert data["generated"]["by"] == "pipeline"
         assert data["generated"]["at"] == "2024-01-15"
@@ -75,9 +60,7 @@ class TestParseConcept:
         return path
 
     def test_builds_concept(self, tmp_path: Path) -> None:
-        path = self._write_file(
-            tmp_path, "---\ntype: Metric\ntitle: Revenue\n---\n# Body\n"
-        )
+        path = self._write_file(tmp_path, "---\ntype: Metric\ntitle: Revenue\n---\n# Body\n")
         concept = parse_concept(path)
         assert concept.type == "Metric"
         assert concept.title == "Revenue"
@@ -95,8 +78,6 @@ class TestParseConcept:
             parse_concept(path)
 
     def test_unknown_keys_preserved_in_extra(self, tmp_path: Path) -> None:
-        path = self._write_file(
-            tmp_path, "---\ntype: Metric\ncustom_field: hello\nanother: true\n---\nbody\n"
-        )
+        path = self._write_file(tmp_path, "---\ntype: Metric\ncustom_field: hello\nanother: true\n---\nbody\n")
         concept = parse_concept(path)
         assert concept.extra == {"custom_field": "hello", "another": True}

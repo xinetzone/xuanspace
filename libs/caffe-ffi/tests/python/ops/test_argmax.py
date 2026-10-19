@@ -1,6 +1,8 @@
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -58,10 +60,7 @@ def test_argmax_top_k(caffe_test_dir):
     # top_k returns the top k maximum indices along axis
     # Caffe ArgMax with top_k flattens and returns top-k indices
     # Verify shape and that output contains valid indices
-    caffe_out = _test_argmax(
-        x, caffe_test_dir,
-        argmax_param={"axis": 1, "top_k": top_k}
-    )
+    caffe_out = _test_argmax(x, caffe_test_dir, argmax_param={"axis": 1, "top_k": top_k})
     assert caffe_out[0].shape[0] == x.shape[0], f"Batch dim preserved, got {caffe_out[0].shape}"
 
 
@@ -96,8 +95,9 @@ def test_argmax_out_max_val_true_with_axis(caffe_test_dir):
     # out_max_val=true + axis → output is max values along axis (np.max, not np.argmax)
     ref_vals = np.max(x, axis=1, keepdims=True).astype(np.float32)
     caffe_out = _test_argmax(x, caffe_test_dir, argmax_param={"axis": 1, "out_max_val": True})
-    assert caffe_out[0].shape == ref_vals.shape, \
+    assert caffe_out[0].shape == ref_vals.shape, (
         f"out_max_val=true shape mismatch: {caffe_out[0].shape} vs {ref_vals.shape}"
+    )
     assert_op_correct(caffe_out, ref_vals, atol=1e-6, rtol=0.0, op_name="ArgMax(out_max_val=true,values)")
 
 
@@ -121,14 +121,12 @@ def test_argmax_out_max_val_true_flatten(caffe_test_dir):
     assert out.shape[2] == top_k, f"top_k dim mismatch: {out.shape[2]} vs {top_k}"
     # First slice along dim=1 are indices (should be integers in valid range)
     indices = out[:, 0, :]
-    assert np.all(indices >= 0) and np.all(indices < x[0].size), \
-        f"Indices out of range [0,{x[0].size}): {indices}"
+    assert np.all(indices >= 0) and np.all(indices < x[0].size), f"Indices out of range [0,{x[0].size}): {indices}"
     # Second slice are max values
     values = out[:, 1, :]
     # Values should be in descending order (partial_sort gives top-k)
     for n in range(x.shape[0]):
-        assert np.all(np.diff(values[n]) <= 1e-6), \
-            f"Values should be descending for batch {n}: {values[n]}"
+        assert np.all(np.diff(values[n]) <= 1e-6), f"Values should be descending for batch {n}: {values[n]}"
     # Verify indices point to actual top-k values
     for n in range(x.shape[0]):
         flat = x[n].flatten()
@@ -136,8 +134,7 @@ def test_argmax_out_max_val_true_flatten(caffe_test_dir):
             idx = int(indices[n, k])
             expected_val = flat[idx]
             actual_val = values[n, k]
-            assert abs(expected_val - actual_val) < 1e-6, \
-                f"Index {idx} value mismatch: {expected_val} vs {actual_val}"
+            assert abs(expected_val - actual_val) < 1e-6, f"Index {idx} value mismatch: {expected_val} vs {actual_val}"
 
 
 @pytest.mark.correctness
@@ -163,17 +160,18 @@ def test_argmax_out_max_val_false_flatten(caffe_test_dir):
     assert out.shape[2] == top_k, f"top_k dim mismatch: {out.shape[2]} vs {top_k}"
     # Output contains indices (should be integers in valid range)
     indices = out[:, 0, :]
-    assert np.all(indices >= 0) and np.all(indices < x[0].size), \
-        f"Indices out of range [0,{x[0].size}): {indices}"
+    assert np.all(indices >= 0) and np.all(indices < x[0].size), f"Indices out of range [0,{x[0].size}): {indices}"
     # Verify indices correspond to actual top-k max values (descending)
     for n in range(x.shape[0]):
         flat = x[n].flatten()
         # Get top-k values using indices from output
         extracted_vals = np.array([flat[int(indices[n, k])] for k in range(top_k)])
         # Should be descending
-        assert np.all(np.diff(extracted_vals) <= 1e-6), \
+        assert np.all(np.diff(extracted_vals) <= 1e-6), (
             f"Top-k values should be descending for batch {n}: {extracted_vals}"
+        )
         # Should match numpy's top-k
         ref_topk = np.sort(flat)[::-1][:top_k]
-        assert np.allclose(np.sort(extracted_vals)[::-1], ref_topk, atol=1e-6), \
+        assert np.allclose(np.sort(extracted_vals)[::-1], ref_topk, atol=1e-6), (
             f"Top-k values mismatch for batch {n}: {extracted_vals} vs {ref_topk}"
+        )

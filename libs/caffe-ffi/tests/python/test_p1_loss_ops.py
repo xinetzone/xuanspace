@@ -29,14 +29,15 @@ Mathematical references (from the C++ sources):
     forward: loss = ||x - y||^2 / (2 * N),  N = bottom[0]->shape(0)
     backward: dX = (x - y) * loss_weight / N,  dY = -(x - y) * loss_weight / N
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
@@ -47,6 +48,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference implementations
 # ---------------------------------------------------------------------------
+
 
 def sigmoid_ce_loss_np(x, y, normalization="BATCH_SIZE", ignore_label=None):
     """Numpy reference for SigmoidCrossEntropyLoss forward scalar loss."""
@@ -76,8 +78,7 @@ def sigmoid_ce_loss_np(x, y, normalization="BATCH_SIZE", ignore_label=None):
     return total / normalizer
 
 
-def sigmoid_ce_backward_np(x, y, loss_weight=1.0, normalization="BATCH_SIZE",
-                           ignore_label=None):
+def sigmoid_ce_backward_np(x, y, loss_weight=1.0, normalization="BATCH_SIZE", ignore_label=None):
     """Numpy reference for SigmoidCrossEntropyLoss backward dX."""
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
@@ -88,8 +89,7 @@ def sigmoid_ce_backward_np(x, y, loss_weight=1.0, normalization="BATCH_SIZE",
 
     outer_num = int(x.shape[0])
     inner_num = int(np.prod(x.shape[1:]))
-    valid = (y != ignore_label).astype(np.float64) if ignore_label is not None else \
-        np.ones_like(x, dtype=np.float64)
+    valid = (y != ignore_label).astype(np.float64) if ignore_label is not None else np.ones_like(x, dtype=np.float64)
     valid_count = int(np.sum(valid))
 
     if normalization == "FULL":
@@ -129,6 +129,7 @@ def euclidean_backward_np(x, y, loss_weight=1.0):
 # ---------------------------------------------------------------------------
 # Prototxt builders
 # ---------------------------------------------------------------------------
+
 
 def _make_sce_prototxt(N, C, H=1, W=1, normalization=None, ignore_label=None):
     """Input(data) -> Input(label) -> SigmoidCrossEntropyLoss(loss)."""
@@ -209,6 +210,7 @@ def _run_backward(net, x, label, loss_weight=1.0):
 # Numerical gradient helper
 # ---------------------------------------------------------------------------
 
+
 def _num_grad_wrt(net, blob_name, base_inputs, h=EPS_NUMERICAL):
     """Numerical gradient of the scalar loss w.r.t. one input blob.
 
@@ -244,6 +246,7 @@ def _num_grad_wrt(net, blob_name, base_inputs, h=EPS_NUMERICAL):
 # Test Class 1: SigmoidCrossEntropyLoss
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSigmoidCrossEntropyLoss:
     """Forward / backward / branch behavior for SigmoidCrossEntropyLoss."""
@@ -264,8 +267,7 @@ class TestSigmoidCrossEntropyLoss:
 
         loss_cpp = _forward_loss(net, x, y)
         loss_np = sigmoid_ce_loss_np(x, y, normalization="BATCH_SIZE")
-        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                   err_msg="default BATCH_SIZE loss mismatch")
+        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg="default BATCH_SIZE loss mismatch")
 
     def test_sce_forward_normalization_modes(self):
         """Each normalization mode (FULL/VALID/BATCH_SIZE/NONE) matches numpy."""
@@ -278,8 +280,7 @@ class TestSigmoidCrossEntropyLoss:
             net = Net(_make_sce_prototxt(N, C, H, W, normalization=mode))
             loss_cpp = _forward_loss(net, x, y)
             loss_np = sigmoid_ce_loss_np(x, y, normalization=mode)
-            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                       err_msg=f"normalization={mode} loss mismatch")
+            np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg=f"normalization={mode} loss mismatch")
 
     def test_sce_known_all_half_predictions(self):
         """x=0 logits with y=0.5 targets give per-element loss of ln(2)."""
@@ -309,8 +310,7 @@ class TestSigmoidCrossEntropyLoss:
 
         dx, _ = _run_backward(net, x, y)
         dx_np = sigmoid_ce_backward_np(x, y, normalization="BATCH_SIZE")
-        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL,
-                                   err_msg="dX mismatch vs numpy reference")
+        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL, err_msg="dX mismatch vs numpy reference")
 
     def test_sce_backward_label_has_no_gradient(self):
         """SigmoidCrossEntropyLoss does not backprop to the label input."""
@@ -320,8 +320,7 @@ class TestSigmoidCrossEntropyLoss:
         x = np.random.randn(N, C, 1, 1).astype(np.float32)
         y = np.random.rand(N, C, 1, 1).astype(np.float32)
         _, dy = _run_backward(net, x, y)
-        np.testing.assert_allclose(dy, 0.0, atol=1e-6,
-                                   err_msg="label bottom should receive no gradient")
+        np.testing.assert_allclose(dy, 0.0, atol=1e-6, err_msg="label bottom should receive no gradient")
 
     def test_sce_numerical_gradient(self):
         """Numerical gradient of loss vs analytical dX (small tensor)."""
@@ -333,16 +332,14 @@ class TestSigmoidCrossEntropyLoss:
 
         dx, _ = _run_backward(net, x, y)
         dx_num = _num_grad_wrt(net, "data", {"data": x, "label": y})
-        np.testing.assert_allclose(dx, dx_num, rtol=1e-2, atol=1e-3,
-                                   err_msg="numerical gradient check failed for dX")
+        np.testing.assert_allclose(dx, dx_num, rtol=1e-2, atol=1e-3, err_msg="numerical gradient check failed for dX")
 
     def test_sce_ignore_label_forward(self):
         """Ignored elements are excluded from the loss sum and the VALID normalizer."""
         np.random.seed(5)
         N, C, H, W = 2, 3, 1, 1
         ignore_label = -1
-        net = Net(_make_sce_prototxt(N, C, H, W, normalization="VALID",
-                                     ignore_label=ignore_label))
+        net = Net(_make_sce_prototxt(N, C, H, W, normalization="VALID", ignore_label=ignore_label))
         x = np.random.randn(N, C, H, W).astype(np.float32)
         y = np.random.rand(N, C, H, W).astype(np.float32)
         # Force a few elements to the ignore label target
@@ -351,18 +348,15 @@ class TestSigmoidCrossEntropyLoss:
         y[1, 2, 0, 0] = float(ignore_label)
 
         loss_cpp = _forward_loss(net, x, y)
-        loss_np = sigmoid_ce_loss_np(x, y, normalization="VALID",
-                                     ignore_label=ignore_label)
-        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                   err_msg="ignore_label VALID loss mismatch")
+        loss_np = sigmoid_ce_loss_np(x, y, normalization="VALID", ignore_label=ignore_label)
+        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg="ignore_label VALID loss mismatch")
 
     def test_sce_ignore_label_backward(self):
         """Ignored elements have zero gradient in dX."""
         np.random.seed(6)
         N, C, H, W = 2, 3, 1, 1
         ignore_label = -1
-        net = Net(_make_sce_prototxt(N, C, H, W, normalization="VALID",
-                                     ignore_label=ignore_label))
+        net = Net(_make_sce_prototxt(N, C, H, W, normalization="VALID", ignore_label=ignore_label))
         x = np.random.randn(N, C, H, W).astype(np.float32)
         y = np.random.rand(N, C, H, W).astype(np.float32)
         y = y.copy()
@@ -370,10 +364,8 @@ class TestSigmoidCrossEntropyLoss:
         y[1, 2, 0, 0] = float(ignore_label)
 
         dx, _ = _run_backward(net, x, y)
-        dx_np = sigmoid_ce_backward_np(x, y, normalization="VALID",
-                                       ignore_label=ignore_label)
-        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL,
-                                   err_msg="ignore_label dX mismatch")
+        dx_np = sigmoid_ce_backward_np(x, y, normalization="VALID", ignore_label=ignore_label)
+        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL, err_msg="ignore_label dX mismatch")
         # Ignored positions must be exactly zero
         assert dx[0, 0, 0, 0] == 0.0
         assert dx[1, 2, 0, 0] == 0.0
@@ -388,8 +380,7 @@ class TestSigmoidCrossEntropyLoss:
 
         dx1, _ = _run_backward(net, x, y, loss_weight=1.0)
         dx2, _ = _run_backward(net, x, y, loss_weight=2.0)
-        np.testing.assert_allclose(dx2, 2.0 * dx1, rtol=1e-5,
-                                   err_msg="dX should scale linearly with loss_weight")
+        np.testing.assert_allclose(dx2, 2.0 * dx1, rtol=1e-5, err_msg="dX should scale linearly with loss_weight")
 
     def test_sce_deterministic(self):
         """Two identical forward passes give identical loss."""
@@ -417,6 +408,7 @@ class TestSigmoidCrossEntropyLoss:
 # Test Class 2: EuclideanLoss
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestEuclideanLoss:
     """Forward / backward / batch behavior for EuclideanLoss."""
@@ -437,8 +429,7 @@ class TestEuclideanLoss:
 
         loss_cpp = _forward_loss(net, x, y)
         loss_np = euclidean_loss_np(x, y)
-        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL,
-                                   err_msg="EuclideanLoss forward mismatch")
+        np.testing.assert_allclose(loss_cpp, loss_np, rtol=RTOL, err_msg="EuclideanLoss forward mismatch")
 
     def test_euclid_forward_perfect_prediction(self):
         """x == y gives zero loss."""
@@ -447,8 +438,7 @@ class TestEuclideanLoss:
         net = Net(_make_euclid_prototxt(N, C, H, W))
         x = np.random.randn(N, C, H, W).astype(np.float32)
         loss_cpp = _forward_loss(net, x, x)
-        np.testing.assert_allclose(loss_cpp, 0.0, atol=1e-6,
-                                   err_msg="x==y should give zero loss")
+        np.testing.assert_allclose(loss_cpp, 0.0, atol=1e-6, err_msg="x==y should give zero loss")
 
     def test_euclid_forward_batch_scaling(self):
         """Loss is the batch mean of per-sample L2 losses (1/N scaling)."""
@@ -467,8 +457,7 @@ class TestEuclideanLoss:
         y = np.concatenate([ya, yb], axis=0)
         net = Net(_make_euclid_prototxt(2, C, 1, 1))
         loss_cpp = _forward_loss(net, x, y)
-        np.testing.assert_allclose(loss_cpp, 1.5, rtol=1e-5,
-                                   err_msg="batch loss should be the per-sample mean")
+        np.testing.assert_allclose(loss_cpp, 1.5, rtol=1e-5, err_msg="batch loss should be the per-sample mean")
 
         # Identical samples across the batch keep the batch-mean loss unchanged
         # (both the squared-diff sum and N scale together).
@@ -478,8 +467,7 @@ class TestEuclideanLoss:
         x3 = np.tile(xa, (3, 1, 1, 1))
         y3 = np.tile(ya, (3, 1, 1, 1))
         loss3 = _forward_loss(net3, x3, y3)
-        np.testing.assert_allclose(loss3, loss1, rtol=1e-5,
-                                   err_msg="duplicating samples should preserve the mean loss")
+        np.testing.assert_allclose(loss3, loss1, rtol=1e-5, err_msg="duplicating samples should preserve the mean loss")
 
     def test_euclid_backward_analytical_vs_numpy(self):
         """Analytical (dX, dY) vs numpy reference on random data."""
@@ -491,10 +479,8 @@ class TestEuclideanLoss:
 
         dx, dy = _run_backward(net, x, y)
         dx_np, dy_np = euclidean_backward_np(x, y)
-        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL,
-                                   err_msg="Euclidean dX mismatch")
-        np.testing.assert_allclose(dy, dy_np, rtol=RTOL, atol=ATOL,
-                                   err_msg="Euclidean dY mismatch")
+        np.testing.assert_allclose(dx, dx_np, rtol=RTOL, atol=ATOL, err_msg="Euclidean dX mismatch")
+        np.testing.assert_allclose(dy, dy_np, rtol=RTOL, atol=ATOL, err_msg="Euclidean dY mismatch")
 
     def test_euclid_numerical_gradient(self):
         """Numerical gradient of loss vs analytical dX and dY."""
@@ -508,10 +494,8 @@ class TestEuclideanLoss:
         base = {"data": x, "label": y}
         dx_num = _num_grad_wrt(net, "data", base)
         dy_num = _num_grad_wrt(net, "label", base)
-        np.testing.assert_allclose(dx, dx_num, rtol=1e-2, atol=1e-3,
-                                   err_msg="numerical gradient check failed for dX")
-        np.testing.assert_allclose(dy, dy_num, rtol=1e-2, atol=1e-3,
-                                   err_msg="numerical gradient check failed for dY")
+        np.testing.assert_allclose(dx, dx_num, rtol=1e-2, atol=1e-3, err_msg="numerical gradient check failed for dX")
+        np.testing.assert_allclose(dy, dy_num, rtol=1e-2, atol=1e-3, err_msg="numerical gradient check failed for dY")
 
     def test_euclid_loss_weight_scaling(self):
         """Gradients scale linearly with loss_weight."""

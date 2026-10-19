@@ -1,6 +1,5 @@
 """Tests for xs affected command — detect projects affected by file changes."""
 
-
 from pathlib import Path
 
 from xs.config import ProjectType, find_workspace_root

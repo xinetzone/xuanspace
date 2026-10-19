@@ -16,7 +16,6 @@ This module provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Union
 
 import numpy as np
 
@@ -56,7 +55,7 @@ def _iter_weight_blobs(net: Net):
         yield layer.name, layer.type, blobs
 
 
-def net_parameter_to_file(net: Net, path: Union[str, Path]) -> None:
+def net_parameter_to_file(net: Net, path: str | Path) -> None:
     """Serialize a Net's weights to a ``.caffemodel`` file (NetParameter protobuf)."""
     path = Path(path)
     param = caffe_pb2.NetParameter()
@@ -72,7 +71,7 @@ def net_parameter_to_file(net: Net, path: Union[str, Path]) -> None:
         f.write(param.SerializeToString())
 
 
-def save_net(net: Net, path: Union[str, Path]) -> None:
+def save_net(net: Net, path: str | Path) -> None:
     """Save a Net's weights to a ``.caffemodel`` file.
 
     Parameters
@@ -85,7 +84,7 @@ def save_net(net: Net, path: Union[str, Path]) -> None:
     net_parameter_to_file(net, path)
 
 
-def load_net(net: Net, path: Union[str, Path]) -> None:
+def load_net(net: Net, path: str | Path) -> None:
     """Load weights from a ``.caffemodel`` file into ``net``.
 
     Weights are matched to layers by name (see :meth:`Net.CopyTrainedLayersFrom`).
@@ -93,20 +92,20 @@ def load_net(net: Net, path: Union[str, Path]) -> None:
     net.copy_from(path)
 
 
-def weights_to_dict(net: Net) -> Dict[str, np.ndarray]:
+def weights_to_dict(net: Net) -> dict[str, np.ndarray]:
     """Export all learnable weights as a dict keyed by ``"layer_name:blob_index"``.
 
     Returns shallow copies of the current weight tensors. Use with
     :func:`dict_to_weights` to restore them later.
     """
-    result: Dict[str, np.ndarray] = {}
+    result: dict[str, np.ndarray] = {}
     for name, _t, blobs in _iter_weight_blobs(net):
         for i, blob in enumerate(blobs):
             result[f"{name}:{i}"] = blob.data_tensor.copy()
     return result
 
 
-def dict_to_weights(net: Net, weights: Dict[str, np.ndarray]) -> None:
+def dict_to_weights(net: Net, weights: dict[str, np.ndarray]) -> None:
     """Restore weights from the dict produced by :func:`weights_to_dict`.
 
     Keys that do not match any layer:blob_index in ``net`` are ignored.

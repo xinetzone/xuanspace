@@ -21,9 +21,9 @@ import atexit
 
 import pytest
 
-from .conftest import require_cpp_extension
 from caffe_ffi import _ffi_api
 
+from .conftest import require_cpp_extension
 
 _CLEAR_FUNCS = ("caffe_ffi.data_io.clear", "caffe_ffi.python_layer.clear")
 _REG_FUNCS = ("caffe_ffi.data_io.register", "caffe_ffi.python_layer.register")
@@ -51,19 +51,19 @@ def test_atexit_cleanup_hook_registered():
     handlers = getattr(atexit, "_exithandlers", None)
     if handlers is not None:
         registered = any(
-            getattr(h, "__name__", None) == "_cleanup_callbacks"
-            or h is caffe_ffi._cleanup_callbacks
-            for h in handlers
+            getattr(h, "__name__", None) == "_cleanup_callbacks" or h is caffe_ffi._cleanup_callbacks for h in handlers
         )
         assert registered, "caffe_ffi._cleanup_callbacks not registered with atexit"
 
 
 @require_cpp_extension
-@pytest.mark.parametrize("reg_name,clear_name,key", [
-    ("caffe_ffi.data_io.register", "caffe_ffi.data_io.clear", "Data.cleanup_test"),
-    ("caffe_ffi.python_layer.register", "caffe_ffi.python_layer.clear",
-     "cleanuptest.module.Layer"),
-])
+@pytest.mark.parametrize(
+    "reg_name,clear_name,key",
+    [
+        ("caffe_ffi.data_io.register", "caffe_ffi.data_io.clear", "Data.cleanup_test"),
+        ("caffe_ffi.python_layer.register", "caffe_ffi.python_layer.clear", "cleanuptest.module.Layer"),
+    ],
+)
 def test_register_then_clear_roundtrip(reg_name, clear_name, key):
     """Registering a callback then clearing it must succeed without error.
 

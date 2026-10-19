@@ -13,22 +13,23 @@ These tests cover the pure-Python logic in `_ffi_api.py`:
 All tests are pure Python and do not require the native C++ extension to be
 present, so they run in both Python-only fallback and full FFI modes.
 """
+
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
 try:
-    import caffe_ffi
+    import caffe_ffi  # noqa: F401  # 导入即探测扩展可用性（不可用则整模块跳过）
     from caffe_ffi import _ffi_api
 except ImportError:
     pytest.skip("caffe_ffi not installed", allow_module_level=True)
 
 
 # ─── Platform library-name candidates ────────────────────────────────
+
 
 class TestGetLibNamesForPlatform:
     def test_returns_list_of_strings(self):
@@ -57,6 +58,7 @@ class TestGetLibNamesForPlatform:
 
 # ─── Search directories ──────────────────────────────────────────────
 
+
 class TestGetSearchDirs:
     def test_returns_list_of_paths(self):
         dirs = _ffi_api._get_search_dirs()
@@ -76,6 +78,7 @@ class TestGetSearchDirs:
 
 # ─── Library path discovery ──────────────────────────────────────────
 
+
 class TestFindLibPath:
     def test_find_lib_path_returns_none_or_path(self):
         p = _ffi_api._find_lib_path()
@@ -87,6 +90,7 @@ class TestFindLibPath:
 
 
 # ─── Init diagnostics (pure Python) ──────────────────────────────────
+
 
 class TestFFIInitDiagnostics:
     def test_initial_state(self):
@@ -203,6 +207,7 @@ class TestGetInitDiagnostics:
 
 # ─── FFI registry ────────────────────────────────────────────────────
 
+
 class TestFFIRegistry:
     def test_available_matches_module(self):
         reg = _ffi_api._FFIRegistry()
@@ -222,8 +227,10 @@ class TestFFIRegistry:
     def test_register_object_records_type(self):
         reg = _ffi_api._FFIRegistry()
         reg._register_object = None  # avoid touching real tvm_ffi
+
         class _Dummy:
             pass
+
         reg.register_object("test.dummy", _Dummy)
         assert reg._types["test.dummy"] is _Dummy
 
@@ -247,5 +254,4 @@ class TestTopLevelAPI:
             assert p is None
 
     def test_get_global_func_wraps_registry(self):
-        assert _ffi_api.get_global_func("_also_missing") == \
-            _ffi_api.registry.get_global_func("_also_missing")
+        assert _ffi_api.get_global_func("_also_missing") == _ffi_api.registry.get_global_func("_also_missing")

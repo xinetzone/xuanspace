@@ -230,20 +230,20 @@ from npu_ffi.vta.config import get_default_config
 from npu_ffi.vta import proto_io
 
 # 获取默认配置
-config = get_default_config('vta')  # 或 'vta_v3', 'vta_v4'
+config = get_default_config("vta")  # 或 'vta_v3', 'vta_v4'
 print(f"Block size: {config.block_in} x {config.block_out}")
 
 # 序列化为JSON
-proto_io.save_json(config, 'config.json')
+proto_io.save_json(config, "config.json")
 
 # 从JSON加载
-loaded = proto_io.load_json('config.json')
+loaded = proto_io.load_json("config.json")
 
 # 序列化为二进制Protobuf
-proto_io.save_config(config, 'config.bin')
+proto_io.save_config(config, "config.bin")
 
 # 从二进制加载
-loaded_bin = proto_io.load_config('config.bin')
+loaded_bin = proto_io.load_config("config.bin")
 ```
 
 ## 项目结构

@@ -11,17 +11,17 @@ Usage:
     or: python tests/python/test_instructions.py
 """
 
-import sys
 import os
+import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'python'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "python"))
 
 from npu_ffi import vta
-
 
 # ============================================================================
 # Memory operation tests
 # ============================================================================
+
 
 class TestMemoryOps:
     """Tests for memory-related VTA instructions."""
@@ -42,14 +42,14 @@ class TestMemoryOps:
 
     def test_buffer_copy_d2d(self):
         """Test device-to-device buffer copy."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             src = vta.Buffer(256)
             dst = vta.Buffer(256)
             vta.buffer_copy(src.data, 0, dst.data, 0, 256, int(vta.MemcpyKind.D2D))
 
     def test_buffer_copy_h2d_d2h(self):
         """Test host-to-device and device-to-host copy round-trip."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             src = vta.Buffer(128)
             dst = vta.Buffer(128)
             vta.buffer_copy(src.data, 0, dst.data, 0, 128, int(vta.MemcpyKind.H2D))
@@ -62,17 +62,8 @@ class TestMemoryOps:
             sram_idx = 0
             mem_type = int(vta.MemoryType.ACC)
 
-            vta.load_buffer_2d(
-                cmd, dram_buf.data, 0,
-                16, 1, 16,
-                0, 0, 0, 0,
-                sram_idx, mem_type
-            )
-            vta.store_buffer_2d(
-                cmd, sram_idx, mem_type,
-                dram_buf.data, 0,
-                16, 1, 16
-            )
+            vta.load_buffer_2d(cmd, dram_buf.data, 0, 16, 1, 16, 0, 0, 0, 0, sram_idx, mem_type)
+            vta.store_buffer_2d(cmd, sram_idx, mem_type, dram_buf.data, 0, 16, 1, 16)
 
     def test_write_read_barriers(self):
         """Test write barrier (device->CPU) and read barrier (CPU->device)."""
@@ -94,28 +85,29 @@ class TestMemoryOps:
 # Compute operation tests
 # ============================================================================
 
+
 class TestComputeOps:
     """Tests for compute-related VTA instructions (GEMM/ALU)."""
 
     def test_gemm_basic(self):
         """Test basic GEMM micro-op with accumulator reset."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_push(0, 1, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
 
     def test_gemm_no_accumulator_reset(self):
         """Test GEMM without resetting accumulator."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_push(0, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
 
     def test_alu_all_opcodes(self):
         """Test all ALU opcodes can be pushed without errors."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             for opcode in vta.ALUOpcode:
                 vta.uop_push(1, 0, 0, 0, 0, int(opcode), 0, 0)
 
     def test_alu_with_immediate(self):
         """Test ALU operation using immediate value."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_push(1, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 1, 42)
 
 
@@ -123,26 +115,27 @@ class TestComputeOps:
 # Control flow tests
 # ============================================================================
 
+
 class TestControlFlow:
     """Tests for VTA control flow instructions."""
 
     def test_uop_loop_basic(self):
         """Test basic micro-op loop."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_loop_begin(4, 0, 0, 0)
             vta.uop_push(1, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
             vta.uop_loop_end()
 
     def test_uop_loop_with_factors(self):
         """Test micro-op loop with memory index factors."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_loop_begin(8, 1, 1, 1)
             vta.uop_push(0, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
             vta.uop_loop_end()
 
     def test_uop_nested_loops(self):
         """Test nested micro-op loops."""
-        with vta.CommandContext() as cmd:
+        with vta.CommandContext():
             vta.uop_loop_begin(2, 0, 0, 0)
             vta.uop_loop_begin(4, 0, 0, 0)
             vta.uop_push(1, 0, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
@@ -208,7 +201,7 @@ class TestControlFlow:
 #             # Assert: verify results after sync
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 60)
     print("Running npu-ffi Python instruction tests")
     print("=" * 60)
@@ -220,7 +213,7 @@ if __name__ == '__main__':
 
     for cls in test_classes:
         instance = cls()
-        methods = [m for m in dir(instance) if m.startswith('test_')]
+        methods = [m for m in dir(instance) if m.startswith("test_")]
         print(f"\n--- {cls.__name__} ({len(methods)} tests) ---")
         for method_name in sorted(methods):
             total += 1

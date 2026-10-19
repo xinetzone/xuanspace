@@ -11,6 +11,7 @@
 
 numpy 参考语义均从对应 C++ 实现（src/caffe_ffi/layers/*.cpp）确认。
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -18,18 +19,17 @@ import textwrap
 import numpy as np
 import pytest
 
-from caffe_ffi import Net
-from .conftest import require_cpp_extension
-from .caffe_test_helpers import make_net
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_input,
 )
-
+from .caffe_test_helpers import make_net
+from .conftest import require_cpp_extension
 
 # ──────────────────────────────────────────────────────────────────────
 # numpy 参考实现（语义与 C++ 一一对应）
 # ──────────────────────────────────────────────────────────────────────
+
 
 def mvn_reference(x, normalize_variance=True, across_channels=False, eps=1e-9):
     """MVN 参考：对每个 group 做 (x - mean) / (sqrt(var) + eps)。
@@ -87,12 +87,11 @@ def tile_reference(x, axis=1, tiles=1):
     inner_dim_ = int(np.prod(x.shape[axis:]))
     xf = x.reshape(outer_dim_, inner_dim_)
     rep = np.repeat(xf, tiles, axis=0)  # 每个 outer 行复制 tiles 次（块复制）
-    out_shape = list(x.shape[:axis]) + [x.shape[axis] * tiles] + list(x.shape[axis + 1:])
+    out_shape = list(x.shape[:axis]) + [x.shape[axis] * tiles] + list(x.shape[axis + 1 :])
     return rep.reshape(out_shape)
 
 
-def im2col_reference(x, kernel_h, kernel_w, pad_h=0, pad_w=0,
-                     stride_h=1, stride_w=1, dilation_h=1, dilation_w=1):
+def im2col_reference(x, kernel_h, kernel_w, pad_h=0, pad_w=0, stride_h=1, stride_w=1, dilation_h=1, dilation_w=1):
     """Im2col 参考：NCHW -> [N, C*kh*kw, out_h, out_w]（Caffe 布局）。"""
     x = np.asarray(x, dtype=np.float32)
     n, c, h, w = x.shape
@@ -107,14 +106,14 @@ def im2col_reference(x, kernel_h, kernel_w, pad_h=0, pad_w=0,
                     for ow in range(out_w):
                         iw = ow * stride_w - pad_w + kw * dilation_w
                         if 0 <= ih < h and 0 <= iw < w:
-                            out[:, cc * kernel_h * kernel_w + kh * kernel_w + kw,
-                                oh, ow] = x[:, cc, ih, iw]
+                            out[:, cc * kernel_h * kernel_w + kh * kernel_w + kw, oh, ow] = x[:, cc, ih, iw]
     return out
 
 
 # ──────────────────────────────────────────────────────────────────────
 # prototxt 构造辅助
 # ──────────────────────────────────────────────────────────────────────
+
 
 def _input_layer(shape):
     dims = " ".join(f"dim: {d}" for d in shape)
@@ -155,10 +154,21 @@ def _tile_proto(shape, axis=1, tiles=1):
     """)
 
 
-def _im2col_proto(shape, kernel_size=None, kernel_h=None, kernel_w=None,
-                  pad=None, stride=None, dilation=None,
-                  pad_h=None, pad_w=None, stride_h=None, stride_w=None,
-                  dilation_h=None, dilation_w=None):
+def _im2col_proto(
+    shape,
+    kernel_size=None,
+    kernel_h=None,
+    kernel_w=None,
+    pad=None,
+    stride=None,
+    dilation=None,
+    pad_h=None,
+    pad_w=None,
+    stride_h=None,
+    stride_w=None,
+    dilation_h=None,
+    dilation_w=None,
+):
     body = []
     if kernel_size is not None:
         body.append(f"kernel_size: {kernel_size}")
@@ -199,6 +209,7 @@ def _im2col_proto(shape, kernel_size=None, kernel_h=None, kernel_w=None,
 # MVN
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestMVNLayer:
     SHAPE = (2, 3, 4, 4)
@@ -206,9 +217,15 @@ class TestMVNLayer:
     def _run(self, net, x):
         return net.Forward({"data": x})["mvn"].data
 
-    @pytest.mark.parametrize("normalize_variance,across_channels", [
-        (True, False), (True, True), (False, False), (False, True),
-    ])
+    @pytest.mark.parametrize(
+        "normalize_variance,across_channels",
+        [
+            (True, False),
+            (True, True),
+            (False, False),
+            (False, True),
+        ],
+    )
     def test_mvn_forward_matches_reference(self, normalize_variance, across_channels):
         proto = _mvn_proto(self.SHAPE, normalize_variance, across_channels)
         net = make_net(proto)
@@ -259,14 +276,14 @@ class TestMVNLayer:
         dy = np.random.randn(*out.shape).astype(np.float32)
         net.backward({"mvn": dy})
         dX_an = net.blob_by_name("data").diff
-        dX_num = numerical_grad_for_input(
-            net, "data", x, "mvn", dy, h=1e-3, name="mvn/dx", verbose=False)
+        dX_num = numerical_grad_for_input(net, "data", x, "mvn", dy, h=1e-3, name="mvn/dx", verbose=False)
         assert_grad_close(dX_an, dX_num, name="mvn/dx", rtol=1e-2, atol=1e-3)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Reduction
 # ──────────────────────────────────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestReductionLayer:
@@ -326,8 +343,7 @@ class TestReductionLayer:
         dy = np.random.randn(*out.shape).astype(np.float32)
         net.backward({"red": dy})
         dX_an = net.blob_by_name("data").diff
-        dX_num = numerical_grad_for_input(
-            net, "data", x, "red", dy, h=1e-3, name="reduction/dx", verbose=False)
+        dX_num = numerical_grad_for_input(net, "data", x, "red", dy, h=1e-3, name="reduction/dx", verbose=False)
         # SUMSQ 在 x≈0 处梯度接近 0，有限差分相对误差偏大，放宽容差
         assert_grad_close(dX_an, dX_num, name="reduction/dx", rtol=0.05, atol=1e-2)
 
@@ -336,6 +352,7 @@ class TestReductionLayer:
 # Tile
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestTileLayer:
     SHAPE = (2, 3, 4, 4)
@@ -343,9 +360,16 @@ class TestTileLayer:
     def _run(self, net, x):
         return net.Forward({"data": x})["tile"].data
 
-    @pytest.mark.parametrize("axis,tiles", [
-        (1, 3), (2, 2), (3, 4), (0, 2), (-1, 3),
-    ])
+    @pytest.mark.parametrize(
+        "axis,tiles",
+        [
+            (1, 3),
+            (2, 2),
+            (3, 4),
+            (0, 2),
+            (-1, 3),
+        ],
+    )
     def test_tile_forward_matches_reference(self, axis, tiles):
         proto = _tile_proto(self.SHAPE, axis=axis, tiles=tiles)
         net = make_net(proto)
@@ -387,14 +411,14 @@ class TestTileLayer:
         dy = np.random.randn(*out.shape).astype(np.float32)
         net.backward({"tile": dy})
         dX_an = net.blob_by_name("data").diff
-        dX_num = numerical_grad_for_input(
-            net, "data", x, "tile", dy, h=1e-3, name="tile/dx", verbose=False)
+        dX_num = numerical_grad_for_input(net, "data", x, "tile", dy, h=1e-3, name="tile/dx", verbose=False)
         assert_grad_close(dX_an, dX_num, name="tile/dx", rtol=1e-2, atol=1e-3)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Im2col
 # ──────────────────────────────────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestIm2colLayer:
@@ -410,38 +434,59 @@ class TestIm2colLayer:
         expected = im2col_reference(x, kernel_h=3, kernel_w=3)
         np.testing.assert_array_equal(out, expected)
 
-    @pytest.mark.parametrize("kernel,pad,stride", [
-        (3, 1, 1), (3, 0, 1), (2, 1, 2), (3, 1, 2), (1, 0, 1),
-    ])
+    @pytest.mark.parametrize(
+        "kernel,pad,stride",
+        [
+            (3, 1, 1),
+            (3, 0, 1),
+            (2, 1, 2),
+            (3, 1, 2),
+            (1, 0, 1),
+        ],
+    )
     def test_im2col_kernel_pad_stride(self, kernel, pad, stride):
         net = make_net(_im2col_proto(self.SHAPE, kernel_size=kernel, pad=pad, stride=stride))
         x = np.random.randn(*self.SHAPE).astype(np.float32)
         out = self._run(net, x)
-        expected = im2col_reference(x, kernel_h=kernel, kernel_w=kernel,
-                                    pad_h=pad, pad_w=pad, stride_h=stride, stride_w=stride)
+        expected = im2col_reference(
+            x, kernel_h=kernel, kernel_w=kernel, pad_h=pad, pad_w=pad, stride_h=stride, stride_w=stride
+        )
         np.testing.assert_array_equal(out, expected)
 
     def test_im2col_dilation(self):
         net = make_net(_im2col_proto(self.SHAPE, kernel_size=3, pad=2, stride=1, dilation=2))
         x = np.random.randn(*self.SHAPE).astype(np.float32)
         out = self._run(net, x)
-        expected = im2col_reference(x, kernel_h=3, kernel_w=3,
-                                    pad_h=2, pad_w=2, stride_h=1, stride_w=1,
-                                    dilation_h=2, dilation_w=2)
+        expected = im2col_reference(
+            x, kernel_h=3, kernel_w=3, pad_h=2, pad_w=2, stride_h=1, stride_w=1, dilation_h=2, dilation_w=2
+        )
         np.testing.assert_array_equal(out, expected)
 
-    @pytest.mark.parametrize("kernel_h,kernel_w,pad_h,pad_w,stride_h,stride_w", [
-        (3, 5, 1, 2, 1, 1), (2, 3, 0, 1, 2, 1), (1, 1, 0, 0, 1, 1),
-    ])
+    @pytest.mark.parametrize(
+        "kernel_h,kernel_w,pad_h,pad_w,stride_h,stride_w",
+        [
+            (3, 5, 1, 2, 1, 1),
+            (2, 3, 0, 1, 2, 1),
+            (1, 1, 0, 0, 1, 1),
+        ],
+    )
     def test_im2col_rect_kernel(self, kernel_h, kernel_w, pad_h, pad_w, stride_h, stride_w):
-        net = make_net(_im2col_proto(
-            self.SHAPE, kernel_h=kernel_h, kernel_w=kernel_w,
-            pad_h=pad_h, pad_w=pad_w, stride_h=stride_h, stride_w=stride_w))
+        net = make_net(
+            _im2col_proto(
+                self.SHAPE,
+                kernel_h=kernel_h,
+                kernel_w=kernel_w,
+                pad_h=pad_h,
+                pad_w=pad_w,
+                stride_h=stride_h,
+                stride_w=stride_w,
+            )
+        )
         x = np.random.randn(*self.SHAPE).astype(np.float32)
         out = self._run(net, x)
-        expected = im2col_reference(x, kernel_h=kernel_h, kernel_w=kernel_w,
-                                    pad_h=pad_h, pad_w=pad_w,
-                                    stride_h=stride_h, stride_w=stride_w)
+        expected = im2col_reference(
+            x, kernel_h=kernel_h, kernel_w=kernel_w, pad_h=pad_h, pad_w=pad_w, stride_h=stride_h, stride_w=stride_w
+        )
         np.testing.assert_array_equal(out, expected)
 
     def test_im2col_output_shape(self):
@@ -465,6 +510,5 @@ class TestIm2colLayer:
         dy = np.random.randn(*out.shape).astype(np.float32)
         net.backward({"col": dy})
         dX_an = net.blob_by_name("data").diff
-        dX_num = numerical_grad_for_input(
-            net, "data", x, "col", dy, h=1e-3, name="im2col/dx", verbose=False)
+        dX_num = numerical_grad_for_input(net, "data", x, "col", dy, h=1e-3, name="im2col/dx", verbose=False)
         assert_grad_close(dX_an, dX_num, name="im2col/dx", rtol=1e-2, atol=1e-3)

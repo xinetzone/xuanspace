@@ -13,29 +13,26 @@ Covers Task 33 (P4-训练工程化) model persistence:
 These tests require a real network with learnable blobs, so they are gated with
 ``@require_cpp_extension``.
 """
+
 from __future__ import annotations
 
-import textwrap
-
 import numpy as np
-import pytest
 
 from caffe_ffi import (
+    dict_to_weights,
+    load_net,
     net_from_param,
     net_param_from_string,
+    net_parameter_to_file,
     read_net,
     read_net_from_binary,
     save_net,
-    load_net,
     weights_to_dict,
-    dict_to_weights,
-    net_parameter_to_file,
 )
 
 from .conftest import require_cpp_extension
 
-
-SIMPLE_MLP_PROTO = '''
+SIMPLE_MLP_PROTO = """
 name: "simple_mlp"
 layer { name: "data" type: "Input" top: "data"
   input_param { shape { dim: 4 dim: 8 } } }
@@ -44,7 +41,7 @@ layer { name: "fc1" type: "InnerProduct" bottom: "data" top: "fc1"
 layer { name: "relu1" type: "ReLU" bottom: "fc1" top: "fc1" }
 layer { name: "fc2" type: "InnerProduct" bottom: "fc1" top: "fc2"
   inner_product_param { num_output: 3 weight_filler { type: "msra" } } }
-'''
+"""
 
 
 @require_cpp_extension
@@ -113,10 +110,10 @@ class TestCaffemodel:
 
         param = read_net_from_binary(path)
         assert param.name in ("simple_mlp", "caffe_ffi")
-        layer_names = {l.name for l in param.layer}
+        layer_names = {layer.name for layer in param.layer}
         assert {"fc1", "fc2"} <= layer_names
 
-        fc1_proto = next(l for l in param.layer if l.name == "fc1")
+        fc1_proto = next(layer for layer in param.layer if layer.name == "fc1")
         assert len(fc1_proto.blobs) == 2  # weight + bias
         assert list(fc1_proto.blobs[0].shape.dim) == list(net.layer_by_name("fc1").blobs[0].shape)
 
@@ -127,10 +124,13 @@ class TestCaffemodel:
         save_net(net, path)
 
         # A net with an extra layer still loads the shared weights fine
-        proto = SIMPLE_MLP_PROTO + '''
+        proto = (
+            SIMPLE_MLP_PROTO
+            + """
 layer { name: "fc3" type: "InnerProduct" bottom: "fc2" top: "fc3"
   inner_product_param { num_output: 2 weight_filler { type: "msra" } } }
-'''
+"""
+        )
         net2 = net_from_param(net_param_from_string(proto))
         load_net(net2, path)
         np.testing.assert_array_equal(
@@ -156,9 +156,7 @@ class TestReadNetExternalWeights:
         # 1) 构造含已知非默认权重的网络
         src = make_net()
         fc1 = src.layer_by_name("fc1").blobs[0]
-        fc1.data_tensor[:] = np.linspace(
-            0.1, 0.9, fc1.data_tensor.size, dtype=np.float32
-        ).reshape(fc1.shape)
+        fc1.data_tensor[:] = np.linspace(0.1, 0.9, fc1.data_tensor.size, dtype=np.float32).reshape(fc1.shape)
 
         # 2) 导出 caffemodel
         caffemodel = tmp_path / "model.caffemodel"
@@ -173,9 +171,7 @@ class TestReadNetExternalWeights:
         loaded_fc1 = loaded.layer_by_name("fc1").blobs[0]
 
         # 非占位：必须等于已知权重（而非默认 constant=1.0）
-        np.testing.assert_allclose(
-            loaded_fc1.data_tensor, fc1.data_tensor, rtol=1e-5, atol=1e-6
-        )
+        np.testing.assert_allclose(loaded_fc1.data_tensor, fc1.data_tensor, rtol=1e-5, atol=1e-6)
         # 无 NaN/Inf
         assert not np.any(np.isnan(loaded_fc1.data_tensor))
         assert not np.any(np.isinf(loaded_fc1.data_tensor))

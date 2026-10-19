@@ -22,18 +22,19 @@ Usage in test files:
 
 All assertion helpers raise AssertionError with descriptive messages on failure.
 """
+
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
-from caffe_ffi import net_param_from_string, net_from_param
-
+from caffe_ffi import net_from_param, net_param_from_string
 
 # ──────────────────────────────────────────────────────────────────────
 # Net construction
 # ──────────────────────────────────────────────────────────────────────
+
 
 def make_net(prototxt: str):
     """Construct a Net from a prototxt string (convenience wrapper)."""
@@ -43,6 +44,7 @@ def make_net(prototxt: str):
 # ──────────────────────────────────────────────────────────────────────
 # Diagnostic helpers for flaky-test debugging
 # ──────────────────────────────────────────────────────────────────────
+
 
 def dump_net_state(net, tag: str = "") -> str:
     """Return a multi-line diagnostic string describing blob/layer connection state.
@@ -54,6 +56,7 @@ def dump_net_state(net, tag: str = "") -> str:
     For each layer reports name, type, and param blob count.
     """
     import logging
+
     logger = logging.getLogger("caffe_ffi.test.diagnostic")
     lines = []
     prefix = f"[{tag}] " if tag else ""
@@ -75,8 +78,7 @@ def dump_net_state(net, tag: str = "") -> str:
             except Exception as e:
                 data_ok = False
                 data_size = -1
-                lines.append(f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} "
-                             f"count={cnt:>8d} data=ERROR({e})")
+                lines.append(f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} count={cnt:>8d} data=ERROR({e})")
                 continue
             diff_ok = False
             try:
@@ -84,9 +86,11 @@ def dump_net_state(net, tag: str = "") -> str:
                 diff_ok = (df.size > 0) or (cnt == 0)
             except Exception:
                 diff_ok = False
-            lines.append(f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} "
-                         f"count={cnt:>8d} data={'OK' if data_ok else 'NULL'}"
-                         f"(size={data_size}) diff={'OK' if diff_ok else 'NULL':4s}")
+            lines.append(
+                f"  {prefix}  blob {bname!r:30s} shape={str(shape):20s} "
+                f"count={cnt:>8d} data={'OK' if data_ok else 'NULL'}"
+                f"(size={data_size}) diff={'OK' if diff_ok else 'NULL':4s}"
+            )
         except Exception as e:
             lines.append(f"  {prefix}  blob {bname!r}: ERROR reading state: {e}")
 
@@ -96,8 +100,7 @@ def dump_net_state(net, tag: str = "") -> str:
         try:
             layer = net.layer_by_name(lname)
             param_blobs = len(layer.blobs)
-            lines.append(f"  {prefix}  layer {lname!r:30s} type={layer.type!r:15s} "
-                         f"param_blobs={param_blobs}")
+            lines.append(f"  {prefix}  layer {lname!r:30s} type={layer.type!r:15s} param_blobs={param_blobs}")
         except Exception as e:
             lines.append(f"  {prefix}  layer {lname!r}: ERROR reading state: {e}")
 
@@ -112,6 +115,7 @@ def make_net_with_diag(prototxt: str, tag: str = "net_construct"):
     Returns (net, diag_string) for flaky-test debugging.
     """
     import logging
+
     logger = logging.getLogger("caffe_ffi.test.diagnostic")
     logger.info("[%s] Before net construction, prototxt length=%d", tag, len(prototxt))
     net = make_net(prototxt)
@@ -123,6 +127,7 @@ def make_net_with_diag(prototxt: str, tag: str = "net_construct"):
 # Split counting
 # ──────────────────────────────────────────────────────────────────────
 
+
 def count_splits(net) -> int:
     """Count layers whose name ends with ``_split`` (auto-inserted Split layers)."""
     return sum(1 for n in net.layer_names() if n.endswith("_split"))
@@ -132,6 +137,7 @@ def count_splits(net) -> int:
 # Split structural assertions
 # ──────────────────────────────────────────────────────────────────────
 
+
 def _find_split_idx(names: Sequence[str], pattern: str) -> int:
     """Return the index of the first layer name containing *pattern*.
 
@@ -140,9 +146,7 @@ def _find_split_idx(names: Sequence[str], pattern: str) -> int:
     for i, n in enumerate(names):
         if pattern in n:
             return i
-    raise AssertionError(
-        f"Split layer matching pattern {pattern!r} not found in layer list: {list(names)}"
-    )
+    raise AssertionError(f"Split layer matching pattern {pattern!r} not found in layer list: {list(names)}")
 
 
 def assert_split_exists(names: Sequence[str], pattern: str) -> int:
@@ -194,8 +198,7 @@ def assert_split_at_position(
     """
     split_idx = _find_split_idx(names, split_pattern)
     assert split_idx == expected_idx, (
-        f"Split '{split_pattern}' should be at position {expected_idx}, "
-        f"got idx {split_idx}"
+        f"Split '{split_pattern}' should be at position {expected_idx}, got idx {split_idx}"
     )
     return split_idx
 
@@ -235,9 +238,7 @@ def assert_no_split(names: Sequence[str], pattern: str) -> None:
         assert_no_split(names, "out1_fc1_0_split")
     """
     matches = [n for n in names if pattern in n]
-    assert not matches, (
-        f"Expected no split matching '{pattern}', but found: {matches}"
-    )
+    assert not matches, f"Expected no split matching '{pattern}', but found: {matches}"
 
 
 def assert_exact_split_name(names: Sequence[str], exact_name: str) -> int:
@@ -246,15 +247,14 @@ def assert_exact_split_name(names: Sequence[str], exact_name: str) -> int:
     Use this when the full split name is known (e.g. ``"data_data_0_split"``
     for an explicit Input-layer split).
     """
-    assert exact_name in names, (
-        f"Expected exact split name '{exact_name}' in layer list: {list(names)}"
-    )
+    assert exact_name in names, f"Expected exact split name '{exact_name}' in layer list: {list(names)}"
     return names.index(exact_name)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Forward pass verification
 # ──────────────────────────────────────────────────────────────────────
+
 
 def assert_forward_shapes(
     outputs: dict,
@@ -281,27 +281,24 @@ def assert_forward_shapes(
     """
     for blob_name, expected_shape in expected.items():
         assert blob_name in outputs, (
-            f"Forward output missing blob '{blob_name}'. "
-            f"Available blobs: {list(outputs.keys())}"
+            f"Forward output missing blob '{blob_name}'. Available blobs: {list(outputs.keys())}"
         )
         actual_shape = outputs[blob_name].shape
         assert actual_shape == expected_shape, (
-            f"Blob '{blob_name}' shape mismatch: "
-            f"expected {expected_shape}, got {actual_shape}"
+            f"Blob '{blob_name}' shape mismatch: expected {expected_shape}, got {actual_shape}"
         )
 
 
 def assert_forward_dtype(outputs: dict, blob_names: list[str], dtype=np.float32) -> None:
     """Assert that output blobs have the expected dtype (default float32)."""
     for name in blob_names:
-        assert outputs[name].dtype == dtype, (
-            f"Blob '{name}' dtype is {outputs[name].dtype}, expected {dtype}"
-        )
+        assert outputs[name].dtype == dtype, f"Blob '{name}' dtype is {outputs[name].dtype}, expected {dtype}"
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Float / saturation-safe assertions
 # ──────────────────────────────────────────────────────────────────────
+
 
 def assert_finite(arr, label: str = "array") -> None:
     """Assert that *arr* contains no NaN or Inf values.
@@ -342,9 +339,7 @@ def assert_sigmoid_negative_saturated(arr: np.ndarray, label: str = "sigmoid") -
     subnormal-number failures (see TESTING_GUIDELINES.md §3).
     """
     assert_finite(arr, label)
-    assert np.all(arr < 1e-37), (
-        f"{label} should be < 1e-37 (negative saturation), got max={arr.max()}"
-    )
+    assert np.all(arr < 1e-37), f"{label} should be < 1e-37 (negative saturation), got max={arr.max()}"
 
 
 def assert_sigmoid_positive_saturated(arr: np.ndarray, label: str = "sigmoid") -> None:
@@ -353,9 +348,7 @@ def assert_sigmoid_positive_saturated(arr: np.ndarray, label: str = "sigmoid") -
     In float32, sigmoid(17.0) rounds to exactly 1.0 due to ULP limits.
     """
     assert_finite(arr, label)
-    assert np.all(arr == 1.0), (
-        f"{label} should be exactly 1.0 (positive saturation), got min={arr.min()}"
-    )
+    assert np.all(arr == 1.0), f"{label} should be exactly 1.0 (positive saturation), got min={arr.min()}"
 
 
 def assert_sigmoid_transition(arr: np.ndarray, label: str = "sigmoid") -> None:
@@ -368,6 +361,7 @@ def assert_sigmoid_transition(arr: np.ndarray, label: str = "sigmoid") -> None:
 # ──────────────────────────────────────────────────────────────────────
 # Numerical gradient stability helpers
 # ──────────────────────────────────────────────────────────────────────
+
 
 def avoid_c1_discontinuity(
     x: np.ndarray,

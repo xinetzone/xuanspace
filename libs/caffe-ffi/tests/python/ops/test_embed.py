@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op
 
 logger = logging.getLogger(__name__)

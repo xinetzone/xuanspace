@@ -208,9 +208,7 @@ class TestIpc(unittest.IsolatedAsyncioTestCase):
         c.container_names_by_service = {"db": ["proj_db_1"]}
         cnt = get_minimal_container()
         cnt["ipc"] = "service:db"
-        assert dict(_pairs(await container_to_args(c, cnt)))["--ipc"] == (
-            "container:proj_db_1"
-        )
+        assert dict(_pairs(await container_to_args(c, cnt)))["--ipc"] == ("container:proj_db_1")
 
     async def test_ipc_unknown_service_raises(self) -> None:
         c = create_compose_mock()

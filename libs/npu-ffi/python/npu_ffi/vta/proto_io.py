@@ -15,12 +15,12 @@ Usage:
 
 import os
 from pathlib import Path
-from typing import Union
 
 from .config import VTAConfig
 
 try:
-    from google.protobuf import message as _message
+    from google.protobuf import message as _message  # noqa: F401  # 导入即探测 protobuf 可用性
+
     from . import vta_config_pb2 as _pb2
 
     _PROTOBUF_AVAILABLE = True
@@ -42,12 +42,11 @@ def _require_protobuf() -> None:
     """Raise ImportError if protobuf is not available."""
     if not _PROTOBUF_AVAILABLE:
         raise ImportError(
-            "protobuf serialization requires google.protobuf package. "
-            "Install it with: pip install 'protobuf>=7.0.0'"
+            "protobuf serialization requires google.protobuf package. Install it with: pip install 'protobuf>=7.0.0'"
         )
 
 
-def config_to_proto(config: VTAConfig) -> "_ProtobufVTAConfig":
+def config_to_proto(config: VTAConfig) -> _ProtobufVTAConfig:
     """Convert a pure Python VTAConfig to a protobuf message.
 
     Args:
@@ -77,7 +76,7 @@ def config_to_proto(config: VTAConfig) -> "_ProtobufVTAConfig":
     return pb
 
 
-def proto_to_config(pb: "_ProtobufVTAConfig") -> VTAConfig:
+def proto_to_config(pb: _ProtobufVTAConfig) -> VTAConfig:
     """Convert a protobuf VTAConfig message to a pure Python VTAConfig.
 
     Args:
@@ -135,7 +134,7 @@ def deserialize(data: bytes) -> VTAConfig:
     return proto_to_config(pb)
 
 
-def save_config(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
+def save_config(config: VTAConfig, path: str | os.PathLike) -> None:
     """Save VTAConfig to a binary protobuf file.
 
     Args:
@@ -147,7 +146,7 @@ def save_config(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
     Path(path).write_bytes(data)
 
 
-def load_config(path: Union[str, os.PathLike]) -> VTAConfig:
+def load_config(path: str | os.PathLike) -> VTAConfig:
     """Load VTAConfig from a binary protobuf file.
 
     Args:
@@ -161,7 +160,7 @@ def load_config(path: Union[str, os.PathLike]) -> VTAConfig:
     return deserialize(data)
 
 
-def save_json(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
+def save_json(config: VTAConfig, path: str | os.PathLike) -> None:
     """Save VTAConfig to a JSON text file (using protobuf JSON format).
 
     Args:
@@ -176,7 +175,7 @@ def save_json(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
     Path(path).write_text(json_str, encoding="utf-8")
 
 
-def load_json(path: Union[str, os.PathLike]) -> VTAConfig:
+def load_json(path: str | os.PathLike) -> VTAConfig:
     """Load VTAConfig from a JSON text file (using protobuf JSON format).
 
     Args:
@@ -194,7 +193,7 @@ def load_json(path: Union[str, os.PathLike]) -> VTAConfig:
     return proto_to_config(pb)
 
 
-def save_text(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
+def save_text(config: VTAConfig, path: str | os.PathLike) -> None:
     """Save VTAConfig to a protobuf text format file.
 
     Args:
@@ -209,7 +208,7 @@ def save_text(config: VTAConfig, path: Union[str, os.PathLike]) -> None:
     Path(path).write_text(text_str, encoding="utf-8")
 
 
-def load_text(path: Union[str, os.PathLike]) -> VTAConfig:
+def load_text(path: str | os.PathLike) -> VTAConfig:
     """Load VTAConfig from a protobuf text format file.
 
     Args:

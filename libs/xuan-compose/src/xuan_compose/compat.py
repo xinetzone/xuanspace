@@ -37,20 +37,11 @@ STOP_GRACE_PERIOD = "10"
 
 
 def is_list(list_object: object) -> bool:
-    return (
-        not isinstance(list_object, str)
-        and not isinstance(list_object, dict)
-        and hasattr(list_object, "__iter__")
-    )
+    return not isinstance(list_object, str) and not isinstance(list_object, dict) and hasattr(list_object, "__iter__")
 
 
 def is_relative_ref(path: str) -> bool:
-    return (
-        path.startswith("./")
-        or path.startswith(".:")
-        or path.startswith("../")
-        or path.startswith("..:")
-    )
+    return path.startswith("./") or path.startswith(".:") or path.startswith("../") or path.startswith("..:")
 
 
 # identity filter
@@ -67,14 +58,14 @@ def try_int(i: int | str, fallback: None) -> int | None: ...
 def try_int(i: int | str, fallback: int | None = None) -> int | None:
     try:
         return int(i)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return fallback
 
 
 def try_float(i: int | str, fallback: float | None = None) -> float | None:
     try:
         return float(i)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return fallback
 
 

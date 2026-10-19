@@ -29,14 +29,15 @@ Mathematical reference (transpose=false, default Caffe convention):
 
 Loss function: L = sum(dY * Y)  (linear loss for gradient checking).
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ EPS = 1e-3
 # ---------------------------------------------------------------------------
 # Numpy reference implementations (double precision for accuracy)
 # ---------------------------------------------------------------------------
+
 
 def _ip_forward_ref(x, W, b=None, axis=1, transpose=False):
     """Numpy reference for InnerProduct forward.
@@ -64,7 +66,7 @@ def _ip_forward_ref(x, W, b=None, axis=1, transpose=False):
     x64 = x.astype(np.float64)
     W64 = W.astype(np.float64)
     shape = x64.shape
-    ndim = len(shape)
+    len(shape)
     M = int(np.prod(shape[:axis]))
     K = int(np.prod(shape[axis:]))
     if transpose:
@@ -99,7 +101,7 @@ def _ip_backward_ref(x, W, dy, b=None, axis=1, transpose=False):
     W64 = W.astype(np.float64)
     dy64 = dy.astype(np.float64)
     shape = x64.shape
-    ndim = len(shape)
+    len(shape)
     M = int(np.prod(shape[:axis]))
     K = int(np.prod(shape[axis:]))
     if transpose:
@@ -109,7 +111,6 @@ def _ip_backward_ref(x, W, dy, b=None, axis=1, transpose=False):
 
     x_flat = x64.reshape(M, K)
     # Determine dy shape and flatten: output is shape[:axis] + [N] + [1]*
-    out_ndim = ndim
     dy_flat = dy64.reshape(M, N)
 
     if transpose:
@@ -123,7 +124,7 @@ def _ip_backward_ref(x, W, dy, b=None, axis=1, transpose=False):
 
     db = dy_flat.sum(axis=0)  # (N,) -- always column sum
 
-    out_shape = list(shape[:axis]) + [N]
+    list(shape[:axis]) + [N]
     dX = dX_flat.reshape(shape).astype(np.float32)
     dW = dW.astype(np.float32)
     db = db.astype(np.float32)
@@ -134,11 +135,20 @@ def _ip_backward_ref(x, W, dy, b=None, axis=1, transpose=False):
 # Prototxt builders
 # ---------------------------------------------------------------------------
 
-def _make_ip_prototxt(num_output, input_dims, bias_term=True, axis=1, transpose=False,
-                      weight_filler="constant", weight_value=1.0,
-                      bias_filler="constant", bias_value=0.0):
+
+def _make_ip_prototxt(
+    num_output,
+    input_dims,
+    bias_term=True,
+    axis=1,
+    transpose=False,
+    weight_filler="constant",
+    weight_value=1.0,
+    bias_filler="constant",
+    bias_value=0.0,
+):
     """Create Input -> InnerProduct prototxt."""
-    dims_str = " ".join(str(d) for d in input_dims)
+    " ".join(str(d) for d in input_dims)
     bias_str = "true" if bias_term else "false"
     trans_str = "true" if transpose else "false"
     return textwrap.dedent(f"""\
@@ -168,6 +178,7 @@ def _make_ip_prototxt(num_output, input_dims, bias_term=True, axis=1, transpose=
 # ---------------------------------------------------------------------------
 # Numerical gradient helpers (central finite differences)
 # ---------------------------------------------------------------------------
+
 
 def _num_grad_x(net, x, W, b, dy, h=EPS, axis=1, transpose=False):
     """Numerical gradient of loss w.r.t. input x via central differences.
@@ -254,6 +265,7 @@ def _set_ip_weights(net, W, b=None, transpose=False):
 # Test Class: InnerProduct Backward (default: bias_term=true, transpose=false)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInnerProductBackward:
     """InnerProduct backward gradient tests with default settings (bias on, transpose=false)."""
@@ -297,9 +309,15 @@ class TestInnerProductBackward:
         """
         M, K, N = 2, 3, 2
         proto = _make_ip_prototxt(
-            N, (M, 1, 1, K), bias_term=True, axis=1, transpose=False,
-            weight_filler="constant", weight_value=0.0,
-            bias_filler="constant", bias_value=0.0,
+            N,
+            (M, 1, 1, K),
+            bias_term=True,
+            axis=1,
+            transpose=False,
+            weight_filler="constant",
+            weight_value=0.0,
+            bias_filler="constant",
+            bias_value=0.0,
         )
         net = Net(proto)
 
@@ -345,9 +363,15 @@ class TestInnerProductBackward:
         """
         M, K, N = 1, 2, 1
         proto = _make_ip_prototxt(
-            N, (M, 1, 1, K), bias_term=True, axis=1, transpose=False,
-            weight_filler="constant", weight_value=0.0,
-            bias_filler="constant", bias_value=0.0,
+            N,
+            (M, 1, 1, K),
+            bias_term=True,
+            axis=1,
+            transpose=False,
+            weight_filler="constant",
+            weight_value=0.0,
+            bias_filler="constant",
+            bias_value=0.0,
         )
         net = Net(proto)
 
@@ -495,8 +519,9 @@ class TestInnerProductBackward:
         """Without bias_term: db should not exist, dX and dW still correct."""
         rng = np.random.RandomState(55)
         M, K, N = 3, 6, 4
-        proto = _make_ip_prototxt(N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False, weight_filler="constant", weight_value=0.0
+        )
         net = Net(proto)
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
@@ -519,8 +544,9 @@ class TestInnerProductBackward:
         """Numerical gradient check without bias (dX, dW)."""
         rng = np.random.RandomState(59)
         M, K, N = 2, 3, 2
-        proto = _make_ip_prototxt(N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False, weight_filler="constant", weight_value=0.0
+        )
         net = Net(proto)
         x = (rng.randn(M, 1, 1, K).astype(np.float32)) * 0.5
         W = (rng.randn(N, K).astype(np.float32)) * 0.3
@@ -617,11 +643,13 @@ class TestInnerProductBackward:
         results = []
         for _ in range(5):
             net.backward({"out": dy})
-            results.append((
-                net.blob_by_name("data").diff.copy(),
-                net.layer_by_name("ip").blobs[0].diff.copy(),
-                net.layer_by_name("ip").blobs[1].diff.copy(),
-            ))
+            results.append(
+                (
+                    net.blob_by_name("data").diff.copy(),
+                    net.layer_by_name("ip").blobs[0].diff.copy(),
+                    net.layer_by_name("ip").blobs[1].diff.copy(),
+                )
+            )
         for i in range(1, 5):
             np.testing.assert_array_equal(results[0][0], results[i][0])
             np.testing.assert_array_equal(results[0][1], results[i][1])
@@ -649,6 +677,7 @@ class TestInnerProductBackward:
 # Test Class: InnerProduct Backward with multi-dimensional input (NCHW, axis=1)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInnerProductBackwardNCHW:
     """Test InnerProduct backward with realistic NCHW-style inputs (flatten from axis=1)."""
@@ -658,9 +687,15 @@ class TestInnerProductBackwardNCHW:
         rng = np.random.RandomState(300)
         N_batch, C, H, W_dim, N_out = 2, 3, 4, 4, 8
         K = C * H * W_dim  # 48
-        proto = _make_ip_prototxt(N_out, (N_batch, C, H, W_dim), bias_term=True,
-                                  axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N_out,
+            (N_batch, C, H, W_dim),
+            bias_term=True,
+            axis=1,
+            transpose=False,
+            weight_filler="constant",
+            weight_value=0.0,
+        )
         net = Net(proto)
         x = (rng.randn(N_batch, C, H, W_dim).astype(np.float32)) * 0.1
         W = (rng.randn(N_out, K).astype(np.float32)) * 0.1
@@ -675,9 +710,7 @@ class TestInnerProductBackwardNCHW:
         dW = net.layer_by_name("ip").blobs[0].diff
         db = net.layer_by_name("ip").blobs[1].diff
 
-        expected_dX, expected_dW, expected_db = _ip_backward_ref(
-            x, W, dy, b=b, axis=1, transpose=False
-        )
+        expected_dX, expected_dW, expected_db = _ip_backward_ref(x, W, dy, b=b, axis=1, transpose=False)
         np.testing.assert_allclose(dX, expected_dX, rtol=1e-5, atol=1e-6)
         np.testing.assert_allclose(dW, expected_dW, rtol=1e-5, atol=1e-6)
         np.testing.assert_allclose(db, expected_db, rtol=1e-5, atol=1e-6)
@@ -687,9 +720,15 @@ class TestInnerProductBackwardNCHW:
         rng = np.random.RandomState(301)
         N_batch, C, H, W_dim, N_out = 2, 1, 2, 2, 3  # K=4, small for speed
         K = C * H * W_dim
-        proto = _make_ip_prototxt(N_out, (N_batch, C, H, W_dim), bias_term=True,
-                                  axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N_out,
+            (N_batch, C, H, W_dim),
+            bias_term=True,
+            axis=1,
+            transpose=False,
+            weight_filler="constant",
+            weight_value=0.0,
+        )
         net = Net(proto)
         x = (rng.randn(N_batch, C, H, W_dim).astype(np.float32)) * 0.5
         W = (rng.randn(N_out, K).astype(np.float32)) * 0.3
@@ -708,16 +747,25 @@ class TestInnerProductBackwardNCHW:
 # Test Class: InnerProduct Backward with transpose=true weight layout
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInnerProductBackwardTranspose:
     """Test InnerProduct backward with transpose=true (W stored as (K, N) instead of (N, K))."""
 
     def _make_transpose_net(self, M=2, K=6, N=4, bias=True):
-        return Net(_make_ip_prototxt(
-            N, (M, 1, 1, K), bias_term=bias, axis=1, transpose=True,
-            weight_filler="constant", weight_value=0.0,
-            bias_filler="constant", bias_value=0.0,
-        ))
+        return Net(
+            _make_ip_prototxt(
+                N,
+                (M, 1, 1, K),
+                bias_term=bias,
+                axis=1,
+                transpose=True,
+                weight_filler="constant",
+                weight_value=0.0,
+                bias_filler="constant",
+                bias_value=0.0,
+            )
+        )
 
     def test_ip_transpose_backward_analytical(self):
         """dX/dW/db match numpy reference with transpose=true."""
@@ -737,9 +785,7 @@ class TestInnerProductBackwardTranspose:
         dW = net.layer_by_name("ip").blobs[0].diff
         db = net.layer_by_name("ip").blobs[1].diff
 
-        expected_dX, expected_dW, expected_db = _ip_backward_ref(
-            x, W, dy, b=b, axis=1, transpose=True
-        )
+        expected_dX, expected_dW, expected_db = _ip_backward_ref(x, W, dy, b=b, axis=1, transpose=True)
         np.testing.assert_allclose(dX, expected_dX, rtol=1e-5, atol=1e-6)
         np.testing.assert_allclose(dW, expected_dW, rtol=1e-5, atol=1e-6)
         np.testing.assert_allclose(db, expected_db, rtol=1e-5, atol=1e-6)
@@ -783,6 +829,7 @@ class TestInnerProductBackwardTranspose:
 # Test Class: Identity-like gradients (unit weights, zero bias)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestInnerProductBackwardIdentity:
     """Tests with identity-like weight matrix to verify gradient propagation."""
@@ -791,9 +838,17 @@ class TestInnerProductBackwardIdentity:
         """Square weight matrix I: dX = dy @ W = dy @ I = dy_flat."""
         N = K = 4
         M = 2
-        proto = _make_ip_prototxt(N, (M, 1, 1, K), bias_term=True, axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0,
-                                  bias_filler="constant", bias_value=0.0)
+        proto = _make_ip_prototxt(
+            N,
+            (M, 1, 1, K),
+            bias_term=True,
+            axis=1,
+            transpose=False,
+            weight_filler="constant",
+            weight_value=0.0,
+            bias_filler="constant",
+            bias_value=0.0,
+        )
         net = Net(proto)
         # Identity W
         W = np.eye(N, K, dtype=np.float32)
@@ -808,9 +863,7 @@ class TestInnerProductBackwardIdentity:
         # dX = dy @ I = dy reshaped to input shape
         dX = net.blob_by_name("data").diff
         # dy is (M, N, 1, 1) which flattens to (M, N) = (M, K), dX should equal dy
-        np.testing.assert_allclose(
-            dX.reshape(M, K), dy.reshape(M, N), rtol=1e-5, atol=1e-6
-        )
+        np.testing.assert_allclose(dX.reshape(M, K), dy.reshape(M, N), rtol=1e-5, atol=1e-6)
         # dW = dy^T @ x = dy^T @ 0 = 0
         dW = net.layer_by_name("ip").blobs[0].diff
         np.testing.assert_array_equal(dW, np.zeros_like(dW))
@@ -822,8 +875,9 @@ class TestInnerProductBackwardIdentity:
     def test_ip_ones_weights_dw(self):
         """All-ones W, dy=ones, x=known → verify dW = dy^T @ x = 1^T @ x = sum(x, axis=0)."""
         M, K, N = 3, 4, 2
-        proto = _make_ip_prototxt(N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N, (M, 1, 1, K), bias_term=False, axis=1, transpose=False, weight_filler="constant", weight_value=0.0
+        )
         net = Net(proto)
         W = np.ones((N, K), dtype=np.float32)
         rng = np.random.RandomState(501)
@@ -844,8 +898,9 @@ class TestInnerProductBackwardIdentity:
         """db should always be the column-wise sum of dy, independent of W and x."""
         rng = np.random.RandomState(502)
         M, K, N = 5, 6, 4
-        proto = _make_ip_prototxt(N, (M, 1, 1, K), bias_term=True, axis=1, transpose=False,
-                                  weight_filler="constant", weight_value=0.0)
+        proto = _make_ip_prototxt(
+            N, (M, 1, 1, K), bias_term=True, axis=1, transpose=False, weight_filler="constant", weight_value=0.0
+        )
         net = Net(proto)
         W = (rng.randn(N, K).astype(np.float32)) * 0.5
         b = rng.randn(N).astype(np.float32) * 0.5

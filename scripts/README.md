@@ -92,12 +92,14 @@
 ```python
 import argparse
 
+
 def main():
     parser = argparse.ArgumentParser(description="版本号升级脚本")
     parser.add_argument("--major", action="store_true", help="升级主版本号")
     parser.add_argument("--dry-run", action="store_true", help="试运行，不实际修改文件")
     args = parser.parse_args()
     # ... 脚本逻辑
+
 
 if __name__ == "__main__":
     main()

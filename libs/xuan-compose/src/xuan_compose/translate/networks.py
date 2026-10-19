@@ -33,9 +33,7 @@ def default_network_name_for_project(compose: Any, net: str, is_ext: Any) -> str
 
     assert compose.project_name is not None
 
-    default_net_name_compat = compose.x_podman.get(
-        XPodmanSettingKey.DEFAULT_NET_NAME_COMPAT, False
-    )
+    default_net_name_compat = compose.x_podman.get(XPodmanSettingKey.DEFAULT_NET_NAME_COMPAT, False)
     if default_net_name_compat is True:
         return compose.join_name_parts(compose.project_name.replace("-", ""), net)
     return compose.format_name(net)
@@ -71,10 +69,12 @@ def get_network_create_args(net_desc: dict[str, Any], proj_name: str, net_name: 
     if net_desc.get("x-podman.disable_dns"):
         args.append("--disable-dns")
     if net_desc.get("x-podman.dns"):
-        args.extend((
-            "--dns",
-            ",".join(norm_as_list(net_desc.get("x-podman.dns"))),
-        ))
+        args.extend(
+            (
+                "--dns",
+                ",".join(norm_as_list(net_desc.get("x-podman.dns"))),
+            )
+        )
     if net_desc.get("x-podman.routes"):
         routes = norm_as_list(net_desc.get("x-podman.routes"))
         for route in routes:
@@ -137,9 +137,7 @@ def get_net_args_from_network_mode(compose: Any, cnt: dict[str, Any]) -> list[st
     service_name = cnt["service_name"]
 
     if "networks" in cnt:
-        raise ValueError(
-            f"networks and network_mode must not be present in the same service [{service_name}]"
-        )
+        raise ValueError(f"networks and network_mode must not be present in the same service [{service_name}]")
 
     if net == "none":
         net_args.append("--network=none")

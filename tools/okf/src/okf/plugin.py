@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 class FiberState(enum.IntEnum):
     """Fiber 六态枚举。"""
+
     PENDING = 0
     LOADING = 1
     ACTIVE = 2
@@ -29,6 +30,7 @@ _INACTIVE = "__INACTIVE__"
 @dataclass(frozen=True, slots=True)
 class InjectSpec:
     """依赖声明：插件需要哪些服务。"""
+
     name: str
     config: dict | None = None
 
@@ -36,6 +38,7 @@ class InjectSpec:
 @dataclass(frozen=True, slots=True)
 class Plugin:
     """插件定义。"""
+
     name: str
     apply: Callable[[Context, dict], None]
     inject: list[InjectSpec] = field(default_factory=list)

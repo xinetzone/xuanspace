@@ -1,28 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 from google.protobuf import text_format
 
 from . import caffe_pb2
-from . import _ffi_api
 from ._core import Net
 
 
-def read_net_from_prototxt(prototxt_path: Union[str, Path]) -> caffe_pb2.NetParameter:
+def read_net_from_prototxt(prototxt_path: str | Path) -> caffe_pb2.NetParameter:
     prototxt_path = Path(prototxt_path)
     param = caffe_pb2.NetParameter()
-    with open(prototxt_path, 'r', encoding='utf-8') as f:
+    with open(prototxt_path, encoding="utf-8") as f:
         text_format.Parse(f.read(), param)
     return param
 
 
-def read_net_from_binary(caffemodel_path: Union[str, Path]) -> caffe_pb2.NetParameter:
+def read_net_from_binary(caffemodel_path: str | Path) -> caffe_pb2.NetParameter:
     caffemodel_path = Path(caffemodel_path)
     param = caffe_pb2.NetParameter()
-    with open(caffemodel_path, 'rb') as f:
+    with open(caffemodel_path, "rb") as f:
         param.ParseFromString(f.read())
     return param
 
@@ -34,29 +32,28 @@ def net_param_from_string(prototxt_str: str) -> caffe_pb2.NetParameter:
 
 
 def read_net(
-    prototxt_path: Union[str, Path],
-    caffemodel_path: Optional[Union[str, Path]] = None,
+    prototxt_path: str | Path,
+    caffemodel_path: str | Path | None = None,
 ) -> Net:
     from . import _ffi_api as ffi
-    
+
     prototxt_path = Path(prototxt_path)
-    
+
     if ffi.is_available() and caffemodel_path is None:
         new_net_from_file = ffi.get_global_func("caffe_ffi.NewNetFromFile")
         if new_net_from_file is not None:
             return new_net_from_file(str(prototxt_path))
-    
+
     param = read_net_from_prototxt(prototxt_path)
-    
+
     if caffemodel_path is not None:
         weights = read_net_from_binary(caffemodel_path)
         _merge_weights(param, weights)
-    
+
     return _new_net_from_param(param)
 
 
 def net_from_param(param: caffe_pb2.NetParameter) -> Net:
-    from . import _ffi_api as ffi
 
     return _new_net_from_param(param)
 
@@ -122,7 +119,8 @@ def _merge_weights(param: caffe_pb2.NetParameter, weights: caffe_pb2.NetParamete
 
 
 def _build_net_from_param(net: Net, param: caffe_pb2.NetParameter) -> None:
-    from ._core import Blob, Layer as _LayerCls
+    from ._core import Blob
+    from ._core import Layer as _LayerCls
 
     net._py_name = param.name if param.name else ""
     net._py_blobs = {}
@@ -155,7 +153,7 @@ def _build_net_from_param(net: Net, param: caffe_pb2.NetParameter) -> None:
 
         for blob_proto in layer_param.blobs:
             blob = Blob()
-            if blob_proto.HasField('shape') and blob_proto.shape.dim:
+            if blob_proto.HasField("shape") and blob_proto.shape.dim:
                 dims = list(blob_proto.shape.dim)
             else:
                 dims = [blob_proto.num, blob_proto.channels, blob_proto.height, blob_proto.width]

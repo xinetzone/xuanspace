@@ -8,8 +8,6 @@ This script regenerates python/npu_ffi/vta/vta_config_pb2.py from proto/vta_conf
 Requires grpcio-tools package (pip install grpcio-tools).
 """
 
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +54,7 @@ def main() -> int:
     try:
         sys.path.insert(0, str(ROOT / "python"))
         from npu_ffi.vta import vta_config_pb2
+
         c = vta_config_pb2.VTAConfig()
         c.target = "test"
         c.log_bus_width = 3

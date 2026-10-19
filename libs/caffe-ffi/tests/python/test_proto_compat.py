@@ -8,6 +8,7 @@ backward compatible with the existing ``l2_norm_param`` field.
 These tests operate purely on the protobuf protocol layer and do **not** require
 the C++ extension, so they can run even when the native extension is unavailable.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,7 +19,6 @@ from google.protobuf import text_format
 # pool, avoiding a "duplicate file name" error. These tests only touch the
 # protobuf protocol layer and do not require the C++ extension.
 from caffe_ffi import caffe_pb2
-
 
 NORM_PARAM_PROTO = """
 name: "norm_net"

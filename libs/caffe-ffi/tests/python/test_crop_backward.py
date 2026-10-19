@@ -16,6 +16,7 @@ Covers:
   6. Shape/finite/determinism checks
   7. Forward-Backward round-trip
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -24,8 +25,9 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import numerical_gradient
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -35,6 +37,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Crop forward/backward
 # ---------------------------------------------------------------------------
+
 
 def _build_crop_slices(in_shape, crop_shape, axis, offset):
     """Build the slice tuple selecting the cropped region of an input.
@@ -77,6 +80,7 @@ def crop_backward_np(dy, in_shape, crop_shape, axis=2, offset=None):
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_crop_prototxt(in_shape, crop_shape, axis=2, offset=None):
     """Create Input(data) + Input(crop_ref) -> Crop prototxt.
@@ -134,6 +138,7 @@ def _make_crop_net(in_shape, crop_shape, axis=2, offset=None):
 # Helper: run forward + backward
 # ---------------------------------------------------------------------------
 
+
 def _run_crop_backward(net, x, crop_ref, dy):
     """Run forward then backward, return (dX, out)."""
     out = net.forward({"data": x.astype(np.float32), "crop_ref": crop_ref.astype(np.float32)})
@@ -157,13 +162,13 @@ def _numerical_grad_input(net, x, crop_ref, dy, h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy, h=h,
-                              name="input:data", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy, h=h, name="input:data", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestCropBackwardKnownValues:
@@ -214,18 +219,22 @@ class TestCropBackwardKnownValues:
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestCropBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference."""
 
-    @pytest.mark.parametrize("in_shape,crop_shape,axis,offset", [
-        ((5,),       (3,),       0,  [1]),        # 1D, offset=1
-        ((6, 6),     (4, 4),     0,  [1, 1]),     # 2D, both dims cropped
-        ((1, 4, 4),  (1, 4, 3),  2,  None),       # 3D, crop last dim, default offset
-        ((1, 4, 4),  (1, 4, 3),  2,  [1]),        # 3D, crop last dim, offset=1
-        ((1, 3, 5, 5), (1, 3, 3, 4), 2, None),    # 4D NCHW, default offset
-        ((1, 3, 5, 5), (1, 3, 3, 4), 2, [1, 1]),  # 4D NCHW, offset on H,W
-    ])
+    @pytest.mark.parametrize(
+        "in_shape,crop_shape,axis,offset",
+        [
+            ((5,), (3,), 0, [1]),  # 1D, offset=1
+            ((6, 6), (4, 4), 0, [1, 1]),  # 2D, both dims cropped
+            ((1, 4, 4), (1, 4, 3), 2, None),  # 3D, crop last dim, default offset
+            ((1, 4, 4), (1, 4, 3), 2, [1]),  # 3D, crop last dim, offset=1
+            ((1, 3, 5, 5), (1, 3, 3, 4), 2, None),  # 4D NCHW, default offset
+            ((1, 3, 5, 5), (1, 3, 3, 4), 2, [1, 1]),  # 4D NCHW, offset on H,W
+        ],
+    )
     def test_crop_vs_numpy(self, in_shape, crop_shape, axis, offset):
         """Crop backward matches numpy zero-pad reference."""
         rng = np.random.RandomState(42)
@@ -234,26 +243,28 @@ class TestCropBackwardNumpy:
         dy = rng.randn(*crop_shape).astype(np.float32) * 0.1
         net = _make_crop_net(in_shape, crop_shape, axis=axis, offset=offset)
         dX, out = _run_crop_backward(net, x, crop_ref, dy)
-        np.testing.assert_allclose(out, crop_forward_np(x, crop_shape, axis, offset),
-                                   rtol=RTOL, atol=ATOL)
+        np.testing.assert_allclose(out, crop_forward_np(x, crop_shape, axis, offset), rtol=RTOL, atol=ATOL)
         dx_ref = crop_backward_np(dy, in_shape, crop_shape, axis, offset)
-        np.testing.assert_allclose(dX, dx_ref, rtol=RTOL, atol=ATOL,
-                                   err_msg="Crop backward zero-pad mismatch")
+        np.testing.assert_allclose(dX, dx_ref, rtol=RTOL, atol=ATOL, err_msg="Crop backward zero-pad mismatch")
 
 
 # ---------------------------------------------------------------------------
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestCropBackwardNumerical:
     """Central finite difference numerical gradient checks."""
 
-    @pytest.mark.parametrize("in_shape,crop_shape,axis,offset", [
-        ((5,),       (3,),       0,  [1]),
-        ((1, 4, 4),  (1, 4, 3),  2,  None),
-        ((1, 3, 5, 5), (1, 3, 3, 4), 2, [1, 1]),
-    ])
+    @pytest.mark.parametrize(
+        "in_shape,crop_shape,axis,offset",
+        [
+            ((5,), (3,), 0, [1]),
+            ((1, 4, 4), (1, 4, 3), 2, None),
+            ((1, 3, 5, 5), (1, 3, 3, 4), 2, [1, 1]),
+        ],
+    )
     def test_numerical_grad(self, in_shape, crop_shape, axis, offset):
         """Numerical gradient matches analytical dX."""
         rng = np.random.RandomState(789)
@@ -269,6 +280,7 @@ class TestCropBackwardNumerical:
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestCropBackwardProperties:

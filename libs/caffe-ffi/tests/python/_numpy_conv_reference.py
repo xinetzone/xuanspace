@@ -7,6 +7,7 @@ Implements standard 2D convolution with groups, supporting:
 
 All math done in float64 for numerical stability; returned in float32.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -23,7 +24,7 @@ def _im2col(x, C, H, W, Kh, Kw, pad_h, pad_w, stride_h, stride_w, dilation_h, di
     """im2col: extract patches from single image x (C, H, W) -> (C*Kh*Kw, Ho*Wo)."""
     # Pad input
     if pad_h > 0 or pad_w > 0:
-        x_pad = np.pad(x, ((0, 0), (pad_h, pad_h), (pad_w, pad_w)), mode='constant')
+        x_pad = np.pad(x, ((0, 0), (pad_h, pad_h), (pad_w, pad_w)), mode="constant")
     else:
         x_pad = x
     cols = np.zeros((C * Kh * Kw, Ho * Wo), dtype=np.float64)
@@ -32,8 +33,11 @@ def _im2col(x, C, H, W, Kh, Kw, pad_h, pad_w, stride_h, stride_w, dilation_h, di
         for ow in range(Wo):
             h_start = oh * stride_h
             w_start = ow * stride_w
-            patch = x_pad[:, h_start:h_start + dilation_h * (Kh - 1) + 1:dilation_h,
-                          w_start:w_start + dilation_w * (Kw - 1) + 1:dilation_w]
+            patch = x_pad[
+                :,
+                h_start : h_start + dilation_h * (Kh - 1) + 1 : dilation_h,
+                w_start : w_start + dilation_w * (Kw - 1) + 1 : dilation_w,
+            ]
             # patch shape: (C, Kh, Kw) -> flatten to (C*Kh*Kw,)
             cols[:, idx] = patch.reshape(-1)
             idx += 1
@@ -51,11 +55,14 @@ def _col2im(cols, C, H, W, Kh, Kw, pad_h, pad_w, stride_h, stride_w, dilation_h,
             h_start = oh * stride_h
             w_start = ow * stride_w
             patch = cols[:, idx].reshape(C, Kh, Kw)
-            x_pad[:, h_start:h_start + dilation_h * (Kh - 1) + 1:dilation_h,
-                  w_start:w_start + dilation_w * (Kw - 1) + 1:dilation_w] += patch
+            x_pad[
+                :,
+                h_start : h_start + dilation_h * (Kh - 1) + 1 : dilation_h,
+                w_start : w_start + dilation_w * (Kw - 1) + 1 : dilation_w,
+            ] += patch
             idx += 1
     if pad_h > 0 or pad_w > 0:
-        return x_pad[:, pad_h:pad_h + H, pad_w:pad_w + W]
+        return x_pad[:, pad_h : pad_h + H, pad_w : pad_w + W]
     return x_pad
 
 
@@ -78,7 +85,7 @@ def conv_forward(x, W, b=None, stride=1, pad=0, dilation=1, groups=1):
 
     N, Ci, H, W_dim = x64.shape
     Co, Ci_per_g, Kh, Kw = W64.shape
-    assert Ci == Ci_per_g * groups, f"Ci={Ci} must equal Ci/g*g={Ci_per_g*groups}"
+    assert Ci == Ci_per_g * groups, f"Ci={Ci} must equal Ci/g*g={Ci_per_g * groups}"
     assert Co % groups == 0
 
     if isinstance(stride, int):
@@ -101,12 +108,12 @@ def conv_forward(x, W, b=None, stride=1, pad=0, dilation=1, groups=1):
 
     for n in range(N):
         for g in range(groups):
-            x_g = x64[n, g * Ci_per_g:(g + 1) * Ci_per_g]  # (Ci/g, H, W)
-            W_g = W64[g * Co_per_g:(g + 1) * Co_per_g]  # (Co/g, Ci/g, Kh, Kw)
+            x_g = x64[n, g * Ci_per_g : (g + 1) * Ci_per_g]  # (Ci/g, H, W)
+            W_g = W64[g * Co_per_g : (g + 1) * Co_per_g]  # (Co/g, Ci/g, Kh, Kw)
             cols = _im2col(x_g, Ci_per_g, H, W_dim, Kh, Kw, ph, pw, sh, sw, dh, dw, Ho, Wo)
             # W_g reshaped to (Co/g, Ci/g*Kh*Kw), cols is (Ci/g*Kh*Kw, Ho*Wo)
             out_g = W_g.reshape(Co_per_g, -1) @ cols  # (Co/g, Ho*Wo)
-            y[n, g * Co_per_g:(g + 1) * Co_per_g] = out_g.reshape(Co_per_g, Ho, Wo)
+            y[n, g * Co_per_g : (g + 1) * Co_per_g] = out_g.reshape(Co_per_g, Ho, Wo)
 
     if b is not None:
         y += b.reshape(1, -1, 1, 1).astype(np.float64)
@@ -156,21 +163,21 @@ def conv_backward(dy, x, W, b=None, stride=1, pad=0, dilation=1, groups=1):
 
     for n in range(N):
         for g in range(groups):
-            x_g = x64[n, g * Ci_per_g:(g + 1) * Ci_per_g]
-            dy_g = dy64[n, g * Co_per_g:(g + 1) * Co_per_g]  # (Co/g, Ho, Wo)
-            W_g = W64[g * Co_per_g:(g + 1) * Co_per_g]
+            x_g = x64[n, g * Ci_per_g : (g + 1) * Ci_per_g]
+            dy_g = dy64[n, g * Co_per_g : (g + 1) * Co_per_g]  # (Co/g, Ho, Wo)
+            W_g = W64[g * Co_per_g : (g + 1) * Co_per_g]
 
             cols = _im2col(x_g, Ci_per_g, H, W_dim, Kh, Kw, ph, pw, sh, sw, dh, dw, Ho, Wo)
             # (Ci/g*Kh*Kw, Ho*Wo)
 
             # dW: W_g.reshape(Co/g, Ci/g*Kh*Kw) @ cols^T -> but accumulate over n
             dW_g = dy_g.reshape(Co_per_g, -1) @ cols.T  # (Co/g, Ci/g*Kh*Kw)
-            dW[g * Co_per_g:(g + 1) * Co_per_g] += dW_g.reshape(Co_per_g, Ci_per_g, Kh, Kw)
+            dW[g * Co_per_g : (g + 1) * Co_per_g] += dW_g.reshape(Co_per_g, Ci_per_g, Kh, Kw)
 
             # dX: col2im of W_g^T @ dy_g_flat
             dcol = W_g.reshape(Co_per_g, -1).T @ dy_g.reshape(Co_per_g, -1)  # (Ci/g*Kh*Kw, Ho*Wo)
             dX_g = _col2im(dcol, Ci_per_g, H, W_dim, Kh, Kw, ph, pw, sh, sw, dh, dw, Ho, Wo)
-            dX[n, g * Ci_per_g:(g + 1) * Ci_per_g] += dX_g
+            dX[n, g * Ci_per_g : (g + 1) * Ci_per_g] += dX_g
 
         if db is not None:
             db += dy64[n].sum(axis=(1, 2))  # sum over Ho, Wo
@@ -192,7 +199,7 @@ if __name__ == "__main__":
     x = np.random.randn(N, Ci, H, W_dim).astype(np.float32) * 0.5
     W = np.random.randn(Co, Ci, 1, 1).astype(np.float32) * 0.3
     y = conv_forward(x, W, b=None, stride=1, pad=0, groups=1)
-    assert y.shape == (N, Co, H, W_dim), f"Expected {(N,Co,H,W_dim)}, got {y.shape}"
+    assert y.shape == (N, Co, H, W_dim), f"Expected {(N, Co, H, W_dim)}, got {y.shape}"
 
     # Numerical gradient check for 1x1 conv
     h = 1e-4
@@ -202,8 +209,10 @@ if __name__ == "__main__":
     # Check dX
     dX_num = np.zeros_like(x, dtype=np.float64)
     for i in range(x.size):
-        xp = x.copy(); xp.flat[i] += h
-        xm = x.copy(); xm.flat[i] -= h
+        xp = x.copy()
+        xp.flat[i] += h
+        xm = x.copy()
+        xm.flat[i] -= h
         yp = conv_forward(xp, W, stride=1, pad=0).astype(np.float64)
         ym = conv_forward(xm, W, stride=1, pad=0).astype(np.float64)
         dX_num.flat[i] = float(np.sum(dy.astype(np.float64) * (yp - ym))) / (2 * h)
@@ -212,8 +221,10 @@ if __name__ == "__main__":
     # Check dW
     dW_num = np.zeros_like(W, dtype=np.float64)
     for i in range(W.size):
-        Wp = W.copy(); Wp.flat[i] += h
-        Wm = W.copy(); Wm.flat[i] -= h
+        Wp = W.copy()
+        Wp.flat[i] += h
+        Wm = W.copy()
+        Wm.flat[i] -= h
         yp = conv_forward(x, Wp, stride=1, pad=0).astype(np.float64)
         ym = conv_forward(x, Wm, stride=1, pad=0).astype(np.float64)
         dW_num.flat[i] = float(np.sum(dy.astype(np.float64) * (yp - ym))) / (2 * h)
@@ -234,8 +245,10 @@ if __name__ == "__main__":
     # numerical dX
     dX_num = np.zeros_like(x, dtype=np.float64)
     for i in range(x.size):
-        xp = x.copy(); xp.flat[i] += h
-        xm = x.copy(); xm.flat[i] -= h
+        xp = x.copy()
+        xp.flat[i] += h
+        xm = x.copy()
+        xm.flat[i] -= h
         yp = conv_forward(xp, W, b=b, pad=1).astype(np.float64)
         ym = conv_forward(xm, W, b=b, pad=1).astype(np.float64)
         dX_num.flat[i] = float(np.sum(dy.astype(np.float64) * (yp - ym))) / (2 * h)
@@ -244,8 +257,10 @@ if __name__ == "__main__":
     # numerical db
     db_num = np.zeros_like(b, dtype=np.float64)
     for i in range(b.size):
-        bp = b.copy(); bp.flat[i] += h
-        bm = b.copy(); bm.flat[i] -= h
+        bp = b.copy()
+        bp.flat[i] += h
+        bm = b.copy()
+        bm.flat[i] -= h
         yp = conv_forward(x, W, b=bp, pad=1).astype(np.float64)
         ym = conv_forward(x, W, b=bm, pad=1).astype(np.float64)
         db_num.flat[i] = float(np.sum(dy.astype(np.float64) * (yp - ym))) / (2 * h)

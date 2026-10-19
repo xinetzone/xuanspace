@@ -14,6 +14,7 @@ Covers:
   7. Shape/finite/determinism checks
   8. Forward-Backward round-trip (split -> concat -> split recovers original)
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -22,10 +23,11 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     numerical_gradient,
 )
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -35,6 +37,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Concat forward/backward
 # ---------------------------------------------------------------------------
+
 
 def concat_forward_np(inputs, axis=1):
     """Numpy reference: concatenate inputs along axis."""
@@ -63,6 +66,7 @@ def concat_backward_np(dy, input_shapes, axis=1):
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
+
 def _make_concat_prototxt(shapes, axis=1):
     """Create multi-Input -> Concat prototxt.
 
@@ -71,12 +75,13 @@ def _make_concat_prototxt(shapes, axis=1):
         axis: concat axis (default=1, i.e. channel axis for NCHW).
     """
     num_inputs = len(shapes)
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
 
     input_layers = []
     for name, shape in zip(input_names, shapes):
         dims_lines = "\n".join(f"          dim: {d}" for d in shape)
-        input_layers.append(textwrap.dedent(f"""\
+        input_layers.append(
+            textwrap.dedent(f"""\
             layer {{
               name: "{name}"
               type: "Input"
@@ -84,7 +89,8 @@ def _make_concat_prototxt(shapes, axis=1):
               input_param {{ shape {{
 {dims_lines}
               }} }}
-            }}"""))
+            }}""")
+        )
     input_layers_str = "\n".join(input_layers)
 
     bottoms_str = "\n".join(f'  bottom: "{name}"' for name in input_names)
@@ -111,9 +117,10 @@ def _make_concat_net(shapes, axis=1):
 # Helper: run forward+backward
 # ---------------------------------------------------------------------------
 
+
 def _run_concat_backward(net, inputs, dy, num_inputs=2):
     """Run forward then backward, return list of dX arrays and output."""
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
     input_dict = {name: x.astype(np.float32) for name, x in zip(input_names, inputs)}
     out = net.forward(input_dict)
     net.backward({"out": dy.astype(np.float32)})
@@ -124,7 +131,7 @@ def _run_concat_backward(net, inputs, dy, num_inputs=2):
 def _numerical_grad_input(net, inputs, input_idx, dy, output_name="out", h=EPS):
     """Compute numerical gradient w.r.t. one input."""
     num_inputs = len(inputs)
-    input_names = [chr(ord('a') + i) for i in range(num_inputs)]
+    input_names = [chr(ord("a") + i) for i in range(num_inputs)]
     target_name = input_names[input_idx]
     current = inputs[input_idx].astype(np.float32).copy()
 
@@ -145,13 +152,13 @@ def _numerical_grad_input(net, inputs, input_idx, dy, output_name="out", h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy, h=h,
-                              name=f"input:{target_name}", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy, h=h, name=f"input:{target_name}", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConcatBackwardKnownValues:
@@ -200,7 +207,7 @@ class TestConcatBackwardKnownValues:
         net = _make_concat_net(shapes, axis=3)
         a = np.ones((1, 1, 2, 2), dtype=np.float32)
         b = np.ones((1, 1, 2, 3), dtype=np.float32) * 2.0
-        dy = np.arange(1*1*2*5, dtype=np.float32).reshape(1, 1, 2, 5)
+        dy = np.arange(1 * 1 * 2 * 5, dtype=np.float32).reshape(1, 1, 2, 5)
         dXs, out = _run_concat_backward(net, [a, b], dy, num_inputs=2)
         np.testing.assert_allclose(out, np.concatenate([a, b], axis=3), rtol=1e-5)
         np.testing.assert_allclose(dXs[0], dy[:, :, :, :2], rtol=1e-5)
@@ -211,18 +218,22 @@ class TestConcatBackwardKnownValues:
 # Tests: Analytical gradient vs numpy (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestConcatBackwardNumpy:
     """Compare caffe-ffi backward against numpy reference."""
 
-    @pytest.mark.parametrize("shapes,axis", [
-        ([(2, 3), (2, 4)], 1),           # axis=1, 2D
-        ([(1, 3, 4), (1, 5, 4)], 1),      # axis=1, 3D
-        ([(2, 3, 4), (2, 3, 6)], 2),      # axis=2, 3D
-        ([(1, 2, 3, 4), (1, 3, 3, 4)], 1), # axis=1, 4D NCHW
-        ([(1, 2, 3, 4), (1, 2, 5, 4)], 2), # axis=2 (H), 4D
-        ([(1, 2, 3, 4), (1, 2, 3, 6)], 3), # axis=3 (W), 4D
-    ])
+    @pytest.mark.parametrize(
+        "shapes,axis",
+        [
+            ([(2, 3), (2, 4)], 1),  # axis=1, 2D
+            ([(1, 3, 4), (1, 5, 4)], 1),  # axis=1, 3D
+            ([(2, 3, 4), (2, 3, 6)], 2),  # axis=2, 3D
+            ([(1, 2, 3, 4), (1, 3, 3, 4)], 1),  # axis=1, 4D NCHW
+            ([(1, 2, 3, 4), (1, 2, 5, 4)], 2),  # axis=2 (H), 4D
+            ([(1, 2, 3, 4), (1, 2, 3, 6)], 3),  # axis=3 (W), 4D
+        ],
+    )
     def test_concat_vs_numpy(self, shapes, axis):
         """Concat backward matches numpy slicing for various shapes/axes."""
         rng = np.random.RandomState(42)
@@ -235,8 +246,7 @@ class TestConcatBackwardNumpy:
         np.testing.assert_allclose(out, concat_forward_np(inputs, axis), rtol=RTOL, atol=ATOL)
         dXs_ref = concat_backward_np(dy, shapes, axis=axis)
         for j, (dx, dx_ref) in enumerate(zip(dXs, dXs_ref)):
-            np.testing.assert_allclose(dx, dx_ref, rtol=RTOL, atol=ATOL,
-                                       err_msg=f"bottom[{j}] gradient mismatch")
+            np.testing.assert_allclose(dx, dx_ref, rtol=RTOL, atol=ATOL, err_msg=f"bottom[{j}] gradient mismatch")
 
     def test_three_inputs(self):
         """Concat with 3 inputs along axis=1."""
@@ -275,15 +285,19 @@ class TestConcatBackwardNumpy:
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestConcatBackwardNumerical:
     """Central finite difference numerical gradient checks."""
 
-    @pytest.mark.parametrize("shapes,axis", [
-        ([(2, 3), (2, 4)], 1),
-        ([(2, 3, 2), (2, 3, 3)], 2),
-        ([(1, 2, 2, 2), (1, 3, 2, 2)], 1),
-    ])
+    @pytest.mark.parametrize(
+        "shapes,axis",
+        [
+            ([(2, 3), (2, 4)], 1),
+            ([(2, 3, 2), (2, 3, 3)], 2),
+            ([(1, 2, 2, 2), (1, 3, 2, 2)], 1),
+        ],
+    )
     def test_numerical_grad(self, shapes, axis):
         """Numerical gradient for each input matches analytical dX."""
         rng = np.random.RandomState(789)
@@ -296,8 +310,9 @@ class TestConcatBackwardNumerical:
         for j in range(len(shapes)):
             net2 = _make_concat_net(shapes, axis=axis)
             num_dx = _numerical_grad_input(net2, inputs, j, dy, h=EPS)
-            np.testing.assert_allclose(dXs[j], num_dx, rtol=RTOL, atol=ATOL,
-                                       err_msg=f"Numerical grad mismatch for bottom[{j}]")
+            np.testing.assert_allclose(
+                dXs[j], num_dx, rtol=RTOL, atol=ATOL, err_msg=f"Numerical grad mismatch for bottom[{j}]"
+            )
 
     def test_numerical_grad_three_inputs(self):
         """Numerical gradient for 3-input concat."""
@@ -313,13 +328,15 @@ class TestConcatBackwardNumerical:
         for j in range(3):
             net2 = _make_concat_net(shapes, axis=axis)
             num_dx = _numerical_grad_input(net2, inputs, j, dy, h=EPS)
-            np.testing.assert_allclose(dXs[j], num_dx, rtol=RTOL, atol=ATOL,
-                                       err_msg=f"Numerical grad mismatch for bottom[{j}]")
+            np.testing.assert_allclose(
+                dXs[j], num_dx, rtol=RTOL, atol=ATOL, err_msg=f"Numerical grad mismatch for bottom[{j}]"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestConcatBackwardProperties:
@@ -373,9 +390,9 @@ class TestConcatBackwardProperties:
         inputs = [rng.randn(*s).astype(np.float32) for s in shapes]
         dy = rng.randn(1, 5, 2, 2).astype(np.float32)
         net = _make_concat_net(shapes, axis=axis)
-        out1 = net.forward({chr(ord('a')+i): x for i, x in enumerate(inputs)})["out"].copy()
+        out1 = net.forward({chr(ord("a") + i): x for i, x in enumerate(inputs)})["out"].copy()
         net.backward({"out": dy})
-        out2 = net.forward({chr(ord('a')+i): x for i, x in enumerate(inputs)})["out"]
+        out2 = net.forward({chr(ord("a") + i): x for i, x in enumerate(inputs)})["out"]
         np.testing.assert_allclose(out1, out2, rtol=1e-6)
 
     def test_finite_values(self):

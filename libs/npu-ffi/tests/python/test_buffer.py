@@ -1,7 +1,6 @@
 """Tests for VTA Buffer wrapper class."""
 
 import gc
-import pytest
 
 from npu_ffi import vta
 from npu_ffi.vta import Buffer
@@ -71,7 +70,6 @@ class TestBufferRAII:
         with Buffer(512) as buf:
             assert buf.data != 0
             assert buf.size == 512
-            ptr = buf.data
         assert buf.data == 0
 
     def test_buffer_multiple_create_destroy(self):
@@ -182,7 +180,6 @@ class TestBufferLifecycle:
 
     def test_buffer_double_free_safe(self):
         buf = Buffer(256)
-        ptr = buf.data
         buf.__del__()
         buf.__del__()
         gc.collect()

@@ -21,6 +21,7 @@ Weight/blob conventions (Caffe-compatible):
 The hidden dim H is inferred from the pre-loaded weight blob shapes, so the
 prototxt must carry the weight blob shapes via ``LayerParameter.blobs``.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -29,20 +30,21 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net, sequence
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_blob,
     numerical_grad_for_input,
 )
 from .caffe_test_helpers import avoid_c1_discontinuity
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-RTOL = 1e-5      # L2 numpy-reference tolerance
+RTOL = 1e-5  # L2 numpy-reference tolerance
 ATOL = 1e-5
-EPS = 1e-3       # central finite-difference step for L3
+EPS = 1e-3  # central finite-difference step for L3
 NUM_RTOL = 1e-3  # L3 numerical-gradient tolerance (smooth layers)
 NUM_ATOL = 1e-4
 REL_RTOL = 5e-3  # L3 tolerance for the piecewise relu activation
@@ -55,6 +57,7 @@ REL_RTOL = 5e-3  # L3 tolerance for the piecewise relu activation
 # ---------------------------------------------------------------------------
 # Prototxt builders
 # ---------------------------------------------------------------------------
+
 
 def _make_rnn_proto(T, N, D, H, activation="tanh"):
     """Input(T,N,D) -> RNN layer with 4 pre-sized weight blobs."""
@@ -111,6 +114,7 @@ def _make_lstm_proto(T, N, D, H):
 # Weight helpers
 # ---------------------------------------------------------------------------
 
+
 def _rnn_weights(D, H, seed):
     """Deterministic RNN weight dict (W_ih, W_hh, b_ih, b_hh)."""
     return sequence.init_rnn_weights(D, H, seed=seed, scale=0.3)
@@ -147,6 +151,7 @@ def _set_lstm_weights(net, W, b):
 # L2 reference helpers: pack numpy per-gate gradients into Caffe packed form
 # ---------------------------------------------------------------------------
 
+
 def _pack_lstm_dW(grads, H, D):
     """Pack the numpy per-gate dW into Caffe (4H, D+H) layout."""
     dW_ih = np.vstack([grads["dW_ii"], grads["dW_if"], grads["dW_io"], grads["dW_ig"]])
@@ -161,14 +166,20 @@ def _pack_lstm_db(grads, H):
     gradient w.r.t. the combined bias equals the reference's per-gate bias
     gradient (db_ii == db_hi == dL/db_i).
     """
-    return np.concatenate([
-        grads["db_ii"], grads["db_if"], grads["db_io"], grads["db_ig"],
-    ]).astype(np.float32)
+    return np.concatenate(
+        [
+            grads["db_ii"],
+            grads["db_if"],
+            grads["db_io"],
+            grads["db_ig"],
+        ]
+    ).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
 # L0: smoke tests
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestRecurrentSmoke:
@@ -208,6 +219,7 @@ class TestRecurrentSmoke:
 # L1: hand-computed known values
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestRecurrentKnownValues:
     """L1 — exact known-value Backward checks."""
@@ -245,15 +257,9 @@ class TestRecurrentKnownValues:
             net.layer_by_name("rnn").blobs[0].diff,
             np.array([[1.0, -2.0], [0.0, 0.0]], dtype=np.float32),
         )
-        np.testing.assert_array_equal(
-            net.layer_by_name("rnn").blobs[2].diff, np.array([1.0, 0.0], dtype=np.float32)
-        )
-        np.testing.assert_array_equal(
-            net.layer_by_name("rnn").blobs[1].diff, np.zeros((2, 2), dtype=np.float32)
-        )
-        np.testing.assert_array_equal(
-            net.layer_by_name("rnn").blobs[3].diff, np.array([1.0, 0.0], dtype=np.float32)
-        )
+        np.testing.assert_array_equal(net.layer_by_name("rnn").blobs[2].diff, np.array([1.0, 0.0], dtype=np.float32))
+        np.testing.assert_array_equal(net.layer_by_name("rnn").blobs[1].diff, np.zeros((2, 2), dtype=np.float32))
+        np.testing.assert_array_equal(net.layer_by_name("rnn").blobs[3].diff, np.array([1.0, 0.0], dtype=np.float32))
 
     def test_rnn_tanh_known_value(self):
         """Single-step tanh RNN, W_ih=I, W_hh=0, b=0.
@@ -285,9 +291,7 @@ class TestRecurrentKnownValues:
 
         dX = net.blob_by_name("data").diff
         np.testing.assert_allclose(dX, expected_dX.reshape(1, 1, 2), rtol=RTOL, atol=ATOL)
-        np.testing.assert_allclose(
-            net.layer_by_name("rnn").blobs[2].diff, expected_db, rtol=RTOL, atol=ATOL
-        )
+        np.testing.assert_allclose(net.layer_by_name("rnn").blobs[2].diff, expected_db, rtol=RTOL, atol=ATOL)
 
     def test_rnn_forward_last_state(self):
         """Multi-step RNN: forward h_n equals the last time-step output."""
@@ -317,6 +321,7 @@ class TestRecurrentKnownValues:
 # L2: numpy reference match
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestRNNReferenceBackward:
     """L2 — RNN C++ Backward matches the pure-numpy ``rnn_backward``."""
@@ -326,7 +331,7 @@ class TestRNNReferenceBackward:
     def test_rnn_matches_reference(self, activation, seed):
         T, N, D, H = 5, 2, 3, 4
         if activation == "relu":
-            scale = 0.3
+            pass
         net = Net(_make_rnn_proto(T, N, D, H, activation=activation))
         w = _rnn_weights(D, H, seed)
         _set_rnn_weights(net, w)
@@ -345,8 +350,14 @@ class TestRNNReferenceBackward:
         db_hh = net.layer_by_name("rnn").blobs[3].diff
 
         ref = sequence.rnn_backward(
-            dy, x, w["W_ih"], w["W_hh"], w["b_ih"], w["b_hh"],
-            h0=None, activation=activation,
+            dy,
+            x,
+            w["W_ih"],
+            w["W_hh"],
+            w["b_ih"],
+            w["b_hh"],
+            h0=None,
+            activation=activation,
         )
         np.testing.assert_allclose(dX_cpp, ref["dX"], rtol=RTOL, atol=ATOL)
         np.testing.assert_allclose(dW_ih, ref["dW_ih"], rtol=RTOL, atol=ATOL)
@@ -363,7 +374,12 @@ class TestRNNReferenceBackward:
         x = np.random.RandomState(6).randn(T, N, D).astype(np.float32) * 0.3
         out_cpp = net.forward({"data": x})["out"]
         out_ref, _ = sequence.rnn_forward(
-            x, w["W_ih"], w["W_hh"], w["b_ih"], w["b_hh"], activation="tanh",
+            x,
+            w["W_ih"],
+            w["W_hh"],
+            w["b_ih"],
+            w["b_hh"],
+            activation="tanh",
         )
         np.testing.assert_allclose(out_cpp, out_ref, rtol=RTOL, atol=ATOL)
 
@@ -391,12 +407,26 @@ class TestLSTMReferenceBackward:
         db_cpp = net.layer_by_name("lstm").blobs[1].diff
 
         ref = sequence.lstm_backward(
-            dy, x,
-            gates["W_ii"], gates["W_if"], gates["W_io"], gates["W_ig"],
-            gates["W_hi"], gates["W_hf"], gates["W_ho"], gates["W_hg"],
-            gates["b_ii"], gates["b_if"], gates["b_io"], gates["b_ig"],
-            gates["b_hi"], gates["b_hf"], gates["b_ho"], gates["b_hg"],
-            h0=None, c0=None,
+            dy,
+            x,
+            gates["W_ii"],
+            gates["W_if"],
+            gates["W_io"],
+            gates["W_ig"],
+            gates["W_hi"],
+            gates["W_hf"],
+            gates["W_ho"],
+            gates["W_hg"],
+            gates["b_ii"],
+            gates["b_if"],
+            gates["b_io"],
+            gates["b_ig"],
+            gates["b_hi"],
+            gates["b_hf"],
+            gates["b_ho"],
+            gates["b_hg"],
+            h0=None,
+            c0=None,
         )
         np.testing.assert_allclose(dX_cpp, ref["dX"], rtol=RTOL, atol=ATOL)
         np.testing.assert_allclose(dW_cpp, _pack_lstm_dW(ref, H, D), rtol=RTOL, atol=ATOL)
@@ -412,10 +442,22 @@ class TestLSTMReferenceBackward:
         out_cpp = net.forward({"data": x})["out"]
         out_ref, _ = sequence.lstm_forward(
             x,
-            gates["W_ii"], gates["W_if"], gates["W_io"], gates["W_ig"],
-            gates["W_hi"], gates["W_hf"], gates["W_ho"], gates["W_hg"],
-            gates["b_ii"], gates["b_if"], gates["b_io"], gates["b_ig"],
-            gates["b_hi"], gates["b_hf"], gates["b_ho"], gates["b_hg"],
+            gates["W_ii"],
+            gates["W_if"],
+            gates["W_io"],
+            gates["W_ig"],
+            gates["W_hi"],
+            gates["W_hf"],
+            gates["W_ho"],
+            gates["W_hg"],
+            gates["b_ii"],
+            gates["b_if"],
+            gates["b_io"],
+            gates["b_ig"],
+            gates["b_hi"],
+            gates["b_hf"],
+            gates["b_ho"],
+            gates["b_hg"],
         )
         np.testing.assert_allclose(out_cpp, out_ref, rtol=RTOL, atol=ATOL)
 
@@ -423,6 +465,7 @@ class TestLSTMReferenceBackward:
 # ---------------------------------------------------------------------------
 # L3: numerical gradient end-to-end
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestRNNNumericalGradient:
@@ -460,11 +503,16 @@ class TestRNNNumericalGradient:
         for idx, name in [(0, "dW_ih"), (1, "dW_hh"), (2, "db_ih"), (3, "db_hh")]:
             analytic = net.layer_by_name("rnn").blobs[idx].diff
             num = numerical_grad_for_blob(
-                net, "rnn", idx, {"data": x}, "out", dy, h=EPS,
+                net,
+                "rnn",
+                idx,
+                {"data": x},
+                "out",
+                dy,
+                h=EPS,
                 name=f"RNN({activation}) {name}",
             )
-            assert_grad_close(analytic, num, name=f"RNN({activation}) {name}",
-                              rtol=rtol, atol=atol)
+            assert_grad_close(analytic, num, name=f"RNN({activation}) {name}", rtol=rtol, atol=atol)
 
 
 @require_cpp_extension
@@ -489,7 +537,7 @@ class TestLSTMNumericalGradient:
         net, x, dy = self._run(seed)
         dX_analytic = net.blob_by_name("data").diff
         dX_num = numerical_grad_for_input(net, "data", x, "out", dy, h=EPS, name="LSTM dX")
-        assert_grad_close(dX_analytic, dX_num, name=f"LSTM dX", rtol=NUM_RTOL, atol=NUM_ATOL)
+        assert_grad_close(dX_analytic, dX_num, name="LSTM dX", rtol=NUM_RTOL, atol=NUM_ATOL)
 
     @pytest.mark.parametrize("seed", [0, 1])
     def test_lstm_dW_dB_numerical(self, seed):
@@ -497,8 +545,13 @@ class TestLSTMNumericalGradient:
         for idx, name in [(0, "dW_packed"), (1, "db_packed")]:
             analytic = net.layer_by_name("lstm").blobs[idx].diff
             num = numerical_grad_for_blob(
-                net, "lstm", idx, {"data": x}, "out", dy, h=EPS,
+                net,
+                "lstm",
+                idx,
+                {"data": x},
+                "out",
+                dy,
+                h=EPS,
                 name=f"LSTM {name}",
             )
-            assert_grad_close(analytic, num, name=f"LSTM {name}",
-                              rtol=NUM_RTOL, atol=NUM_ATOL)
+            assert_grad_close(analytic, num, name=f"LSTM {name}", rtol=NUM_RTOL, atol=NUM_ATOL)

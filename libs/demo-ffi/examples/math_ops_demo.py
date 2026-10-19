@@ -13,6 +13,7 @@ demo_ffi.math_ops 模块使用演示脚本
     DEMO_FFI_PERF_LOG=1 python examples/math_ops_demo.py  # Linux/macOS
     $env:DEMO_FFI_PERF_LOG=1; python examples/math_ops_demo.py  # Windows PowerShell
 """
+
 from __future__ import annotations
 
 import os
@@ -72,7 +73,7 @@ def demo_vec_operations() -> None:
     print(f"  vec_l2_norm(b)  = {norm_b:.4f}")
     print()
     print("  数学恒等式验证: ||v||² == dot(v, v)")
-    print(f"    ||a||² = {norm_a**2:.4f}, dot(a,a) = {m.vec_dot(a,a):.4f}")
+    print(f"    ||a||² = {norm_a**2:.4f}, dot(a,a) = {m.vec_dot(a, a):.4f}")
 
 
 def demo_vec_stats() -> None:
@@ -93,8 +94,8 @@ def demo_vec_stats() -> None:
     mn, mx, mean, std = m.vec_stats(big_data)
     t1 = time.perf_counter()
     print(f"    min={mn}, max={mx}, mean={mean:.4f}, std={std:.4f}")
-    print(f"    Python 侧耗时: {(t1-t0)*1000:.2f} ms")
-    print(f"    提示: 设置 DEMO_FFI_PERF_LOG=1 可查看 C++ 侧逐阶段计时")
+    print(f"    Python 侧耗时: {(t1 - t0) * 1000:.2f} ms")
+    print("    提示: 设置 DEMO_FFI_PERF_LOG=1 可查看 C++ 侧逐阶段计时")
 
 
 def demo_string_functions() -> None:
@@ -102,21 +103,21 @@ def demo_string_functions() -> None:
 
     text = "hello hello world, hello demo_ffi!"
     sub = "hello"
-    print(f"  文本: \"{text}\"")
-    print(f"  子串: \"{sub}\"")
+    print(f'  文本: "{text}"')
+    print(f'  子串: "{sub}"')
     print(f"  count_substring(text, sub) = {m.count_substring(text, sub)}")
     print()
 
     examples = ["hello", "racecar", "demo_ffi", "", "a"]
     for s in examples:
         rev = m.reverse_string(s)
-        print(f"  reverse_string(\"{s}\") = \"{rev}\"")
+        print(f'  reverse_string("{s}") = "{rev}"')
     print()
     print("  回文验证: reverse(reverse(s)) == s")
     s = "The quick brown fox jumps over the lazy dog"
     double_rev = m.reverse_string(m.reverse_string(s))
-    print(f"    原始: \"{s[:40]}...\"")
-    print(f"    还原: \"{double_rev[:40]}...\"")
+    print(f'    原始: "{s[:40]}..."')
+    print(f'    还原: "{double_rev[:40]}..."')
     print(f"    一致: {s == double_rev}")
 
 
@@ -128,10 +129,12 @@ def demo_gcd_lcm() -> None:
     print()
     for a, b in pairs:
         g = m.gcd(a, b)
-        l = m.lcm(a, b)
+        lcm_val = m.lcm(a, b)
         product = abs(a * b)
-        check = "✓" if l * g == product else "✗"
-        print(f"  gcd({a:>4}, {b:>4}) = {g:>4} | lcm({a:>4}, {b:>4}) = {l:>5} | {check} {l}*{g}={l*g} == |{a*b}|={product}")
+        check = "✓" if lcm_val * g == product else "✗"
+        print(
+            f"  gcd({a:>4}, {b:>4}) = {g:>4} | lcm({a:>4}, {b:>4}) = {lcm_val:>5} | {check} {lcm_val}*{g}={lcm_val * g} == |{a * b}|={product}"
+        )
 
 
 def demo_sieve_primes() -> None:
@@ -196,7 +199,7 @@ def demo_binary_search() -> None:
     idx = m.binary_search(big_arr, 50000.0)
     t1 = time.perf_counter()
     print(f"    查找 50000.0 -> 索引 {idx}")
-    print(f"    Python 侧耗时: {(t1-t0)*1000:.4f} ms")
+    print(f"    Python 侧耗时: {(t1 - t0) * 1000:.4f} ms")
 
 
 def demo_pipeline() -> None:
@@ -252,14 +255,20 @@ def main() -> None:
     print()
     print("  可用函数清单:")
     funcs = [
-        "fibonacci(n)", "is_prime(n)",
-        "vec_add(a, b)", "vec_scale(v, factor)",
-        "vec_dot(a, b)", "vec_l2_norm(v)",
+        "fibonacci(n)",
+        "is_prime(n)",
+        "vec_add(a, b)",
+        "vec_scale(v, factor)",
+        "vec_dot(a, b)",
+        "vec_l2_norm(v)",
         "vec_stats(v)",
-        "count_substring(text, sub)", "reverse_string(s)",
-        "gcd(a, b)", "lcm(a, b)",
+        "count_substring(text, sub)",
+        "reverse_string(s)",
+        "gcd(a, b)",
+        "lcm(a, b)",
         "sieve_primes(limit)",
-        "sigmoid(x)", "vec_sigmoid(v)",
+        "sigmoid(x)",
+        "vec_sigmoid(v)",
         "binary_search(sorted_arr, target)",
     ]
     for f in funcs:

@@ -1,6 +1,8 @@
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ def test_threshold_correctness(caffe_test_dir):
         x = np.random.randn(1, 3, 6, 6).astype(np.float32) * 2
         ref = _threshold_ref(x, threshold=thresh)
         caffe_out = _test_threshold(x, caffe_test_dir, threshold_param={"threshold": thresh})
-        assert_op_correct(caffe_out, ref, atol=0.0, rtol=0.0,
-                          op_name=f"Threshold(threshold={thresh})")
-        assert set(np.unique(caffe_out[0])).issubset({0.0, 1.0}), \
+        assert_op_correct(caffe_out, ref, atol=0.0, rtol=0.0, op_name=f"Threshold(threshold={thresh})")
+        assert set(np.unique(caffe_out[0])).issubset({0.0, 1.0}), (
             f"Threshold output must be binary 0/1, got values: {np.unique(caffe_out[0])}"
+        )

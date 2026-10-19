@@ -43,9 +43,7 @@ class TestCreateFormatLogsTask(IsolatedAsyncioTestCase):
 
         space_suffix = " " * (5 - len("web_1") + 1)
         expected_formatter = f"\x1b[1;32m[web_1]{space_suffix}|\x1b[0m"
-        assert engine.podman.calls == [
-            ([], "logs", ["-f", "web_1"], expected_formatter)
-        ]
+        assert engine.podman.calls == [([], "logs", ["-f", "web_1"], expected_formatter)]
 
     async def test_no_color_uses_monochrome_reset(self) -> None:
         engine = _make_engine()
@@ -65,9 +63,7 @@ class TestCreateFormatLogsTask(IsolatedAsyncioTestCase):
         assert task is not None
         await task
 
-        assert engine.podman.calls == [
-            ([], "logs", ["--tail=10", "web_1"], None)
-        ]
+        assert engine.podman.calls == [([], "logs", ["--tail=10", "web_1"], None)]
 
 
 class TestTaskCancelled(IsolatedAsyncioTestCase):

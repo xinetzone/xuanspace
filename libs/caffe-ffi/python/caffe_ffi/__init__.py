@@ -5,42 +5,32 @@ import logging
 
 __version__ = "1.2.0"
 
-from . import _ffi_api
-from . import caffe_pb2
-
+from . import _ffi_api, blob, caffe_pb2, io, layer, net, sequence, serialization, solver
 from ._core import Blob, Layer, Net
-from . import blob
-from . import layer
-from . import net
-from . import io
-from . import sequence
-from . import solver
-from . import serialization
-
 from .io import (
-    read_net,
-    read_net_from_prototxt,
-    read_net_from_binary,
     net_from_param,
     net_param_from_string,
+    read_net,
+    read_net_from_binary,
+    read_net_from_prototxt,
 )
 from .serialization import (
-    save_net,
-    load_net,
-    weights_to_dict,
     dict_to_weights,
+    load_net,
     net_parameter_to_file,
+    save_net,
+    weights_to_dict,
 )
 from .solver import (
-    Optimizer,
     SGD,
     Adam,
-    LRScheduler,
-    StepLR,
-    MultiStepLR,
-    ExponentialLR,
     CosineAnnealingLR,
+    ExponentialLR,
+    LRScheduler,
+    MultiStepLR,
+    Optimizer,
     Solver,
+    StepLR,
 )
 
 _logger = logging.getLogger("caffe_ffi")

@@ -60,9 +60,7 @@ def parse_links(body: str, bundle_root: Path) -> list[tuple[str, Path | str | No
     return result
 
 
-def parse_links_with_context(
-    filepath: Path, bundle_root: Path
-) -> list[tuple[str, Path | str | None]]:
+def parse_links_with_context(filepath: Path, bundle_root: Path) -> list[tuple[str, Path | str | None]]:
     """Read *filepath* and extract links, resolving relative targets against
     the file's parent directory.
 
@@ -86,9 +84,7 @@ def parse_links_with_context(
     return result
 
 
-def check_broken_links(
-    links: list[tuple[str, Path | str | None]], bundle: Bundle
-) -> list[str]:
+def check_broken_links(links: list[tuple[str, Path | str | None]], bundle: Bundle) -> list[str]:
     """Detect broken links in *links* against *bundle*.
 
     For each link whose *target* is a ``Path``:
@@ -117,16 +113,11 @@ def check_broken_links(
             continue
         concept_id = rel.with_suffix("").as_posix()
         if concept_id not in bundle.concepts:
-            broken.append(
-                f"Broken link: [{text}] -> {target} "
-                f"(concept ID '{concept_id}' not in bundle)"
-            )
+            broken.append(f"Broken link: [{text}] -> {target} (concept ID '{concept_id}' not in bundle)")
     return broken
 
 
-def resolve_link(
-    target: str, current_file: Path, bundle_root: Path
-) -> Path | str | None:
+def resolve_link(target: str, current_file: Path, bundle_root: Path) -> Path | str | None:
     """Resolve a single link *target* string.
 
     - ``/`` prefix → ``bundle_root / target.lstrip('/')`` → ``Path``

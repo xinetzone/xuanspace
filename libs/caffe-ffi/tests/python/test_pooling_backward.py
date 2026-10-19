@@ -23,19 +23,20 @@ Mathematical reference:
 Note: Overlapping windows (stride < kernel) cause gradient accumulation in
 overlap regions; boundary windows have smaller pool_size when padding=0.
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_input,
 )
+from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
 
@@ -44,8 +45,8 @@ EPS_NUMERICAL = 1e-3
 # Numpy reference implementation for pooling backward
 # ---------------------------------------------------------------------------
 
-def pooling_backward_np(dy, x, kernel_size, stride=None, pad=0,
-                        pool_type='MAX', ceil_mode=True, global_pooling=False):
+
+def pooling_backward_np(dy, x, kernel_size, stride=None, pad=0, pool_type="MAX", ceil_mode=True, global_pooling=False):
     """Numpy reference for 2D pooling backward (NCHW format).
 
     Args:
@@ -116,14 +117,14 @@ def pooling_backward_np(dy, x, kernel_size, stride=None, pad=0,
                     pool_size = (hend - hstart) * (wend - wstart)
                     dyi = dy64[n, c, ph, pw]
 
-                    if pool_type == 'MAX':
+                    if pool_type == "MAX":
                         patch = x64[n, c, hstart:hend, wstart:wend]
                         if patch.size > 0:
                             flat_idx = int(np.argmax(patch))
                             winner_h = hstart + flat_idx // (wend - wstart)
                             winner_w = wstart + flat_idx % (wend - wstart)
                             dx[n, c, winner_h, winner_w] += dyi
-                    elif pool_type == 'AVE':
+                    elif pool_type == "AVE":
                         scale = dyi / pool_size if pool_size > 0 else 0.0
                         dx[n, c, hstart:hend, wstart:wend] += scale
 
@@ -134,10 +135,10 @@ def pooling_backward_np(dy, x, kernel_size, stride=None, pad=0,
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
-def _make_pool_prototxt(input_dims, kernel_size, stride=None, pad=0,
-                        pool='MAX', global_pooling=False):
+
+def _make_pool_prototxt(input_dims, kernel_size, stride=None, pad=0, pool="MAX", global_pooling=False):
     """Create Input -> Pooling prototxt."""
-    dims_str = " ".join(str(d) for d in input_dims)
+    " ".join(str(d) for d in input_dims)
     if isinstance(kernel_size, int):
         ks_str = f"kernel_size: {kernel_size}"
     else:
@@ -175,8 +176,7 @@ def _make_pool_prototxt(input_dims, kernel_size, stride=None, pad=0,
     """)
 
 
-def _make_pool_net(N, C, H, W, kernel_size, stride=None, pad=0,
-                   pool='MAX', global_pooling=False):
+def _make_pool_net(N, C, H, W, kernel_size, stride=None, pad=0, pool="MAX", global_pooling=False):
     input_dims = (N, C, H, W)
     proto = _make_pool_prototxt(input_dims, kernel_size, stride, pad, pool, global_pooling)
     return Net(proto)
@@ -194,6 +194,7 @@ def _run_pool_backward(net, x, dy):
 # Test Class 1: MAX Pooling 2x2 stride=2 (non-overlapping, simplest case)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestMaxPoolBackward2x2:
     """MAX pooling 2x2 stride=2 backward tests (non-overlapping windows)."""
@@ -201,13 +202,9 @@ class TestMaxPoolBackward2x2:
     def test_maxpool_2x2_known_values(self):
         """2x2 MAX pool s2: known 4x4 input, hand-computed gradients."""
         N, C, H, W = 1, 1, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
-        x = np.array([[[[1, 2, 3, 4],
-                        [5, 6, 7, 8],
-                        [9,10,11,12],
-                        [13,14,15,16]]]], dtype=np.float32)
-        dy = np.array([[[[10, 20],
-                         [30, 40]]]], dtype=np.float32)
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
+        x = np.array([[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]]], dtype=np.float32)
+        dy = np.array([[[[10, 20], [30, 40]]]], dtype=np.float32)
 
         y, dX = _run_pool_backward(net, x, dy)
 
@@ -217,47 +214,49 @@ class TestMaxPoolBackward2x2:
         assert y[0, 0, 1, 0] == 14.0
         assert y[0, 0, 1, 1] == 16.0
 
-        expected_dx = np.array([[[[0, 0, 0, 0],
-                                  [0,10, 0,20],
-                                  [0, 0, 0, 0],
-                                  [0,30, 0,40]]]], dtype=np.float32)
+        expected_dx = np.array([[[[0, 0, 0, 0], [0, 10, 0, 20], [0, 0, 0, 0], [0, 30, 0, 40]]]], dtype=np.float32)
         np.testing.assert_array_equal(dX, expected_dx)
 
     def test_maxpool_2x2_analytical_dx(self):
         """MAX pool 2x2 s2: caffe-ffi dX vs numpy reference."""
         rng = np.random.RandomState(42)
         N, C, H, W = 2, 3, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, 2, 2).astype(np.float32)
 
         y, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type='MAX')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type="MAX")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_maxpool_2x2_numerical_dx(self):
         """MAX pool 2x2 s2: numerical gradient check for dX (small input)."""
         rng = np.random.RandomState(123)
         N, C, H, W = 1, 2, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32) * 0.5 + 1.0
         dy = rng.randn(N, C, 2, 2).astype(np.float32) * 0.1
 
-        out = net.forward({"data": x})
+        net.forward({"data": x})
         net.backward({"pool": dy})
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "pool", dy, h=EPS_NUMERICAL,
-            name="pool_max_2x2_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "pool",
+            dy,
+            h=EPS_NUMERICAL,
+            name="pool_max_2x2_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(MAX pool 2x2 s2)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(MAX pool 2x2 s2)", rtol=1e-2, atol=1e-3)
 
     def test_maxpool_zero_dy_zero_dx(self):
         """Zero dy should produce zero dX."""
         N, C, H, W = 1, 2, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = np.random.RandomState(0).randn(N, C, H, W).astype(np.float32)
         dy = np.zeros((N, C, 2, 2), dtype=np.float32)
         _, dX = _run_pool_backward(net, x, dy)
@@ -268,6 +267,7 @@ class TestMaxPoolBackward2x2:
 # Test Class 2: AVE Pooling 2x2 stride=2
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestAvePoolBackward2x2:
     """AVE pooling 2x2 stride=2 backward tests."""
@@ -275,7 +275,7 @@ class TestAvePoolBackward2x2:
     def test_avepool_2x2_known_values(self):
         """2x2 AVE pool s2: uniform dy=4 → dx=1 each (scale=1/4)."""
         N, C, H, W = 1, 1, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="AVE")
         x = np.ones((N, C, H, W), dtype=np.float32)
         dy = np.full((N, C, 2, 2), 4.0, dtype=np.float32)
 
@@ -287,19 +287,19 @@ class TestAvePoolBackward2x2:
         """AVE pool 2x2 s2: caffe-ffi dX vs numpy reference."""
         rng = np.random.RandomState(43)
         N, C, H, W = 2, 3, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="AVE")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, 2, 2).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type='AVE')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type="AVE")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_avepool_2x2_numerical_dx(self):
         """AVE pool 2x2 s2: numerical gradient check for dX."""
         rng = np.random.RandomState(456)
         N, C, H, W = 1, 2, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="AVE")
         x = rng.randn(N, C, H, W).astype(np.float32) * 0.5
         dy = rng.randn(N, C, 2, 2).astype(np.float32) * 0.1
 
@@ -308,16 +308,22 @@ class TestAvePoolBackward2x2:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "pool", dy, h=EPS_NUMERICAL,
-            name="pool_ave_2x2_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "pool",
+            dy,
+            h=EPS_NUMERICAL,
+            name="pool_ave_2x2_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(AVE pool 2x2 s2)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(AVE pool 2x2 s2)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 3: Overlapping MAX Pooling (3x3, stride=1, pad=1, same HxW)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestMaxPoolBackwardOverlapping:
@@ -327,19 +333,19 @@ class TestMaxPoolBackwardOverlapping:
         """MAX pool 3x3 s1 pad1: caffe-ffi dX vs numpy reference."""
         rng = np.random.RandomState(44)
         N, C, H, W = 1, 2, 5, 5
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, H, W).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='MAX')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type="MAX")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_maxpool_3x3_pad1_numerical_dx(self):
         """MAX pool 3x3 s1 pad1: numerical gradient check (small input)."""
         rng = np.random.RandomState(789)
         N, C, H, W = 1, 1, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32) * 0.5 + 0.5
         dy = rng.randn(N, C, H, W).astype(np.float32) * 0.1
 
@@ -348,16 +354,22 @@ class TestMaxPoolBackwardOverlapping:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "pool", dy, h=EPS_NUMERICAL,
-            name="pool_max_3x3_s1p1_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "pool",
+            dy,
+            h=EPS_NUMERICAL,
+            name="pool_max_3x3_s1p1_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(MAX pool 3x3 s1p1)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(MAX pool 3x3 s1p1)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 4: Overlapping AVE Pooling (3x3, stride=2, pad=0)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestAvePoolBackwardOverlapping:
@@ -367,20 +379,20 @@ class TestAvePoolBackwardOverlapping:
         """AVE pool 3x3 s2: caffe-ffi dX vs numpy reference (boundary windows smaller)."""
         rng = np.random.RandomState(45)
         N, C, H, W = 1, 2, 7, 7
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pool="AVE")
         x = rng.randn(N, C, H, W).astype(np.float32)
         # Output: floor((7-3)/2)+1 = 3x3
         dy = rng.randn(N, C, 3, 3).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pool_type='AVE')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pool_type="AVE")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_avepool_3x3_s2_numerical_dx(self):
         """AVE pool 3x3 s2: numerical gradient check (tiny input)."""
         rng = np.random.RandomState(101)
         N, C, H, W = 1, 1, 5, 5
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pool="AVE")
         x = rng.randn(N, C, H, W).astype(np.float32) * 0.5
         # floor((5-3)/2)+1 = 2x2 output
         dy = rng.randn(N, C, 2, 2).astype(np.float32) * 0.1
@@ -390,16 +402,22 @@ class TestAvePoolBackwardOverlapping:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "pool", dy, h=EPS_NUMERICAL,
-            name="pool_ave_3x3_s2_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "pool",
+            dy,
+            h=EPS_NUMERICAL,
+            name="pool_ave_3x3_s2_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(AVE pool 3x3 s2)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(AVE pool 3x3 s2)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 5: Global Pooling
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestGlobalPoolBackward:
@@ -409,19 +427,19 @@ class TestGlobalPoolBackward:
         """Global MAX pool: gradient routes to single winner per (n,c)."""
         rng = np.random.RandomState(46)
         N, C, H, W = 2, 3, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, 1, 1).astype(np.float32)
 
         y, dX = _run_pool_backward(net, x, dy)
         assert y.shape == (N, C, 1, 1)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=0, pool_type='MAX', global_pooling=True)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=0, pool_type="MAX", global_pooling=True)
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_global_avepool_analytical_dx(self):
         """Global AVE pool: gradient = dy/(H*W) everywhere."""
         N, C, H, W = 1, 2, 3, 3
-        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool="AVE")
         x = np.random.RandomState(47).randn(N, C, H, W).astype(np.float32)
         dy = np.full((N, C, 1, 1), 9.0, dtype=np.float32)
 
@@ -433,7 +451,7 @@ class TestGlobalPoolBackward:
         """Global MAX pool: numerical gradient check (tiny)."""
         rng = np.random.RandomState(202)
         N, C, H, W = 1, 1, 3, 3
-        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=0, global_pooling=True, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32) * 0.5 + 1.0
         dy = rng.randn(N, C, 1, 1).astype(np.float32) * 0.1
 
@@ -442,16 +460,22 @@ class TestGlobalPoolBackward:
         analytic_dX = net.blob_by_name("data").diff
 
         numerical_dX = numerical_grad_for_input(
-            net, "data", x, "pool", dy, h=EPS_NUMERICAL,
-            name="global_maxpool_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "pool",
+            dy,
+            h=EPS_NUMERICAL,
+            name="global_maxpool_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, numerical_dX, name="dX(Global MAX pool)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, numerical_dX, name="dX(Global MAX pool)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 6: Determinism and edge cases
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestPoolBackwardDeterminism:
@@ -461,8 +485,8 @@ class TestPoolBackwardDeterminism:
         """Same input → same dX (determinism)."""
         rng = np.random.RandomState(99)
         N, C, H, W = 2, 2, 4, 4
-        net1 = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
-        net2 = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net1 = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
+        net2 = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, 2, 2).astype(np.float32)
         _, dX1 = _run_pool_backward(net1, x, dy)
@@ -472,7 +496,7 @@ class TestPoolBackwardDeterminism:
     def test_dx_shape_dtype(self):
         """dX has correct shape and dtype."""
         N, C, H, W = 2, 3, 6, 6
-        for pool in ('MAX', 'AVE'):
+        for pool in ("MAX", "AVE"):
             net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool=pool)
             x = np.random.RandomState(0).randn(N, C, H, W).astype(np.float32)
             dy = np.random.RandomState(1).randn(N, C, 3, 3).astype(np.float32)
@@ -484,7 +508,7 @@ class TestPoolBackwardDeterminism:
     def test_forward_preserved_after_backward(self):
         """Forward output blob data is unchanged after Backward."""
         N, C, H, W = 1, 1, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = np.random.RandomState(50).randn(N, C, H, W).astype(np.float32)
         out = net.forward({"data": x})
         y_before = out["pool"].copy()
@@ -505,6 +529,7 @@ class TestPoolBackwardDeterminism:
 #           产生系统性偏差。
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestMaxPoolTieBreaking:
     """MAX pooling平局处理专项测试 — 验证C++与numpy argmax平局规则一致。"""
@@ -512,31 +537,26 @@ class TestMaxPoolTieBreaking:
     def test_tie_2x2_s2_all_equal(self):
         """窗口内所有值相等: 梯度应路由到第一个(左上角)位置。"""
         N, C, H, W = 1, 1, 2, 2
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         x = np.full((N, C, H, W), 3.0, dtype=np.float32)
         dy = np.array([[[[7.0]]]], dtype=np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
 
         # numpy argmax在全相等时返回索引0 → (0,0)位置
-        expected_dx = np.array([[[[7.0, 0.0],
-                                  [0.0, 0.0]]]], dtype=np.float32)
+        expected_dx = np.array([[[[7.0, 0.0], [0.0, 0.0]]]], dtype=np.float32)
         np.testing.assert_array_equal(dX, expected_dx)
 
     def test_tie_2x2_s2_partial_equal(self):
         """窗口内部分值相等: 梯度路由到第一个最大值位置。"""
         N, C, H, W = 1, 1, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
         # 构造: 左上窗口[[5,5],[5,2]]最大值5,argmax返回0→(0,0)
         #        右上窗口[[8,8],[3,7]]最大值8,argmax返回0→(0,2)
         #        左下窗口[[6,4],[3,6]]最大值6,argmax返回0→(2,0)
         #        右下窗口[[9,9],[9,9]]最大值9,argmax返回0→(2,2)
-        x = np.array([[[[5, 5, 8, 8],
-                        [5, 2, 3, 7],
-                        [6, 4, 9, 9],
-                        [3, 6, 9, 9]]]], dtype=np.float32)
-        dy = np.array([[[[10, 20],
-                         [30, 40]]]], dtype=np.float32)
+        x = np.array([[[[5, 5, 8, 8], [5, 2, 3, 7], [6, 4, 9, 9], [3, 6, 9, 9]]]], dtype=np.float32)
+        dy = np.array([[[[10, 20], [30, 40]]]], dtype=np.float32)
 
         y, dX = _run_pool_backward(net, x, dy)
 
@@ -547,39 +567,32 @@ class TestMaxPoolTieBreaking:
         assert y[0, 0, 1, 1] == 9.0
 
         # 梯度路由位置验证(第一个argmax位置接收梯度)
-        expected_dx = np.array([[[[10,  0, 20,  0],
-                                  [ 0,  0,  0,  0],
-                                  [30,  0, 40,  0],
-                                  [ 0,  0,  0,  0]]]], dtype=np.float32)
+        expected_dx = np.array([[[[10, 0, 20, 0], [0, 0, 0, 0], [30, 0, 40, 0], [0, 0, 0, 0]]]], dtype=np.float32)
         np.testing.assert_array_equal(dX, expected_dx)
 
     def test_tie_vs_numpy_reference_random_ties(self):
         """随机平局输入: C++ dX必须与numpy参考实现完全一致。"""
         rng = np.random.RandomState(777)
         N, C, H, W = 2, 2, 4, 4
-        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
 
         # 构造含平局的输入: 将随机输入量化到{-1,0,1}三值,制造大量平局
         x = rng.choice([-1.0, 0.0, 1.0], size=(N, C, H, W)).astype(np.float32)
         dy = rng.randn(N, C, 2, 2).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type='MAX')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=2, stride=2, pool_type="MAX")
         np.testing.assert_array_equal(dX, expected_dx)
 
     def test_tie_deterministic_across_runs(self):
         """含平局输入的梯度必须确定性可复现。"""
         N, C, H, W = 1, 1, 4, 4
-        x = np.array([[[[2, 2, 1, 1],
-                        [2, 2, 1, 1],
-                        [3, 3, 0, 0],
-                        [3, 3, 0, 0]]]], dtype=np.float32)
-        dy = np.array([[[[5, 6],
-                         [7, 8]]]], dtype=np.float32)
+        x = np.array([[[[2, 2, 1, 1], [2, 2, 1, 1], [3, 3, 0, 0], [3, 3, 0, 0]]]], dtype=np.float32)
+        dy = np.array([[[[5, 6], [7, 8]]]], dtype=np.float32)
 
         dX_runs = []
         for _ in range(5):
-            net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool='MAX')
+            net = _make_pool_net(N, C, H, W, kernel_size=2, stride=2, pool="MAX")
             _, dX = _run_pool_backward(net, x, dy)
             dX_runs.append(dX.copy())
 
@@ -600,6 +613,7 @@ class TestMaxPoolTieBreaking:
 #   3. AVE pooling在stride=1的完全重叠场景中,中心像素梯度远大于边角
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestPoolOverlapAccumulation:
     """Overlap accumulation专项测试 — stride < kernel时梯度累加正确性。"""
@@ -607,7 +621,7 @@ class TestPoolOverlapAccumulation:
     def test_ave_3x3_s1_overlap_accumulation_known_values(self):
         """AVE 3x3 s1 pad=0 (3x3输入→1x1输出,单窗口,无重叠基础验证)。"""
         N, C, H, W = 1, 1, 3, 3
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pool="AVE")
         x = np.zeros((N, C, H, W), dtype=np.float32)
         dy = np.array([[[[9.0]]]], dtype=np.float32)
 
@@ -619,7 +633,7 @@ class TestPoolOverlapAccumulation:
     def test_ave_3x3_s1_pad1_overlap_center_accumulates_more(self):
         """AVE 3x3 s1 pad=1 (5x5输入): 中心像素从最多窗口接收梯度。"""
         N, C, H, W = 1, 1, 5, 5
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool="AVE")
         x = np.zeros((N, C, H, W), dtype=np.float32)
         # 所有dy=1,验证梯度累加模式:
         # - 角像素(0,0): 仅属于1个窗口(ph=0,pw=0),贡献=1/4=0.25 (pad导致实际2x2窗口)
@@ -628,12 +642,13 @@ class TestPoolOverlapAccumulation:
         dy = np.ones((N, C, H, W), dtype=np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='AVE')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type="AVE")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
         # 中心像素(2,2)属于9个窗口,每个贡献1/9 → 期望=1.0
-        assert abs(dX[0, 0, 2, 2] - 1.0) < 1e-5, \
-            f"Center pixel should accumulate ~1.0 from 9 windows, got {dX[0,0,2,2]}"
+        assert abs(dX[0, 0, 2, 2] - 1.0) < 1e-5, (
+            f"Center pixel should accumulate ~1.0 from 9 windows, got {dX[0, 0, 2, 2]}"
+        )
 
     def test_ave_boundary_pool_size_correction(self):
         """AVE pooling边界窗口pool_size小于kernel²时必须用实际大小归一化（CEIL模式）。"""
@@ -644,13 +659,13 @@ class TestPoolOverlapAccumulation:
         #   ph=1,pw=0: h[2:4],w[0:3] → pool_size=6 (边界裁剪: 2行×3列)
         #   ph=1,pw=1: h[2:4],w[2:5] → pool_size=6 (边界裁剪: 2行×3列)
         N, C, H, W = 1, 1, 4, 5
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pad=0, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=2, pad=0, pool="AVE")
         x = np.zeros((N, C, H, W), dtype=np.float32)
         # CEIL模式输出: H_out=ceil((4-3)/2)+1=2, W_out=ceil((5-3)/2)+1=2
         dy = np.array([[[[9.0, 9.0], [9.0, 9.0]]]], dtype=np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pad=0, pool_type='AVE', ceil_mode=True)
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=2, pad=0, pool_type="AVE", ceil_mode=True)
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
         # 边界窗口(ph=1)pool_size=6: dy=9 → 每个元素=9/6=1.5
@@ -664,27 +679,29 @@ class TestPoolOverlapAccumulation:
         # 边界区域(3:4,3:5)只属于(1,1)窗口 → =1.5
         np.testing.assert_allclose(dX[0, 0, 3:4, 3:5], 1.5, rtol=1e-5)
         # 重叠区域(2:3,2:3)属于所有4个窗口 → 1.0+1.0+1.5+1.5=5.0
-        assert abs(dX[0, 0, 2, 2] - 5.0) < 1e-5, \
-            f"Overlap pixel (2,2) should accumulate 5.0 from 4 windows, got {dX[0,0,2,2]}"
+        assert abs(dX[0, 0, 2, 2] - 5.0) < 1e-5, (
+            f"Overlap pixel (2,2) should accumulate 5.0 from 4 windows, got {dX[0, 0, 2, 2]}"
+        )
 
     def test_max_overlap_same_pixel_wins_multiple_windows(self):
         """MAX pooling重叠: 同一像素是多个窗口winner时梯度应累加。"""
-        N, C, H, W = 1, 1, 3, 3
+        N, C, _H, _W = 1, 1, 3, 3
         # 3x3 s1 pad=0 → 输出1x1 (无重叠)
         # 用 5x5 s1 pad=0,3x3 kernel → 输出3x3
-        net = _make_pool_net(N, C, 5, 5, kernel_size=3, stride=1, pad=0, pool='MAX')
+        net = _make_pool_net(N, C, 5, 5, kernel_size=3, stride=1, pad=0, pool="MAX")
         # 中心像素(2,2)=100,周围都是小值 → 中心像素是所有9个窗口(3x3输出)的winner
         x = np.zeros((N, C, 5, 5), dtype=np.float32)
         x[0, 0, 2, 2] = 100.0
         dy = np.ones((N, C, 3, 3), dtype=np.float32)  # 所有dy=1
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=0, pool_type='MAX')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=0, pool_type="MAX")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
         # 中心像素累加了9个窗口的dy=1 → dX[2,2]=9.0
-        assert abs(dX[0, 0, 2, 2] - 9.0) < 1e-5, \
-            f"Center winner should accumulate 9.0 from 9 windows, got {dX[0,0,2,2]}"
+        assert abs(dX[0, 0, 2, 2] - 9.0) < 1e-5, (
+            f"Center winner should accumulate 9.0 from 9 windows, got {dX[0, 0, 2, 2]}"
+        )
         # 其他位置都是0
         mask = np.ones((5, 5), dtype=bool)
         mask[2, 2] = False
@@ -694,40 +711,42 @@ class TestPoolOverlapAccumulation:
         """AVE 3x3 s1 pad=1随机输入: C++ dX与numpy参考对比(包含所有重叠+边界情况)。"""
         rng = np.random.RandomState(888)
         N, C, H, W = 1, 2, 6, 6
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='AVE')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool="AVE")
         x = rng.randn(N, C, H, W).astype(np.float32)
         dy = rng.randn(N, C, H, W).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='AVE')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type="AVE")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_max_stride1_overlap_random_vs_numpy(self):
         """MAX 3x3 s1 pad=1随机输入: C++ dX与numpy参考对比(重叠winner累加)。"""
         rng = np.random.RandomState(999)
         N, C, H, W = 1, 2, 6, 6
-        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool='MAX')
+        net = _make_pool_net(N, C, H, W, kernel_size=3, stride=1, pad=1, pool="MAX")
         x = rng.randn(N, C, H, W).astype(np.float32) * 2.0
         dy = rng.randn(N, C, H, W).astype(np.float32)
 
         _, dX = _run_pool_backward(net, x, dy)
-        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type='MAX')
+        expected_dx = pooling_backward_np(dy, x, kernel_size=3, stride=1, pad=1, pool_type="MAX")
         np.testing.assert_allclose(dX, expected_dx, rtol=1e-5, atol=1e-6)
 
     def test_gradient_sum_conservation_ave(self):
         """AVE pooling梯度和守恒: sum(dX) == sum(dy) (不含pad的情况下)。"""
         rng = np.random.RandomState(111)
         for H, W, ks, stride, pad in [
-            (4, 4, 2, 2, 0),   # 非重叠
-            (5, 5, 3, 1, 1),   # 重叠+pad
-            (7, 7, 3, 2, 0),   # 重叠无pad,边界pool_size变化
+            (4, 4, 2, 2, 0),  # 非重叠
+            (5, 5, 3, 1, 1),  # 重叠+pad
+            (7, 7, 3, 2, 0),  # 重叠无pad,边界pool_size变化
         ]:
-            net = _make_pool_net(1, 1, H, W, kernel_size=ks, stride=stride, pad=pad, pool='AVE')
+            net = _make_pool_net(1, 1, H, W, kernel_size=ks, stride=stride, pad=pad, pool="AVE")
             x = rng.randn(1, 1, H, W).astype(np.float32)
             dy = rng.randn(*net.forward({"data": x})["pool"].shape).astype(np.float32)
             _, dX = _run_pool_backward(net, x, dy)
             # AVE pooling中,每个dy_i平均分配到pool_size个位置,总和守恒: sum(dX) = sum(dy)
             np.testing.assert_allclose(
-                dX.sum(), dy.sum(), rtol=1e-4,
-                err_msg=f"AVE gradient sum not conserved for H={H},W={W},ks={ks},s={stride},p={pad}"
+                dX.sum(),
+                dy.sum(),
+                rtol=1e-4,
+                err_msg=f"AVE gradient sum not conserved for H={H},W={W},ks={ks},s={stride},p={pad}",
             )

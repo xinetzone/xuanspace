@@ -20,10 +20,9 @@ from __future__ import annotations
 import textwrap
 
 import numpy as np
-import pytest
 
-from .conftest import require_cpp_extension
 from .caffe_test_helpers import make_net
+from .conftest import require_cpp_extension
 
 
 def _register_data_io(cb_type: str, layer_name: str, callback) -> None:
@@ -71,10 +70,12 @@ def _fill_seq_cb(start: float = 0.0):
 # Data
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestDataLayer:
     def _net(self, layer_name="mydata", batch_size=2, source="dummy.txt"):
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "data_test"
             layer {{
               name: "{layer_name}"
@@ -83,19 +84,20 @@ class TestDataLayer:
               top: "label"
               data_param {{ batch_size: {batch_size} source: "{source}" }}
             }}
-        """))
+        """)
+        )
 
     def test_forward_fills_data_and_label(self):
         _register_data_io("Data", "fill_data", _fill_constant_cb(7.0, label=3.0))
         net = self._net(layer_name="fill_data", batch_size=2)
-        out = net.Forward({})
+        net.Forward({})
         d = net.blob_by_name("data").to_numpy()
-        l = net.blob_by_name("label").to_numpy()
+        label = net.blob_by_name("label").to_numpy()
         # Data Reshape: top[0] -> [batch,3,1,1], top[1] -> [batch]
         assert tuple(d.shape) == (2, 3, 1, 1)
-        assert tuple(l.shape) == (2,)
+        assert tuple(label.shape) == (2,)
         np.testing.assert_allclose(d, 7.0, rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(l, 3.0, rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(label, 3.0, rtol=1e-5, atol=1e-6)
 
     def test_forward_sequence_values(self):
         cb = _fill_seq_cb(start=0.0)
@@ -111,9 +113,9 @@ class TestDataLayer:
         net = self._net(layer_name="no_cb", batch_size=2)
         net.Forward({})
         d = net.blob_by_name("data").to_numpy()
-        l = net.blob_by_name("label").to_numpy()
+        label = net.blob_by_name("label").to_numpy()
         np.testing.assert_allclose(d, 0.0, rtol=0, atol=0)
-        np.testing.assert_allclose(l, 0.0, rtol=0, atol=0)
+        np.testing.assert_allclose(label, 0.0, rtol=0, atol=0)
 
     def test_layer_registered(self):
         net = self._net()
@@ -125,11 +127,14 @@ class TestDataLayer:
 # ImageData
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestImageDataLayer:
-    def _net(self, layer_name="myimg", batch_size=1, is_color=True,
-             new_height=4, new_width=5, source="imgs.txt", scale=0.0):
-        return make_net(textwrap.dedent(f"""\
+    def _net(
+        self, layer_name="myimg", batch_size=1, is_color=True, new_height=4, new_width=5, source="imgs.txt", scale=0.0
+    ):
+        return make_net(
+            textwrap.dedent(f"""\
             name: "imagedata_test"
             layer {{
               name: "{layer_name}"
@@ -145,12 +150,12 @@ class TestImageDataLayer:
                 scale: {scale}
               }}
             }}
-        """))
+        """)
+        )
 
     def test_forward_shape_and_values(self):
         _register_data_io("ImageData", "fill_img", _fill_constant_cb(2.5, label=1.0))
-        net = self._net(layer_name="fill_img", batch_size=2, is_color=True,
-                        new_height=4, new_width=5)
+        net = self._net(layer_name="fill_img", batch_size=2, is_color=True, new_height=4, new_width=5)
         net.Forward({})
         img = net.blob_by_name("image").to_numpy()
         lab = net.blob_by_name("label").to_numpy()
@@ -162,16 +167,14 @@ class TestImageDataLayer:
 
     def test_gray_single_channel(self):
         _register_data_io("ImageData", "fill_gray", _fill_constant_cb(9.0))
-        net = self._net(layer_name="fill_gray", batch_size=1, is_color=False,
-                        new_height=3, new_width=3)
+        net = self._net(layer_name="fill_gray", batch_size=1, is_color=False, new_height=3, new_width=3)
         net.Forward({})
         img = net.blob_by_name("image").to_numpy()
         assert tuple(img.shape) == (1, 1, 3, 3)  # is_color=False -> 1 channel
         np.testing.assert_allclose(img, 9.0, rtol=1e-5, atol=1e-6)
 
     def test_no_callback_zeros_fallback(self):
-        net = self._net(layer_name="img_no_cb", batch_size=1, is_color=True,
-                        new_height=2, new_width=2)
+        net = self._net(layer_name="img_no_cb", batch_size=1, is_color=True, new_height=2, new_width=2)
         net.Forward({})
         img = net.blob_by_name("image").to_numpy()
         np.testing.assert_allclose(img, 0.0, rtol=0, atol=0)
@@ -185,10 +188,12 @@ class TestImageDataLayer:
 # HDF5Data
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestHDF5DataLayer:
     def _net(self, layer_name="myh5", batch_size=2, source="data.h5", shuffle=True):
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "hdf5data_test"
             layer {{
               name: "{layer_name}"
@@ -201,27 +206,28 @@ class TestHDF5DataLayer:
                 shuffle: {str(shuffle).lower()}
               }}
             }}
-        """))
+        """)
+        )
 
     def test_forward_fills_data_and_label(self):
         _register_data_io("HDF5Data", "fill_h5", _fill_constant_cb(4.25, label=8.0))
         net = self._net(layer_name="fill_h5", batch_size=2)
         net.Forward({})
         d = net.blob_by_name("hdata").to_numpy()
-        l = net.blob_by_name("hlabel").to_numpy()
+        hlabel = net.blob_by_name("hlabel").to_numpy()
         # HDF5Data Reshape: top[0] -> [batch,1,1,1], top[1] -> [batch].
         assert tuple(d.shape) == (2, 1, 1, 1)
-        assert tuple(l.shape) == (2,)
+        assert tuple(hlabel.shape) == (2,)
         np.testing.assert_allclose(d, 4.25, rtol=1e-5, atol=1e-6)
-        np.testing.assert_allclose(l, 8.0, rtol=1e-5, atol=1e-6)
+        np.testing.assert_allclose(hlabel, 8.0, rtol=1e-5, atol=1e-6)
 
     def test_no_callback_zeros_fallback(self):
         net = self._net(layer_name="h5_no_cb", batch_size=2)
         net.Forward({})
         d = net.blob_by_name("hdata").to_numpy()
-        l = net.blob_by_name("hlabel").to_numpy()
+        hlabel = net.blob_by_name("hlabel").to_numpy()
         np.testing.assert_allclose(d, 0.0, rtol=0, atol=0)
-        np.testing.assert_allclose(l, 0.0, rtol=0, atol=0)
+        np.testing.assert_allclose(hlabel, 0.0, rtol=0, atol=0)
 
     def test_layer_registered(self):
         net = self._net()
@@ -231,6 +237,7 @@ class TestHDF5DataLayer:
 # ──────────────────────────────────────────────────────────────────────
 # Cross-layer registration sanity (LayerTypeList contains the P2 operators)
 # ──────────────────────────────────────────────────────────────────────
+
 
 @require_cpp_extension
 def test_data_io_operators_registered_in_layer_factory():

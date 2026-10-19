@@ -34,20 +34,14 @@ def _load_snapshot() -> dict:
 
 
 def _strip_xuan_extensions(options: list[dict]) -> list[dict]:
-    return [
-        action
-        for action in options
-        if not any(s in XUAN_GLOBAL_EXTENSIONS for s in action["option_strings"])
-    ]
+    return [action for action in options if not any(s in XUAN_GLOBAL_EXTENSIONS for s in action["option_strings"])]
 
 
 class TestCliParity(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.snapshot = _load_snapshot()
-        cls.current = serialize_parser_tree(
-            build_parser({"systemd": SYSTEMD_DESC})
-        )
+        cls.current = serialize_parser_tree(build_parser({"systemd": SYSTEMD_DESC}))
 
     def test_snapshot_pinned_to_expected_upstream_commit(self) -> None:
         # 防快照被静默换源：基线必须是 T1-T8 全程对照的 e3df104
@@ -65,18 +59,10 @@ class TestCliParity(unittest.TestCase):
 
     def test_xuan_extensions_actually_exist(self) -> None:
         # 防白名单漂移：登记的每个扩展 option 必须真实存在且带 help 文案
-        present = {
-            option
-            for action in self.current["global"]["options"]
-            for option in action["option_strings"]
-        }
+        present = {option for action in self.current["global"]["options"] for option in action["option_strings"]}
         for option in XUAN_GLOBAL_EXTENSIONS:
             assert option in present, f"白名单扩展 {option} 未在 parser 中找到"
-            action = next(
-                a
-                for a in self.current["global"]["options"]
-                if option in a["option_strings"]
-            )
+            action = next(a for a in self.current["global"]["options"] if option in a["option_strings"])
             assert action["help"], f"扩展 {option} 缺少 help 文案"
 
     def test_every_subcommand_options_zero_diff(self) -> None:
@@ -93,18 +79,16 @@ class TestCliParity(unittest.TestCase):
 
     # ---- helpers -------------------------------------------------------
 
-    def _assert_option_lists_equal(
-        self, upstream: list[dict], current: list[dict], context: str
-    ) -> None:
+    def _assert_option_lists_equal(self, upstream: list[dict], current: list[dict], context: str) -> None:
         """逐位置对比 action 表（顺序也是 argparse 行为的一部分）。"""
         if len(upstream) != len(current):
             self.fail(
                 f"[{context}] action 数量不一致: "
                 f"upstream={len(upstream)} current={len(current)}\n"
                 f"  upstream only: "
-                f"{[a['option_strings'] for a in upstream[len(current):]]}\n"
+                f"{[a['option_strings'] for a in upstream[len(current) :]]}\n"
                 f"  current only: "
-                f"{[a['option_strings'] for a in current[len(upstream):]]}"
+                f"{[a['option_strings'] for a in current[len(upstream) :]]}"
             )
         for idx, (up, cur) in enumerate(zip(upstream, current, strict=True)):
             if up != cur:

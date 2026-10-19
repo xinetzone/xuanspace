@@ -27,19 +27,19 @@ Run with:
     pytest tests/python/test_p3c_transformer.py -v
     pytest tests/python/test_p3c_transformer.py -v -s  # verbose with [PERF] logs
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace
+from caffe_ffi import net_from_param, net_param_from_string
 
+from .conftest import require_cpp_extension
 
 # ═══════════════════════════════════════════════════════════════════════
 # Numpy Reference Implementations
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def sinusoidal_pe_np(seq_len: int, d_model: int) -> np.ndarray:
     """Compute sinusoidal positional encoding (Vaswani et al. 2017).
@@ -55,8 +55,7 @@ def sinusoidal_pe_np(seq_len: int, d_model: int) -> np.ndarray:
     """
     pe = np.zeros((seq_len, d_model), dtype=np.float32)
     position = np.arange(0, seq_len, dtype=np.float32)[:, np.newaxis]
-    div_term = np.exp(np.arange(0, d_model, 2, dtype=np.float32) *
-                      (-np.log(10000.0) / d_model))
+    div_term = np.exp(np.arange(0, d_model, 2, dtype=np.float32) * (-np.log(10000.0) / d_model))
     pe[:, 0::2] = np.sin(position * div_term)
     pe[:, 1::2] = np.cos(position * div_term)
     return pe
@@ -100,6 +99,7 @@ def scale_np(x: np.ndarray, factor: float) -> np.ndarray:
 # Helper: build net from prototxt string
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _make_net(prototxt: str):
     """Create a net from prototxt string."""
     return net_from_param(net_param_from_string(prototxt))
@@ -108,6 +108,7 @@ def _make_net(prototxt: str):
 # ═══════════════════════════════════════════════════════════════════════
 # Positional Encoding Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestPositionalEncoding:
@@ -141,7 +142,7 @@ layer {{
 
         with ptrace("sinusoidal PE forward") as t:
             out = net.forward({"embeddings": embeddings, "pe": pe})
-            t['shape'] = f"emb={embeddings.shape} pe={pe.shape}"
+            t["shape"] = f"emb={embeddings.shape} pe={pe.shape}"
 
         expected = (embeddings + pe).astype(np.float32)
         np.testing.assert_allclose(out["output"], expected, rtol=1e-5, atol=1e-5)
@@ -179,7 +180,7 @@ layer {{
 
         with ptrace("learnable PE forward") as t:
             out = net.forward({"embeddings": embeddings})
-            t['shape'] = f"emb={embeddings.shape} bias={pe_weights.shape}"
+            t["shape"] = f"emb={embeddings.shape} bias={pe_weights.shape}"
 
         expected = (embeddings + pe_weights[np.newaxis, :, :]).astype(np.float32)
         np.testing.assert_allclose(out["output"], expected, rtol=1e-5, atol=1e-5)
@@ -247,7 +248,7 @@ layer {{
         emb = rng.randn(M, d_model).astype(np.float32)
         results = []
         for i in range(5):
-            with ptrace(f"PE forward #{i+1}"):
+            with ptrace(f"PE forward #{i + 1}"):
                 out = net.forward({"emb": emb, "pe": pe})
             results.append(out["out"].copy())
         for i in range(1, 5):
@@ -257,6 +258,7 @@ layer {{
 # ═══════════════════════════════════════════════════════════════════════
 # Self-Attention Component Tests
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestSelfAttentionComponents:
@@ -308,9 +310,9 @@ layer {{
 
         with ptrace("QKV projection forward") as t:
             out = net.forward({"input": x})
-            t['shape_Q'] = f"{out['Q'].shape}"
-            t['shape_K'] = f"{out['K'].shape}"
-            t['shape_V'] = f"{out['V'].shape}"
+            t["shape_Q"] = f"{out['Q'].shape}"
+            t["shape_K"] = f"{out['K'].shape}"
+            t["shape_V"] = f"{out['V'].shape}"
 
         assert out["Q"].shape == (M, d_k), f"Q shape mismatch: {out['Q'].shape}"
         assert out["K"].shape == (M, d_k), f"K shape mismatch: {out['K'].shape}"
@@ -349,7 +351,7 @@ layer {{
 
         with ptrace("attention scale forward") as t:
             out = net.forward({"scores": scores})
-            t['scale_factor'] = f"{scale_factor:.4f}"
+            t["scale_factor"] = f"{scale_factor:.4f}"
 
         expected = scale_np(scores, scale_factor)
         np.testing.assert_allclose(out["scaled"], expected, rtol=1e-5, atol=1e-5)
@@ -376,7 +378,7 @@ layer {{
 
         with ptrace("attention softmax forward") as t:
             out = net.forward({"scores": scores})
-            t['shape'] = f"{out['weights'].shape}"
+            t["shape"] = f"{out['weights'].shape}"
 
         weights = out["weights"]
         row_sums = np.sum(weights, axis=1)
@@ -420,7 +422,7 @@ layer {{
 
         with ptrace("residual forward") as t:
             out = net.forward({"input": x})
-            t['shape'] = f"{x.shape}"
+            t["shape"] = f"{x.shape}"
 
         expected = (x + linear_projection_np(x, W, b)).astype(np.float32)
         np.testing.assert_allclose(out["output"], expected, rtol=1e-4, atol=1e-4)
@@ -456,7 +458,7 @@ layer {{
 
         with ptrace("attn weighted sum forward") as t:
             out = net.forward({"weights": attn_weights})
-            t['shape'] = f"w={attn_weights.shape} V={V.shape}"
+            t["shape"] = f"w={attn_weights.shape} V={V.shape}"
 
         expected = (attn_weights @ V).astype(np.float32)
         np.testing.assert_allclose(out["output"], expected, rtol=1e-5, atol=1e-5)
@@ -465,6 +467,7 @@ layer {{
 # ═══════════════════════════════════════════════════════════════════════
 # Scaled Dot-Product Attention (End-to-End)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestScaledDotProductAttention:
@@ -512,8 +515,8 @@ layer {{
 
         with ptrace("SDP attention forward") as t:
             out = net.forward({"scores": raw_scores})
-            t['shape'] = f"scores={raw_scores.shape} V={V.shape}"
-            t['d_k'] = d_k
+            t["shape"] = f"scores={raw_scores.shape} V={V.shape}"
+            t["d_k"] = d_k
 
         attn_weights = softmax_np(raw_scores * scale_factor, axis=1)
         expected = (attn_weights @ V).astype(np.float32)
@@ -554,12 +557,15 @@ layer {{
         V = np.eye(S, dtype=np.float32)
         net.layer_by_name("attn_out").blobs[0].from_numpy(V.T.copy())
 
-        scores = np.array([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0],
-        ], dtype=np.float32)
+        scores = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
 
         with ptrace("SDP identity forward"):
             out = net.forward({"scores": scores})
@@ -577,6 +583,7 @@ layer {{
 # Multi-Head Projection Tests
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestMultiHeadProjection:
     """Tests for multi-head attention via multiple InnerProduct + Concat."""
@@ -591,15 +598,15 @@ class TestMultiHeadProjection:
         d_k = d_model // num_heads  # 4 per head
 
         # Generate split tops for num_heads consumers
-        split_tops = " ".join(f'top: "head{i+1}_in"' for i in range(num_heads))
+        split_tops = " ".join(f'top: "head{i + 1}_in"' for i in range(num_heads))
         head_layers = []
         for i in range(num_heads):
             head_layers.append(f"""layer {{
-  name: "head{i+1}" type: "InnerProduct" bottom: "head{i+1}_in" top: "head{i+1}"
+  name: "head{i + 1}" type: "InnerProduct" bottom: "head{i + 1}_in" top: "head{i + 1}"
   inner_product_param {{ num_output: {d_k} bias_term: false }}
 }}""")
         heads_str = "\n".join(head_layers)
-        concat_bottoms = "\n".join(f'  bottom: "head{i+1}"' for i in range(num_heads))
+        concat_bottoms = "\n".join(f'  bottom: "head{i + 1}"' for i in range(num_heads))
 
         prototxt = f"""name: "multihead"
 layer {{
@@ -626,26 +633,26 @@ layer {{
         head_weights = []
         for i in range(num_heads):
             W = rng.randn(d_k, d_model).astype(np.float32) * 0.1
-            net.layer_by_name(f"head{i+1}").blobs[0].from_numpy(W)
+            net.layer_by_name(f"head{i + 1}").blobs[0].from_numpy(W)
             head_weights.append(W)
 
         with ptrace("multi-head forward") as t:
             out = net.forward({"input": x})
-            t['num_heads'] = num_heads
-            t['output_shape'] = f"{out['output'].shape}"
+            t["num_heads"] = num_heads
+            t["output_shape"] = f"{out['output'].shape}"
 
-        assert out["output"].shape == (M, d_model), \
-            f"Concat shape: {out['output'].shape} != ({M}, {d_model})"
+        assert out["output"].shape == (M, d_model), f"Concat shape: {out['output'].shape} != ({M}, {d_model})"
 
         for i in range(num_heads):
             expected_head = linear_projection_np(x, head_weights[i])
-            actual_head = out["output"][:, i*d_k:(i+1)*d_k]
+            actual_head = out["output"][:, i * d_k : (i + 1) * d_k]
             np.testing.assert_allclose(actual_head, expected_head, rtol=1e-5, atol=1e-5)
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Transformer Encoder Block Integration Test
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @require_cpp_extension
 class TestTransformerEncoderBlock:
@@ -703,8 +710,7 @@ layer {{
         with ptrace("Net(encoder block)"):
             net = _make_net(prototxt)
 
-        net.layer_by_name("scale").blobs[0].from_numpy(
-            np.full(seq_len, scale_factor, dtype=np.float32))
+        net.layer_by_name("scale").blobs[0].from_numpy(np.full(seq_len, scale_factor, dtype=np.float32))
 
         attn_W = rng.randn(d_model, seq_len).astype(np.float32) * 0.1
         net.layer_by_name("attn_proj").blobs[0].from_numpy(attn_W)
@@ -714,11 +720,10 @@ layer {{
 
         with ptrace("encoder block forward") as t:
             out = net.forward({"emb": emb, "pe": pe, "scores": scores})
-            t['shape'] = f"{out['output'].shape}"
-            t['layers'] = len(net.layers_array())
+            t["shape"] = f"{out['output'].shape}"
+            t["layers"] = len(net.layers_array())
 
-        assert out["output"].shape == (M, d_model), \
-            f"Output shape: {out['output'].shape} != ({M}, {d_model})"
+        assert out["output"].shape == (M, d_model), f"Output shape: {out['output'].shape} != ({M}, {d_model})"
         assert np.all(np.isfinite(out["output"])), "Non-finite output in encoder block"
 
         x = (emb + pe).astype(np.float32)

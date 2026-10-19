@@ -65,8 +65,7 @@ class TestContainerToBuildArgs:
         with pytest.raises(PodmanComposeError, match="can't be used simultaneously"):
             container_to_build_args(
                 _compose(),
-                {"build": {"context": ".", "dockerfile": "DF", "dockerfile_inline": "x"},
-                 "image": "img"},
+                {"build": {"context": ".", "dockerfile": "DF", "dockerfile_inline": "x"}, "image": "img"},
                 _args(),
                 path_exists=lambda p: True,
             )
@@ -109,15 +108,12 @@ class TestContainerToBuildArgs:
                 "cache_to": ["prev:latest"],
             },
         }
-        out = container_to_build_args(_compose(), cnt, _args(no_cache=True, pull="always"),
-                                      path_exists=lambda p: True)
+        out = container_to_build_args(_compose(), cnt, _args(no_cache=True, pull="always"), path_exists=lambda p: True)
         assert ["--platform", "linux/amd64"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--add-host", "host:1.2.3.4"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--build-context=shared=./shared"] in [[x] for x in out]
         assert ["--target", "builder"] in [out[i : i + 2] for i in range(len(out) - 1)]
-        assert ["--ssh", "default=" + os.path.join("/base", "./key")] in [
-            out[i : i + 2] for i in range(len(out) - 1)
-        ]
+        assert ["--ssh", "default=" + os.path.join("/base", "./key")] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--build-arg", "A=1"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--cache-from", "prev:latest"] in [out[i : i + 2] for i in range(len(out) - 1)]
         assert ["--cache-to", "prev:latest"] in [out[i : i + 2] for i in range(len(out) - 1)]

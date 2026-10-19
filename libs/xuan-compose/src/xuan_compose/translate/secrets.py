@@ -130,6 +130,4 @@ def get_secret_args(
             )
         return ["--secret", f"{secret_name}{secret_opts}"]
 
-    raise ValueError(
-        'ERROR: unparsable secret: "{}", service: "{}"'.format(secret_name, cnt["_service"])
-    )
+    raise ValueError('ERROR: unparsable secret: "{}", service: "{}"'.format(secret_name, cnt["_service"]))

@@ -71,11 +71,7 @@ def serialize_parser_tree(parser: argparse.ArgumentParser) -> dict[str, Any]:
     assert len(sub_actions) == 1, "对等快照假定恰好一个 subparsers 组"
     sub_action = sub_actions[0]
 
-    global_options = [
-        serialize_action(a)
-        for a in parser._actions
-        if not isinstance(a, argparse._SubParsersAction)
-    ]
+    global_options = [serialize_action(a) for a in parser._actions if not isinstance(a, argparse._SubParsersAction)]
     help_map = _choice_help_map(sub_action)
 
     commands: dict[str, Any] = {}

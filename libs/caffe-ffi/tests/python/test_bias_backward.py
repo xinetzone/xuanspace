@@ -14,6 +14,7 @@ Covers:
   6. Shape/finite/determinism checks
   7. Multi-axis bias (num_axes > 1, e.g. positional encoding)
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -22,12 +23,13 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_blob,
     numerical_grad_for_input,
 )
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -37,6 +39,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Bias forward/backward
 # ---------------------------------------------------------------------------
+
 
 def bias_forward_np(x, bias, axis=1, num_axes=1):
     """Numpy reference: y = x + bias with broadcasting along axis."""
@@ -73,6 +76,7 @@ def bias_backward_np(x, dy, axis=1, num_axes=1, need_dx=True, need_dbias=True):
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
+
 def _make_bias_prototxt(input_dims, axis=1, num_axes=1, filler_value=0.0):
     """Create Input -> Bias prototxt."""
     dims_lines = "\n".join(f"input_dim: {d}" for d in input_dims)
@@ -103,6 +107,7 @@ def _make_bias_net(input_dims, axis=1, num_axes=1, filler_value=0.0):
 # Helper: set bias blobs and run backward
 # ---------------------------------------------------------------------------
 
+
 def _set_bias_blob(net, bias):
     """Set bias layer blobs[0] = bias (preserve shape for multi-axis bias)."""
     bias_layer = net.layer_by_name("bias")
@@ -122,6 +127,7 @@ def _run_bias_backward(net, x, dy, bias):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestBiasBackwardKnownValues:
@@ -163,8 +169,7 @@ class TestBiasBackwardKnownValues:
         net = _make_bias_net((N, D), axis=1, filler_value=0.0)
         bias = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         x = np.zeros((N, D), dtype=np.float32)
-        dy = np.array([[1.0, 2.0, 3.0],
-                        [4.0, 5.0, 6.0]], dtype=np.float32)
+        dy = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         _, d_bias = _run_bias_backward(net, x, dy, bias)
         expected = dy.sum(axis=0)
         np.testing.assert_allclose(d_bias, expected, rtol=1e-5)
@@ -244,9 +249,15 @@ class TestBiasBackwardNumerical:
         analytic_dx = net.blob_by_name("data").diff.copy()
 
         num_dx = numerical_grad_for_input(
-            net, "data", x, "bias_out", dy, h=EPS, name="bias_dX",
+            net,
+            "data",
+            x,
+            "bias_out",
+            dy,
+            h=EPS,
+            name="bias_dX",
         )
-        assert_grad_close(analytic_dx, num_dx, name="bias_dX", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(analytic_dx, num_dx, name="bias_dX", rtol=RTOL, atol=ATOL * 10)
 
     def test_numerical_grad_dbias(self):
         """Numerical gradient for d_bias matches analytical (perturb bias blob)."""
@@ -263,9 +274,16 @@ class TestBiasBackwardNumerical:
         analytic_db = net.layer_by_name("bias").blobs[0].diff.copy()
 
         num_db = numerical_grad_for_blob(
-            net, "bias", 0, {"data": x}, "bias_out", dy, h=EPS, name="bias_dBias",
+            net,
+            "bias",
+            0,
+            {"data": x},
+            "bias_out",
+            dy,
+            h=EPS,
+            name="bias_dBias",
         )
-        assert_grad_close(analytic_db, num_db, name="bias_dBias", rtol=RTOL, atol=ATOL*10)
+        assert_grad_close(analytic_db, num_db, name="bias_dBias", rtol=RTOL, atol=ATOL * 10)
 
 
 @require_cpp_extension

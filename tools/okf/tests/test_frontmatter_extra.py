@@ -70,7 +70,7 @@ class TestSplitTopLevel:
         assert _split_top_level("a, [b, c], d") == ["a", " [b, c]", " d"]
 
     def test_quoted_comma_ignored(self) -> None:
-        assert _split_top_level('"a, b", c') == ['"a, b"', ' c']
+        assert _split_top_level('"a, b", c') == ['"a, b"', " c"]
 
     def test_nested_flow_map(self) -> None:
         assert _split_top_level("{k: v}, x") == ["{k: v}", " x"]
@@ -109,15 +109,7 @@ class TestParseFrontmatterEdge:
         assert body == text
 
     def test_block_sequence_inline_mapping(self) -> None:
-        text = (
-            "---\n"
-            "type: Metric\n"
-            "sources:\n"
-            "  - resource: foo\n"
-            "    author: Alice\n"
-            "  - resource: bar\n"
-            "---\n"
-        )
+        text = "---\ntype: Metric\nsources:\n  - resource: foo\n    author: Alice\n  - resource: bar\n---\n"
         data, _ = parse_frontmatter(text)
         assert data["sources"] == [
             {"resource": "foo", "author": "Alice"},
@@ -253,9 +245,7 @@ class TestYamlParserFolding:
     def test_parse_multiline_string_skips_mid_comment(self) -> None:
         # 注释行位于多行字符串中间，触发 _parse_multiline_string 内部的
         # stripped.startswith("#") 分支（skip 而不追加）
-        assert _YamlParser("k:\n  first\n  # mid comment\n  second\n").parse() == {
-            "k": "first second"
-        }
+        assert _YamlParser("k:\n  first\n  # mid comment\n  second\n").parse() == {"k": "first second"}
 
 
 # ─── _YamlParser 列表 / 内联映射 / 流程映射边界 ───────────────────────────
@@ -266,9 +256,7 @@ class TestYamlParserListMapping:
         assert _YamlParser("k:\n  - a\n  other\n").parse() == {"k": ["a"]}
 
     def test_continue_mapping_breaks_on_list_item(self) -> None:
-        assert _YamlParser("sources:\n  - resource: foo\n    - bad\n").parse() == {
-            "sources": [{"resource": "foo"}]
-        }
+        assert _YamlParser("sources:\n  - resource: foo\n    - bad\n").parse() == {"sources": [{"resource": "foo"}]}
 
     def test_continue_mapping_breaks_on_invalid_key(self) -> None:
         assert _YamlParser("sources:\n  - resource: foo\n    no_colon_here\n").parse() == {
@@ -309,9 +297,7 @@ class TestParseConceptKnownFields:
 
     def test_tags_comma_string(self, tmp_path: Path) -> None:
         path = tmp_path / "concept.md"
-        path.write_text(
-            "---\ntype: Metric\ntags: alpha, beta, gamma\n---\nbody\n", encoding="utf-8"
-        )
+        path.write_text("---\ntype: Metric\ntags: alpha, beta, gamma\n---\nbody\n", encoding="utf-8")
         concept = parse_concept(path)
         assert concept.tags == ["alpha", "beta", "gamma"]
 

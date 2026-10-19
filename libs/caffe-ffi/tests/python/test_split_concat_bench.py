@@ -22,6 +22,7 @@ Run with:
     # Or as a script for standalone benchmarking:
     python tests/python/test_split_concat_bench.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,7 +30,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 # Ensure caffe_ffi is importable
 _project_root = Path(__file__).resolve().parent.parent.parent
@@ -37,13 +37,13 @@ _python_dir = _project_root / "python"
 if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
-from .conftest import require_cpp_extension, perf_trace  # noqa: E402
-from .caffe_test_helpers import make_net, count_splits, assert_finite  # noqa: E402
-
+from .caffe_test_helpers import assert_finite, count_splits, make_net  # noqa: E402
+from .conftest import perf_trace, require_cpp_extension  # noqa: E402
 
 # ──────────────────────────────────────────────────────────────────────
 # Prototxt builders
 # ──────────────────────────────────────────────────────────────────────
+
 
 def _inception_prototxt(
     name: str,
@@ -59,9 +59,7 @@ def _inception_prototxt(
                        → concat (axis=1, n*dim_branch features)
                        → split → out_a, out_b
     """
-    lines = [f"name: '{name}'",
-             f"input: 'data'",
-             f"input_shape {{ dim: {batch} dim: {dim_in} }}"]
+    lines = [f"name: '{name}'", "input: 'data'", f"input_shape {{ dim: {batch} dim: {dim_in} }}"]
     for i in range(num_branches):
         lines.append(
             f"layer {{ name: 'fc_{i}' type: 'InnerProduct' "
@@ -69,10 +67,7 @@ def _inception_prototxt(
             f"inner_product_param {{ num_output: {dim_branch} bias_term: false }} }}"
         )
     bottoms = " ".join(f"bottom: 'branch_{i}'" for i in range(num_branches))
-    lines.append(
-        f"layer {{ name: 'cat' type: 'Concat' {bottoms} top: 'cat_out' "
-        f"concat_param {{ axis: 1 }} }}"
-    )
+    lines.append(f"layer {{ name: 'cat' type: 'Concat' {bottoms} top: 'cat_out' concat_param {{ axis: 1 }} }}")
     # Two consumers after concat → triggers split for cat_out
     lines.append(
         f"layer {{ name: 'out_a' type: 'InnerProduct' bottom: 'cat_out' top: 'out_a' "
@@ -92,9 +87,7 @@ def _linear_chain_prototxt(
     batch: int = 4,
 ) -> str:
     """Build a linear chain (no fan-out, zero splits)."""
-    lines = [f"name: '{name}'",
-             f"input: 'data'",
-             f"input_shape {{ dim: {batch} dim: {dim} }}"]
+    lines = [f"name: '{name}'", "input: 'data'", f"input_shape {{ dim: {batch} dim: {dim} }}"]
     prev = "data"
     for i in range(num_layers):
         top = f"fc_{i}"
@@ -121,9 +114,7 @@ def _deep_nested_prototxt(
     The concat output feeds into the next level (and also a side output),
     creating a split at every level's output.
     """
-    lines = [f"name: '{name}'",
-             f"input: 'data'",
-             f"input_shape {{ dim: {batch} dim: {dim} }}"]
+    lines = [f"name: '{name}'", "input: 'data'", f"input_shape {{ dim: {batch} dim: {dim} }}"]
     prev_top = "data"
     for lv in range(levels):
         # Branches
@@ -137,8 +128,7 @@ def _deep_nested_prototxt(
         b_bottoms = " ".join(f"bottom: 'lv{lv}_b{b}'" for b in range(branches_per_level))
         cat_top = f"lv{lv}_cat"
         lines.append(
-            f"layer {{ name: 'lv{lv}_cat' type: 'Concat' {b_bottoms} top: '{cat_top}' "
-            f"concat_param {{ axis: 1 }} }}"
+            f"layer {{ name: 'lv{lv}_cat' type: 'Concat' {b_bottoms} top: '{cat_top}' concat_param {{ axis: 1 }} }}"
         )
         # Side output (creates fan-out: next level + side out → split for cat_top)
         side_top = f"lv{lv}_side"
@@ -169,9 +159,7 @@ def _multi_fanout_prototxt(
     Each fan-out point is an FC layer whose output goes to *consumers_per_point*
     parallel FC layers, creating that many Split insertions.
     """
-    lines = [f"name: '{name}'",
-             f"input: 'data'",
-             f"input_shape {{ dim: {batch} dim: {dim} }}"]
+    lines = [f"name: '{name}'", "input: 'data'", f"input_shape {{ dim: {batch} dim: {dim} }}"]
     prev_top = "data"
     for fp in range(num_fanout_points):
         # Producer layer
@@ -192,13 +180,10 @@ def _multi_fanout_prototxt(
                 f"inner_product_param {{ num_output: {dim} bias_term: false }} }}"
             )
         # Concat all consumer outputs to chain to next fan-out point
-        c_bottoms = " ".join(
-            f"bottom: 'cons_{fp}_{c}_out'" for c in range(consumers_per_point)
-        )
+        c_bottoms = " ".join(f"bottom: 'cons_{fp}_{c}_out'" for c in range(consumers_per_point))
         cat_top = f"cat_{fp}"
         lines.append(
-            f"layer {{ name: 'cat_{fp}' type: 'Concat' {c_bottoms} top: '{cat_top}' "
-            f"concat_param {{ axis: 1 }} }}"
+            f"layer {{ name: 'cat_{fp}' type: 'Concat' {c_bottoms} top: '{cat_top}' concat_param {{ axis: 1 }} }}"
         )
         # Reduce dim back for next layer with a 1-consumer FC (no split)
         reduce_top = f"reduce_{fp}"
@@ -214,6 +199,7 @@ def _multi_fanout_prototxt(
 # ──────────────────────────────────────────────────────────────────────
 # Benchmark runner
 # ──────────────────────────────────────────────────────────────────────
+
 
 def _benchmark_scenario(
     prototxt: str,
@@ -268,19 +254,24 @@ def _benchmark_scenario(
 def _print_results_table(results: list[dict]) -> None:
     """Print a formatted results table to stdout."""
     print("\n" + "=" * 100)
-    print(f"{'Scenario':<30} {'Splits':>6} {'Layers':>6} "
-          f"{'Construct(ms)':>13} {'Fwd mean(ms)':>12} {'Fwd p95(ms)':>11} {'Fwd std(ms)':>11}")
+    print(
+        f"{'Scenario':<30} {'Splits':>6} {'Layers':>6} "
+        f"{'Construct(ms)':>13} {'Fwd mean(ms)':>12} {'Fwd p95(ms)':>11} {'Fwd std(ms)':>11}"
+    )
     print("-" * 100)
     for r in results:
-        print(f"{r['scenario']:<30} {r['n_splits']:>6} {r['n_layers']:>6} "
-              f"{r['construct_ms']:>13.3f} {r['forward_mean_ms']:>12.4f} "
-              f"{r['forward_p95_ms']:>11.4f} {r['forward_std_ms']:>11.4f}")
+        print(
+            f"{r['scenario']:<30} {r['n_splits']:>6} {r['n_layers']:>6} "
+            f"{r['construct_ms']:>13.3f} {r['forward_mean_ms']:>12.4f} "
+            f"{r['forward_p95_ms']:>11.4f} {r['forward_std_ms']:>11.4f}"
+        )
     print("=" * 100)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Test class
 # ──────────────────────────────────────────────────────────────────────
+
 
 @require_cpp_extension
 class TestSplitConcatBenchmark:
@@ -300,22 +291,16 @@ class TestSplitConcatBenchmark:
 
         # Inception variants
         for nb in (2, 4, 8):
-            proto = _inception_prototxt(f"inception_{nb}b", num_branches=nb,
-                                        dim_in=64, dim_branch=16)
-            results.append(_benchmark_scenario(proto, f"inception_{nb}branches",
-                                               dim_in=64))
+            proto = _inception_prototxt(f"inception_{nb}b", num_branches=nb, dim_in=64, dim_branch=16)
+            results.append(_benchmark_scenario(proto, f"inception_{nb}branches", dim_in=64))
 
         # Deep nested (3 levels)
-        proto = _deep_nested_prototxt("deep_nested_3lv", levels=3,
-                                      branches_per_level=2, dim=32, dim_branch=16)
-        results.append(_benchmark_scenario(proto, "deep_nested_3levels",
-                                           dim_in=32))
+        proto = _deep_nested_prototxt("deep_nested_3lv", levels=3, branches_per_level=2, dim=32, dim_branch=16)
+        results.append(_benchmark_scenario(proto, "deep_nested_3levels", dim_in=32))
 
         # Multi fan-out (4 independent split points)
-        proto = _multi_fanout_prototxt("multi_fanout_4pt", num_fanout_points=4,
-                                       consumers_per_point=2, dim=32)
-        results.append(_benchmark_scenario(proto, "multi_fanout_4points",
-                                           dim_in=32))
+        proto = _multi_fanout_prototxt("multi_fanout_4pt", num_fanout_points=4, consumers_per_point=2, dim=32)
+        results.append(_benchmark_scenario(proto, "multi_fanout_4points", dim_in=32))
         return results
 
     def test_construction_overhead_scales_linearly(self):
@@ -325,11 +310,11 @@ class TestSplitConcatBenchmark:
         Compares 4-branch vs 8-branch Inception (2x split points = <3x time).
         """
         r4 = _benchmark_scenario(
-            _inception_prototxt("bench_4b", 4, dim_in=32, dim_branch=8),
-            "inc4", dim_in=32, warmup_runs=1, timed_runs=5)
+            _inception_prototxt("bench_4b", 4, dim_in=32, dim_branch=8), "inc4", dim_in=32, warmup_runs=1, timed_runs=5
+        )
         r8 = _benchmark_scenario(
-            _inception_prototxt("bench_8b", 8, dim_in=32, dim_branch=8),
-            "inc8", dim_in=32, warmup_runs=1, timed_runs=5)
+            _inception_prototxt("bench_8b", 8, dim_in=32, dim_branch=8), "inc8", dim_in=32, warmup_runs=1, timed_runs=5
+        )
         # Construction time ratio should be bounded (generous threshold)
         ratio = r8["construct_ms"] / max(r4["construct_ms"], 0.01)
         assert ratio < 5.0, (
@@ -366,9 +351,7 @@ class TestSplitConcatBenchmark:
         for proto, expected, msg in cases:
             net = make_net(proto)
             actual = count_splits(net)
-            assert actual == expected, (
-                f"{msg}: expected {expected} splits, got {actual}"
-            )
+            assert actual == expected, f"{msg}: expected {expected} splits, got {actual}"
 
     def test_print_benchmark_table(self):
         """Run all benchmarks and print results table (visual inspection)."""
@@ -385,6 +368,7 @@ class TestSplitConcatBenchmark:
 if __name__ == "__main__":
     # Allow running as a script: python test_split_concat_bench.py
     import os
+
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
     # Run the benchmarks and print
     t = TestSplitConcatBenchmark()

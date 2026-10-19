@@ -33,8 +33,6 @@ class TestParseArgs(unittest.TestCase):
             os.environ,
             {"COMPOSE_ENV_FILES": ".env.default,.env.override"},
         ):
-            args = parse_args(
-                engine, ["--env-file", ".env.cli", "--version"]
-            )
+            args = parse_args(engine, ["--env-file", ".env.cli", "--version"])
 
         self.assertEqual(args.env_file, [".env.cli"])

@@ -19,19 +19,19 @@ Example::
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
 from ._numpy_rnn_reference import (
-    rnn_forward,
-    lstm_forward,
-    rnn_backward,
-    lstm_backward,
-    pack_lstm_weights_caffe,
-    unpack_lstm_weights_caffe,
-    init_rnn_weights,
     init_lstm_weights,
+    init_rnn_weights,
+    lstm_backward,
+    lstm_forward,
+    pack_lstm_weights_caffe,
+    rnn_backward,
+    rnn_forward,
+    unpack_lstm_weights_caffe,
 )
 
 __all__ = [
@@ -63,7 +63,7 @@ class RNN:
         self._input_dim = input_dim
         self._hidden_dim = hidden_dim
         self._activation = activation
-        self._weights: Optional[dict[str, np.ndarray]] = None
+        self._weights: dict[str, np.ndarray] | None = None
 
     @property
     def input_dim(self) -> int:
@@ -77,7 +77,7 @@ class RNN:
     def activation(self) -> str:
         return self._activation
 
-    def load_weights(self, weights: Optional[dict] = None, W: Any = None, b: Any = None, fmt: Optional[str] = None) -> None:
+    def load_weights(self, weights: dict | None = None, W: Any = None, b: Any = None, fmt: str | None = None) -> None:
         """Load RNN weights.
 
         Two call forms are supported:
@@ -121,7 +121,9 @@ class RNN:
             "b_hh": np.asarray(weights.get("b_hh", np.zeros(self._hidden_dim, dtype=np.float32)), dtype=np.float32),
         }
 
-    def forward(self, x: np.ndarray, batch_first: bool = False, h0: Optional[np.ndarray] = None) -> tuple[np.ndarray, np.ndarray]:
+    def forward(
+        self, x: np.ndarray, batch_first: bool = False, h0: np.ndarray | None = None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Run RNN forward pass.
 
         Args:
@@ -161,7 +163,7 @@ class LSTM:
         self._input_dim = input_dim
         self._hidden_dim = hidden_dim
         self._bidirectional = bidirectional
-        self._weights: Optional[dict[str, np.ndarray]] = None
+        self._weights: dict[str, np.ndarray] | None = None
 
     @property
     def input_dim(self) -> int:
@@ -175,7 +177,7 @@ class LSTM:
     def bidirectional(self) -> bool:
         return self._bidirectional
 
-    def load_weights(self, weights: Optional[dict] = None, W: Any = None, b: Any = None, fmt: Optional[str] = None) -> None:
+    def load_weights(self, weights: dict | None = None, W: Any = None, b: Any = None, fmt: str | None = None) -> None:
         """Load LSTM weights.
 
         Two call forms are supported:
@@ -217,8 +219,14 @@ class LSTM:
             raise ValueError("load_weights requires a dict of weights or W/b with fmt='caffe'")
 
         required = (
-            "W_ii", "W_if", "W_io", "W_ig",
-            "W_hi", "W_hf", "W_ho", "W_hg",
+            "W_ii",
+            "W_if",
+            "W_io",
+            "W_ig",
+            "W_hi",
+            "W_hf",
+            "W_ho",
+            "W_hg",
         )
         missing = [k for k in required if k not in weights]
         if missing:
@@ -227,14 +235,28 @@ class LSTM:
         self._weights = {
             k: np.asarray(weights[k], dtype=np.float32)
             for k in (
-                "W_ii", "W_if", "W_io", "W_ig",
-                "W_hi", "W_hf", "W_ho", "W_hg",
-                "b_ii", "b_if", "b_io", "b_ig",
-                "b_hi", "b_hf", "b_ho", "b_hg",
+                "W_ii",
+                "W_if",
+                "W_io",
+                "W_ig",
+                "W_hi",
+                "W_hf",
+                "W_ho",
+                "W_hg",
+                "b_ii",
+                "b_if",
+                "b_io",
+                "b_ig",
+                "b_hi",
+                "b_hf",
+                "b_ho",
+                "b_hg",
             )
         }
 
-    def forward(self, x: np.ndarray, batch_first: bool = False, h0: Optional[np.ndarray] = None, c0: Optional[np.ndarray] = None) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray]]:
+    def forward(
+        self, x: np.ndarray, batch_first: bool = False, h0: np.ndarray | None = None, c0: np.ndarray | None = None
+    ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray]]:
         """Run LSTM forward pass.
 
         Args:
@@ -251,10 +273,22 @@ class LSTM:
         w = self._weights
         return lstm_forward(
             x,
-            w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-            w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-            w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-            w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+            w["W_ii"],
+            w["W_if"],
+            w["W_io"],
+            w["W_ig"],
+            w["W_hi"],
+            w["W_hf"],
+            w["W_ho"],
+            w["W_hg"],
+            w["b_ii"],
+            w["b_if"],
+            w["b_io"],
+            w["b_ig"],
+            w["b_hi"],
+            w["b_hf"],
+            w["b_ho"],
+            w["b_hg"],
             h0=h0,
             c0=c0,
             batch_first=batch_first,

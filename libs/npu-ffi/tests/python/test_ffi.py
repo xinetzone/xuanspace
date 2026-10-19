@@ -1,7 +1,5 @@
 """Tests for type-safe VTA FFI API bindings."""
 
-import pytest
-
 from npu_ffi import vta
 from npu_ffi.vta import Buffer, MemcpyKind
 

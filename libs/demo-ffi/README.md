@@ -157,6 +157,7 @@ _EXTRA_LIB_PATHS = [
 
 ```python
 import os
+
 os.add_dll_directory(r"path\to\build\lib")
 ```
 

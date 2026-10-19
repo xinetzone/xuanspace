@@ -23,20 +23,21 @@ For general kernels, Deconv backward uses transposed GEMM + col2im/im2col
 (already implemented in C++); numerical gradient tests verify correctness
 without needing an analytical numpy reference for the full im2col path.
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     assert_grad_close,
     numerical_grad_for_blob,
     numerical_grad_for_input,
 )
+from .conftest import require_cpp_extension
 
 EPS_NUMERICAL = 1e-3
 
@@ -44,6 +45,7 @@ EPS_NUMERICAL = 1e-3
 # ---------------------------------------------------------------------------
 # Numpy reference for 1x1 Deconv backward
 # ---------------------------------------------------------------------------
+
 
 def deconv1x1_backward_np(x, dy, weight, bias=None):
     """Numpy reference for 1x1 Deconvolution backward (stride=1, pad=0).
@@ -83,12 +85,21 @@ def deconv1x1_backward_np(x, dy, weight, bias=None):
 # Prototxt builders
 # ---------------------------------------------------------------------------
 
-def _make_deconv_prototxt(input_dims, num_output, kernel_size,
-                          pad=0, stride=1, bias_term=True,
-                          weight_filler="constant", weight_value=0.0,
-                          bias_filler="constant", bias_value=0.0):
+
+def _make_deconv_prototxt(
+    input_dims,
+    num_output,
+    kernel_size,
+    pad=0,
+    stride=1,
+    bias_term=True,
+    weight_filler="constant",
+    weight_value=0.0,
+    bias_filler="constant",
+    bias_value=0.0,
+):
     """Create Input -> Deconvolution prototxt."""
-    dims_str = " ".join(str(d) for d in input_dims)
+    " ".join(str(d) for d in input_dims)
     bias_str = "true" if bias_term else "false"
     return textwrap.dedent(f"""\
         name: "test_deconv_bw"
@@ -119,8 +130,7 @@ def _make_deconv_net(N, Ci, H, W, Co, Kh, Kw=None, pad=0, stride=1, bias=True):
     if Kw is None:
         Kw = Kh
     input_dims = (N, Ci, H, W)
-    proto = _make_deconv_prototxt(input_dims, Co, kernel_size=Kh,
-                                  pad=pad, stride=stride, bias_term=bias)
+    proto = _make_deconv_prototxt(input_dims, Co, kernel_size=Kh, pad=pad, stride=stride, bias_term=bias)
     return Net(proto)
 
 
@@ -152,6 +162,7 @@ def _run_deconv_backward(net, x, dy, W, b=None):
 # Test Class 1: 1x1 Deconv backward (simplest case, analytical reference)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestDeconvBackward1x1:
     """1x1 Deconvolution backward tests (stride=1, pad=0, no im2col)."""
@@ -162,8 +173,7 @@ class TestDeconvBackward1x1:
         net = _make_deconv_net(N, Ci, H, W_dim, Co, Kh=1, bias=True)
         W = np.eye(Ci, Co, dtype=np.float32).reshape(Ci, Co, 1, 1)
         b = np.zeros(Co, dtype=np.float32)
-        x = np.array([[[[1.0, 2.0], [3.0, 4.0]],
-                       [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
+        x = np.array([[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]], dtype=np.float32)
         dy = np.ones((N, Co, H, W_dim), dtype=np.float32)
 
         y, dX, dW, db = _run_deconv_backward(net, x, dy, W, b)
@@ -172,8 +182,7 @@ class TestDeconvBackward1x1:
         # db = sum(dy) = 4 for each channel
         np.testing.assert_allclose(db, np.full(Co, 4.0, dtype=np.float32), rtol=1e-5)
         # dW[i,o] = sum_{n,h,w} x[n,i,h,w] * dy[n,o,h,w] = sum(x over spatial)
-        expected_dW = np.array([[[[10.0]], [[10.0]]],
-                                [[[26.0]], [[26.0]]]], dtype=np.float32)
+        expected_dW = np.array([[[[10.0]], [[10.0]]], [[[26.0]], [[26.0]]]], dtype=np.float32)
         np.testing.assert_allclose(dW, expected_dW, rtol=1e-5)
 
     def test_deconv1x1_analytical_dx_dw_db(self):
@@ -210,25 +219,42 @@ class TestDeconvBackward1x1:
         analytic_db = net.layer_by_name("deconv").blobs[1].diff
 
         num_dX = numerical_grad_for_input(
-            net, "data", x, "deconv", dy, h=EPS_NUMERICAL,
-            name="deconv1x1_dx", verbose=True,
+            net,
+            "data",
+            x,
+            "deconv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="deconv1x1_dx",
+            verbose=True,
         )
-        assert_grad_close(analytic_dX, num_dX, name="dX(deconv 1x1)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dX, num_dX, name="dX(deconv 1x1)", rtol=1e-2, atol=1e-3)
 
         num_dW = numerical_grad_for_blob(
-            net, "deconv", 0, {"data": x}, "deconv", dy, h=EPS_NUMERICAL,
-            name="deconv1x1_dW", verbose=True,
+            net,
+            "deconv",
+            0,
+            {"data": x},
+            "deconv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="deconv1x1_dW",
+            verbose=True,
         )
-        assert_grad_close(analytic_dW, num_dW, name="dW(deconv 1x1)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_dW, num_dW, name="dW(deconv 1x1)", rtol=1e-2, atol=1e-3)
 
         num_db = numerical_grad_for_blob(
-            net, "deconv", 1, {"data": x}, "deconv", dy, h=EPS_NUMERICAL,
-            name="deconv1x1_db", verbose=True,
+            net,
+            "deconv",
+            1,
+            {"data": x},
+            "deconv",
+            dy,
+            h=EPS_NUMERICAL,
+            name="deconv1x1_db",
+            verbose=True,
         )
-        assert_grad_close(analytic_db, num_db, name="db(deconv 1x1)",
-                          rtol=1e-2, atol=1e-3)
+        assert_grad_close(analytic_db, num_db, name="db(deconv 1x1)", rtol=1e-2, atol=1e-3)
 
     def test_deconv1x1_no_bias(self):
         """1x1 deconv no bias: gradients vs numpy reference."""
@@ -260,18 +286,19 @@ class TestDeconvBackward1x1:
         a_dX = net.blob_by_name("data").diff
         a_dW = net.layer_by_name("deconv").blobs[0].diff
 
-        n_dX = numerical_grad_for_input(net, "data", x, "deconv", dy, h=EPS_NUMERICAL,
-                                         name="deconv1x1_nobias_dx")
+        n_dX = numerical_grad_for_input(net, "data", x, "deconv", dy, h=EPS_NUMERICAL, name="deconv1x1_nobias_dx")
         assert_grad_close(a_dX, n_dX, name="dX(deconv1x1 nobias)", rtol=1e-2, atol=1e-3)
 
-        n_dW = numerical_grad_for_blob(net, "deconv", 0, {"data": x}, "deconv", dy,
-                                        h=EPS_NUMERICAL, name="deconv1x1_nobias_dW")
+        n_dW = numerical_grad_for_blob(
+            net, "deconv", 0, {"data": x}, "deconv", dy, h=EPS_NUMERICAL, name="deconv1x1_nobias_dW"
+        )
         assert_grad_close(a_dW, n_dW, name="dW(deconv1x1 nobias)", rtol=1e-2, atol=1e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 2: 2x2 Deconv stride=2 (upsampling)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestDeconvBackwardStride2:
@@ -299,22 +326,26 @@ class TestDeconvBackwardStride2:
         a_dW = net.layer_by_name("deconv").blobs[0].diff
         a_db = net.layer_by_name("deconv").blobs[1].diff
 
-        n_dX = numerical_grad_for_input(net, "data", x, "deconv", dy, h=EPS_NUMERICAL,
-                                         name="deconv2x2s2_dx", verbose=True)
+        n_dX = numerical_grad_for_input(
+            net, "data", x, "deconv", dy, h=EPS_NUMERICAL, name="deconv2x2s2_dx", verbose=True
+        )
         assert_grad_close(a_dX, n_dX, name="dX(deconv 2x2 s2)", rtol=1e-2, atol=2e-3)
 
-        n_dW = numerical_grad_for_blob(net, "deconv", 0, {"data": x}, "deconv", dy,
-                                        h=EPS_NUMERICAL, name="deconv2x2s2_dW", verbose=True)
+        n_dW = numerical_grad_for_blob(
+            net, "deconv", 0, {"data": x}, "deconv", dy, h=EPS_NUMERICAL, name="deconv2x2s2_dW", verbose=True
+        )
         assert_grad_close(a_dW, n_dW, name="dW(deconv 2x2 s2)", rtol=1e-2, atol=2e-3)
 
-        n_db = numerical_grad_for_blob(net, "deconv", 1, {"data": x}, "deconv", dy,
-                                        h=EPS_NUMERICAL, name="deconv2x2s2_db", verbose=True)
+        n_db = numerical_grad_for_blob(
+            net, "deconv", 1, {"data": x}, "deconv", dy, h=EPS_NUMERICAL, name="deconv2x2s2_db", verbose=True
+        )
         assert_grad_close(a_db, n_db, name="db(deconv 2x2 s2)", rtol=1e-2, atol=2e-3)
 
 
 # ---------------------------------------------------------------------------
 # Test Class 3: Zero dy and edge cases
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestDeconvBackwardEdgeCases:

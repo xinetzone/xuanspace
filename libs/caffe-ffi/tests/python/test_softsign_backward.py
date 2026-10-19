@@ -21,17 +21,19 @@ rtol = 5e-3 (matching the ELU Type-A convention).
 """
 
 import textwrap
+
 import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from .caffe_test_helpers import avoid_c1_discontinuity
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 5e-3  # Type-A (C1-continuous, C2-discontinuous) tolerance
 NUM_ATOL = 1e-4
 
@@ -39,6 +41,7 @@ NUM_ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_softsign_prototxt(N=1, C=1, H=4, W=5):
     """Create a minimal Input(N,C,H,W) -> Softsign prototxt."""
@@ -61,6 +64,7 @@ def _make_softsign_prototxt(N=1, C=1, H=4, W=5):
 # ---------------------------------------------------------------------------
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
+
 
 def _softsign_ref(x):
     """Forward y = x/(1+|x|) and backward factor dx/dy = 1/(1+|x|)^2."""
@@ -96,6 +100,7 @@ def _num_grad(net, x, dy, h=EPS):
 # Tests: Softsign Forward
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSoftsignForward:
     """Softsign forward correctness (hand-computed known values)."""
@@ -109,8 +114,7 @@ class TestSoftsignForward:
         # x:          0,   1,  -1,   2,  -2, 0.5
         # y:          0, 0.5, -0.5, 2/3, -2/3, 1/3
         x = np.array([0.0, 1.0, -1.0, 2.0, -2.0, 0.5], dtype=np.float32).reshape(1, 1, 1, 6)
-        expected = np.array([0.0, 0.5, -0.5, 2.0 / 3.0, -2.0 / 3.0, 1.0 / 3.0],
-                            dtype=np.float32).reshape(1, 1, 1, 6)
+        expected = np.array([0.0, 0.5, -0.5, 2.0 / 3.0, -2.0 / 3.0, 1.0 / 3.0], dtype=np.float32).reshape(1, 1, 1, 6)
         out = net.forward({"data": x})["out"]
         np.testing.assert_allclose(out, expected, rtol=1e-6, atol=1e-6)
 
@@ -133,6 +137,7 @@ class TestSoftsignForward:
 # ---------------------------------------------------------------------------
 # Tests: Softsign Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftsignGradient:
@@ -252,6 +257,7 @@ class TestSoftsignGradient:
 # ---------------------------------------------------------------------------
 # Tests: Softsign Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftsignNumericalGradient:

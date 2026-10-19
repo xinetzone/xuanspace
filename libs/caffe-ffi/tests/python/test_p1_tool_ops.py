@@ -15,13 +15,13 @@ import textwrap
 
 import numpy as np
 
-from .conftest import require_cpp_extension
 from .caffe_test_helpers import make_net
-
+from .conftest import require_cpp_extension
 
 # ──────────────────────────────────────────────────────────────────────
 # Shared numpy reference helpers
 # ──────────────────────────────────────────────────────────────────────
+
 
 def topk_indices_desc(vals_1d: np.ndarray, k: int) -> np.ndarray:
     """Indices of the k largest entries of a 1-D array.
@@ -89,8 +89,7 @@ def spp_reference(x: np.ndarray, pyramid_height: int, pool: str) -> np.ndarray:
             for jb in range(nb):
                 w_start = jb * kw - pw
                 # Slice with python auto-clamping (valid region only).
-                win = x[:, :, max(h_start, 0):h_start + kh,
-                       max(w_start, 0):w_start + kw]
+                win = x[:, :, max(h_start, 0) : h_start + kh, max(w_start, 0) : w_start + kw]
                 if pool == "MAX":
                     pooled[:, :, ib, jb] = win.max(axis=(2, 3))
                 else:
@@ -103,6 +102,7 @@ def spp_reference(x: np.ndarray, pyramid_height: int, pool: str) -> np.ndarray:
 # ArgMax
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestArgMax:
     def _net(self, top_k, out_max_val, axis=None, input_shape=(3, 5, 4)):
@@ -110,7 +110,8 @@ class TestArgMax:
         if axis is not None:
             axis_txt = f"axis: {axis}"
         dims_txt = " ".join(f"dim: {d}" for d in input_shape)
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "argmax_test"
             layer {{
               name: "data"
@@ -129,24 +130,18 @@ class TestArgMax:
                 {axis_txt}
               }}
             }}
-        """))
+        """)
+        )
 
     def test_axis_mode_indices(self):
-        x = np.array([[[1, 5, 3, 2],
-                       [4, 9, 1, 4],
-                       [8, 7, 0, 6],
-                       [2, 5, 3, 1],
-                       [0, 2, 4, 6]],
-                      [[9, 1, 4, 8],
-                       [7, 0, 6, 2],
-                       [5, 3, 1, 0],
-                       [2, 4, 6, 8],
-                       [1, 3, 5, 7]],
-                      [[0, 6, 2, 5],
-                       [3, 1, 0, 2],
-                       [4, 6, 8, 1],
-                       [3, 5, 7, 9],
-                       [2, 4, 6, 8]]], dtype=np.float32)
+        x = np.array(
+            [
+                [[1, 5, 3, 2], [4, 9, 1, 4], [8, 7, 0, 6], [2, 5, 3, 1], [0, 2, 4, 6]],
+                [[9, 1, 4, 8], [7, 0, 6, 2], [5, 3, 1, 0], [2, 4, 6, 8], [1, 3, 5, 7]],
+                [[0, 6, 2, 5], [3, 1, 0, 2], [4, 6, 8, 1], [3, 5, 7, 9], [2, 4, 6, 8]],
+            ],
+            dtype=np.float32,
+        )
         net = self._net(top_k=2, out_max_val=False, axis=1)
         out = net.forward({"data": x})
         expected = argmax_axis_reference(x, 2, out_max_val=False)
@@ -154,21 +149,14 @@ class TestArgMax:
         np.testing.assert_array_equal(out["argmax_out"], expected)
 
     def test_axis_mode_values(self):
-        x = np.array([[[1, 5, 3, 2],
-                       [4, 9, 1, 4],
-                       [8, 7, 0, 6],
-                       [2, 5, 3, 1],
-                       [0, 2, 4, 6]],
-                      [[9, 1, 4, 8],
-                       [7, 0, 6, 2],
-                       [5, 3, 1, 0],
-                       [2, 4, 6, 8],
-                       [1, 3, 5, 7]],
-                      [[0, 6, 2, 5],
-                       [3, 1, 0, 2],
-                       [4, 6, 8, 1],
-                       [3, 5, 7, 9],
-                       [2, 4, 6, 8]]], dtype=np.float32)
+        x = np.array(
+            [
+                [[1, 5, 3, 2], [4, 9, 1, 4], [8, 7, 0, 6], [2, 5, 3, 1], [0, 2, 4, 6]],
+                [[9, 1, 4, 8], [7, 0, 6, 2], [5, 3, 1, 0], [2, 4, 6, 8], [1, 3, 5, 7]],
+                [[0, 6, 2, 5], [3, 1, 0, 2], [4, 6, 8, 1], [3, 5, 7, 9], [2, 4, 6, 8]],
+            ],
+            dtype=np.float32,
+        )
         net = self._net(top_k=2, out_max_val=True, axis=1)
         out = net.forward({"data": x})
         expected = argmax_axis_reference(x, 2, out_max_val=True)
@@ -177,9 +165,7 @@ class TestArgMax:
 
     def test_noaxis_mode_values_and_indices(self):
         # Without axis, out_max_val=true interleaves indices then values: [N, 2, top_k].
-        x = np.array([[1, 5, 3, 2, 4],
-                      [9, 1, 4, 8, 7],
-                      [0, 6, 2, 5, 3]], dtype=np.float32)
+        x = np.array([[1, 5, 3, 2, 4], [9, 1, 4, 8, 7], [0, 6, 2, 5, 3]], dtype=np.float32)
         net = self._net(top_k=2, out_max_val=True, input_shape=(3, 5))
         out = net.forward({"data": x})
         expected = argmax_noaxis_reference(x, 2, out_max_val=True)
@@ -187,9 +173,7 @@ class TestArgMax:
         np.testing.assert_array_equal(out["argmax_out"], expected)
 
     def test_noaxis_mode_indices_only(self):
-        x = np.array([[1, 5, 3, 2, 4],
-                      [9, 1, 4, 8, 7],
-                      [0, 6, 2, 5, 3]], dtype=np.float32)
+        x = np.array([[1, 5, 3, 2, 4], [9, 1, 4, 8, 7], [0, 6, 2, 5, 3]], dtype=np.float32)
         net = self._net(top_k=2, out_max_val=False, input_shape=(3, 5))
         out = net.forward({"data": x})
         expected = argmax_noaxis_reference(x, 2, out_max_val=False)
@@ -198,16 +182,11 @@ class TestArgMax:
 
     def test_tie_breaking_higher_index_first(self):
         # Equal values: std::greater<pair<value,index>> picks the larger index first.
-        x = np.array([[[5],
-                       [5],
-                       [3],
-                       [1],
-                       [5]]], dtype=np.float32)  # [1, 5, 1]
+        x = np.array([[[5], [5], [3], [1], [5]]], dtype=np.float32)  # [1, 5, 1]
         net = self._net(top_k=2, out_max_val=False, axis=1)
         out = net.forward({"data": x})
         # top two values are 5 (indices 0,1,4) -> larger indices 4 and 1 win.
-        np.testing.assert_array_equal(out["argmax_out"],
-                                      np.array([[[4], [1]]], dtype=np.float32))
+        np.testing.assert_array_equal(out["argmax_out"], np.array([[[4], [1]]], dtype=np.float32))
 
     def test_layer_registered(self):
         net = self._net(top_k=1, out_max_val=False, axis=1)
@@ -218,10 +197,12 @@ class TestArgMax:
 # BatchReindex
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestBatchReindex:
     def _net(self, data_batch, index_len):
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "batch_reindex_test"
             layer {{
               name: "data"
@@ -242,11 +223,11 @@ class TestBatchReindex:
               bottom: "index"
               top: "reindex_out"
             }}
-        """))
+        """)
+        )
 
     def test_forward_reorders_batch(self):
-        data = np.array([[0, 1, 2], [10, 11, 12], [20, 21, 22], [30, 31, 32]],
-                        dtype=np.float32)
+        data = np.array([[0, 1, 2], [10, 11, 12], [20, 21, 22], [30, 31, 32]], dtype=np.float32)
         perm = np.array([3, 0, 2], dtype=np.float32)
         net = self._net(data_batch=4, index_len=3)
         out = net.forward({"data": data, "index": perm})
@@ -260,8 +241,7 @@ class TestBatchReindex:
         net = self._net(data_batch=4, index_len=6)
         out = net.forward({"data": data, "index": perm})
         assert out["reindex_out"].shape == (6, 3)
-        np.testing.assert_allclose(out["reindex_out"], data[perm.astype(int)],
-                                   rtol=1e-4, atol=1e-4)
+        np.testing.assert_allclose(out["reindex_out"], data[perm.astype(int)], rtol=1e-4, atol=1e-4)
 
     def test_layer_registered(self):
         net = self._net(data_batch=3, index_len=2)
@@ -272,6 +252,7 @@ class TestBatchReindex:
 # Filter
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestFilter:
     def _net(self, batch, feat, extra_data=False):
@@ -279,16 +260,14 @@ class TestFilter:
         if extra_data:
             extra = (
                 'layer { name: "data2" type: "Input" top: "data2" '
-                f'input_param {{ shape {{ dim: {batch} dim: {feat} }} }} }}\n'
+                f"input_param {{ shape {{ dim: {batch} dim: {feat} }} }} }}\n"
                 'layer { name: "filter" type: "Filter" bottom: "data" bottom: "data2" '
                 'bottom: "selector" top: "filter_out" top: "filter_out2" }\n'
             )
         else:
-            extra = (
-                'layer { name: "filter" type: "Filter" bottom: "data" '
-                'bottom: "selector" top: "filter_out" }\n'
-            )
-        return make_net(textwrap.dedent(f"""\
+            extra = 'layer { name: "filter" type: "Filter" bottom: "data" bottom: "selector" top: "filter_out" }\n'
+        return make_net(
+            textwrap.dedent(f"""\
             name: "filter_test"
             layer {{
               name: "data"
@@ -303,7 +282,8 @@ class TestFilter:
               input_param {{ shape {{ dim: {batch} }} }}
             }}
             {extra}
-        """))
+        """)
+        )
 
     def test_forward_gathers_kept_items(self):
         data = np.arange(5 * 3, dtype=np.float32).reshape(5, 3)
@@ -342,11 +322,13 @@ class TestFilter:
 # Parameter
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestParameter:
     def _net(self, shape_dims):
         dims_txt = " ".join(f"dim: {d}" for d in shape_dims)
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "param_test"
             layer {{
               name: "param"
@@ -354,7 +336,8 @@ class TestParameter:
               top: "param_out"
               parameter_param {{ shape {{ {dims_txt} }} }}
             }}
-        """))
+        """)
+        )
 
     def test_forward_exposes_param_blob(self):
         weights = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
@@ -394,6 +377,7 @@ class TestParameter:
 # Silence
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestSilence:
     def test_forward_consumes_bottom_no_output(self):
@@ -432,10 +416,12 @@ class TestSilence:
 # SPP
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestSPP:
     def _net(self, pyramid_height, pool, channels=1, n=1, h=5, w=5):
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "spp_test"
             layer {{
               name: "data"
@@ -450,7 +436,8 @@ class TestSPP:
               top: "spp_out"
               spp_param {{ pyramid_height: {pyramid_height} pool: {pool} }}
             }}
-        """))
+        """)
+        )
 
     def test_ave_values_match_reference(self):
         x = (np.arange(1 * 1 * 5 * 5, dtype=np.float32).reshape(1, 1, 5, 5) + 1) / 10.0
@@ -492,11 +479,13 @@ class TestSPP:
 # Embed
 # ──────────────────────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestEmbed:
     def _net(self, num_output, input_dim, bias_term, input_shape):
         dims_txt = " ".join(f"dim: {d}" for d in input_shape)
-        return make_net(textwrap.dedent(f"""\
+        return make_net(
+            textwrap.dedent(f"""\
             name: "embed_test"
             layer {{
               name: "data"
@@ -515,7 +504,8 @@ class TestEmbed:
                 bias_term: {str(bias_term).lower()}
               }}
             }}
-        """))
+        """)
+        )
 
     def test_forward_with_bias(self):
         K, N = 4, 3

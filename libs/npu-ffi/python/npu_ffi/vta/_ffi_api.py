@@ -32,7 +32,7 @@ def _check_tvm_ffi_version() -> None:
         while len(version_parts) < 3:
             version_parts.append(0)
         version_tuple = tuple(version_parts)
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         version_tuple = (0, 0, 0)
 
     if version_tuple < _MIN_TVM_FFI_VERSION:
@@ -57,18 +57,14 @@ def _init_lib_path() -> None:
             if hasattr(os, "add_dll_directory"):
                 try:
                     os.add_dll_directory(str(lib_dir))
-                except (OSError, FileNotFoundError):
+                except OSError, FileNotFoundError:
                     pass
             else:
                 os.environ["PATH"] = str(lib_dir) + os.pathsep + os.environ.get("PATH", "")
         elif sys.platform.startswith("darwin"):
-            os.environ["DYLD_LIBRARY_PATH"] = (
-                str(lib_dir) + os.pathsep + os.environ.get("DYLD_LIBRARY_PATH", "")
-            )
+            os.environ["DYLD_LIBRARY_PATH"] = str(lib_dir) + os.pathsep + os.environ.get("DYLD_LIBRARY_PATH", "")
         else:
-            os.environ["LD_LIBRARY_PATH"] = (
-                str(lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-            )
+            os.environ["LD_LIBRARY_PATH"] = str(lib_dir) + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
 
 
 _check_tvm_ffi_version()
@@ -87,8 +83,7 @@ except RuntimeError as e:
         f"2. Build directory not in library search path.\n"
         f"3. On Windows, make sure KMP_DUPLICATE_LIB_OK=TRUE is set.\n"
         f"\n"
-        f"Searched directories:\n"
-        + "\n".join(f"  - {p}" for p in _EXTRA_LIB_PATHS)
+        f"Searched directories:\n" + "\n".join(f"  - {p}" for p in _EXTRA_LIB_PATHS)
     ) from e
 
 _FFI_INIT_FUNC("vta", __name__)

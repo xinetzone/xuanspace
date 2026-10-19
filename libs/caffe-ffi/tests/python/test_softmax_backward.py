@@ -15,6 +15,7 @@ Covers:
   6. Shape/finite/determinism checks
   7. Probability conservation: sum(y)=1, gradient properties
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -23,10 +24,11 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from ._grad_check_utils import (
     numerical_gradient,
 )
+from .conftest import require_cpp_extension
 
 EPS = 1e-3
 RTOL = 1e-3
@@ -36,6 +38,7 @@ ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Numpy reference for Softmax forward/backward
 # ---------------------------------------------------------------------------
+
 
 def _softmax_forward_np(x, axis=1):
     """Numpy reference: numerically stable softmax along given axis."""
@@ -68,6 +71,7 @@ def _softmax_backward_np(y, dy, axis=1):
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_softmax_prototxt(shape, axis=1):
     """Create Input -> Softmax prototxt.
@@ -106,6 +110,7 @@ def _make_softmax_net(shape, axis=1):
 # Helper: run forward+backward
 # ---------------------------------------------------------------------------
 
+
 def _run_softmax_backward(net, x, dy):
     """Run forward then backward, return dx and output y."""
     out = net.forward({"data": x.astype(np.float32)})
@@ -129,13 +134,13 @@ def _numerical_grad(net, x, dy, h=EPS):
         nonlocal current
         np.copyto(current, arr)
 
-    return numerical_gradient(_forward, _get, _set, dy, h=h,
-                              name="input:data", verbose=False)
+    return numerical_gradient(_forward, _get, _set, dy, h=h, name="input:data", verbose=False)
 
 
 # ---------------------------------------------------------------------------
 # Tests: Known values (L1)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftmaxBackwardKnownValues:
@@ -150,7 +155,7 @@ class TestSoftmaxBackwardKnownValues:
         dy = np.array([[1.0, 1.0, 1.0]], dtype=np.float32)
         dx, y = _run_softmax_backward(net, x, dy)
         # Uniform input -> uniform probabilities
-        np.testing.assert_allclose(y, np.array([[1/C, 1/C, 1/C]]), rtol=1e-5)
+        np.testing.assert_allclose(y, np.array([[1 / C, 1 / C, 1 / C]]), rtol=1e-5)
         # When dy is uniform: dot = sum(y_j * dy_j) = dy_0 * sum(y_j) = dy_0 = 1
         # dx_i = y_i * (1 - 1) = 0
         np.testing.assert_allclose(dx, np.zeros_like(x), atol=1e-6)
@@ -183,9 +188,9 @@ class TestSoftmaxBackwardKnownValues:
         x = np.array([[0.0, np.log(2.0), np.log(3.0)]], dtype=np.float32)
         dy = np.array([[0.0, 0.0, 1.0]], dtype=np.float32)
         dx, y = _run_softmax_backward(net, x, dy)
-        expected_y = np.array([[1/6, 2/6, 3/6]], dtype=np.float32)
+        expected_y = np.array([[1 / 6, 2 / 6, 3 / 6]], dtype=np.float32)
         np.testing.assert_allclose(y, expected_y, rtol=1e-5)
-        expected_dx = np.array([[-1/12, -1/6, 1/4]], dtype=np.float32)
+        expected_dx = np.array([[-1 / 12, -1 / 6, 1 / 4]], dtype=np.float32)
         np.testing.assert_allclose(dx, expected_dx, rtol=1e-5)
 
     def test_one_hot_dy_on_correct_class(self):
@@ -199,8 +204,8 @@ class TestSoftmaxBackwardKnownValues:
         x = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
         dy = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
         dx, y = _run_softmax_backward(net, x, dy)
-        np.testing.assert_allclose(y, np.array([[1/3, 1/3, 1/3]]), rtol=1e-5)
-        expected_dx = np.array([[2/9, -1/9, -1/9]], dtype=np.float32)
+        np.testing.assert_allclose(y, np.array([[1 / 3, 1 / 3, 1 / 3]]), rtol=1e-5)
+        expected_dx = np.array([[2 / 9, -1 / 9, -1 / 9]], dtype=np.float32)
         np.testing.assert_allclose(dx, expected_dx, rtol=1e-5)
 
 
@@ -208,18 +213,22 @@ class TestSoftmaxBackwardKnownValues:
 # Tests: Numpy analytical gradient comparison (L2)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSoftmaxBackwardNumpy:
     """Compare caffe-ffi backward with numpy reference."""
 
-    @pytest.mark.parametrize("shape,axis", [
-        ((2, 3), 1),       # 2D, axis=1 (channel)
-        ((1, 4), 1),       # 2D, single batch
-        ((3, 5), 1),       # 2D, multi-batch
-        ((2, 3, 4), 1),    # 3D NCL, axis=1
-        ((1, 3, 2, 2), 1),  # 4D NCHW, axis=1
-        ((2, 4, 3), 2),    # 3D, axis=2
-    ])
+    @pytest.mark.parametrize(
+        "shape,axis",
+        [
+            ((2, 3), 1),  # 2D, axis=1 (channel)
+            ((1, 4), 1),  # 2D, single batch
+            ((3, 5), 1),  # 2D, multi-batch
+            ((2, 3, 4), 1),  # 3D NCL, axis=1
+            ((1, 3, 2, 2), 1),  # 4D NCHW, axis=1
+            ((2, 4, 3), 2),  # 3D, axis=2
+        ],
+    )
     def test_softmax_vs_numpy(self, shape, axis):
         """Random data: caffe-ffi backward matches numpy reference."""
         np.random.seed(42 + shape[0] * 100 + axis)
@@ -237,16 +246,20 @@ class TestSoftmaxBackwardNumpy:
 # Tests: Numerical gradient (L3)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestSoftmaxBackwardNumerical:
     """Central finite difference numerical gradient check."""
 
-    @pytest.mark.parametrize("shape,axis", [
-        ((1, 3), 1),
-        ((2, 4), 1),
-        ((2, 3, 2), 1),
-        ((1, 2, 2, 2), 1),
-    ])
+    @pytest.mark.parametrize(
+        "shape,axis",
+        [
+            ((1, 3), 1),
+            ((2, 4), 1),
+            ((2, 3, 2), 1),
+            ((1, 2, 2, 2), 1),
+        ],
+    )
     def test_numerical_grad(self, shape, axis):
         """Numerical gradient matches analytical gradient."""
         np.random.seed(123 + shape[0] * 50 + axis)
@@ -261,6 +274,7 @@ class TestSoftmaxBackwardNumerical:
 # ---------------------------------------------------------------------------
 # Tests: Properties (L4)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSoftmaxBackwardProperties:

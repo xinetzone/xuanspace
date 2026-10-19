@@ -3,7 +3,6 @@ xs py-compat 命令模块
 检查 Python 包与目标 Python 版本的兼容性
 """
 
-
 import json
 import sys
 import urllib.request

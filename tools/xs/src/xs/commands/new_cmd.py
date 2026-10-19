@@ -3,7 +3,6 @@ xs new 命令模块
 从模板创建新项目
 """
 
-
 import re
 import shutil
 from pathlib import Path
@@ -101,7 +100,7 @@ def copy_template_recursive(
                 for placeholder, value in replacements.items():
                     content = content.replace(placeholder, value)
                 dst_path.write_text(content, encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
+            except UnicodeDecodeError, OSError:
                 shutil.copy2(src_path, dst_path)
 
 

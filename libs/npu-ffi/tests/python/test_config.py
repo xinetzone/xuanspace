@@ -1,14 +1,9 @@
 """Tests for VTA hardware configuration module."""
 
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
-
 from npu_ffi.vta.config import (
-    VTAConfig,
     DEFAULT_CONFIGS,
+    VTAConfig,
     get_default_config,
     validate_config,
 )
@@ -162,15 +157,18 @@ class TestProtobufIO:
     @pytest.fixture
     def require_protobuf(self):
         from npu_ffi.vta import proto_io
+
         if not proto_io.is_protobuf_available():
             pytest.skip("protobuf not available")
 
     def test_protobuf_available_flag(self, require_protobuf):
         from npu_ffi.vta import proto_io
+
         assert proto_io.is_protobuf_available()
 
     def test_binary_roundtrip(self, require_protobuf):
         from npu_ffi.vta import proto_io
+
         config = get_default_config()
         data = proto_io.serialize(config)
         assert isinstance(data, bytes)
@@ -187,6 +185,7 @@ class TestProtobufIO:
 
     def test_save_load_binary_file(self, require_protobuf, tmp_path):
         from npu_ffi.vta import proto_io
+
         config = get_default_config("vta_v3")
         path = tmp_path / "config.bin"
 
@@ -199,6 +198,7 @@ class TestProtobufIO:
 
     def test_json_roundtrip(self, require_protobuf, tmp_path):
         from npu_ffi.vta import proto_io
+
         config = get_default_config()
         path = tmp_path / "config.json"
 
@@ -213,6 +213,7 @@ class TestProtobufIO:
 
     def test_text_roundtrip(self, require_protobuf, tmp_path):
         from npu_ffi.vta import proto_io
+
         config = get_default_config("vta_v4")
         path = tmp_path / "config.pbtxt"
 
@@ -225,6 +226,7 @@ class TestProtobufIO:
 
     def test_config_to_proto_and_back(self, require_protobuf):
         from npu_ffi.vta import proto_io
+
         config = get_default_config()
         pb = proto_io.config_to_proto(config)
         assert pb.target == "pynq"

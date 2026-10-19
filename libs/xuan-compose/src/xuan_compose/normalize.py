@@ -318,9 +318,7 @@ def normalize_final(compose: dict[str, Any], project_dir: str) -> dict[str, Any]
     return compose
 
 
-def resolve_extends(
-    services: dict[str, Any], service_names: list[str], environ: dict[str, Any]
-) -> None:
+def resolve_extends(services: dict[str, Any], service_names: list[str], environ: dict[str, Any]) -> None:
     """解析服务 ``extends``（翻译自上游第 2329-2365 行；T11 由 merge 下沉至此）。
 
     本函数本属规范化流程：内部复用同模块的 :func:`rec_subs` /
@@ -353,9 +351,7 @@ def resolve_extends(
             try:
                 del from_service["_deps"]
             except KeyError as e:
-                raise KeyError(
-                    f"{from_service_name} not found at services.{name}.extends definition"
-                ) from e
+                raise KeyError(f"{from_service_name} not found at services.{name}.extends definition") from e
             try:
                 del from_service["extends"]
             except KeyError:

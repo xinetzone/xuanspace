@@ -16,17 +16,19 @@ with derivative ``dy/dx = (x > 0 ? 1 : negative_slope)``:
 """
 
 import textwrap
+
 import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from .caffe_test_helpers import avoid_c1_discontinuity
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 5e-3  # Type-B (C¹ discontinuous) tolerance; float32 forward limits precision
 NUM_ATOL = 1e-4
 
@@ -34,6 +36,7 @@ NUM_ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_leaky_relu_prototxt(N=1, C=1, H=4, W=5, negative_slope=0.01):
     """Create a minimal Input(N,C,H,W) -> LeakyReLU prototxt."""
@@ -59,6 +62,7 @@ def _make_leaky_relu_prototxt(N=1, C=1, H=4, W=5, negative_slope=0.01):
 # ---------------------------------------------------------------------------
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
+
 
 def _leaky_relu_ref(x, negative_slope=0.01):
     """Forward y = max(x,0)+slope*min(x,0) and backward factor dx/dy."""
@@ -93,6 +97,7 @@ def _num_grad(net, x, dy, h=EPS):
 # ---------------------------------------------------------------------------
 # Tests: LeakyReLU Forward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestLeakyReLUForward:
@@ -135,6 +140,7 @@ class TestLeakyReLUForward:
 # ---------------------------------------------------------------------------
 # Tests: LeakyReLU Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestLeakyReLUGradient:
@@ -224,6 +230,7 @@ class TestLeakyReLUGradient:
 # ---------------------------------------------------------------------------
 # Tests: LeakyReLU Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestLeakyReLINumericalGradient:

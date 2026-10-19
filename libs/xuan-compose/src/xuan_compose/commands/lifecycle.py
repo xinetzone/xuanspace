@@ -37,9 +37,7 @@ async def compose_wait(
     compose.podman.exec([], "wait", cmd_args)
 
 
-async def transfer_service_status(
-    compose: Any, args: argparse.Namespace, action: str
-) -> None:
+async def transfer_service_status(compose: Any, args: argparse.Namespace, action: str) -> None:
     # TODO: handle dependencies, handle creations
     container_names_by_service = compose.container_names_by_service
     if not args.services:
@@ -59,9 +57,7 @@ async def transfer_service_status(
         if action != "start":
             timeout = timeout_global
             if timeout is None:
-                timeout_str = compose.container_by_name[target].get(
-                    "stop_grace_period", STOP_GRACE_PERIOD
-                )
+                timeout_str = compose.container_by_name[target].get("stop_grace_period", STOP_GRACE_PERIOD)
                 timeout = str_to_seconds(timeout_str)
             if timeout is not None:
                 podman_args.extend(["-t", str(timeout)])
@@ -107,9 +103,7 @@ async def compose_unpause(compose: Any, args: argparse.Namespace) -> None:
 async def compose_kill(compose: Any, args: argparse.Namespace) -> None:
     # to ensure that the user did not execute the command by mistake
     if not args.services and not args.all:
-        log.fatal(
-            "Error: you must provide at least one service name or use (--all) to kill all services"
-        )
+        log.fatal("Error: you must provide at least one service name or use (--all) to kill all services")
         sys.exit()
 
     container_names_by_service = compose.container_names_by_service

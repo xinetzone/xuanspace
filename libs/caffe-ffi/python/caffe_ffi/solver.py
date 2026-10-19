@@ -16,7 +16,7 @@ forward → backward (seeding the loss blob's gradient with ``[1.0]``) → weigh
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from collections.abc import Callable, Iterable
 
 import numpy as np
 
@@ -117,7 +117,7 @@ class SGD(Optimizer):
         super().__init__(lr, weight_decay)
         self.momentum = float(momentum)
         self.nesterov = bool(nesterov)
-        self._velocity: Dict[tuple, np.ndarray] = {}
+        self._velocity: dict[tuple, np.ndarray] = {}
 
     def step(self, net: Net) -> None:
         for layer, i, blob in _learnable_params(net):
@@ -180,8 +180,8 @@ class Adam(Optimizer):
         self.beta1 = float(beta1)
         self.beta2 = float(beta2)
         self.eps = float(eps)
-        self._m: Dict[tuple, np.ndarray] = {}
-        self._v: Dict[tuple, np.ndarray] = {}
+        self._m: dict[tuple, np.ndarray] = {}
+        self._v: dict[tuple, np.ndarray] = {}
         self._t: int = 0
 
     def step(self, net: Net) -> None:
@@ -189,8 +189,8 @@ class Adam(Optimizer):
         t = self._t
         b1 = self.beta1
         b2 = self.beta2
-        b1t = 1.0 - b1 ** t
-        b2t = 1.0 - b2 ** t
+        b1t = 1.0 - b1**t
+        b2t = 1.0 - b2**t
         for layer, i, blob in _learnable_params(net):
             key = (layer.name, i)
             grad = self._grad(blob)
@@ -241,7 +241,7 @@ class LRScheduler:
     def get_lr(self) -> float:
         raise NotImplementedError
 
-    def step(self, epoch: Optional[int] = None) -> float:
+    def step(self, epoch: int | None = None) -> float:
         """Advance the scheduler and update ``optimizer.lr``; returns the new lr."""
         if epoch is None:
             self.last_epoch += 1
@@ -270,7 +270,7 @@ class StepLR(LRScheduler):
 class MultiStepLR(LRScheduler):
     """Decay the learning rate by ``gamma`` at each milestone epoch."""
 
-    def __init__(self, optimizer: Optimizer, milestones: List[int], gamma: float = 0.1, last_epoch: int = -1):
+    def __init__(self, optimizer: Optimizer, milestones: list[int], gamma: float = 0.1, last_epoch: int = -1):
         super().__init__(optimizer, last_epoch)
         self.milestones = sorted(int(m) for m in milestones)
         self.gamma = float(gamma)
@@ -278,7 +278,7 @@ class MultiStepLR(LRScheduler):
     def get_lr(self) -> float:
         epoch = max(0, self.last_epoch)
         decays = sum(1 for m in self.milestones if epoch >= m)
-        return self.base_lr * (self.gamma ** decays)
+        return self.base_lr * (self.gamma**decays)
 
 
 class ExponentialLR(LRScheduler):
@@ -290,7 +290,7 @@ class ExponentialLR(LRScheduler):
 
     def get_lr(self) -> float:
         epoch = max(0, self.last_epoch)
-        return self.base_lr * (self.gamma ** epoch)
+        return self.base_lr * (self.gamma**epoch)
 
 
 class CosineAnnealingLR(LRScheduler):
@@ -338,15 +338,15 @@ class Solver:
         net: Net,
         optimizer: Optimizer,
         loss_blob: str = "loss",
-        metric_blob: Optional[str] = None,
-        scheduler: Optional[LRScheduler] = None,
+        metric_blob: str | None = None,
+        scheduler: LRScheduler | None = None,
     ):
         self.net = net
         self.optimizer = optimizer
         self.loss_blob = loss_blob
         self.metric_blob = metric_blob
         self.scheduler = scheduler
-        self.history: Dict[str, List[float]] = {
+        self.history: dict[str, list[float]] = {
             "loss": [],
             "metric": [],
             "lr": [],
@@ -357,7 +357,7 @@ class Solver:
         for layer in self.net.layers_array():
             layer.set_train_mode(bool(mode))
 
-    def step(self, inputs: Dict[str, np.ndarray]) -> float:
+    def step(self, inputs: dict[str, np.ndarray]) -> float:
         """Run one training step on a batch of inputs.
 
         Parameters
@@ -383,12 +383,12 @@ class Solver:
 
     def fit(
         self,
-        train_batches: Union[Iterable[Dict[str, np.ndarray]], Callable[[], Iterable[Dict[str, np.ndarray]]]],
+        train_batches: Iterable[dict[str, np.ndarray]] | Callable[[], Iterable[dict[str, np.ndarray]]],
         epochs: int = 1,
         do_validate: bool = False,
-        val_batches: Optional[Iterable[Dict[str, np.ndarray]]] = None,
+        val_batches: Iterable[dict[str, np.ndarray]] | None = None,
         log_interval: int = 10,
-    ) -> Dict[str, List[float]]:
+    ) -> dict[str, list[float]]:
         """Train the network for several epochs.
 
         Parameters
@@ -417,7 +417,7 @@ class Solver:
         if self.scheduler is not None:
             self.scheduler.step()
         for epoch in range(1, epochs + 1):
-            epoch_loss: List[float] = []
+            epoch_loss: list[float] = []
             source = train_batches() if callable(train_batches) else train_batches
             for step_idx, batch in enumerate(source, start=1):
                 loss = self.step(batch)
@@ -438,10 +438,10 @@ class Solver:
                     self.validate(val_batches)
         return self.history
 
-    def validate(self, val_batches: Iterable[Dict[str, np.ndarray]]) -> float:
+    def validate(self, val_batches: Iterable[dict[str, np.ndarray]]) -> float:
         """Run a validation pass; returns the mean metric (or loss) over batches."""
         self.train(False)
-        scores: List[float] = []
+        scores: list[float] = []
         for batch in val_batches:
             out = self.net.forward(batch)
             if self.metric_blob and self.metric_blob in out:

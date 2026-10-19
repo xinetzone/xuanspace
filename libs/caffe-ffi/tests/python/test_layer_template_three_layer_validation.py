@@ -24,19 +24,20 @@ Run with:
     pytest tests/python/test_layer_template_three_layer_validation.py -v
     pytest tests/python/test_layer_template_three_layer_validation.py -v -s  # verbose with [PERF] logs
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import net_param_from_string, net_from_param
-from .conftest import require_cpp_extension, perf_trace
+from caffe_ffi import net_from_param, net_param_from_string
 
+from .conftest import require_cpp_extension
 
 # ═══════════════════════════════════════════════════════════════════════
 # Numpy Reference Implementations（numpy-reference-first模式）
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def relu_np(x: np.ndarray, negative_slope: float = 0.0) -> np.ndarray:
     """Numpy reference for ReLU activation (NCHW format).
@@ -57,8 +58,8 @@ def relu_np(x: np.ndarray, negative_slope: float = 0.0) -> np.ndarray:
 # Prototxt helpers（separate-nets-independent-ops模式）
 # ═══════════════════════════════════════════════════════════════════════
 
-def _make_relu_net(negative_slope: float = 0.0,
-                   input_shape: tuple = (1, 1, 2, 2)) -> tuple:
+
+def _make_relu_net(negative_slope: float = 0.0, input_shape: tuple = (1, 1, 2, 2)) -> tuple:
     """Create a Net with a single ReLU layer.
 
     Args:
@@ -88,6 +89,7 @@ layer {{
 # Test Class
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @require_cpp_extension
 class TestReLULayers:
     """ReLU/LeakyReLU 层 forward 测试（三层验证法）。"""
@@ -97,10 +99,8 @@ class TestReLULayers:
     def test_known_values_identity(self, ptrace):
         """L1-1: 正数输入 → ReLU输出=输入（identity for positive values）。"""
         with ptrace("ReLU known: identity positive") as t:
-            net, in_name, out_name = _make_relu_net(negative_slope=0.0,
-                                                    input_shape=(1, 1, 2, 2))
-            inp = np.array([[[[1.0, 2.0],
-                              [3.0, 4.0]]]], dtype=np.float32)
+            net, in_name, out_name = _make_relu_net(negative_slope=0.0, input_shape=(1, 1, 2, 2))
+            inp = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
             t["negative_slope"] = 0.0
 
@@ -110,17 +110,14 @@ class TestReLULayers:
             t["output_shape"] = str(result.shape)
 
         # 手算期望值：正数原样通过
-        expected = np.array([[[[1.0, 2.0],
-                               [3.0, 4.0]]]], dtype=np.float32)
+        expected = np.array([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
         np.testing.assert_array_equal(result, expected)
 
     def test_known_values_zero_negative(self, ptrace):
         """L1-2: 负数输入 → 标准ReLU输出=0。"""
         with ptrace("ReLU known: zero negative") as t:
-            net, in_name, out_name = _make_relu_net(negative_slope=0.0,
-                                                    input_shape=(1, 1, 2, 2))
-            inp = np.array([[[[-1.0, -2.0],
-                              [-3.0, -0.5]]]], dtype=np.float32)
+            net, in_name, out_name = _make_relu_net(negative_slope=0.0, input_shape=(1, 1, 2, 2))
+            inp = np.array([[[[-1.0, -2.0], [-3.0, -0.5]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
 
             outputs = net.forward({in_name: inp})
@@ -132,10 +129,8 @@ class TestReLULayers:
     def test_known_values_leaky_relu(self, ptrace):
         """L1-3: LeakyReLU negative_slope=0.1 → 负数按斜率缩放。"""
         with ptrace("ReLU known: leaky slope=0.1") as t:
-            net, in_name, out_name = _make_relu_net(negative_slope=0.1,
-                                                    input_shape=(1, 1, 2, 2))
-            inp = np.array([[[[-10.0, 1.0],
-                              [-1.0, 0.0]]]], dtype=np.float32)
+            net, in_name, out_name = _make_relu_net(negative_slope=0.1, input_shape=(1, 1, 2, 2))
+            inp = np.array([[[[-10.0, 1.0], [-1.0, 0.0]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
             t["negative_slope"] = 0.1
 
@@ -143,15 +138,13 @@ class TestReLULayers:
             result = outputs[out_name]
 
         # 手算：x<0时输出 x*0.1
-        expected = np.array([[[[-1.0, 1.0],
-                               [-0.1, 0.0]]]], dtype=np.float32)
+        expected = np.array([[[[-1.0, 1.0], [-0.1, 0.0]]]], dtype=np.float32)
         np.testing.assert_allclose(result, expected, rtol=1e-6, atol=1e-7)
 
     def test_known_values_mixed_signs(self, ptrace):
         """L1-4: 混合正负值 + 零值精确验证。"""
         with ptrace("ReLU known: mixed signs+zero") as t:
-            net, in_name, out_name = _make_relu_net(negative_slope=0.0,
-                                                    input_shape=(1, 1, 1, 4))
+            net, in_name, out_name = _make_relu_net(negative_slope=0.0, input_shape=(1, 1, 1, 4))
             inp = np.array([[[[-2.0, 0.0, 0.5, 100.0]]]], dtype=np.float32)
             t["shape"] = str(inp.shape)
 
@@ -164,20 +157,22 @@ class TestReLULayers:
     # ── L2: Random Data Numpy Match 随机数据对比 ─────────────────────
 
     @pytest.mark.parametrize("negative_slope", [0.0, 0.01, 0.1, 0.5])
-    @pytest.mark.parametrize("shape", [
-        (1, 1, 3, 3),      # 最小可行
-        (2, 4, 5, 5),      # 标准验证
-        (1, 3, 1, 1),      # 1x1 spatial
-        (2, 8, 16, 16),    # 稍大张量
-    ])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (1, 1, 3, 3),  # 最小可行
+            (2, 4, 5, 5),  # 标准验证
+            (1, 3, 1, 1),  # 1x1 spatial
+            (2, 8, 16, 16),  # 稍大张量
+        ],
+    )
     def test_random_numpy_match(self, ptrace, negative_slope, shape):
         """L2: 固定seed随机输入，与numpy参考实现对比。"""
         rng = np.random.RandomState(42)  # 固定seed，避免偶发失败
         inp = rng.randn(*shape).astype(np.float32) * 2.0  # σ=2，覆盖正负范围
 
         with ptrace(f"ReLU random slope={negative_slope}") as t:
-            net, in_name, out_name = _make_relu_net(
-                negative_slope=negative_slope, input_shape=shape)
+            net, in_name, out_name = _make_relu_net(negative_slope=negative_slope, input_shape=shape)
             t["shape"] = str(shape)
             t["negative_slope"] = negative_slope
             t["input_range"] = f"[{inp.min():.2f}, {inp.max():.2f}]"
@@ -201,8 +196,7 @@ class TestReLULayers:
         inp = rng.randn(2, 4, 6, 6).astype(np.float32)
 
         with ptrace("ReLU determinism: 2x forward") as t:
-            net, in_name, out_name = _make_relu_net(
-                negative_slope=0.01, input_shape=(2, 4, 6, 6))
+            net, in_name, out_name = _make_relu_net(negative_slope=0.01, input_shape=(2, 4, 6, 6))
             t["shape"] = str(inp.shape)
 
             out1 = net.forward({in_name: inp})[out_name]
@@ -229,8 +223,7 @@ class TestReLULayers:
             # 第三次回到第一次输入，结果应与第一次相同
             out_a2 = net.forward({in_name: inp1})[out_name]
 
-        np.testing.assert_array_equal(out_a, out_a2,
-                                      err_msg="Forward is stateful!")
+        np.testing.assert_array_equal(out_a, out_a2, err_msg="Forward is stateful!")
         # 验证两次不同输入结果不同（非平凡测试）
         assert not np.array_equal(out_a, out_b), "Different inputs give same output?"
 
@@ -252,9 +245,7 @@ class TestReLULayers:
                     inp = rng.randn(*shape).astype(np.float32)
                     out = net.forward({in_name: inp})[out_name]
                     expected = relu_np(inp)
-                    np.testing.assert_allclose(
-                        out, expected, rtol=1e-6, atol=1e-7,
-                        err_msg=f"Round {round_i} failed")
+                    np.testing.assert_allclose(out, expected, rtol=1e-6, atol=1e-7, err_msg=f"Round {round_i} failed")
 
     # ── L4 (Optional): Boundary & Edge Cases 边界与极端输入 ──────────
 

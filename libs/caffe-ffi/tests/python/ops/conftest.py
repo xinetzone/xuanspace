@@ -23,7 +23,7 @@ import pytest
 logger = logging.getLogger(__name__)
 
 # Use relative import to avoid sys.path conflicts with networks/utils.py
-from . import utils as _utils_module  # noqa: F401
+from . import utils as _utils_module  # noqa: E402,F401  # 相对导入需在日志配置后执行
 
 # Verify that the L class (used by all ops tests) is available
 assert hasattr(_utils_module, "L"), "ops/utils.py does not define class L"

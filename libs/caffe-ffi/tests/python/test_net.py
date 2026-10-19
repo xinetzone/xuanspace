@@ -3,11 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import caffe_ffi
-from caffe_ffi import (
-    Net, Blob, Layer, caffe_pb2,
-    net_param_from_string, net_from_param
-)
+from caffe_ffi import Blob, Layer, Net, caffe_pb2, net_from_param, net_param_from_string
+
 from .conftest import require_cpp_extension
 
 
@@ -44,7 +41,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip1" top: "prob" }
         param = net_param_from_string(prototxt)
         assert param.name == "mlp"
         assert len(param.layer) == 3
-        layer_types = [l.type for l in param.layer]
+        layer_types = [layer.type for layer in param.layer]
         assert layer_types == ["InnerProduct", "ReLU", "Softmax"]
 
 
@@ -54,14 +51,14 @@ class TestNetBuild:
         param.name = "test_net"
         param.input.append("data")
         param.input_dim.extend([1, 3])
-        
+
         layer = param.layer.add()
         layer.name = "ip1"
         layer.type = "InnerProduct"
         layer.bottom.append("data")
         layer.top.append("ip1")
         layer.inner_product_param.num_output = 2
-        
+
         net = net_from_param(param)
         assert net.name == "test_net"
         assert len(net.blobs_array()) >= 2
@@ -179,6 +176,7 @@ class TestNetRepr:
 
 # ─── P1: Net boundary tests ──────────────────────────────────────
 
+
 class TestNetEmptyConstructor:
     """Boundary tests for Net() with no arguments (empty net)."""
 
@@ -186,7 +184,7 @@ class TestNetEmptyConstructor:
         """Net() with no args has empty name."""
         with ptrace("Net() empty constructor") as t:
             net = Net()
-            t['name'] = net.name
+            t["name"] = net.name
         assert net.name == ""
 
     def test_empty_net_no_blobs(self, ptrace):
@@ -194,7 +192,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + blobs_array()") as t:
             net = Net()
             n = len(net.blobs_array())
-            t['blobs'] = n
+            t["blobs"] = n
         assert n == 0
 
     def test_empty_net_no_layers(self, ptrace):
@@ -202,7 +200,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + layers_array()") as t:
             net = Net()
             n = len(net.layers_array())
-            t['layers'] = n
+            t["layers"] = n
         assert n == 0
 
     def test_empty_net_zero_inputs(self, ptrace):
@@ -210,7 +208,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + num_inputs()") as t:
             net = Net()
             n = net.num_inputs()
-            t['inputs'] = n
+            t["inputs"] = n
         assert n == 0
 
     def test_empty_net_zero_outputs(self, ptrace):
@@ -218,7 +216,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + num_outputs()") as t:
             net = Net()
             n = net.num_outputs()
-            t['outputs'] = n
+            t["outputs"] = n
         assert n == 0
 
     def test_empty_net_input_names_empty(self, ptrace):
@@ -261,7 +259,7 @@ class TestNetEmptyConstructor:
         """len(Net()) == 0."""
         with ptrace("Net() + len()") as t:
             net = Net()
-            t['len'] = len(net)
+            t["len"] = len(net)
         assert len(net) == 0
 
     def test_empty_net_iter_empty(self, ptrace):
@@ -269,7 +267,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + iter()") as t:
             net = Net()
             names = list(net)
-            t['names_count'] = len(names)
+            t["names_count"] = len(names)
         assert names == []
 
     def test_empty_net_contains_false(self, ptrace):
@@ -284,7 +282,7 @@ class TestNetEmptyConstructor:
         with ptrace("Net() + repr()") as t:
             net = Net()
             r = repr(net)
-            t['repr_len'] = len(r)
+            t["repr_len"] = len(r)
         assert "0 blobs" in r
         assert "0 layers" in r
 
@@ -324,10 +322,10 @@ class TestNetConstructorErrors:
         with ptrace("Net(whitespace) attempt") as t:
             try:
                 net = Net("   \n\t  ")
-                t['result'] = 'empty_net'
+                t["result"] = "empty_net"
                 assert len(net.layers_array()) == 0
-            except (ValueError, RuntimeError):
-                t['result'] = 'raised'
+            except ValueError, RuntimeError:
+                t["result"] = "raised"
                 pass
 
 
@@ -341,7 +339,7 @@ class TestNetForwardBoundaries:
             prototxt = """name: "input_only"
 layer { name: "data" type: "Input" top: "data" input_param { shape { dim: 2 dim: 3 } } }"""
             net = Net(prototxt)
-            t['blobs'] = len(net.blobs_array())
+            t["blobs"] = len(net.blobs_array())
         return net
 
     @pytest.fixture
@@ -356,17 +354,23 @@ layer { name: "ip2" type: "InnerProduct" bottom: "ip1" top: "ip2" inner_product_
 layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
             param = net_param_from_string(prototxt)
             net = net_from_param(param)
-            W1 = np.array([
-                [0.1, 0.2, 0.3],
-                [0.4, 0.5, 0.6],
-                [0.7, 0.8, 0.9],
-                [1.0, 1.1, 1.2],
-            ], dtype=np.float32)
+            W1 = np.array(
+                [
+                    [0.1, 0.2, 0.3],
+                    [0.4, 0.5, 0.6],
+                    [0.7, 0.8, 0.9],
+                    [1.0, 1.1, 1.2],
+                ],
+                dtype=np.float32,
+            )
             b1 = np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32)
-            W2 = np.array([
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-            ], dtype=np.float32)
+            W2 = np.array(
+                [
+                    [0.1, 0.2, 0.3, 0.4],
+                    [0.5, 0.6, 0.7, 0.8],
+                ],
+                dtype=np.float32,
+            )
             b2 = np.array([0.001, 0.002], dtype=np.float32)
             ip1 = net.layer_by_name("ip1")
             if len(ip1.blobs) >= 2:
@@ -376,29 +380,29 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
             if len(ip2.blobs) >= 2:
                 ip2.blobs[0].from_numpy(W2)
                 ip2.blobs[1].from_numpy(b2.reshape(-1))
-            t['layers'] = len(net.layers_array())
-            t['ip1_blobs'] = len(ip1.blobs)
+            t["layers"] = len(net.layers_array())
+            t["ip1_blobs"] = len(ip1.blobs)
         return net
 
     def test_forward_no_args(self, simple_input_net, ptrace):
         """forward() with no arguments does not crash."""
         with ptrace("forward() no args") as t:
             out = simple_input_net.forward()
-            t['out_keys'] = len(out)
+            t["out_keys"] = len(out)
         assert isinstance(out, dict)
 
     def test_forward_empty_dict(self, simple_input_net, ptrace):
         """forward({}) with empty dict does not crash."""
         with ptrace("forward({})") as t:
             out = simple_input_net.forward({})
-            t['out_keys'] = len(out)
+            t["out_keys"] = len(out)
         assert isinstance(out, dict)
 
     def test_forward_none_explicit(self, simple_input_net, ptrace):
         """forward(None) should not crash (treated as no inputs)."""
         with ptrace("forward(None)") as t:
             out = simple_input_net.forward(None)
-            t['out_keys'] = len(out)
+            t["out_keys"] = len(out)
         assert isinstance(out, dict)
 
     def test_forward_wrong_input_name_silently_ignored(self, simple_input_net, ptrace):
@@ -406,14 +410,14 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.zeros((2, 3), dtype=np.float32)
         with ptrace("forward({'nonexistent': ...})") as t:
             out = simple_input_net.forward({"nonexistent": inp})
-            t['out_keys'] = list(out.keys())
+            t["out_keys"] = list(out.keys())
         assert isinstance(out, dict)
 
     def test_forward_list_input_auto_converts(self, simple_input_net, ptrace):
         """forward accepts Python list input and converts to float32."""
         with ptrace("forward(list→float32)") as t:
             out = simple_input_net.forward({"data": [[1, 2, 3], [4, 5, 6]]})
-            t['dtype'] = str(out["data"].dtype)
+            t["dtype"] = str(out["data"].dtype)
         assert isinstance(out, dict)
         assert "data" in out
         assert out["data"].dtype == np.float32
@@ -423,7 +427,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64)
         with ptrace("forward(float64→float32)") as t:
             out = simple_input_net.forward({"data": inp})
-            t['dtype'] = str(out["data"].dtype)
+            t["dtype"] = str(out["data"].dtype)
         assert out["data"].dtype == np.float32
 
     def test_forward_int_input_converts(self, simple_input_net, ptrace):
@@ -431,7 +435,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
         with ptrace("forward(int32→float32)") as t:
             out = simple_input_net.forward({"data": inp})
-            t['dtype'] = str(out["data"].dtype)
+            t["dtype"] = str(out["data"].dtype)
         assert out["data"].dtype == np.float32
 
     def test_forward_returns_dict_of_numpy_arrays(self, mlp_net_loaded, ptrace):
@@ -439,7 +443,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         with ptrace("forward(MLP 2x3→prob)") as t:
             out = mlp_net_loaded.forward({"data": inp})
-            t['out_keys'] = list(out.keys())
+            t["out_keys"] = list(out.keys())
         assert isinstance(out, dict)
         for name, arr in out.items():
             assert isinstance(name, str)
@@ -450,7 +454,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         """forward_all() with no kwargs does not crash."""
         with ptrace("forward_all() no kwargs") as t:
             out = simple_input_net.forward_all()
-            t['out_keys'] = len(out)
+            t["out_keys"] = len(out)
         assert isinstance(out, dict)
 
     def test_forward_deterministic(self, mlp_net_loaded, ptrace):
@@ -459,9 +463,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         with ptrace("forward x2 (determinism check)") as t:
             out1 = mlp_net_loaded.forward({"data": inp})
             out2 = mlp_net_loaded.forward({"data": inp})
-            t['all_equal'] = all(
-                np.array_equal(out1[k], out2[k]) for k in out1
-            )
+            t["all_equal"] = all(np.array_equal(out1[k], out2[k]) for k in out1)
         for key in out1:
             np.testing.assert_array_equal(out1[key], out2[key])
 
@@ -481,7 +483,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.full((2, 3), np.nan, dtype=np.float32)
         with ptrace("forward(NaN input)") as t:
             out = mlp_net_loaded.forward({"data": inp})
-            t['out_keys'] = list(out.keys())
+            t["out_keys"] = list(out.keys())
         assert isinstance(out, dict)
 
     def test_forward_inf_input_no_crash(self, mlp_net_loaded, ptrace):
@@ -489,7 +491,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.full((2, 3), np.inf, dtype=np.float32)
         with ptrace("forward(Inf input)") as t:
             out = mlp_net_loaded.forward({"data": inp})
-            t['out_keys'] = list(out.keys())
+            t["out_keys"] = list(out.keys())
         assert isinstance(out, dict)
 
     def test_forward_zero_input(self, mlp_net_loaded, ptrace):
@@ -497,7 +499,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.zeros((2, 3), dtype=np.float32)
         with ptrace("forward(zeros) → softmax sums=1") as t:
             out = mlp_net_loaded.forward({"data": inp})
-            t['prob_sum'] = float(out["prob"].sum()) if "prob" in out else -1
+            t["prob_sum"] = float(out["prob"].sum()) if "prob" in out else -1
         if "prob" in out:
             prob = out["prob"]
             np.testing.assert_allclose(prob.sum(axis=1), np.array([1.0, 1.0]), rtol=1e-5)
@@ -553,7 +555,7 @@ class TestNetConsistency:
                 assert fetched.name == name
                 assert fetched.type == layer.type
                 count += 1
-            t['checked'] = count
+            t["checked"] = count
 
     def test_blob_by_name_consistent_with_blobs_array(self, mlp_net, ptrace):
         """blob_by_name returns blob with correct shape for known names."""
@@ -585,4 +587,3 @@ class TestNetConsistency:
             names = mlp_net.output_blob_names()
             blobs = mlp_net.output_blobs_array()
             assert len(names) == len(blobs)
-

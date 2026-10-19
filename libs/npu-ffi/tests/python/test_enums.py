@@ -1,7 +1,5 @@
 """Tests for VTA enum values - verify consistency with C++ definitions."""
 
-import pytest
-
 from npu_ffi import vta
 
 

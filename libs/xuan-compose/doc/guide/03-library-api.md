@@ -10,7 +10,7 @@ xuan-compose 首先是一个**库**，`xc` 只是它的 CLI 装配。库包导�
 from xuan_compose.engine import ComposeEngine
 from xuan_compose.cli.parser import parse_args
 
-engine = ComposeEngine()                 # 纯状态对象
+engine = ComposeEngine()  # 纯状态对象
 args = parse_args(engine, ["-f", "compose.yaml", "config", "--quiet"])
 print(args.command, args.file, args.quiet)
 # -> config ['compose.yaml'] True
@@ -22,9 +22,9 @@ print(args.command, args.file, args.quiet)
 ## 加载 compose 文件
 
 ```python
-engine._parse_compose_file()             # 发现 → 插值 → 合并 → 归一化
-print(engine.project_name)               # -> xc_demo（默认取目录名）
-print(sorted(engine.all_services))       # -> ['redis', 'web']
+engine._parse_compose_file()  # 发现 → 插值 → 合并 → 归一化
+print(engine.project_name)  # -> xc_demo（默认取目录名）
+print(sorted(engine.all_services))  # -> ['redis', 'web']
 ```
 
 以下实测来自一份包含 `nginx` 与 `redis` 两个服务、位于 `xc_demo/` 目录的

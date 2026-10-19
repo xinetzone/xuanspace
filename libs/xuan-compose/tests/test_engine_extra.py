@@ -182,18 +182,14 @@ class TestParseXPodmanSettings:
 
     def test_docker_compose_compat_fills_defaults(self) -> None:
         eng = _engine()
-        eng._parse_x_podman_settings(
-            {"x-podman": {"docker_compose_compat": True}}, {}
-        )
+        eng._parse_x_podman_settings({"x-podman": {"docker_compose_compat": True}}, {})
         assert eng.x_podman[XPodmanSettingKey.DEFAULT_NET_BEHAVIOR_COMPAT] is True
         assert eng.x_podman[XPodmanSettingKey.NAME_SEPARATOR_COMPAT] is True
         assert eng.x_podman[XPodmanSettingKey.IN_POD] is False
 
     def test_docker_compose_compat_does_not_override_explicit(self) -> None:
         eng = _engine()
-        eng._parse_x_podman_settings(
-            {"x-podman": {"docker_compose_compat": True, "in_pod": True}}, {}
-        )
+        eng._parse_x_podman_settings({"x-podman": {"docker_compose_compat": True, "in_pod": True}}, {})
         assert eng.x_podman[XPodmanSettingKey.IN_POD] is True
 
 
@@ -205,16 +201,12 @@ class TestResolveProfiles:
 
     def test_requested_profile_matches(self) -> None:
         eng = _engine()
-        out = eng._resolve_profiles(
-            {"a": {}, "b": {"profiles": ["debug"]}}, [], {"debug"}
-        )
+        out = eng._resolve_profiles({"a": {}, "b": {"profiles": ["debug"]}}, [], {"debug"})
         assert set(out) == {"a", "b"}
 
     def test_target_service_pulls_in_its_profiles(self) -> None:
         eng = _engine()
-        out = eng._resolve_profiles(
-            {"a": {"profiles": ["debug"]}}, ["a"], set()
-        )
+        out = eng._resolve_profiles({"a": {"profiles": ["debug"]}}, ["a"], set())
         assert set(out) == {"a"}
 
     def test_requested_profiles_defaults_to_empty_set(self) -> None:
@@ -262,9 +254,7 @@ class TestResolveContextDependencies:
             "b": {"build": {"context": "./b"}},
         }
         eng._resolve_context_dependencies(services)
-        assert services["a"]["build"]["additional_contexts"] == [
-            "s=docker://localhost/proj_b"
-        ]
+        assert services["a"]["build"]["additional_contexts"] == ["s=docker://localhost/proj_b"]
 
     def test_explicit_none_target_raises(self) -> None:
         eng = _engine()

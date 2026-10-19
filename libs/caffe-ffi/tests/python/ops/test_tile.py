@@ -1,6 +1,8 @@
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)

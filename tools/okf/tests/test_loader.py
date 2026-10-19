@@ -59,9 +59,7 @@ class TestLoadBundleTmpPath:
         (tmp_path / "log.md").write_text("# Log\n", encoding="utf-8")
         concept_dir = tmp_path / "concepts"
         concept_dir.mkdir()
-        (concept_dir / "foo.md").write_text(
-            "---\ntype: Metric\ntitle: Foo\n---\n# Foo\n", encoding="utf-8"
-        )
+        (concept_dir / "foo.md").write_text("---\ntype: Metric\ntitle: Foo\n---\n# Foo\n", encoding="utf-8")
 
         bundle = load_bundle(tmp_path)
         assert len(bundle.indices) == 1

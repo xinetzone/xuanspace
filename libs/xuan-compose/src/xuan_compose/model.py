@@ -58,16 +58,12 @@ class ServiceDependencyCondition(StrEnum):
         docker_to_podman_cond = {
             "service_healthy": ServiceDependencyCondition.HEALTHY,
             "service_started": ServiceDependencyCondition.RUNNING,
-            "service_completed_successfully": (
-                ServiceDependencyCondition.SERVICE_COMPLETED_SUCCESSFULLY
-            ),
+            "service_completed_successfully": (ServiceDependencyCondition.SERVICE_COMPLETED_SUCCESSFULLY),
         }
         try:
             return docker_to_podman_cond[value]
         except KeyError:
-            raise ValueError(
-                f"Value '{value}' is not a valid condition for a service dependency"
-            ) from None
+            raise ValueError(f"Value '{value}' is not a valid condition for a service dependency") from None
 
 
 class ServiceDependency:

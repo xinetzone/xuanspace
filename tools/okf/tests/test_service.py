@@ -48,9 +48,7 @@ def test_lookup_uses_provider_config_when_no_explicit_config():
     """未显式传 config 时使用 Provider 自身的 config。"""
     reg = ServiceRegistry()
     d = ServiceDefinition("svc", int)
-    reg.register(
-        ServiceProvider(d, lambda ctx, cfg: cfg["value"], config={"value": 99})
-    )
+    reg.register(ServiceProvider(d, lambda ctx, cfg: cfg["value"], config={"value": 99}))
     ctx = Context()
     assert reg.lookup("svc", ctx) == 99
     # 显式 config 覆盖 Provider config

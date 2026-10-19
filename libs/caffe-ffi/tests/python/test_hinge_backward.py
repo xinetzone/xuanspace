@@ -21,6 +21,7 @@ Mathematical reference (N samples, loss_weight L):
   dX_c    += L * (1/N) * [ z_c > 0 ? 2*z_c : 0 ]    (L2)
   dX_y    -=  sum_{c != y} dX_c
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -29,9 +30,10 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 1e-2  # float32 central-difference precision (matches _grad_check_utils)
 NUM_ATOL = 1e-3
 
@@ -39,6 +41,7 @@ NUM_ATOL = 1e-3
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_hinge_prototxt(N=1, C=3, H=1, W=1, norm="L1", axis=1):
     """Create Input(score) -> Input(label) -> Hinge prototxt."""
@@ -75,6 +78,7 @@ def _make_hinge_net(N=1, C=3, H=1, W=1, norm="L1", axis=1):
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
 
+
 def _hinge_forward_np(score, label, norm="L1"):
     """Forward reference: mean over samples of sum_c z_c (or z_c^2)."""
     score = np.asarray(score, dtype=np.float64)
@@ -88,7 +92,7 @@ def _hinge_forward_np(score, label, norm="L1"):
             z = relu(1.0 + score[i, :, j // W, j % W] - score[i, y, j // W, j % W])
             z[y] = 0.0  # exclude truth class
             if norm == "L2":
-                total += np.sum(z ** 2)
+                total += np.sum(z**2)
             else:
                 total += np.sum(z)
     return total / samples
@@ -142,6 +146,7 @@ def _num_grad(net, score, label, loss_weight=1.0, h=EPS):
 # ---------------------------------------------------------------------------
 # Tests: Hinge Forward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestHingeForward:
@@ -199,6 +204,7 @@ class TestHingeForward:
 # ---------------------------------------------------------------------------
 # Tests: Hinge Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestHingeGradient:
@@ -272,6 +278,7 @@ class TestHingeGradient:
 # ---------------------------------------------------------------------------
 # Tests: Hinge Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestHingeNumericalGradient:

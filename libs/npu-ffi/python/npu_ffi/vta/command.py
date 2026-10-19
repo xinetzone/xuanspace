@@ -1,6 +1,5 @@
 """Command handle and context management for VTA."""
 
-from typing import Optional
 from . import _ffi_api
 
 
@@ -34,14 +33,13 @@ class CommandContext:
             wait_cycles: Cycles to wait on synchronize (0 = wait forever).
         """
         self._wait_cycles = int(wait_cycles)
-        self._cmd: Optional[int] = None
+        self._cmd: int | None = None
 
     def __repr__(self) -> str:
         """Return string representation of CommandContext."""
         status = "active" if self._cmd is not None else "inactive"
         return (
-            f"CommandContext(cmd=0x{self._cmd:x}, wait_cycles={self._wait_cycles}, "
-            f"status={status})"
+            f"CommandContext(cmd=0x{self._cmd:x}, wait_cycles={self._wait_cycles}, status={status})"
             if self._cmd is not None
             else f"CommandContext(cmd=None, wait_cycles={self._wait_cycles}, status={status})"
         )

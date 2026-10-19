@@ -22,16 +22,17 @@ Mathematical reference (inference/use_global_stats mode):
   so there is no gradient flow through them. No blob gradients needed.
   Learnable gamma/beta are handled by a separate Scale layer.
 """
+
 from __future__ import annotations
 
 import textwrap
 
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
+from ._numpy_bn_reference import bn_backward
 from .conftest import require_cpp_extension
-from ._numpy_bn_reference import bn_forward, bn_backward, bn_get_inv_std
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -44,9 +45,10 @@ EPS_BN = 1e-5
 # Prototxt builder
 # ---------------------------------------------------------------------------
 
+
 def _make_bn_prototxt(input_dims, eps=1e-5, use_global_stats=True):
     """Create Input -> BatchNorm prototxt."""
-    dims_str = " ".join(str(d) for d in input_dims)
+    " ".join(str(d) for d in input_dims)
     return textwrap.dedent(f"""\
         name: "test_bn_bw"
         input: "data"
@@ -70,6 +72,7 @@ def _make_bn_prototxt(input_dims, eps=1e-5, use_global_stats=True):
 # ---------------------------------------------------------------------------
 # Network helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_bn_net(N, C, H, W, eps=EPS_BN):
     """Create Input->BatchNorm net with given dimensions and set blobs."""
@@ -96,6 +99,7 @@ def _run_bn_backward(net, x, dy, mean, var, count=1.0):
 # ---------------------------------------------------------------------------
 # Numerical gradient helper
 # ---------------------------------------------------------------------------
+
 
 def _num_grad_dx(net, x, mean, var, dy, count=1.0, eps_bn=EPS_BN, h=EPS_NUMERICAL):
     """Numerical gradient of L = sum(dy * bn_out) w.r.t. x via central differences."""
@@ -124,6 +128,7 @@ def _num_grad_dx(net, x, mean, var, dy, count=1.0, eps_bn=EPS_BN, h=EPS_NUMERICA
 # ---------------------------------------------------------------------------
 # Test Class 1: BatchNorm Backward core tests
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestBatchNormBackward:
@@ -244,13 +249,15 @@ class TestBatchNormBackward:
         dx_large = _run_bn_backward(net_large, x, dy, mean, var, count=1.0)
 
         # inv_std = 1/sqrt(0+eps), so larger eps → smaller inv_std → smaller dx
-        assert dx_large[0, 0, 0, 0] < dx_small[0, 0, 0, 0], \
-            f"Expected smaller grad with larger eps, got {dx_large[0,0,0,0]} vs {dx_small[0,0,0,0]}"
+        assert dx_large[0, 0, 0, 0] < dx_small[0, 0, 0, 0], (
+            f"Expected smaller grad with larger eps, got {dx_large[0, 0, 0, 0]} vs {dx_small[0, 0, 0, 0]}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Test Class 2: Multi-channel per-channel scaling
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestBatchNormBackwardMultiChannel:
@@ -275,6 +282,7 @@ class TestBatchNormBackwardMultiChannel:
 # Test Class 3: Scale factor (count != 1.0)
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestBatchNormBackwardScaleFactor:
     """Test BatchNorm backward with non-unit scale factor (count != 1.0)."""
@@ -285,7 +293,7 @@ class TestBatchNormBackwardScaleFactor:
         net = _make_bn_net(N, C, H, W, eps=0.0)
         x = np.random.randn(N, C, H, W).astype(np.float32) * 0.1
         mean = np.array([10.0], dtype=np.float32)  # eff_mean = 10/10 = 1.0
-        var = np.array([40.0], dtype=np.float32)    # eff_var = 40/10 = 4.0
+        var = np.array([40.0], dtype=np.float32)  # eff_var = 40/10 = 4.0
         count = 10.0
         dy = np.ones((N, C, H, W), dtype=np.float32)
 

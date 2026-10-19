@@ -8,10 +8,11 @@ gradients flow correctly from loss back through all layers to all parameters).
 """
 
 import textwrap
+
 import numpy as np
-import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
 
@@ -193,10 +194,9 @@ class TestP3DAllLayersEndToEnd:
             net.backward({"loss": np.array([1.0], dtype=np.float32)})
             _simple_sgd_update(net, lr=0.01)
 
-        assert losses[-1] < losses[0], \
-            f"Loss did not decrease: start={losses[0]:.4f}, end={losses[-1]:.4f}"
+        assert losses[-1] < losses[0], f"Loss did not decrease: start={losses[0]:.4f}, end={losses[-1]:.4f}"
 
-        assert all(np.isfinite(l) for l in losses), "NaN/Inf loss encountered during training"
+        assert all(np.isfinite(loss) for loss in losses), "NaN/Inf loss encountered during training"
 
     def test_p3d_softmax_independent_layer_probabilities(self):
         """Standalone Softmax layer produces valid probabilities (sum to 1)."""
@@ -237,10 +237,12 @@ class TestP3DAllLayersEndToEnd:
 
         # After Eltwise SUM with coeff=1 for both, both inputs should receive the same dy
         eltwise_diff = net.blob_by_name("eltwise_sum").diff
-        np.testing.assert_allclose(relu_main_diff, eltwise_diff, atol=1e-6,
-                                   err_msg="Eltwise SUM main branch gradient mismatch")
-        np.testing.assert_allclose(residual_diff, eltwise_diff, atol=1e-6,
-                                   err_msg="Eltwise SUM residual branch gradient mismatch")
+        np.testing.assert_allclose(
+            relu_main_diff, eltwise_diff, atol=1e-6, err_msg="Eltwise SUM main branch gradient mismatch"
+        )
+        np.testing.assert_allclose(
+            residual_diff, eltwise_diff, atol=1e-6, err_msg="Eltwise SUM residual branch gradient mismatch"
+        )
 
     def test_p3d_concat_gradient_splits(self):
         """Verify Concat splits gradient correctly to both input branches."""
@@ -265,10 +267,12 @@ class TestP3DAllLayersEndToEnd:
         assert np.all(np.isfinite(drop_diff)), "drop1 diff NaN/Inf"
         assert np.all(np.isfinite(branch_diff)), "relu_branch diff NaN/Inf"
 
-        np.testing.assert_allclose(concat_diff[:, :16], drop_diff, atol=1e-6,
-                                   err_msg="Concat main branch gradient mismatch")
-        np.testing.assert_allclose(concat_diff[:, 16:], branch_diff, atol=1e-6,
-                                   err_msg="Concat branch gradient mismatch")
+        np.testing.assert_allclose(
+            concat_diff[:, :16], drop_diff, atol=1e-6, err_msg="Concat main branch gradient mismatch"
+        )
+        np.testing.assert_allclose(
+            concat_diff[:, 16:], branch_diff, atol=1e-6, err_msg="Concat branch gradient mismatch"
+        )
 
     def test_p3d_dropout_identity_gradient_passthrough(self):
         """Dropout with ratio=0 acts as identity: dX = dy."""
@@ -284,8 +288,9 @@ class TestP3DAllLayersEndToEnd:
 
         bias_diff = net.blob_by_name("bias1").diff
         drop_diff = net.blob_by_name("drop1").diff
-        np.testing.assert_array_equal(drop_diff, bias_diff,
-                                      err_msg="Dropout (ratio=0) should pass gradient through unchanged")
+        np.testing.assert_array_equal(
+            drop_diff, bias_diff, err_msg="Dropout (ratio=0) should pass gradient through unchanged"
+        )
 
     def test_p3d_scale_bias_gradient_shapes_correct(self):
         """Scale and Bias layers produce gradients with correct shapes."""

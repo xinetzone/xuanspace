@@ -63,19 +63,19 @@ class TestIncludeDict(unittest.TestCase):
             yaml.safe_dump(content, f)
         self.test_files.append(name)
 
-    @parameterized.expand([
-        ("string", ["./test-compose-include.yaml"], ["base_web"]),
-        ("dict_path_string", [{"path": "./test-compose-include.yaml"}], ["base_web"]),
-        (
-            "dict_path_list",
-            [{"path": ["./test-compose-include.yaml", "./test-compose-include-2.yaml"]}],
-            ["base_web", "base_web-2"],
-        ),
-        ("empty", [{"path": []}], []),
-    ])
-    def test_parse_compose_file_include(
-        self, name: str, include_value: list, expected_included_services: list
-    ) -> None:
+    @parameterized.expand(
+        [
+            ("string", ["./test-compose-include.yaml"], ["base_web"]),
+            ("dict_path_string", [{"path": "./test-compose-include.yaml"}], ["base_web"]),
+            (
+                "dict_path_list",
+                [{"path": ["./test-compose-include.yaml", "./test-compose-include-2.yaml"]}],
+                ["base_web", "base_web-2"],
+            ),
+            ("empty", [{"path": []}], []),
+        ]
+    )
+    def test_parse_compose_file_include(self, name: str, include_value: list, expected_included_services: list) -> None:
         include_content = {"services": {"base_web": {"image": "nginx:alpine"}}}
         self.write_yaml("test-compose-include.yaml", include_content)
 
@@ -95,23 +95,23 @@ class TestIncludeDict(unittest.TestCase):
         for svc in expected_included_services:
             self.assertIn(svc, self.podman_compose.services)
 
-    @parameterized.expand([
-        ("not_a_list", {"path": {"./test-compose-include.yaml"}}, "`include` must be a list"),
-        (
-            "no_path_key",
-            [{"not_path": "./test-compose-include.yaml"}],
-            "Missing required 'path' key in `include` block",
-        ),
-        ("path_not_list_or_string", [{"path": {}}], "'path' must be a string or a list of strings"),
-        (
-            "item_wrong_format",
-            [["./test-compose-include.yaml"]],
-            "Items in `include` must be strings or dictionaries with a 'path' key",
-        ),
-    ])
-    def test_parse_compose_file_include_errors(
-        self, name: str, include_value: dict | list, exception_msg: str
-    ) -> None:
+    @parameterized.expand(
+        [
+            ("not_a_list", {"path": {"./test-compose-include.yaml"}}, "`include` must be a list"),
+            (
+                "no_path_key",
+                [{"not_path": "./test-compose-include.yaml"}],
+                "Missing required 'path' key in `include` block",
+            ),
+            ("path_not_list_or_string", [{"path": {}}], "'path' must be a string or a list of strings"),
+            (
+                "item_wrong_format",
+                [["./test-compose-include.yaml"]],
+                "Items in `include` must be strings or dictionaries with a 'path' key",
+            ),
+        ]
+    )
+    def test_parse_compose_file_include_errors(self, name: str, include_value: dict | list, exception_msg: str) -> None:
         main_content = {
             "include": include_value,
             "services": {"web": {"image": "alpine:latest"}},

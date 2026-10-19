@@ -35,12 +35,12 @@ async def list_running_projects(compose: Any, args: argparse.Namespace) -> None:
                 [
                     name,
                     "--format",
-                    '''
+                    """
                     {{ .State.Status }}
                     {{ .State.Running }}
                     {{ index .Config.Labels "com.docker.compose.project.working_dir" }}
                     {{ index .Config.Labels "com.docker.compose.project.config_files" }}
-                    ''',
+                    """,
                 ],
             )
             command_output = output.decode().split()

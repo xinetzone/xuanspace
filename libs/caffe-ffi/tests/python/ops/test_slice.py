@@ -16,8 +16,10 @@
 # under the License.
 
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,6 @@ def _slice_ref(x, axis=1, slice_point=None, ntop=2):
         dim_size = x.shape[axis]
         slice_size = dim_size // ntop
         slice_point = [slice_size * (i + 1) for i in range(ntop - 1)]
-    slices = []
     prev = 0
     slices_list = []
     for sp in slice_point:

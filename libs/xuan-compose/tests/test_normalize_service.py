@@ -90,11 +90,7 @@ class TestNormalizeService(unittest.TestCase):
                 },
             ),
             (
-                {
-                    "volumes": [
-                        {"type": "bind", "source": "./nested/relative", "target": "/mnt"}
-                    ]
-                },
+                {"volumes": [{"type": "bind", "source": "./nested/relative", "target": "/mnt"}]},
                 {
                     "volumes": [
                         {
@@ -120,17 +116,11 @@ class TestNormalizeService(unittest.TestCase):
             ),
             (
                 {"env_file": [{"path": "./.env", "required": False}]},
-                {
-                    "env_file": [
-                        {"path": os.path.join("./sub_dir", "./.env"), "required": False}
-                    ]
-                },
+                {"env_file": [{"path": os.path.join("./sub_dir", "./.env"), "required": False}]},
             ),
         ]
     )
-    def test_normalize_service_with_sub_dir(
-        self, input: dict[str, Any], expected: dict[str, Any]
-    ) -> None:
+    def test_normalize_service_with_sub_dir(self, input: dict[str, Any], expected: dict[str, Any]) -> None:
         self.assertEqual(normalize_service(input, sub_dir="./sub_dir"), expected)
 
     @parameterized.expand(
@@ -146,9 +136,7 @@ class TestNormalizeService(unittest.TestCase):
             ),
         ]
     )
-    def test_command_like(
-        self, input: list[str] | str, expected: list[str] | str
-    ) -> None:
+    def test_command_like(self, input: list[str] | str, expected: list[str] | str) -> None:
         for key in ["command", "entrypoint"]:
             input_service = {}
             input_service[key] = input
@@ -180,12 +168,8 @@ class TestNormalizeService(unittest.TestCase):
 
     def test_build_secrets_dict_raises(self) -> None:
         with self.assertRaises(PodmanComposeError) as context:
-            normalize_service(
-                {"build": {"context": ".", "secrets": {"my_secret": {"source": "my_secret"}}}}
-            )
-        self.assertEqual(
-            "ERROR: build.secrets must be a list, not a dict", str(context.exception)
-        )
+            normalize_service({"build": {"context": ".", "secrets": {"my_secret": {"source": "my_secret"}}}})
+        self.assertEqual("ERROR: build.secrets must be a list, not a dict", str(context.exception))
 
     def test_volumes_none_raises(self) -> None:
         with self.assertRaises(PodmanComposeError) as context:

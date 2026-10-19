@@ -26,9 +26,7 @@ DEFAULT_VENDOR = THIS.parents[5] / "vendor" / "podman-compose"
 
 
 def _upstream() -> pathlib.Path:
-    path = pathlib.Path(
-        os.environ.get("PODMAN_COMPOSE_SRC", DEFAULT_VENDOR)
-    ) / "podman_compose.py"
+    path = pathlib.Path(os.environ.get("PODMAN_COMPOSE_SRC", DEFAULT_VENDOR)) / "podman_compose.py"
     if not path.is_file():
         raise SystemExit(f"找不到上游源码: {path}（可用 PODMAN_COMPOSE_SRC 覆盖）")
     return path
@@ -52,9 +50,7 @@ def top_level_public(tree: ast.AST) -> tuple[dict[str, tuple[str, int]], dict[st
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and (
-                    target.id.isupper() or target.id.startswith("__")
-                ):
+                if isinstance(target, ast.Name) and (target.id.isupper() or target.id.startswith("__")):
                     consts.setdefault(target.id, node.lineno)
     return defs, consts
 
@@ -83,8 +79,12 @@ def main() -> None:
         if not loc:
             missing.append(f"{name} (L{lineno})")
     for name, lineno in sorted(consts.items()):
-        if name not in targets and name not in {"PODMAN_CMDS", "COMPOSE_DEFAULT_LS",
-                                               "STOP_GRACE_PERIOD", "__version__"}:
+        if name not in targets and name not in {
+            "PODMAN_CMDS",
+            "COMPOSE_DEFAULT_LS",
+            "STOP_GRACE_PERIOD",
+            "__version__",
+        }:
             missing.append(f"{name} (L{lineno})")
     print(f"无同名落点（须在 doc/dev/parity/differences.md 登记重命名/删除）: {len(missing)}")
     for item in missing:

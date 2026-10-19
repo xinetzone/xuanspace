@@ -30,9 +30,7 @@ __all__ = [
 ]
 
 
-def rec_deps(
-    services: dict[str, Any], service_name: str, start_point: str | None = None
-) -> set[ServiceDependency]:
+def rec_deps(services: dict[str, Any], service_name: str, start_point: str | None = None) -> set[ServiceDependency]:
     """
     return all dependencies of service_name recursively
     """
@@ -104,17 +102,13 @@ def flat_deps(services: dict[str, Any], with_extends: bool = False) -> None:
     calc_dependents(services)
 
 
-async def _validate_completed_successfully(
-    compose: Any, container_names: list[str]
-) -> None:
+async def _validate_completed_successfully(compose: Any, container_names: list[str]) -> None:
     # Poll until all containers have left the 'created' state
     # This prevents podman wait from racing against container startup
     last_log_time = 0.0
     while True:
         try:
-            statuses_raw = await compose.podman.output(
-                [], "inspect", ["--format={{.State.Status}}"] + container_names
-            )
+            statuses_raw = await compose.podman.output([], "inspect", ["--format={{.State.Status}}"] + container_names)
             statuses = statuses_raw.decode().split()
             if all(s != "created" for s in statuses if s):
                 break
@@ -141,16 +135,12 @@ async def _validate_completed_successfully(
         try:
             inspect_output = await compose.podman.output([], "inspect", [container_name])
         except CalledProcessError as exc:
-            raise RuntimeError(
-                f"Container {container_name} disappeared after waiting for stop"
-            ) from exc
+            raise RuntimeError(f"Container {container_name} disappeared after waiting for stop") from exc
         container_info = json.loads(inspect_output)[0]
 
         exit_code = container_info.get("State", {}).get("ExitCode", -1)
         if exit_code != 0:
-            error_msg = (
-                f"Container {container_name} didn't complete successfully: exit code {exit_code}"
-            )
+            error_msg = f"Container {container_name} didn't complete successfully: exit code {exit_code}"
             log.error(error_msg)
             raise RuntimeError(error_msg)
 
@@ -164,12 +154,8 @@ async def check_dep_conditions(compose: Any, deps: set) -> None:
         deps_cd = []
         for d in deps:
             if d.condition == condition:
-                if (
-                    d.condition
-                    in (ServiceDependencyCondition.HEALTHY, ServiceDependencyCondition.UNHEALTHY)
-                ) and (
-                    compose.podman_version is not None
-                    and strverscmp_lt(compose.podman_version, "4.6.0")
+                if (d.condition in (ServiceDependencyCondition.HEALTHY, ServiceDependencyCondition.UNHEALTHY)) and (
+                    compose.podman_version is not None and strverscmp_lt(compose.podman_version, "4.6.0")
                 ):
                     log.warning(
                         "Ignored %s condition check due to podman %s doesn't support %s!",
@@ -183,17 +169,13 @@ async def check_dep_conditions(compose: Any, deps: set) -> None:
 
         if deps_cd:
 
-            async def wait_one(
-                d_cnt: str, condition: ServiceDependencyCondition = condition
-            ) -> None:
+            async def wait_one(d_cnt: str, condition: ServiceDependencyCondition = condition) -> None:
                 while True:
                     try:
                         if condition == ServiceDependencyCondition.SERVICE_COMPLETED_SUCCESSFULLY:
                             await _validate_completed_successfully(compose, [d_cnt])
                         else:
-                            await compose.podman.output(
-                                [], "wait", [f"--condition={condition.value}", d_cnt]
-                            )
+                            await compose.podman.output([], "wait", [f"--condition={condition.value}", d_cnt])
                         log.debug(
                             "dependency for condition %s has been fulfilled on container %s",
                             condition.value,
@@ -201,9 +183,7 @@ async def check_dep_conditions(compose: Any, deps: set) -> None:
                         )
                         break
                     except CalledProcessError as _exc:
-                        output = list(
-                            ((_exc.stdout or b"") + (_exc.stderr or b"")).decode().split("\n")
-                        )
+                        output = list(((_exc.stdout or b"") + (_exc.stderr or b"")).decode().split("\n"))
                         log.debug(
                             'Podman wait returned an error (%d) when executing "%s": %s',
                             _exc.returncode,

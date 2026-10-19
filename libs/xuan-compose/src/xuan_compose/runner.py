@@ -62,9 +62,7 @@ def is_podman_connection_error(returncode: int, stderr: bytes) -> bool:
     """
     if returncode == 0:
         return False
-    return returncode == CONNECTION_REFUSED_EXIT_CODE and any(
-        marker in stderr for marker in _CONNECTION_ERROR_MARKERS
-    )
+    return returncode == CONNECTION_REFUSED_EXIT_CODE and any(marker in stderr for marker in _CONNECTION_ERROR_MARKERS)
 
 
 async def wait_with_timeout(coro: Any, timeout: int | float) -> Any:
@@ -110,9 +108,7 @@ class Podman:
         self.dry_run = dry_run
         self.semaphore = semaphore
 
-    async def output(
-        self, podman_args: list[str], cmd: str = "", cmd_args: list[str] | None = None
-    ) -> bytes:
+    async def output(self, podman_args: list[str], cmd: str = "", cmd_args: list[str] | None = None) -> bytes:
         async with self.semaphore:
             cmd_args = cmd_args or []
             xargs = self.compose.get_podman_args(cmd) if cmd else []
@@ -152,9 +148,7 @@ class Podman:
         except asyncio.LimitOverrunError as e:
             return await reader.read(e.consumed)
 
-    async def _format_stream(
-        self, reader: asyncio.StreamReader, sink: Any, log_formatter: str
-    ) -> None:
+    async def _format_stream(self, reader: asyncio.StreamReader, sink: Any, log_formatter: str) -> None:
         line_ongoing = False
         decoder = codecs.getincrementaldecoder("utf-8")()
 
@@ -247,15 +241,11 @@ class Podman:
 
                 # This is hacky to make the tasks not get garbage collected
                 # https://github.com/python/cpython/issues/91887
-                out_t = asyncio.create_task(
-                    self._format_stream(p.stdout, sys.stdout, log_formatter)
-                )
+                out_t = asyncio.create_task(self._format_stream(p.stdout, sys.stdout, log_formatter))
                 task_reference.add(out_t)
                 out_t.add_done_callback(task_reference.discard)
 
-                err_t = asyncio.create_task(
-                    self._format_stream(p.stderr, sys.stdout, log_formatter)
-                )
+                err_t = asyncio.create_task(self._format_stream(p.stderr, sys.stdout, log_formatter))
                 task_reference.add(err_t)
                 err_t.add_done_callback(task_reference.discard)
 
@@ -363,7 +353,7 @@ class Podman:
         """
         try:
             await self.output(["info", "--format", "{{.Host.Arch}}"])
-        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
+        except CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError:
             return False
         return True
 
@@ -375,7 +365,7 @@ class Podman:
         """
         try:
             raw = await self.output(["machine", "list", "--format", "json"])
-        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
+        except CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError:
             return []
         try:
             data = json.loads(raw)
@@ -423,8 +413,7 @@ class Podman:
 
         if default.get("Starting") is not True:
             print(
-                f"Podman service is unreachable; starting podman machine '{name}' "
-                "(this may take a while) ...",
+                f"Podman service is unreachable; starting podman machine '{name}' (this may take a while) ...",
                 file=sys.stderr,
             )
             try:

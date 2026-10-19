@@ -122,9 +122,7 @@ async def run_container(
     )
 
 
-async def wait_for_container_running_healthy(
-    compose: Any, args: argparse.Namespace
-) -> None:
+async def wait_for_container_running_healthy(compose: Any, args: argparse.Namespace) -> None:
     if compose.podman_version is not None and strverscmp_lt(compose.podman_version, "4.6.0"):
         log.warning("Ignore --wait due to podman %s doesn't support it!", compose.podman_version)
         return
@@ -195,10 +193,7 @@ async def compose_up(compose: Any, args: argparse.Namespace) -> int | None:
 
     if existing_containers:
         if args.force_recreate and args.no_recreate:
-            log.error(
-                "Cannot use --force-recreate and --no-recreate at the same time, "
-                "please remove one of them"
-            )
+            log.error("Cannot use --force-recreate and --no-recreate at the same time, please remove one of them")
             return 1
 
         if not args.no_recreate:
@@ -208,35 +203,26 @@ async def compose_up(compose: Any, args: argparse.Namespace) -> int | None:
             # resolve current local image IDs for services with running containers
             current_image_ids: dict[str, str] = {}
             for c in existing_containers.values():
-                if (
-                    c.service_name in excluded
-                    or c.service_name not in compose.services
-                    or not c.image_id
-                ):
+                if c.service_name in excluded or c.service_name not in compose.services or not c.image_id:
                     continue
                 service = compose.services[c.service_name]
                 image = service.get("image")
                 if image and image not in current_image_ids:
                     try:
-                        img_id = await compose.podman.output(
-                            [], "inspect", ["-t", "image", "-f", "{{.Id}}", image]
-                        )
+                        img_id = await compose.podman.output([], "inspect", ["-t", "image", "-f", "{{.Id}}", image])
                         current_image_ids[image] = img_id.decode().strip()
                     except CalledProcessError:
                         pass
 
             for c in existing_containers.values():
                 if (
-                    c.service_name in excluded
-                    or c.service_name not in compose.services  # orphaned container
+                    c.service_name in excluded or c.service_name not in compose.services  # orphaned container
                 ):
                     continue
 
                 service = compose.services[c.service_name]
                 force_this = args.force_recreate and (
-                    not requested_services
-                    or c.service_name in requested_services
-                    or always_recreate_deps
+                    not requested_services or c.service_name in requested_services or always_recreate_deps
                 )
 
                 image_changed = False
@@ -257,9 +243,7 @@ async def compose_up(compose: Any, args: argparse.Namespace) -> int | None:
                     # Running dependents of service are removed by down command
                     # so we need to recreate and start them too
                     dependents = {
-                        dep.name
-                        for dep in service.get(DependField.DEPENDENTS, [])
-                        if dep.name in running_services
+                        dep.name for dep in service.get(DependField.DEPENDENTS, []) if dep.name in running_services
                     }
                     if dependents:
                         log.debug(
@@ -277,9 +261,7 @@ async def compose_up(compose: Any, args: argparse.Namespace) -> int | None:
 
         if teardown_needed:
             log.info("tearing down existing containers: ...")
-            down_args = argparse.Namespace(
-                **dict(args.__dict__, volumes=False, rmi=None, services=recreate_services)
-            )
+            down_args = argparse.Namespace(**dict(args.__dict__, volumes=False, rmi=None, services=recreate_services))
             await compose.commands["down"](compose, down_args)
             log.info("tearing down existing containers: done\n\n")
 
@@ -450,9 +432,7 @@ async def compose_down(compose: Any, args: argparse.Namespace) -> None:
         if timeout is not None:
             podman_stop_args.extend(["-t", str(timeout)])
         down_tasks.append(
-            asyncio.create_task(
-                compose.podman.run([], "stop", [*podman_stop_args, cnt["name"]]), name=cnt["name"]
-            )
+            asyncio.create_task(compose.podman.run([], "stop", [*podman_stop_args, cnt["name"]]), name=cnt["name"])
         )
     await asyncio.gather(*down_tasks)
     for cnt in containers:

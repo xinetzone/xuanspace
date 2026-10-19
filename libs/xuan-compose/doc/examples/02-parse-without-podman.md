@@ -62,7 +62,7 @@ print("services =", sorted(engine.all_services))
 
 # 3) 读取归一化后的服务模型
 web = engine.services["web"]
-print("web ports =", web["ports"])                                  # 插值已生效
+print("web ports =", web["ports"])  # 插值已生效
 print("depends_on =", json.dumps(web["depends_on"], ensure_ascii=False))
 print("environment =", web["environment"])
 print("volumes =", sorted(engine.vols))

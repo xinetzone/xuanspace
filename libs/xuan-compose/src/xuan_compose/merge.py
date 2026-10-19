@@ -149,9 +149,7 @@ def rec_merge_one(target: dict[str, Any], source: dict[str, Any]) -> dict[str, A
             continue
 
         if isinstance(value, OverrideTag) or isinstance(value2, OverrideTag):
-            target[key] = (
-                clone(value2.value) if isinstance(value2, OverrideTag) else clone(value.value)
-            )
+            target[key] = clone(value2.value) if isinstance(value2, OverrideTag) else clone(value.value)
             continue
 
         if key in ("command", "entrypoint"):
@@ -183,9 +181,7 @@ def rec_merge_one(target: dict[str, Any], source: dict[str, Any]) -> dict[str, A
             if key == "volumes":
                 # clean duplicate mount targets
                 pts = {v.split(":", 2)[1] for v in value2 if ":" in v}
-                del_ls = [
-                    ix for (ix, v) in enumerate(value) if ":" in v and v.split(":", 2)[1] in pts
-                ]
+                del_ls = [ix for (ix, v) in enumerate(value) if ":" in v and v.split(":", 2)[1] in pts]
                 for ix in reversed(del_ls):
                     del value[ix]
                 value.extend(value2)

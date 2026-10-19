@@ -1,13 +1,11 @@
 """npu_ffi.vta - VTA runtime Python API."""
 
 import enum
-from typing import Any, Union
 
-from . import _ffi_api
+from . import _ffi_api, proto_io
 from .buffer import Buffer
 from .command import CommandContext, command_handle
-from .config import VTAConfig, get_default_config, validate_config, DEFAULT_CONFIGS
-from . import proto_io
+from .config import DEFAULT_CONFIGS, VTAConfig, get_default_config, validate_config
 
 __version__ = "0.1.0"
 
@@ -47,12 +45,12 @@ class ALUOpcode(enum.IntEnum):
 
 
 def buffer_copy_safe(
-    from_buf: Union[int, Buffer],
+    from_buf: int | Buffer,
     from_offset: int,
-    to_buf: Union[int, Buffer],
+    to_buf: int | Buffer,
     to_offset: int,
     size: int,
-    kind: Union[int, MemcpyKind],
+    kind: int | MemcpyKind,
 ) -> None:
     """Type-safe buffer copy accepting MemcpyKind enum.
 
@@ -66,11 +64,9 @@ def buffer_copy_safe(
     """
     if isinstance(kind, MemcpyKind):
         kind = int(kind)
-    from_ptr = int(from_buf.data) if hasattr(from_buf, 'data') else int(from_buf)
-    to_ptr = int(to_buf.data) if hasattr(to_buf, 'data') else int(to_buf)
-    _ffi_api.buffer_copy(
-        from_ptr, int(from_offset), to_ptr, int(to_offset), int(size), int(kind)
-    )
+    from_ptr = int(from_buf.data) if hasattr(from_buf, "data") else int(from_buf)
+    to_ptr = int(to_buf.data) if hasattr(to_buf, "data") else int(to_buf)
+    _ffi_api.buffer_copy(from_ptr, int(from_offset), to_ptr, int(to_offset), int(size), int(kind))
 
 
 def get_command_handle() -> int:
@@ -105,16 +101,38 @@ prepare_call_func = _ffi_api.prepare_call_func
 
 __all__ = [
     "__version__",
-    "DebugFlag", "MemcpyKind", "MemoryType", "ALUOpcode",
-    "Buffer", "CommandContext", "command_handle", "get_command_handle",
-    "VTAConfig", "get_default_config", "validate_config", "DEFAULT_CONFIGS",
+    "DebugFlag",
+    "MemcpyKind",
+    "MemoryType",
+    "ALUOpcode",
+    "Buffer",
+    "CommandContext",
+    "command_handle",
+    "get_command_handle",
+    "VTAConfig",
+    "get_default_config",
+    "validate_config",
+    "DEFAULT_CONFIGS",
     "proto_io",
-    "buffer_alloc", "buffer_free", "buffer_copy", "buffer_copy_safe", "buffer_cpu_ptr",
-    "tls_command_handle", "runtime_shutdown", "set_debug_mode",
-    "load_buffer_2d", "store_buffer_2d",
-    "uop_push", "uop_loop_begin", "uop_loop_end",
-    "push_gemm_op", "push_alu_op",
-    "dep_push", "dep_pop",
-    "synchronize", "write_barrier", "read_barrier",
+    "buffer_alloc",
+    "buffer_free",
+    "buffer_copy",
+    "buffer_copy_safe",
+    "buffer_cpu_ptr",
+    "tls_command_handle",
+    "runtime_shutdown",
+    "set_debug_mode",
+    "load_buffer_2d",
+    "store_buffer_2d",
+    "uop_push",
+    "uop_loop_begin",
+    "uop_loop_end",
+    "push_gemm_op",
+    "push_alu_op",
+    "dep_push",
+    "dep_pop",
+    "synchronize",
+    "write_barrier",
+    "read_barrier",
     "prepare_call_func",
 ]

@@ -23,23 +23,23 @@ import textwrap
 import numpy as np
 import pytest
 
-from caffe_ffi import Net
+from .caffe_test_helpers import avoid_c1_discontinuity, make_net
 from .conftest import require_cpp_extension
-from .caffe_test_helpers import make_net, avoid_c1_discontinuity
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-EPS = 1e-3                 # central finite-difference step
-FWD_RTOL = 1e-4            # forward numpy-reference tolerance
+EPS = 1e-3  # central finite-difference step
+FWD_RTOL = 1e-4  # forward numpy-reference tolerance
 FWD_ATOL = 1e-4
-NUM_RTOL = 1e-3            # numerical-gradient tolerance
+NUM_RTOL = 1e-3  # numerical-gradient tolerance
 NUM_ATOL = 1e-4
 
 
 # ---------------------------------------------------------------------------
 # Prototxt builder + shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_proto(layer_type, params="", shape=(2, 3)):
     """Build an Input(N,C,...) -> <layer_type> prototxt."""
@@ -91,6 +91,7 @@ def _analytic_grad(net, out_name, x, dy):
 # ---------------------------------------------------------------------------
 # Threshold
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestThreshold:
@@ -145,12 +146,13 @@ class TestThreshold:
 # Power
 # ---------------------------------------------------------------------------
 
+
 @require_cpp_extension
 class TestPower:
     """Power: y = (scale*x + shift) ** power."""
 
     def _make_net(self, power=1.0, scale=1.0, shift=0.0):
-        params = (f"power_param {{ power: {power} scale: {scale} shift: {shift} }}")
+        params = f"power_param {{ power: {power} scale: {scale} shift: {shift} }}"
         return make_net(_make_proto("Power", params))
 
     def test_forward_default_identity(self):
@@ -165,7 +167,7 @@ class TestPower:
         net = self._make_net(2.0, 1.0, 0.0)
         x = np.random.RandomState(2).randn(2, 3).astype(np.float32) * 2.0
         out = net.forward({"data": x})["out"]
-        np.testing.assert_allclose(out, x ** 2, rtol=FWD_RTOL, atol=FWD_ATOL)
+        np.testing.assert_allclose(out, x**2, rtol=FWD_RTOL, atol=FWD_ATOL)
 
     def test_forward_scale_shift(self):
         """power=3, scale=2, shift=1 => y = (2x + 1)^3."""
@@ -182,14 +184,14 @@ class TestPower:
         dy = rng.randn(*x.shape).astype(np.float32)
         dx = _analytic_grad(net, "out", x, dy)
         t = 1.5 * x + 0.5
-        expected = dy * (2.0 * 1.5 * t ** 1.0)
+        expected = dy * (2.0 * 1.5 * t**1.0)
         np.testing.assert_allclose(dx, expected, rtol=1e-4, atol=1e-5)
 
     def test_numerical_gradient(self):
         """power=2 (smooth, no kink): dx == central difference."""
         net = self._make_net(2.0, 1.5, 0.5)
         rng = np.random.RandomState(13)
-        x = (rng.rand(2, 3).astype(np.float32) * 1.5) + 0.3   # base positive, no power-kink
+        x = (rng.rand(2, 3).astype(np.float32) * 1.5) + 0.3  # base positive, no power-kink
         dy = rng.randn(*x.shape).astype(np.float32)
         dx_analytic = _analytic_grad(net, "out", x, dy)
         dx_numeric = _num_grad(net, "out", x, dy)
@@ -205,6 +207,7 @@ class TestPower:
 # ---------------------------------------------------------------------------
 # BNLL (softplus)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestBNLL:
@@ -227,9 +230,15 @@ class TestBNLL:
         net = self._make_net()
         x = np.array([0.0, 1.0, -1.0, 2.0, -2.0], dtype=np.float32).reshape(1, 5)
         expected = np.array(
-            [np.log(2.0), np.log(1.0 + np.e), np.log(1.0 + np.exp(-1.0)),
-             np.log(1.0 + np.exp(2.0)), np.log(1.0 + np.exp(-2.0))],
-            dtype=np.float32).reshape(1, 5)
+            [
+                np.log(2.0),
+                np.log(1.0 + np.e),
+                np.log(1.0 + np.exp(-1.0)),
+                np.log(1.0 + np.exp(2.0)),
+                np.log(1.0 + np.exp(-2.0)),
+            ],
+            dtype=np.float32,
+        ).reshape(1, 5)
         out = net.forward({"data": x})["out"]
         np.testing.assert_allclose(out, expected, rtol=1e-5, atol=1e-5)
 
@@ -272,6 +281,7 @@ class TestBNLL:
 # ---------------------------------------------------------------------------
 # Clip
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestClip:
@@ -319,7 +329,7 @@ class TestClip:
         """Interior region, kinks at min/max pushed away."""
         net = self._make_net(-1.0, 1.0)
         rng = np.random.RandomState(13)
-        x = (rng.rand(2, 3).astype(np.float32) - 0.5) * 1.0   # in (-0.5, 0.5)
+        x = (rng.rand(2, 3).astype(np.float32) - 0.5) * 1.0  # in (-0.5, 0.5)
         x = avoid_c1_discontinuity(x, h=EPS, kink_points=(-1.0, 1.0))
         dy = rng.randn(*x.shape).astype(np.float32)
         dx_analytic = _analytic_grad(net, "out", x, dy)
@@ -336,6 +346,7 @@ class TestClip:
 # ---------------------------------------------------------------------------
 # Exp
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestExp:
@@ -357,7 +368,7 @@ class TestExp:
         net = self._make_net(3.0, 1.0, 0.0)
         x = np.random.RandomState(2).randn(2, 3).astype(np.float32)
         out = net.forward({"data": x})["out"]
-        np.testing.assert_allclose(out, 3.0 ** x, rtol=FWD_RTOL, atol=FWD_ATOL)
+        np.testing.assert_allclose(out, 3.0**x, rtol=FWD_RTOL, atol=FWD_ATOL)
 
     def test_forward_scale_shift(self):
         """base=-1, scale=2, shift=1 => y = e * exp(2x)."""
@@ -396,6 +407,7 @@ class TestExp:
 # ---------------------------------------------------------------------------
 # Log
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestLog:
@@ -461,6 +473,7 @@ class TestLog:
 # ---------------------------------------------------------------------------
 # Swish
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestSwish:

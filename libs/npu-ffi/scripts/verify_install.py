@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import sys
 import importlib.metadata as im
+import sys
 
 
 def _check_env() -> list[tuple[str, bool, str]]:
@@ -10,13 +10,16 @@ def _check_env() -> list[tuple[str, bool, str]]:
     kmp_ok = True
     if sys.platform.startswith("win"):
         import os
+
         kmp_val = os.environ.get("KMP_DUPLICATE_LIB_OK", "")
         kmp_ok = kmp_val.upper() == "TRUE"
-        results.append((
-            "KMP_DUPLICATE_LIB_OK 环境变量",
-            kmp_ok,
-            "已设置为 TRUE" if kmp_ok else f"未设置或值不正确: {kmp_val!r} (Windows 必须设置为 TRUE)"
-        ))
+        results.append(
+            (
+                "KMP_DUPLICATE_LIB_OK 环境变量",
+                kmp_ok,
+                "已设置为 TRUE" if kmp_ok else f"未设置或值不正确: {kmp_val!r} (Windows 必须设置为 TRUE)",
+            )
+        )
     else:
         results.append(("KMP_DUPLICATE_LIB_OK 环境变量", True, "非 Windows 平台，无需设置"))
 
@@ -29,8 +32,9 @@ def _check_python_version() -> tuple[str, bool, str]:
     return (
         "Python 版本",
         ok,
-        f"{version.major}.{version.minor}.{version.micro} (要求 >= 3.14)" if ok
-        else f"{version.major}.{version.minor}.{version.micro} (版本过低，要求 >= 3.14)"
+        f"{version.major}.{version.minor}.{version.micro} (要求 >= 3.14)"
+        if ok
+        else f"{version.major}.{version.minor}.{version.micro} (版本过低，要求 >= 3.14)",
     )
 
 
@@ -46,6 +50,7 @@ def _check_package(pkg_name: str) -> tuple[str, bool, str]:
 def _check_tvm_ffi_import() -> tuple[str, bool, str]:
     try:
         import tvm_ffi
+
         version = getattr(tvm_ffi, "__version__", "unknown")
         return ("tvm_ffi 导入", True, f"成功，版本: {version}")
     except Exception as e:
@@ -55,6 +60,7 @@ def _check_tvm_ffi_import() -> tuple[str, bool, str]:
 def _check_npu_ffi_import() -> tuple[str, bool, str]:
     try:
         import npu_ffi
+
         version = getattr(npu_ffi, "__version__", "unknown")
         return ("npu_ffi 导入", True, f"成功，版本: {version}")
     except Exception as e:
@@ -64,13 +70,14 @@ def _check_npu_ffi_import() -> tuple[str, bool, str]:
 def _check_vta_import() -> tuple[str, bool, str]:
     try:
         from npu_ffi import vta
+
         version = getattr(vta, "__version__", "unknown")
         has_buffer_alloc = hasattr(vta, "buffer_alloc")
         has_command = hasattr(vta, "tls_command_handle")
         return (
             "vta FFI 模块导入",
             True,
-            f"成功，版本: {version}，buffer_alloc: {has_buffer_alloc}，tls_command_handle: {has_command}"
+            f"成功，版本: {version}，buffer_alloc: {has_buffer_alloc}，tls_command_handle: {has_command}",
         )
     except Exception as e:
         return ("vta FFI 模块导入", False, f"失败: {e!r}")
@@ -79,6 +86,7 @@ def _check_vta_import() -> tuple[str, bool, str]:
 def _check_buffer_alloc() -> tuple[str, bool, str]:
     try:
         from npu_ffi import vta
+
         buf_size = 1024
         buf = vta.buffer_alloc(buf_size)
         vta.buffer_free(buf)
@@ -90,8 +98,9 @@ def _check_buffer_alloc() -> tuple[str, bool, str]:
 def _check_command_context() -> tuple[str, bool, str]:
     try:
         from npu_ffi.vta import CommandContext
+
         with CommandContext() as cmd:
-            handle = cmd if isinstance(cmd, int) else getattr(cmd, 'handle', None)
+            cmd if isinstance(cmd, int) else getattr(cmd, "handle", None)
         return ("CommandContext 上下文管理器", True, "成功")
     except Exception as e:
         return ("CommandContext 上下文管理器", False, f"失败: {e!r}")

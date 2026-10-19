@@ -25,6 +25,7 @@ Usage examples:
     python grad_regression_cli.py --prototxt net.prototxt \\
         --input data --output pool --dims 1 1 4 4 --json result.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +34,9 @@ import json
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -65,6 +67,7 @@ LOG = logging.getLogger("grad_regression_cli")
 # Prototxt loading
 # ---------------------------------------------------------------------------
 
+
 def _load_prototxt(source: str) -> str:
     """Load prototxt from file path or stdin marker ('-')."""
     if source == "-":
@@ -79,21 +82,18 @@ def _load_prototxt(source: str) -> str:
 # Reference function loader
 # ---------------------------------------------------------------------------
 
+
 def _load_ref_fn(ref_spec: str) -> Callable:
     """Load a reference backward function from 'module.path:function_name'."""
     if ":" not in ref_spec:
-        raise ValueError(
-            f"--ref must be 'module.path:function_name', got: {ref_spec!r}"
-        )
+        raise ValueError(f"--ref must be 'module.path:function_name', got: {ref_spec!r}")
     module_path, fn_name = ref_spec.split(":", 1)
     try:
         mod = importlib.import_module(module_path)
     except ImportError as e:
         raise ImportError(f"Cannot import module {module_path!r}: {e}") from e
     if not hasattr(mod, fn_name):
-        raise AttributeError(
-            f"Module {module_path!r} has no attribute {fn_name!r}"
-        )
+        raise AttributeError(f"Module {module_path!r} has no attribute {fn_name!r}")
     fn = getattr(mod, fn_name)
     if not callable(fn):
         raise TypeError(f"{module_path}.{fn_name} is not callable")
@@ -103,6 +103,7 @@ def _load_ref_fn(ref_spec: str) -> Callable:
 # ---------------------------------------------------------------------------
 # Kwarg parsing: --kwarg key=value (auto-coerce int/float/bool/str)
 # ---------------------------------------------------------------------------
+
 
 def _parse_kwargs(kwarg_list: list[str]) -> dict[str, Any]:
     """Parse list of 'key=value' strings into a dict with type coercion."""
@@ -138,14 +139,14 @@ def _coerce_value(raw: str) -> Any:
 # Net construction
 # ---------------------------------------------------------------------------
 
+
 def _build_net(prototxt: str):
     """Build a caffe_ffi Net from prototxt string."""
     try:
         from caffe_ffi import Net
     except ImportError as e:
         raise ImportError(
-            f"Cannot import caffe_ffi: {e}. "
-            "Ensure C++ extension is built and PYTHONPATH includes build dir."
+            f"Cannot import caffe_ffi: {e}. Ensure C++ extension is built and PYTHONPATH includes build dir."
         ) from e
     return Net(prototxt)
 
@@ -153,6 +154,7 @@ def _build_net(prototxt: str):
 # ---------------------------------------------------------------------------
 # Main regression logic
 # ---------------------------------------------------------------------------
+
 
 def run_regression(args: argparse.Namespace) -> dict[str, Any]:
     """Execute the regression test and return a result dict."""
@@ -210,10 +212,7 @@ def run_regression(args: argparse.Namespace) -> dict[str, Any]:
         dry_out = net.forward({args.input: x})
         if args.output not in dry_out:
             available = list(dry_out.keys())
-            result["error"] = (
-                f"Output blob {args.output!r} not found. "
-                f"Available outputs: {available}"
-            )
+            result["error"] = f"Output blob {args.output!r} not found. Available outputs: {available}"
             result["status"] = "ERROR"
             return result
         out_shape = dry_out[args.output].shape
@@ -249,11 +248,14 @@ def run_regression(args: argparse.Namespace) -> dict[str, Any]:
             )
             result["ref_passed"] = check_result["ref_passed"]
             result["numerical_passed"] = check_result["numerical_passed"]
-            result["status"] = "PASS" if (
-                check_result["ref_passed"]
-                and (check_result["numerical_passed"] is None
-                     or check_result["numerical_passed"])
-            ) else "FAIL"
+            result["status"] = (
+                "PASS"
+                if (
+                    check_result["ref_passed"]
+                    and (check_result["numerical_passed"] is None or check_result["numerical_passed"])
+                )
+                else "FAIL"
+            )
             if check_result.get("ref_info"):
                 info = check_result["ref_info"]
                 result["ref_max_err"] = float(info.get("max_abs_err", 0))
@@ -278,13 +280,18 @@ def run_regression(args: argparse.Namespace) -> dict[str, Any]:
             analytic_dX = net2.blob_by_name(args.input).diff
 
             numerical_dX = numerical_grad_for_input(
-                net2, args.input, x, args.output, dy,
+                net2,
+                args.input,
+                x,
+                args.output,
+                dy,
                 h=args.numerical_h,
                 name=args.name or f"{args.input}->{args.output}",
                 verbose=not args.quiet,
             )
             cmp = compare_gradients(
-                analytic_dX, numerical_dX,
+                analytic_dX,
+                numerical_dX,
                 name=args.name or f"{args.input}->{args.output}",
                 rtol=args.numerical_rtol,
                 atol=args.numerical_atol,
@@ -312,53 +319,55 @@ def run_regression(args: argparse.Namespace) -> dict[str, Any]:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="C++ backward gradient regression CLI for CI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--prototxt", required=True,
-                   help="Path to prototxt file, or '-' for stdin")
+    p.add_argument("--prototxt", required=True, help="Path to prototxt file, or '-' for stdin")
     p.add_argument("--input", required=True, help="Input blob name")
     p.add_argument("--output", required=True, help="Output blob name")
-    p.add_argument("--dims", type=int, nargs=4, required=True, metavar=("N","C","H","W"),
-                   help="Input tensor dimensions (N C H W)")
+    p.add_argument(
+        "--dims",
+        type=int,
+        nargs=4,
+        required=True,
+        metavar=("N", "C", "H", "W"),
+        help="Input tensor dimensions (N C H W)",
+    )
     p.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     p.add_argument("--name", default=None, help="Label for log messages")
 
     # Reference function
-    p.add_argument("--ref", default=None,
-                   help="Numpy reference fn as 'module.path:function_name'")
-    p.add_argument("--kwarg", action="append", default=[],
-                   help="Extra keyword arg for ref fn, as key=value (repeatable)")
+    p.add_argument("--ref", default=None, help="Numpy reference fn as 'module.path:function_name'")
+    p.add_argument(
+        "--kwarg", action="append", default=[], help="Extra keyword arg for ref fn, as key=value (repeatable)"
+    )
 
     # Tolerances for ref comparison
-    p.add_argument("--rtol", type=float, default=1e-3,
-                   help="Relative tolerance for ref vs C++ (default: 1e-3)")
-    p.add_argument("--atol", type=float, default=1e-4,
-                   help="Absolute tolerance for ref vs C++ (default: 1e-4)")
+    p.add_argument("--rtol", type=float, default=1e-3, help="Relative tolerance for ref vs C++ (default: 1e-3)")
+    p.add_argument("--atol", type=float, default=1e-4, help="Absolute tolerance for ref vs C++ (default: 1e-4)")
 
     # Numerical gradient options
-    p.add_argument("--skip-numerical", action="store_true",
-                   help="Skip numerical gradient cross-check")
-    p.add_argument("--numerical-h", type=float, default=1e-3,
-                   help="Finite-difference step size (default: 1e-3)")
-    p.add_argument("--numerical-rtol", type=float, default=1e-2,
-                   help="Relative tolerance for numerical check (default: 1e-2)")
-    p.add_argument("--numerical-atol", type=float, default=1e-3,
-                   help="Absolute tolerance for numerical check (default: 1e-3)")
+    p.add_argument("--skip-numerical", action="store_true", help="Skip numerical gradient cross-check")
+    p.add_argument("--numerical-h", type=float, default=1e-3, help="Finite-difference step size (default: 1e-3)")
+    p.add_argument(
+        "--numerical-rtol", type=float, default=1e-2, help="Relative tolerance for numerical check (default: 1e-2)"
+    )
+    p.add_argument(
+        "--numerical-atol", type=float, default=1e-3, help="Absolute tolerance for numerical check (default: 1e-3)"
+    )
 
     # Output
-    p.add_argument("--json", default=None,
-                   help="Write JSON result to file (use '-' for stdout)")
-    p.add_argument("--quiet", action="store_true",
-                   help="Suppress verbose gradient logs")
+    p.add_argument("--json", default=None, help="Write JSON result to file (use '-' for stdout)")
+    p.add_argument("--quiet", action="store_true", help="Suppress verbose gradient logs")
 
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -383,8 +392,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     status = result["status"]
     if status == "PASS":
-        print(f"[CLI] PASS — {result.get('ref_passed')=} {result.get('numerical_passed')=} "
-              f"({result.get('elapsed_ms', 0)}ms)", file=sys.stderr)
+        print(
+            f"[CLI] PASS — {result.get('ref_passed')=} {result.get('numerical_passed')=} "
+            f"({result.get('elapsed_ms', 0)}ms)",
+            file=sys.stderr,
+        )
         return 0
     elif status == "FAIL":
         print(f"[CLI] FAIL — {result.get('error', 'gradient mismatch')}", file=sys.stderr)

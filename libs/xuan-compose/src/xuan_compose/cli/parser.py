@@ -172,9 +172,7 @@ def init_global_parser(parser: argparse.ArgumentParser) -> None:
         help="No action; perform a simulation of commands",
         action="store_true",
     )
-    parser.add_argument(
-        "--parallel", type=int, default=os.environ.get("COMPOSE_PARALLEL_LIMIT", sys.maxsize)
-    )
+    parser.add_argument("--parallel", type=int, default=os.environ.get("COMPOSE_PARALLEL_LIMIT", sys.maxsize))
     parser.add_argument(
         "--no-machine-start",
         help=(
@@ -246,8 +244,7 @@ def compose_up_parse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-recreate",
         action="store_true",
-        help="If containers already exist, don't recreate them. Incompatible with --force-recreate "
-        "and -V.",
+        help="If containers already exist, don't recreate them. Incompatible with --force-recreate and -V.",
     )
     parser.add_argument(
         "--no-build",
@@ -259,9 +256,7 @@ def compose_up_parse(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Don't start the services after creating them.",
     )
-    parser.add_argument(
-        "--build", action="store_true", help="Build images before starting containers."
-    )
+    parser.add_argument("--build", action="store_true", help="Build images before starting containers.")
     parser.add_argument(
         "--abort-on-container-exit",
         action="store_true",
@@ -298,16 +293,14 @@ def compose_up_parse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--scale",
         metavar="SERVICE=NUM",
-        help="Scale SERVICE to NUM instances. "
-        "Overrides the `scale` setting in the Compose file if present.",
+        help="Scale SERVICE to NUM instances. Overrides the `scale` setting in the Compose file if present.",
     )
     parser.add_argument(
         "--exit-code-from",
         metavar="SERVICE",
         type=str,
         default=None,
-        help="Return the exit code of the selected service container. "
-        "Implies --abort-on-container-exit.",
+        help="Return the exit code of the selected service container. Implies --abort-on-container-exit.",
     )
     parser.add_argument(
         "--no-hosts",
@@ -342,9 +335,7 @@ def compose_down_parse(parser: argparse.ArgumentParser) -> None:
 
 
 def compose_run_parse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--build", action="store_true", help="Build images before starting containers."
-    )
+    parser.add_argument("--build", action="store_true", help="Build images before starting containers.")
     parser.add_argument(
         "-d",
         "--detach",
@@ -372,9 +363,7 @@ def compose_run_parse(parser: argparse.ArgumentParser) -> None:
         action="append",
         help="Add or override a label (can be used multiple times)",
     )
-    parser.add_argument(
-        "-u", "--user", type=str, default=None, help="Run as specified username or uid"
-    )
+    parser.add_argument("-u", "--user", type=str, default=None, help="Run as specified username or uid")
     parser.add_argument("--no-deps", action="store_true", help="Don't start linked services")
     parser.add_argument(
         "--rm",
@@ -432,9 +421,7 @@ def compose_exec_parse(parser: argparse.ArgumentParser) -> None:
         default=False,
         help="Give the process extended Linux capabilities inside the container",
     )
-    parser.add_argument(
-        "-u", "--user", type=str, default=None, help="Run as specified username or uid"
-    )
+    parser.add_argument("-u", "--user", type=str, default=None, help="Run as specified username or uid")
     parser.add_argument(
         "-T",
         action="store_true",
@@ -473,9 +460,7 @@ def compose_parse_cp(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-a",
         "--archive",
-        help=(
-            "Chown copied files to the primary uid/gid of the destination container (default=True)"
-        ),
+        help=("Chown copied files to the primary uid/gid of the destination container (default=True)"),
         default=True,
     )
     parser.add_argument(
@@ -541,9 +526,7 @@ def compose_logs_parse(parser: argparse.ArgumentParser) -> None:
         default="all",
     )
     parser.add_argument("--until", help="Show logs until TIMESTAMP", type=str, default=None)
-    parser.add_argument(
-        "services", metavar="services", nargs="*", default=None, help="service names"
-    )
+    parser.add_argument("services", metavar="services", nargs="*", default=None, help="service names")
 
 
 def compose_systemd_parse(parser: argparse.ArgumentParser) -> None:
@@ -635,12 +618,8 @@ def compose_up_start_parse(parser: argparse.ArgumentParser) -> None:
 
 
 def compose_config_parse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--no-normalize", help="Don't normalize compose model.", action="store_true"
-    )
-    parser.add_argument(
-        "--services", help="Print the service names, one per line.", action="store_true"
-    )
+    parser.add_argument("--no-normalize", help="Don't normalize compose model.", action="store_true")
+    parser.add_argument("--services", help="Print the service names, one per line.", action="store_true")
     parser.add_argument(
         "-q",
         "--quiet",
@@ -673,15 +652,11 @@ def compose_port_parse(parser: argparse.ArgumentParser) -> None:
 
 
 def compose_pause_unpause_parse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "services", metavar="services", nargs="*", default=None, help="service names"
-    )
+    parser.add_argument("services", metavar="services", nargs="*", default=None, help="service names")
 
 
 def compose_kill_parse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "services", metavar="services", nargs="*", default=None, help="service names"
-    )
+    parser.add_argument("services", metavar="services", nargs="*", default=None, help="service names")
     parser.add_argument(
         "-s",
         "--signal",
@@ -701,9 +676,7 @@ def compose_images_parse(parser: argparse.ArgumentParser) -> None:
 
 
 def compose_stats_parse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "services", metavar="services", nargs="*", default=None, help="service names"
-    )
+    parser.add_argument("services", metavar="services", nargs="*", default=None, help="service names")
     parser.add_argument(
         "-i",
         "--interval",
@@ -821,9 +794,7 @@ def _help_desc_from_docstring(doc: str) -> tuple[str, str | None]:
 
 # systemd 是唯一未在 ``@cmd_run`` 传 cmd_desc 的命令：help/desc 来自
 # handler docstring，此处复用同一算法，保证与上游逐字对等。
-COMMAND_HELP["systemd"], SYSTEMD_DESC = _help_desc_from_docstring(
-    compose_systemd.__doc__ or ""
-)
+COMMAND_HELP["systemd"], SYSTEMD_DESC = _help_desc_from_docstring(compose_systemd.__doc__ or "")
 
 
 def build_parser(command_descriptions: dict[str, str | None] | None = None) -> argparse.ArgumentParser:

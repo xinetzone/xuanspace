@@ -72,9 +72,7 @@ async def compose_cp(compose: Any, args: argparse.Namespace) -> None:
     elif ":" in args.dst and ":" not in args.src:
         service = args.dst.split(":", 1)[0]
     else:
-        raise ValueError(
-            f"Invalid copy arguments format: source = {args.src}, destination = {args.dst}."
-        )
+        raise ValueError(f"Invalid copy arguments format: source = {args.src}, destination = {args.dst}.")
     compose.assert_services(service)
     container_names = compose.container_names_by_service[service]
     podman_args = compose_cp_args(container_names[0], args)

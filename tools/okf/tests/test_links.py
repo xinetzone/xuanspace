@@ -14,12 +14,7 @@ from okf.models import Bundle
 
 
 def test_parse_links_classifies_targets(tmp_path):
-    body = (
-        "[root](/abs/path.md) "
-        "[ext](https://example.com) "
-        "[anch](#section) "
-        "[rel](foo/bar.md)"
-    )
+    body = "[root](/abs/path.md) [ext](https://example.com) [anch](#section) [rel](foo/bar.md)"
     links = parse_links(body, tmp_path)
     assert [text for text, _ in links] == ["root", "ext", "anch", "rel"]
     assert links[0][1] == tmp_path / "abs" / "path.md"

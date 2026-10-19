@@ -28,9 +28,7 @@ def _compose() -> mock.Mock:
 
 
 def _env_path(tmp_path: str) -> str:
-    return os.path.join(
-        tmp_path, ".config", "containers", "compose", "projects", "proj.env"
-    )
+    return os.path.join(tmp_path, ".config", "containers", "compose", "projects", "proj.env")
 
 
 @pytest.fixture(autouse=False)
@@ -41,9 +39,7 @@ def _fake_home(tmp_path, monkeypatch):
         rel = path[2:] if path.startswith("~") else path
         return os.path.join(str(tmp_path), *rel.split("/"))
 
-    monkeypatch.setattr(
-        "xuan_compose.commands.systemd.os.path.expanduser", _expanduser
-    )
+    monkeypatch.setattr("xuan_compose.commands.systemd.os.path.expanduser", _expanduser)
     return tmp_path
 
 

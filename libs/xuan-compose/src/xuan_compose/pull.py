@@ -57,9 +57,7 @@ async def pull_images(
             if image in settings:
                 settings[image].update_policy(policy)
             else:
-                settings[image] = PullImageSettings(
-                    image, policy, getattr(args, "quiet_pull", False)
-                )
+                settings[image] = PullImageSettings(image, policy, getattr(args, "quiet_pull", False))
 
             if "build" in pull_service:
                 # From https://github.com/compose-spec/compose-spec/blob/main/build.md#using-build-and-image
@@ -79,9 +77,7 @@ async def pull_images(
     return 0
 
 
-async def prepare_images(
-    compose: Any, args: argparse.Namespace, excluded: set[str]
-) -> int | None:
+async def prepare_images(compose: Any, args: argparse.Namespace, excluded: set[str]) -> int | None:
     # 翻译自上游第 4076-4106 行。compose 为引擎鸭子类型（services/podman/
     # podman_version/commands），保持与 translate 层一致的 Any 解耦面。
 

@@ -135,14 +135,9 @@ def check_one(path: Path) -> list[str]:
         if is_pure_python(data):
             for req in PURE_PYTHON_DENIED_REQUIRES:
                 if req in req_names:
-                    issues.append(
-                        f"纯 Python 包（wheel.cmake=false）不需要 {req}，"
-                        f"应从 [build-system].requires 移除"
-                    )
+                    issues.append(f"纯 Python 包（wheel.cmake=false）不需要 {req}，应从 [build-system].requires 移除")
             if (path.parent / "CMakeLists.txt").exists():
-                issues.append(
-                    "纯 Python 包（wheel.cmake=false）不得携带 CMakeLists.txt，应删除"
-                )
+                issues.append("纯 Python 包（wheel.cmake=false）不得携带 CMakeLists.txt，应删除")
         else:
             for req in NATIVE_REQUIRED_REQUIRES:
                 if req not in req_names:

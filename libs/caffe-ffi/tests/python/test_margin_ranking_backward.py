@@ -18,6 +18,7 @@ Mathematical reference (N elements, loss_weight L):
   dx2_i = L * sign * ( y_i * mask_i) / N
   mask_i = 1 if loss_i > 0 else 0
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -26,9 +27,10 @@ import numpy as np
 import pytest
 
 from caffe_ffi import Net
+
 from .conftest import require_cpp_extension
 
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 1e-3
 NUM_ATOL = 1e-4
 
@@ -36,6 +38,7 @@ NUM_ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_margin_prototxt(N=1, C=1, H=1, W=4, margin=1.0, sign=1):
     """Create Input(x1) -> Input(x2) -> Input(label) -> MarginRanking prototxt."""
@@ -79,6 +82,7 @@ def _make_margin_net(N=1, C=1, H=1, W=4, margin=1.0, sign=1):
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
 
+
 def _margin_forward_np(x1, x2, y, margin=1.0, sign=1):
     """Forward reference: loss = sign * mean_i(max(0, -y*(x1-x2)+margin))."""
     v = -y * (x1 - x2) + margin
@@ -119,6 +123,7 @@ def _num_grad(net, x1, x2, y, loss_weight=1.0, margin=1.0, sign=1, h=EPS):
 # ---------------------------------------------------------------------------
 # Tests: MarginRanking Forward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestMarginRankingForward:
@@ -176,6 +181,7 @@ class TestMarginRankingForward:
 # ---------------------------------------------------------------------------
 # Tests: MarginRanking Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestMarginRankingGradient:
@@ -256,6 +262,7 @@ class TestMarginRankingGradient:
 # ---------------------------------------------------------------------------
 # Tests: MarginRanking Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestMarginRankingNumericalGradient:

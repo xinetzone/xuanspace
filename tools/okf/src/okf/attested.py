@@ -27,9 +27,7 @@ def is_attested_computation(concept: Concept) -> bool:
     return concept.type == "Attested Computation"
 
 
-def parse_attested_computation(
-    concept: Concept, bundle_root: Path | None = None
-) -> AttestedComputation:
+def parse_attested_computation(concept: Concept, bundle_root: Path | None = None) -> AttestedComputation:
     """解析 Attested Computation 契约字段。
 
     Parameters
@@ -73,11 +71,7 @@ def parse_attested_computation(
     executor_raw = fm.get("executor", {})
     executor = Executor(
         resource=str(executor_raw.get("resource", "")),
-        receipt=(
-            [str(r) for r in executor_raw["receipt"]]
-            if isinstance(executor_raw.get("receipt"), list)
-            else []
-        ),
+        receipt=([str(r) for r in executor_raw["receipt"]] if isinstance(executor_raw.get("receipt"), list) else []),
     )
 
     attester_raw = fm.get("attester", {})
@@ -93,9 +87,7 @@ def parse_attested_computation(
     else:
         # 文件式计算：按路径加载文件内容
         if bundle_root is None:
-            raise ValueError(
-                "bundle_root is required when 'computation' specifies a file path"
-            )
+            raise ValueError("bundle_root is required when 'computation' specifies a file path")
         computation_content = load_computation_file(computation, bundle_root)
 
     return AttestedComputation(

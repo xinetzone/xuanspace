@@ -70,18 +70,14 @@ class TestVarInterpolate(unittest.TestCase):
         (
             "Path: ${TEST_PATH:?TEST_PATH required}",
             {},
-            PodmanComposeError(
-                "required variable TEST_PATH is missing a value: TEST_PATH required"
-            ),
+            PodmanComposeError("required variable TEST_PATH is missing a value: TEST_PATH required"),
             True,
         ),
         # 9. Required variable fails when empty (since :?)
         (
             "Path: ${TEST_PATH:?TEST_PATH required}",
             {"TEST_PATH": ""},
-            PodmanComposeError(
-                "required variable TEST_PATH is missing a value: TEST_PATH required"
-            ),
+            PodmanComposeError("required variable TEST_PATH is missing a value: TEST_PATH required"),
             True,
         ),
         # 10. Required variable (no colon, fails only if unset)
@@ -187,29 +183,21 @@ class TestVarInterpolate(unittest.TestCase):
         (
             "${1INVALID}",
             {},
-            ValueError(
-                "Invalid interpolation format: ${1INVALID}."
-                " You may need to escape any $ with another $"
-            ),
+            ValueError("Invalid interpolation format: ${1INVALID}. You may need to escape any $ with another $"),
             True,
         ),
         # 43. Invalid variable name in braces (starts with non-alphanumeric)
         (
             "${-INVALID}",
             {},
-            ValueError(
-                "Invalid interpolation format: ${-INVALID}."
-                " You may need to escape any $ with another $"
-            ),
+            ValueError("Invalid interpolation format: ${-INVALID}. You may need to escape any $ with another $"),
             True,
         ),
         # 44. Invalid variable name in braces (empty)
         (
             "${}",
             {},
-            ValueError(
-                "Invalid interpolation format: ${}. You may need to escape any $ with another $"
-            ),
+            ValueError("Invalid interpolation format: ${}. You may need to escape any $ with another $"),
             False,
         ),
         # 45. Dollar sign not followed by valid variable name (should be treated as literal)

@@ -131,18 +131,14 @@ class TestListMachines:
 
 
 class TestEnsureReady:
-    def test_already_ready_has_no_machine_side_effects(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_already_ready_has_no_machine_side_effects(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, proc = _podman([_ok()], monkeypatch)
         asyncio.run(podman.ensure_ready(timeout=1.0))
         # 仅一次 info 探活，不触碰 machine 子命令
         assert len(proc.calls) == 1
         assert "machine" not in proc.calls[0]
 
-    def test_stopped_default_machine_gets_started_and_waited(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stopped_default_machine_gets_started_and_waited(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # ① info 拒绝 → ② machine list 报默认机停止 → ③ start 成功
         # → ④ 轮询 info 成功
         podman, proc = _podman(
@@ -165,17 +161,13 @@ class TestEnsureReady:
         assert "starting podman machine" in buf.getvalue()
         assert "ready" in buf.getvalue()
 
-    def test_no_machine_configured_raises_actionable_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_machine_configured_raises_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, _ = _podman([_conn_refused(), _ok(b"[]")], monkeypatch)
         with pytest.raises(PodmanEngineNotReadyError) as ctx:
             asyncio.run(podman.ensure_ready(timeout=1.0))
         assert "podman machine start" in str(ctx.value)
 
-    def test_running_machine_still_unreachable_is_not_restarted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_running_machine_still_unreachable_is_not_restarted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         running = _MACHINE_JSON.replace(b'"Running": false', b'"Running": true')
         podman, proc = _podman([_conn_refused(), _ok(running)], monkeypatch)
         with pytest.raises(PodmanEngineNotReadyError):
@@ -183,9 +175,7 @@ class TestEnsureReady:
         flat = [" ".join(c) for c in proc.calls]
         assert not any("machine start" in c for c in flat)
 
-    def test_starting_machine_is_waited_without_second_start(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_starting_machine_is_waited_without_second_start(self, monkeypatch: pytest.MonkeyPatch) -> None:
         starting = _MACHINE_JSON.replace(b'"Starting": false', b'"Starting": true')
         # ① 探活失败 → ② list 报 Starting → ③ 轮询 info 成功
         podman, proc = _podman([_conn_refused(), _ok(starting), _ok()], monkeypatch)
@@ -194,9 +184,7 @@ class TestEnsureReady:
         flat = [" ".join(c) for c in proc.calls]
         assert not any("machine start" in c for c in flat)
 
-    def test_non_default_machine_is_not_auto_started(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_default_machine_is_not_auto_started(self, monkeypatch: pytest.MonkeyPatch) -> None:
         other = _MACHINE_JSON.replace(b'"Default": true', b'"Default": false')
         podman, proc = _podman([_conn_refused(), _ok(other)], monkeypatch)
         with pytest.raises(PodmanEngineNotReadyError):
@@ -204,9 +192,7 @@ class TestEnsureReady:
         flat = [" ".join(c) for c in proc.calls]
         assert not any("machine start" in c for c in flat)
 
-    def test_start_failure_is_wrapped_with_stderr_context(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_start_failure_is_wrapped_with_stderr_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, _ = _podman(
             [
                 _conn_refused(),
@@ -232,9 +218,7 @@ class TestEnsureReady:
         flat = [" ".join(c) for c in proc.calls]
         assert any(c == "podman machine start podman-machine-default" for c in flat)
 
-    def test_corrupt_machine_list_payload_is_treated_as_no_machine(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_corrupt_machine_list_payload_is_treated_as_no_machine(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, _ = _podman([_conn_refused(), _ok(b"{broken")], monkeypatch)
         with pytest.raises(PodmanEngineNotReadyError):
             asyncio.run(podman.ensure_ready(timeout=0.0))
@@ -258,9 +242,7 @@ class TestOutputConnectionErrors:
     单行 ``Error:`` + exit 1），而非裸 ``CalledProcessError`` traceback。
     """
 
-    def test_connection_refused_wrapped_as_not_ready(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_connection_refused_wrapped_as_not_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, _ = _podman([_conn_refused()], monkeypatch)
         with pytest.raises(PodmanEngineNotReadyError) as ctx:
             asyncio.run(podman.output(["ps", "--format", "json"]))
@@ -269,9 +251,7 @@ class TestOutputConnectionErrors:
         assert "Cannot connect to Podman" in message
         assert "podman machine start" in message
 
-    def test_unrelated_exit_125_keeps_called_process_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unrelated_exit_125_keeps_called_process_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # 容器运行时失败也以 125 退出，无连接文案不得误判为引擎未就绪
         podman, _ = _podman(
             [(125, b"", b"Error: container_linux.go: bad OCI spec")],
@@ -280,9 +260,7 @@ class TestOutputConnectionErrors:
         with pytest.raises(subprocess.CalledProcessError):
             asyncio.run(podman.output(["run", "img"]))
 
-    def test_other_failure_codes_keep_called_process_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_other_failure_codes_keep_called_process_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         podman, _ = _podman([(1, b"", b"boom")], monkeypatch)
         with pytest.raises(subprocess.CalledProcessError):
             asyncio.run(podman.output(["inspect", "x"]))

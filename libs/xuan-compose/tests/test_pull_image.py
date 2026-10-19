@@ -66,9 +66,7 @@ class TestPullImageSettings(IsolatedAsyncioTestCase):
 
         result = await pull_image(podman_mock, settings)
         assert result == 0
-        run_mock.assert_called_once_with(
-            [], "pull", ["--policy", "always", "--quiet", "localhost/test:1"]
-        )
+        run_mock.assert_called_once_with([], "pull", ["--policy", "always", "--quiet", "localhost/test:1"])
 
     @mock.patch("xuan_compose.pull.Podman")
     async def test_pull_failed(self, podman_mock: mock.Mock) -> None:
@@ -217,9 +215,7 @@ class TestPrepareImages(IsolatedAsyncioTestCase):
         compose = _make_prepare_compose("5.6.0")
         args = Namespace(no_build=False, build=True)
 
-        with mock.patch(
-            "xuan_compose.pull.pull_images", mock.AsyncMock(return_value=0)
-        ) as pull_mock:
+        with mock.patch("xuan_compose.pull.pull_images", mock.AsyncMock(return_value=0)) as pull_mock:
             result = await prepare_images(compose, args, excluded={"b"})
 
         assert result == 0
@@ -232,9 +228,7 @@ class TestPrepareImages(IsolatedAsyncioTestCase):
         compose = _make_prepare_compose("5.6.0")
         args = Namespace(no_build=False, build=True)
 
-        with mock.patch(
-            "xuan_compose.pull.pull_images", mock.AsyncMock(return_value=1)
-        ):
+        with mock.patch("xuan_compose.pull.pull_images", mock.AsyncMock(return_value=1)):
             result = await prepare_images(compose, args, excluded=set())
 
         assert result == 1

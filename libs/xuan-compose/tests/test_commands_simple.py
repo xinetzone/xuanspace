@@ -166,15 +166,7 @@ class TestPort(IsolatedAsyncioTestCase):
     async def test_extracts_host_port(self) -> None:
         podman = _podman()
         podman.output = mock.AsyncMock(
-            return_value=json.dumps(
-                [
-                    {
-                        "NetworkSettings": {
-                            "Ports": {"8080/tcp": [{"HostPort": "18080"}]}
-                        }
-                    }
-                ]
-            ).encode()
+            return_value=json.dumps([{"NetworkSettings": {"Ports": {"8080/tcp": [{"HostPort": "18080"}]}}}]).encode()
         )
         compose = mock.Mock(podman=podman, container_names_by_service={"a": ["proj_a_1"]})
         compose.assert_services = mock.Mock()
@@ -223,17 +215,13 @@ class TestKill(IsolatedAsyncioTestCase):
 
     async def test_kill_all_targets_every_container(self) -> None:
         compose = self._compose()
-        await lifecycle.compose_kill(
-            compose, Namespace(services=[], all=True, signal=None)
-        )
+        await lifecycle.compose_kill(compose, Namespace(services=[], all=True, signal=None))
         args = compose.podman.run.await_args.args[2]
         assert set(args) == {"proj_a_1", "proj_b_1"}
 
     async def test_kill_selected_with_signal(self) -> None:
         compose = self._compose()
-        await lifecycle.compose_kill(
-            compose, Namespace(services=["a"], all=False, signal="HUP")
-        )
+        await lifecycle.compose_kill(compose, Namespace(services=["a"], all=False, signal="HUP"))
         args = compose.podman.run.await_args.args[2]
         assert args[:2] == ["--signal", "HUP"]
         assert args[-1] == "proj_a_1"
@@ -260,8 +248,10 @@ class TestStats(IsolatedAsyncioTestCase):
         )
         args = compose.podman.run.await_args.args[2]
         assert args == [
-            "--interval", "2s",
-            "--format", "json",
+            "--interval",
+            "2s",
+            "--format",
+            "json",
             "--no-reset",
             "--no-stream",
             "proj_a_1",
@@ -272,8 +262,9 @@ class TestStats(IsolatedAsyncioTestCase):
         compose = self._compose()
         compose.podman.run = mock.AsyncMock(side_effect=KeyboardInterrupt)
         # 上游吞掉 Ctrl+C 静默返回
-        await compose_stats(compose, Namespace(services=["a"], interval=None, format=None,
-                                               no_reset=False, no_stream=False))
+        await compose_stats(
+            compose, Namespace(services=["a"], interval=None, format=None, no_reset=False, no_stream=False)
+        )
 
 
 class TestImages(IsolatedAsyncioTestCase):
@@ -290,9 +281,7 @@ class TestImages(IsolatedAsyncioTestCase):
 
     async def test_table_output_has_header(self) -> None:
         podman = _podman()
-        podman.output = mock.AsyncMock(
-            return_value=b"ghcr.io/a latest deadbeef 10MB\n"
-        )
+        podman.output = mock.AsyncMock(return_value=b"ghcr.io/a latest deadbeef 10MB\n")
         compose = mock.Mock(podman=podman)
         compose.containers = [{"name": "proj_a_1", "image": "ghcr.io/a:latest"}]
         buf = io.StringIO()
@@ -325,8 +314,9 @@ class TestLogs(IsolatedAsyncioTestCase):
 
         created: list[tuple[str, list, int]] = []
 
-        def fake_create_task(_compose: object, _args: object, service: str,
-                             podman_args: list, max_len: int) -> asyncio.Future:
+        def fake_create_task(
+            _compose: object, _args: object, service: str, podman_args: list, max_len: int
+        ) -> asyncio.Future:
             created.append((service, list(podman_args), max_len))
             done: asyncio.Future = asyncio.Future()
             done.set_result(0)
@@ -353,8 +343,7 @@ class TestLogs(IsolatedAsyncioTestCase):
         services = {item[0] for item in created}
         assert services == {"a", "b"}
         podman_args = created[0][1]
-        assert podman_args == ["-f", "-n", "--color", "--since", "1h", "--tail", "10", "-t",
-                               "--until", "5m"]
+        assert podman_args == ["-f", "-n", "--color", "--since", "1h", "--tail", "10", "-t", "--until", "5m"]
         assert created[0][2] == 1
 
     async def test_tail_all_omits_tail_flag(self) -> None:
@@ -363,8 +352,7 @@ class TestLogs(IsolatedAsyncioTestCase):
         compose.assert_services = mock.Mock()
         captured: list = []
 
-        def fake_create_task(_c: object, _a: object, _s: str, podman_args: list,
-                             _m: int) -> asyncio.Future:
+        def fake_create_task(_c: object, _a: object, _s: str, podman_args: list, _m: int) -> asyncio.Future:
             captured.extend(podman_args)
             done: asyncio.Future = asyncio.Future()
             done.set_result(0)
@@ -376,8 +364,17 @@ class TestLogs(IsolatedAsyncioTestCase):
         ):
             await compose_logs(
                 compose,
-                Namespace(services=["svc"], latest=False, follow=False, names=False,
-                          no_color=True, since=None, tail="all", timestamps=False, until=None),
+                Namespace(
+                    services=["svc"],
+                    latest=False,
+                    follow=False,
+                    names=False,
+                    no_color=True,
+                    since=None,
+                    tail="all",
+                    timestamps=False,
+                    until=None,
+                ),
             )
         assert "--tail" not in captured
         assert "--color" not in captured
@@ -389,9 +386,7 @@ class TestLs(IsolatedAsyncioTestCase):
 
     async def test_table_row_contains_project_status(self) -> None:
         podman = _podman()
-        podman.output = mock.AsyncMock(
-            return_value=self._inspect_bytes("running", True, "/work", "compose.yml")
-        )
+        podman.output = mock.AsyncMock(return_value=self._inspect_bytes("running", True, "/work", "compose.yml"))
         compose = mock.Mock(podman=podman)
         compose.containers = [{"name": "proj_a_1", "image": "ghcr.io/a:latest"}]
         buf = io.StringIO()
@@ -404,9 +399,7 @@ class TestLs(IsolatedAsyncioTestCase):
 
     async def test_json_format_emits_dict_rows(self) -> None:
         podman = _podman()
-        podman.output = mock.AsyncMock(
-            return_value=self._inspect_bytes("exited", False, "/work", "compose.yml")
-        )
+        podman.output = mock.AsyncMock(return_value=self._inspect_bytes("exited", False, "/work", "compose.yml"))
         compose = mock.Mock(podman=podman)
         compose.containers = [{"name": "proj_a_1", "image": "ghcr.io/a:latest"}]
         buf = io.StringIO()
@@ -439,8 +432,10 @@ class TestSystemd(IsolatedAsyncioTestCase):
         compose = mock.Mock(project_name="proj")
         with mock.patch(
             "xuan_compose.commands.systemd.glob.glob",
-            return_value=["/home/u/.config/containers/compose/projects/alpha.env",
-                          "/home/u/.config/containers/compose/projects/beta.env"],
+            return_value=[
+                "/home/u/.config/containers/compose/projects/alpha.env",
+                "/home/u/.config/containers/compose/projects/beta.env",
+            ],
         ):
             buf = io.StringIO()
             with redirect_stdout(buf):

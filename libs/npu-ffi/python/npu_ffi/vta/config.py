@@ -7,8 +7,8 @@ All size parameters are in log2 domain: actual_value = 2 ** log_value
 """
 
 import dataclasses
-from dataclasses import dataclass, field
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -125,12 +125,12 @@ class VTAConfig:
         """Accumulator buffer size in bytes."""
         return self.acc_buff_size * (self.acc_width // 8)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> VTAConfig:
+    def from_dict(cls, d: dict[str, Any]) -> VTAConfig:
         """Create config from dictionary, ignoring unknown keys."""
         valid_fields = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in d.items() if k in valid_fields}
@@ -153,10 +153,7 @@ def validate_config(config: VTAConfig) -> None:
     errors: list[str] = []
 
     if config.log_bus_width < 2 or config.log_bus_width > 8:
-        errors.append(
-            f"log_bus_width={config.log_bus_width} out of range [2, 8] "
-            "(4 bytes to 256 bytes bus width)"
-        )
+        errors.append(f"log_bus_width={config.log_bus_width} out of range [2, 8] (4 bytes to 256 bytes bus width)")
 
     for name, val in [
         ("log_inp_width", config.log_inp_width),
@@ -167,10 +164,7 @@ def validate_config(config: VTAConfig) -> None:
             errors.append(f"{name}={val} out of range [2, 5] (4 bits to 32 bits)")
 
     if config.log_acc_width < 4 or config.log_acc_width > 6:
-        errors.append(
-            f"log_acc_width={config.log_acc_width} out of range [4, 6] "
-            "(16 bits to 64 bits accumulator)"
-        )
+        errors.append(f"log_acc_width={config.log_acc_width} out of range [4, 6] (16 bits to 64 bits accumulator)")
 
     if config.acc_width < config.inp_width + config.wgt_width + config.log_block_in + config.log_batch:
         errors.append(
@@ -196,16 +190,10 @@ def validate_config(config: VTAConfig) -> None:
             errors.append(f"{name}={val} out of range [{min_val}, {max_val}]")
 
     if config.ins_width < 5 or config.ins_width > 8:
-        errors.append(
-            f"ins_width={config.ins_width} out of range [5, 8] "
-            "(32 bits to 256 bits instruction)"
-        )
+        errors.append(f"ins_width={config.ins_width} out of range [5, 8] (32 bits to 256 bits instruction)")
 
     if config.uop_width < 4 or config.uop_width > 6:
-        errors.append(
-            f"uop_width={config.uop_width} out of range [4, 6] "
-            "(16 bits to 64 bits UOP)"
-        )
+        errors.append(f"uop_width={config.uop_width} out of range [4, 6] (16 bits to 64 bits UOP)")
 
     if errors:
         raise ValueError("Invalid VTAConfig:\n  " + "\n  ".join(errors))
@@ -268,7 +256,7 @@ _VTA_V4 = VTAConfig(
     uop_width=5,
 )
 
-DEFAULT_CONFIGS: Dict[str, VTAConfig] = {
+DEFAULT_CONFIGS: dict[str, VTAConfig] = {
     "vta": _VTA_STANDARD,
     "vta_v3": _VTA_V3,
     "vta_v4": _VTA_V4,
@@ -288,7 +276,5 @@ def get_default_config(name: str = "vta") -> VTAConfig:
         KeyError: If name is not a known default configuration.
     """
     if name not in DEFAULT_CONFIGS:
-        raise KeyError(
-            f"Unknown default config '{name}'. Available: {list(DEFAULT_CONFIGS.keys())}"
-        )
+        raise KeyError(f"Unknown default config '{name}'. Available: {list(DEFAULT_CONFIGS.keys())}")
     return DEFAULT_CONFIGS[name]

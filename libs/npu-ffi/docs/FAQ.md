@@ -219,8 +219,12 @@ for name in sorted(names):
 
 # 验证关键函数是否存在
 required = [
-    "vta.tls_command_handle", "vta.buffer_alloc", "vta.buffer_free",
-    "vta.synchronize", "vta.write_barrier", "vta.read_barrier",
+    "vta.tls_command_handle",
+    "vta.buffer_alloc",
+    "vta.buffer_free",
+    "vta.synchronize",
+    "vta.write_barrier",
+    "vta.read_barrier",
 ]
 for func in required:
     assert tvm_ffi.get_global_func(func) is not None, f"缺失 FFI 函数: {func}"

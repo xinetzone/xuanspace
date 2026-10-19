@@ -181,9 +181,7 @@ class TestContainerToBuildArgs(unittest.TestCase):
         args = get_minimal_args()
 
         cleanup_callbacks = []
-        args = container_to_build_args(
-            c, cnt, args, lambda path: True, cleanup_callbacks=cleanup_callbacks
-        )
+        args = container_to_build_args(c, cnt, args, lambda path: True, cleanup_callbacks=cleanup_callbacks)
 
         temp_dockerfile = args[args.index("-f") + 1]
         self.assertTrue(os.path.exists(temp_dockerfile))

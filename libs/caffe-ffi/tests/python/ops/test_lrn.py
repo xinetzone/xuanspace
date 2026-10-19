@@ -16,8 +16,10 @@
 # under the License.
 
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -56,7 +58,7 @@ def _lrn_across_channels_ref(x, local_size=5, alpha=1.0, beta=0.75, k=1.0):
         ch_start = max(0, i - radius)
         ch_end = min(c, i + radius + 1)
         sum_sq = np.sum(square_x[:, ch_start:ch_end, :, :], axis=1, keepdims=True)
-        out[:, i:i+1, :, :] = x[:, i:i+1, :, :] / np.power(k + alpha / local_size * sum_sq, beta)
+        out[:, i : i + 1, :, :] = x[:, i : i + 1, :, :] / np.power(k + alpha / local_size * sum_sq, beta)
     return out.astype(np.float32)
 
 
@@ -101,14 +103,14 @@ def test_lrn_edge_cases(caffe_test_dir):
     x = np.ones((1, 4, 3, 3), dtype=np.float32)
     caffe_out = _test_lrn(x, caffe_test_dir, local_size=1, alpha=0.0, beta=1.0, k=2.0)
     assert caffe_out[0].shape == x.shape, f"Expected shape {x.shape} got {caffe_out[0].shape}"
-    expected = x / (2.0 ** 1.0)
+    expected = x / (2.0**1.0)
     np.testing.assert_allclose(caffe_out[0], expected, atol=1e-5)
 
     logger.debug("Testing LRN with alpha=0 (no normalization, just x / k^beta)")
     x = np.ones((1, 3, 4, 4), dtype=np.float32)
     caffe_out = _test_lrn(x, caffe_test_dir, local_size=5, alpha=0.0, beta=1.0, k=2.0)
     assert caffe_out[0].shape == x.shape
-    expected = x / (2.0 ** 1.0)
+    expected = x / (2.0**1.0)
     np.testing.assert_allclose(caffe_out[0], expected, atol=1e-5)
 
     logger.debug("Testing LRN with large values")

@@ -137,15 +137,11 @@ class TestPortDictToStr:
         assert port_dict_to_str({"target": 80, "published": 8080}) == "8080:80"
 
     def test_host_ip_and_published(self) -> None:
-        assert port_dict_to_str(
-            {"target": 80, "published": 8081, "host_ip": "127.0.0.1"}
-        ) == "127.0.0.1:8081:80"
+        assert port_dict_to_str({"target": 80, "published": 8081, "host_ip": "127.0.0.1"}) == "127.0.0.1:8081:80"
 
     def test_non_tcp_protocol_suffix(self) -> None:
         assert port_dict_to_str({"target": 53, "protocol": "udp"}) == "53/udp"
-        assert port_dict_to_str(
-            {"target": 53, "published": 5353, "protocol": "udp"}
-        ) == "5353:53/udp"
+        assert port_dict_to_str({"target": 53, "published": 5353, "protocol": "udp"}) == "5353:53/udp"
 
     def test_target_required(self) -> None:
         with pytest.raises(ValueError, match="target container port"):

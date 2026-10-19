@@ -1,17 +1,18 @@
 """Unit tests for the math_ops C++ accelerated module — including edge cases."""
+
 from __future__ import annotations
 
 import math
 import random
 
 import pytest
-
 from demo_ffi import demo
 from demo_ffi.demo import math as m
 
 # ---------------------------------------------------------------------------
 # 1. fibonacci
 # ---------------------------------------------------------------------------
+
 
 class TestFibonacci:
     def test_fib_base_cases(self):
@@ -31,10 +32,18 @@ class TestFibonacci:
         assert m.fibonacci(-1) == -1
         assert m.fibonacci(-100) == -1
 
-    @pytest.mark.parametrize("n,expected", [
-        (0, 0), (1, 1), (2, 1), (3, 2),
-        (10, 55), (20, 6765), (50, 12586269025),
-    ])
+    @pytest.mark.parametrize(
+        "n,expected",
+        [
+            (0, 0),
+            (1, 1),
+            (2, 1),
+            (3, 2),
+            (10, 55),
+            (20, 6765),
+            (50, 12586269025),
+        ],
+    )
     def test_fib_known_values(self, n, expected):
         assert m.fibonacci(n) == expected
 
@@ -50,13 +59,26 @@ class TestFibonacci:
 # 2. is_prime
 # ---------------------------------------------------------------------------
 
+
 class TestIsPrime:
-    @pytest.mark.parametrize("n,expected", [
-        (-5, False), (-1, False), (0, False), (1, False),
-        (2, True), (3, True), (4, False), (5, True),
-        (9, False), (17, True), (97, True), (100, False),
-        (101, True),
-    ])
+    @pytest.mark.parametrize(
+        "n,expected",
+        [
+            (-5, False),
+            (-1, False),
+            (0, False),
+            (1, False),
+            (2, True),
+            (3, True),
+            (4, False),
+            (5, True),
+            (9, False),
+            (17, True),
+            (97, True),
+            (100, False),
+            (101, True),
+        ],
+    )
     def test_is_prime_values(self, n, expected):
         assert m.is_prime(n) is expected
 
@@ -80,6 +102,7 @@ class TestIsPrime:
 # ---------------------------------------------------------------------------
 # 3. vec_add
 # ---------------------------------------------------------------------------
+
 
 class TestVecAdd:
     def test_vec_add_basic(self):
@@ -119,6 +142,7 @@ class TestVecAdd:
 # 4. vec_scale
 # ---------------------------------------------------------------------------
 
+
 class TestVecScale:
     def test_vec_scale_basic(self):
         assert m.vec_scale([1.0, 2.0, 3.0], 2.0) == pytest.approx([2.0, 4.0, 6.0])
@@ -147,6 +171,7 @@ class TestVecScale:
 # ---------------------------------------------------------------------------
 # 5. vec_dot
 # ---------------------------------------------------------------------------
+
 
 class TestVecDot:
     def test_dot_basic(self):
@@ -181,6 +206,7 @@ class TestVecDot:
 # 6. vec_l2_norm
 # ---------------------------------------------------------------------------
 
+
 class TestVecL2Norm:
     def test_norm_unit(self):
         assert m.vec_l2_norm([1.0, 0.0, 0.0]) == pytest.approx(1.0)
@@ -210,6 +236,7 @@ class TestVecL2Norm:
 # ---------------------------------------------------------------------------
 # 7. vec_stats
 # ---------------------------------------------------------------------------
+
 
 class TestVecStats:
     def test_stats_simple(self):
@@ -269,6 +296,7 @@ class TestVecStats:
 # 8. count_substring
 # ---------------------------------------------------------------------------
 
+
 class TestCountSubstring:
     def test_count_substring_basic(self):
         assert m.count_substring("hello hello world", "hello") == 2
@@ -311,6 +339,7 @@ class TestCountSubstring:
 # 9. reverse_string
 # ---------------------------------------------------------------------------
 
+
 class TestReverseString:
     def test_reverse_string(self):
         assert m.reverse_string("hello") == "olleh"
@@ -342,14 +371,18 @@ class TestReverseString:
 # 10. gcd
 # ---------------------------------------------------------------------------
 
+
 class TestGcd:
-    @pytest.mark.parametrize("a,b,expected", [
-        (12, 8, 4),
-        (7, 5, 1),
-        (0, 5, 5),
-        (-12, 8, 4),
-        (100, 75, 25),
-    ])
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            (12, 8, 4),
+            (7, 5, 1),
+            (0, 5, 5),
+            (-12, 8, 4),
+            (100, 75, 25),
+        ],
+    )
     def test_gcd(self, a, b, expected):
         assert m.gcd(a, b) == expected
 
@@ -377,13 +410,17 @@ class TestGcd:
 # 11. lcm
 # ---------------------------------------------------------------------------
 
+
 class TestLcm:
-    @pytest.mark.parametrize("a,b,expected", [
-        (4, 6, 12),
-        (7, 5, 35),
-        (0, 5, 0),
-        (12, 18, 36),
-    ])
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            (4, 6, 12),
+            (7, 5, 35),
+            (0, 5, 0),
+            (12, 18, 36),
+        ],
+    )
     def test_lcm(self, a, b, expected):
         assert m.lcm(a, b) == expected
 
@@ -413,6 +450,7 @@ class TestLcm:
 # ---------------------------------------------------------------------------
 # 12. sieve_primes
 # ---------------------------------------------------------------------------
+
 
 class TestSievePrimes:
     def test_sieve_small(self):
@@ -454,6 +492,7 @@ class TestSievePrimes:
 # 13. sigmoid
 # ---------------------------------------------------------------------------
 
+
 class TestSigmoid:
     def test_sigmoid_zero(self):
         assert m.sigmoid(0.0) == pytest.approx(0.5)
@@ -468,11 +507,14 @@ class TestSigmoid:
         for x in [0.5, 1.0, 2.5]:
             assert m.sigmoid(x) + m.sigmoid(-x) == pytest.approx(1.0)
 
-    @pytest.mark.parametrize("x,expected", [
-        (1.0, 1.0 / (1.0 + math.exp(-1.0))),
-        (-1.0, 1.0 / (1.0 + math.exp(1.0))),
-        (2.0, 1.0 / (1.0 + math.exp(-2.0))),
-    ])
+    @pytest.mark.parametrize(
+        "x,expected",
+        [
+            (1.0, 1.0 / (1.0 + math.exp(-1.0))),
+            (-1.0, 1.0 / (1.0 + math.exp(1.0))),
+            (2.0, 1.0 / (1.0 + math.exp(-2.0))),
+        ],
+    )
     def test_sigmoid_known_values(self, x, expected):
         assert m.sigmoid(x) == pytest.approx(expected)
 
@@ -495,6 +537,7 @@ class TestSigmoid:
 # ---------------------------------------------------------------------------
 # 14. vec_sigmoid
 # ---------------------------------------------------------------------------
+
 
 class TestVecSigmoid:
     def test_vec_sigmoid(self):
@@ -530,6 +573,7 @@ class TestVecSigmoid:
 # ---------------------------------------------------------------------------
 # 15. binary_search
 # ---------------------------------------------------------------------------
+
 
 class TestBinarySearch:
     def test_binary_search_found(self):
@@ -590,6 +634,7 @@ class TestBinarySearch:
 # ---------------------------------------------------------------------------
 # Cross-function / integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestCrossFunctionIntegration:
     def test_dot_norm_relation(self):

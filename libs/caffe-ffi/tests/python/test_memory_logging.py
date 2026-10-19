@@ -8,23 +8,28 @@ Usage:
     # 或独立运行：
     python tests/python/test_memory_logging.py
 """
-import sys
-import os
+
 import gc
 import logging
+import sys
 import traceback
 
 import numpy as np
 import pytest
+
 import caffe_ffi
-from caffe_ffi import Blob, set_log_level, get_log_level
-from caffe_ffi import LOG_LEVEL_TRACE, LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN
+from caffe_ffi import (
+    LOG_LEVEL_DEBUG,
+    Blob,
+    get_log_level,
+    set_log_level,
+)
 
 
 def setup_logging():
     logging.basicConfig(
         level=logging.DEBUG,
-        format='[PY %(levelname)s] %(name)s: %(message)s',
+        format="[PY %(levelname)s] %(name)s: %(message)s",
         stream=sys.stdout,
     )
     set_log_level(LOG_LEVEL_DEBUG)
@@ -176,7 +181,7 @@ def test_7_multiple_blobs():
         p = b.data_tensor.ctypes.data
         blobs.append(b)
         ptrs.append(p)
-        print(f"[TEST7] Blob[{i}] shape={b.shape}, ptr=0x{p:016x}, fill_value={i+1}")
+        print(f"[TEST7] Blob[{i}] shape={b.shape}, ptr=0x{p:016x}, fill_value={i + 1}")
     print(f"[TEST7] All pointers unique: {len(set(ptrs)) == len(ptrs)}")
     assert len(set(ptrs)) == len(ptrs)
     for i in range(2, -1, -1):
@@ -199,7 +204,7 @@ def test_8_exception_during_use():
         raise RuntimeError("Simulated error during Blob use")
     except RuntimeError:
         print("[TEST8] Exception caught, Blob still in scope")
-        print(f"[TEST8] data accessible: {float(b.data_tensor[0,0]):.1f}")
+        print(f"[TEST8] data accessible: {float(b.data_tensor[0, 0]):.1f}")
     del b
     gc.collect()
     print("[TEST8] Blob destroyed after exception handling")

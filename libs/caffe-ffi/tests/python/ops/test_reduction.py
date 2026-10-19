@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
+
 import numpy as np
 import pytest
+
 from .utils import L, _test_op, assert_op_correct
 
 logger = logging.getLogger(__name__)
@@ -63,9 +65,7 @@ def test_forward_Reduction(caffe_test_dir):
     logger.debug("Testing Reduction ASUM 1D")
     _test_reduction(np.random.rand(10).astype(np.float32), caffe_test_dir, operation=reduction_op["ASUM"])
     logger.debug("Testing Reduction ASUM 2D, axis=1")
-    _test_reduction(
-        np.random.rand(10, 20).astype(np.float32), caffe_test_dir, operation=reduction_op["ASUM"], axis=1
-    )
+    _test_reduction(np.random.rand(10, 20).astype(np.float32), caffe_test_dir, operation=reduction_op["ASUM"], axis=1)
     logger.debug("Testing Reduction ASUM 4D, axis=3")
     _test_reduction(
         np.random.rand(10, 20, 30, 40).astype(np.float32), caffe_test_dir, operation=reduction_op["ASUM"], axis=3

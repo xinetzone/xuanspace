@@ -68,22 +68,17 @@ def validate_lenient(bundle: Bundle) -> list[str]:
             warnings.append(f"WARNING: Concept '{concept_id}' is missing description")
 
         warnings.append(
-            f"WARNING: Concept '{concept_id}' has type '{concept.type}' "
-            f"(OKF does not centrally register types)"
+            f"WARNING: Concept '{concept_id}' has type '{concept.type}' (OKF does not centrally register types)"
         )
 
         if concept.extra:
             extra_keys = ", ".join(sorted(concept.extra.keys()))
-            warnings.append(
-                f"WARNING: Concept '{concept_id}' has unknown extension keys: {extra_keys}"
-            )
+            warnings.append(f"WARNING: Concept '{concept_id}' has unknown extension keys: {extra_keys}")
 
         try:
             links = parse_links_with_context(concept.path, bundle.root)
         except FileNotFoundError:
-            warnings.append(
-                f"WARNING: Concept '{concept_id}' file not found at {concept.path}"
-            )
+            warnings.append(f"WARNING: Concept '{concept_id}' file not found at {concept.path}")
             continue
         broken = check_broken_links(links, bundle)
         warnings.extend(broken)

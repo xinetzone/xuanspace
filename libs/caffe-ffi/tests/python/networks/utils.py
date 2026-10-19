@@ -15,10 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import os
 import logging
-import urllib.request
+import os
 import sys
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +32,7 @@ if str(_python_dir) not in sys.path:
     sys.path.insert(0, str(_python_dir))
 
 import pytest  # noqa: E402
+
 import caffe_ffi  # noqa: E402
 
 os.environ["GLOG_minloglevel"] = "2"
@@ -50,6 +51,7 @@ def _download_model(url, filename, cache_dir, expected_size=None):
     a truncated download from a previous run and is re-downloaded.
     """
     import time
+
     local_path = os.path.join(cache_dir, filename)
 
     # Probe server for expected size to detect truncated downloads.
@@ -71,7 +73,9 @@ def _download_model(url, filename, cache_dir, expected_size=None):
         # File exists but is truncated — remove and re-download.
         logging.warning(
             "Cached model %s is truncated (%d bytes < expected %d); re-downloading",
-            filename, file_size, expected_size,
+            filename,
+            file_size,
+            expected_size,
         )
         os.remove(local_path)
 
@@ -85,21 +89,23 @@ def _download_model(url, filename, cache_dir, expected_size=None):
                 if attempt < max_retries - 1:
                     logging.warning(
                         "Download attempt %d for %s truncated (%d/%d); retrying...",
-                        attempt + 1, filename, file_size, expected_size,
+                        attempt + 1,
+                        filename,
+                        file_size,
+                        expected_size,
                     )
                     os.remove(local_path)
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
-                raise IOError(
+                raise OSError(
                     f"Failed to download {filename} after {max_retries} attempts: "
                     f"got {file_size} bytes, expected {expected_size}"
                 )
             return local_path
         except Exception as e:
             if attempt < max_retries - 1:
-                logging.warning("Download attempt %d for %s failed: %s; retrying...",
-                                attempt + 1, filename, e)
-                time.sleep(2 ** attempt)
+                logging.warning("Download attempt %d for %s failed: %s; retrying...", attempt + 1, filename, e)
+                time.sleep(2**attempt)
             else:
                 raise
 

@@ -4,8 +4,9 @@ import ctypes
 import logging
 import os
 import warnings
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -100,7 +101,7 @@ class Blob(_Object):
 
     __slots__ = ("__dict__",)
 
-    def __init__(self, shape: Optional[List[int]] = None, handle=None):
+    def __init__(self, shape: list[int] | None = None, handle=None):
         if _NATIVE_MODE and handle is None:
             ctor = _get_fn("NewBlob")
             self.__init_handle_by_constructor__(ctor)
@@ -171,7 +172,7 @@ class Blob(_Object):
     def size(self) -> int:
         return self.count()
 
-    def count(self, start_axis: int = 0, end_axis: Optional[int] = None) -> int:
+    def count(self, start_axis: int = 0, end_axis: int | None = None) -> int:
         s = self.shape
         ndim = len(s)
         # Normalize negative axes
@@ -189,7 +190,7 @@ class Blob(_Object):
             result *= int(s[i])
         return result
 
-    def Reshape(self, shape: List[int]) -> None:
+    def Reshape(self, shape: list[int]) -> None:
         try:
             old_shape = tuple(self.shape)
         except Exception:
@@ -330,7 +331,7 @@ class Blob(_Object):
         """Convert blob to numpy array (returns a copy)."""
         return self.diff_tensor.copy() if get_diff else self.data_tensor.copy()
 
-    def get_data(self) -> List[float]:
+    def get_data(self) -> list[float]:
         if self._is_native:
             return list(_native_method(self, "get_data")())
         return self._py_data.flatten().tolist()
@@ -349,7 +350,7 @@ class Blob(_Object):
             _logger.info("Blob.set_data (python): shape=%s", self._py_shape)
             self._py_data = data
 
-    def get_diff(self) -> List[float]:
+    def get_diff(self) -> list[float]:
         if self._is_native:
             return list(_native_method(self, "get_diff")())
         return self._py_diff.flatten().tolist()
@@ -410,7 +411,7 @@ class Layer(_Object):
         return getattr(self, "_py_name", "")
 
     @property
-    def blobs(self) -> List[Blob]:
+    def blobs(self) -> list[Blob]:
         if self._is_native:
             return list(_native_method(self, "blobs_array")())
         return list(getattr(self, "_py_blobs", []))
@@ -451,7 +452,7 @@ class Net(_Object):
 
     __slots__ = ("__dict__",)
 
-    def __init__(self, param: Optional[Union[str, os.PathLike]] = None, handle=None):
+    def __init__(self, param: str | os.PathLike | None = None, handle=None):
         if _NATIVE_MODE and handle is None and param is not None:
             param_str = str(param)
             if os.path.isfile(param_str):
@@ -488,7 +489,7 @@ class Net(_Object):
             return str(_native_method(self, "name")())
         return getattr(self, "_py_name", "")
 
-    def Forward(self, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Blob]:
+    def Forward(self, inputs: dict[str, Any] | None = None) -> dict[str, Blob]:
         if inputs is None:
             inputs = {}
         if self._is_native:
@@ -515,7 +516,7 @@ class Net(_Object):
             "or install the compiled extension (pip install -e .) for real computation."
         )
 
-    def forward(self, input_dict: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, np.ndarray]:
+    def forward(self, input_dict: dict[str, np.ndarray] | None = None) -> dict[str, np.ndarray]:
         """Run forward pass and return output blobs as numpy arrays.
 
         Parameters
@@ -536,7 +537,7 @@ class Net(_Object):
                 try:
                     blob = self.blob_by_name(name)
                     blob.data = arr
-                except (KeyError, RuntimeError):
+                except KeyError, RuntimeError:
                     pass
 
             result_map = self.Forward()
@@ -553,11 +554,11 @@ class Net(_Object):
             return result
         return self._forward_pure_python(input_dict)
 
-    def forward_all(self, **kwargs: np.ndarray) -> Dict[str, np.ndarray]:
+    def forward_all(self, **kwargs: np.ndarray) -> dict[str, np.ndarray]:
         """Convenience wrapper for forward with keyword arguments."""
         return self.forward(kwargs)
 
-    def backward(self, output_diffs: Optional[Dict[str, np.ndarray]] = None) -> None:
+    def backward(self, output_diffs: dict[str, np.ndarray] | None = None) -> None:
         """Run backward pass through all layers.
 
         Before calling backward, you must first call forward() to compute activations,
@@ -595,42 +596,42 @@ class Net(_Object):
             "or monkey-patch _py_backward for pure-Python testing."
         )
 
-    def blobs_array(self) -> List[Blob]:
+    def blobs_array(self) -> list[Blob]:
         if self._is_native:
             return list(_native_method(self, "blobs_array")())
         return list(getattr(self, "_py_blob_list", []))
 
-    def layers_array(self) -> List[Layer]:
+    def layers_array(self) -> list[Layer]:
         if self._is_native:
             return list(_native_method(self, "layers_array")())
         return list(getattr(self, "_py_layer_list", []))
 
-    def input_blobs_array(self) -> List[Blob]:
+    def input_blobs_array(self) -> list[Blob]:
         if self._is_native:
             return list(_native_method(self, "input_blobs_array")())
         return list(getattr(self, "_py_input_blobs", []))
 
-    def output_blobs_array(self) -> List[Blob]:
+    def output_blobs_array(self) -> list[Blob]:
         if self._is_native:
             return list(_native_method(self, "output_blobs_array")())
         return list(getattr(self, "_py_output_blobs", []))
 
-    def blob_names(self) -> List[str]:
+    def blob_names(self) -> list[str]:
         if self._is_native:
             return [str(n) for n in _native_method(self, "blob_names")()]
         return list(getattr(self, "_py_blobs", {}).keys())
 
-    def layer_names(self) -> List[str]:
+    def layer_names(self) -> list[str]:
         if self._is_native:
             return [str(n) for n in _native_method(self, "layer_names")()]
         return list(getattr(self, "_py_layers", {}).keys())
 
-    def input_blob_names(self) -> List[str]:
+    def input_blob_names(self) -> list[str]:
         if self._is_native:
             return [str(n) for n in _native_method(self, "input_blob_names")()]
         return list(getattr(self, "_py_input_blob_names", []))
 
-    def output_blob_names(self) -> List[str]:
+    def output_blob_names(self) -> list[str]:
         if self._is_native:
             return [str(n) for n in _native_method(self, "output_blob_names")()]
         return list(getattr(self, "_py_output_blob_names", []))
@@ -670,7 +671,7 @@ class Net(_Object):
         return len(getattr(self, "_py_output_blobs", []))
 
     @property
-    def blobs_dict(self) -> Dict[str, Blob]:
+    def blobs_dict(self) -> dict[str, Blob]:
         result = {}
         names = self.blob_names()
         blobs = self.blobs_array()
@@ -682,7 +683,7 @@ class Net(_Object):
         return result
 
     @property
-    def layers_dict(self) -> Dict[str, Layer]:
+    def layers_dict(self) -> dict[str, Layer]:
         result = {}
         names = self.layer_names()
         layers = self.layers_array()
@@ -693,13 +694,13 @@ class Net(_Object):
                 result[f"layer_{i}"] = layer
         return result
 
-    def CopyTrainedLayersFrom(self, trained_filename: Union[str, Path]) -> None:
+    def CopyTrainedLayersFrom(self, trained_filename: str | Path) -> None:
         if self._is_native:
             _native_method(self, "CopyTrainedLayersFrom")(str(trained_filename))
         else:
             self._copy_from_pure_python(trained_filename)
 
-    def copy_from(self, trained_filename: Union[str, Path]) -> None:
+    def copy_from(self, trained_filename: str | Path) -> None:
         """Copy trained layers from a caffemodel file."""
         self.CopyTrainedLayersFrom(trained_filename)
 

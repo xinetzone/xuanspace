@@ -15,11 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import logging
 import os
 import sys
 import time
-import logging
 from pathlib import Path
+
 import numpy as np
 
 # Ensure the caffe_ffi package is importable even when the ops/ directory is
@@ -305,15 +306,35 @@ class L:
 
     # ── matrix / tensor structure ops ────────────────────────────────
     @staticmethod
-    def Convolution(bottom, num_output, kernel_size=1, stride=1, pad=0,
-                    dilation=1, group=1, bias_term=True, weight_filler=None,
-                    bias_filler=None, kernel_h=None, kernel_w=None,
-                    stride_h=None, stride_w=None, pad_h=None, pad_w=None,
-                    **kwargs):
+    def Convolution(
+        bottom,
+        num_output,
+        kernel_size=1,
+        stride=1,
+        pad=0,
+        dilation=1,
+        group=1,
+        bias_term=True,
+        weight_filler=None,
+        bias_filler=None,
+        kernel_h=None,
+        kernel_w=None,
+        stride_h=None,
+        stride_w=None,
+        pad_h=None,
+        pad_w=None,
+        **kwargs,
+    ):
         layer = _make_layer("Convolution", [bottom])
-        params = dict(num_output=num_output, kernel_size=kernel_size,
-                      stride=stride, pad=pad, dilation=dilation, group=group,
-                      bias_term=bias_term)
+        params = dict(
+            num_output=num_output,
+            kernel_size=kernel_size,
+            stride=stride,
+            pad=pad,
+            dilation=dilation,
+            group=group,
+            bias_term=bias_term,
+        )
         if weight_filler is not None:
             params["weight_filler"] = weight_filler
         if bias_filler is not None:
@@ -344,11 +365,11 @@ class L:
         return _LayerSpec(layer)
 
     @staticmethod
-    def InnerProduct(bottom, num_output, bias_term=True, weight_filler=None,
-                     bias_filler=None, axis=1, transpose=False, **kwargs):
+    def InnerProduct(
+        bottom, num_output, bias_term=True, weight_filler=None, bias_filler=None, axis=1, transpose=False, **kwargs
+    ):
         layer = _make_layer("InnerProduct", [bottom])
-        params = dict(num_output=num_output, bias_term=bias_term, axis=axis,
-                      transpose=transpose)
+        params = dict(num_output=num_output, bias_term=bias_term, axis=axis, transpose=transpose)
         if weight_filler is not None:
             params["weight_filler"] = weight_filler
         if bias_filler is not None:
@@ -358,11 +379,9 @@ class L:
         return _LayerSpec(layer)
 
     @staticmethod
-    def Embed(bottom, num_output, input_dim, bias_term=True,
-              weight_filler=None, bias_filler=None, **kwargs):
+    def Embed(bottom, num_output, input_dim, bias_term=True, weight_filler=None, bias_filler=None, **kwargs):
         layer = _make_layer("Embed", [bottom])
-        params = dict(num_output=num_output, input_dim=input_dim,
-                      bias_term=bias_term)
+        params = dict(num_output=num_output, input_dim=input_dim, bias_term=bias_term)
         if weight_filler is not None:
             params["weight_filler"] = weight_filler
         if bias_filler is not None:
@@ -372,12 +391,23 @@ class L:
         return _LayerSpec(layer)
 
     @staticmethod
-    def Pooling(bottom, pool=P.Pooling.MAX, kernel_size=1, stride=1, pad=0,
-                global_pooling=False, kernel_h=None, kernel_w=None,
-                stride_h=None, stride_w=None, pad_h=None, pad_w=None, **kwargs):
+    def Pooling(
+        bottom,
+        pool=P.Pooling.MAX,
+        kernel_size=1,
+        stride=1,
+        pad=0,
+        global_pooling=False,
+        kernel_h=None,
+        kernel_w=None,
+        stride_h=None,
+        stride_w=None,
+        pad_h=None,
+        pad_w=None,
+        **kwargs,
+    ):
         layer = _make_layer("Pooling", [bottom])
-        params = dict(pool=pool, kernel_size=kernel_size, stride=stride,
-                      pad=pad, global_pooling=global_pooling)
+        params = dict(pool=pool, kernel_size=kernel_size, stride=stride, pad=pad, global_pooling=global_pooling)
         if kernel_h is not None:
             params["kernel_h"] = kernel_h
         if kernel_w is not None:
@@ -453,7 +483,7 @@ class L:
 
     @staticmethod
     def Slice(bottom, ntop=2, slice_param=None, **kwargs):
-        tops = ["output%d" % i for i in range(ntop)]
+        tops = [f"output{i}" for i in range(ntop)]
         layer = _make_layer("Slice", [bottom], tops=tops)
         if slice_param:
             _fill_param_from_dict(layer.slice_param, slice_param)
@@ -556,6 +586,7 @@ def _validate_reshape_params(data, reshape_param):
     - Product of resolved dims must equal product of affected input axes
     """
     import numpy as _np
+
     if isinstance(data, (list, tuple)):
         input_shape = list(data[0].shape)
     else:
@@ -573,27 +604,21 @@ def _validate_reshape_params(data, reshape_param):
     if axis < 0:
         axis = ndim + axis
     if axis < 0 or axis >= ndim:
-        raise ValueError(
-            f"Reshape parameter error: axis={axis} out of range for input_shape={input_shape}"
-        )
+        raise ValueError(f"Reshape parameter error: axis={axis} out of range for input_shape={input_shape}")
 
     if num_axes < 0:
         num_axes = ndim - axis
     if axis + num_axes > ndim:
-        raise ValueError(
-            f"Reshape parameter error: axis+num_axes={axis+num_axes} exceeds ndim={ndim}"
-        )
+        raise ValueError(f"Reshape parameter error: axis+num_axes={axis + num_axes} exceeds ndim={ndim}")
 
     # Affected input axes (those being reshaped)
-    affected_axes = input_shape[axis:axis + num_axes]
+    affected_axes = input_shape[axis : axis + num_axes]
     affected_count = int(_np.prod(affected_axes)) if affected_axes else 1
 
     # Count -1 occurrences
     num_minus_one = dim.count(-1)
     if num_minus_one > 1:
-        raise ValueError(
-            f"Reshape parameter error: multiple -1 in dim={dim} (at most one allowed)"
-        )
+        raise ValueError(f"Reshape parameter error: multiple -1 in dim={dim} (at most one allowed)")
 
     # Compute product of resolved dims:
     # - d > 0: multiply by d
@@ -614,9 +639,7 @@ def _validate_reshape_params(data, reshape_param):
         elif d > 0:
             constant_count *= d
         else:
-            raise ValueError(
-                f"Reshape parameter error: invalid dim value {d} at position {i} in {dim}"
-            )
+            raise ValueError(f"Reshape parameter error: invalid dim value {d} at position {i} in {dim}")
 
     if num_minus_one == 1:
         if affected_count % constant_count != 0:
@@ -689,8 +712,7 @@ def assert_op_correct(caffe_out, ref_out, atol=1e-5, rtol=1e-4, op_name=""):
         b_np = np.asarray(b)
         if a_np.shape != b_np.shape:
             raise AssertionError(
-                f"Shape mismatch for {op_name or 'op'}: "
-                f"caffe_out shape {a_np.shape} vs ref_out shape {b_np.shape}"
+                f"Shape mismatch for {op_name or 'op'}: caffe_out shape {a_np.shape} vs ref_out shape {b_np.shape}"
             )
         close_mask = np.isclose(a_np, b_np, atol=atol, rtol=rtol)
         if not np.all(close_mask):
@@ -709,10 +731,7 @@ def assert_op_correct(caffe_out, ref_out, atol=1e-5, rtol=1e-4, op_name=""):
 
     if isinstance(caffe_out, (list, tuple)) and isinstance(ref_out, (list, tuple)):
         if len(caffe_out) != len(ref_out):
-            raise AssertionError(
-                f"Output count mismatch for {op_name or 'op'}: "
-                f"{len(caffe_out)} vs {len(ref_out)}"
-            )
+            raise AssertionError(f"Output count mismatch for {op_name or 'op'}: {len(caffe_out)} vs {len(ref_out)}")
         for i, (c, r) in enumerate(zip(caffe_out, ref_out)):
             _compare_single(c, r)
     elif isinstance(caffe_out, (list, tuple)) and len(caffe_out) == 1 and not isinstance(ref_out, (list, tuple)):
@@ -756,6 +775,7 @@ def get_memory_usage():
         tuple: (current_memory, peak_memory) in bytes
     """
     import tracemalloc
+
     if not tracemalloc.is_tracing():
         tracemalloc.start()
     current, peak = tracemalloc.get_traced_memory()
@@ -783,6 +803,7 @@ def check_memory_leak(func, runs=5, *args, **kwargs):
         RuntimeError: If significant memory leak is detected
     """
     import tracemalloc
+
     logger.debug(f"Checking memory leak for {func.__name__} with {runs} runs")
 
     was_tracing = tracemalloc.is_tracing()
@@ -800,8 +821,8 @@ def check_memory_leak(func, runs=5, *args, **kwargs):
     _, peak = tracemalloc.get_traced_memory()
 
     if len(memory_per_run) >= 3:
-        first_half = memory_per_run[:runs//2]
-        second_half = memory_per_run[runs//2:]
+        first_half = memory_per_run[: runs // 2]
+        second_half = memory_per_run[runs // 2 :]
         avg_first = sum(first_half) / len(first_half)
         avg_second = sum(second_half) / len(second_half)
         growth = avg_second - avg_first
@@ -816,10 +837,10 @@ def check_memory_leak(func, runs=5, *args, **kwargs):
         tracemalloc.stop()
 
     result = {
-        'memory_per_run': memory_per_run,
-        'has_leak': has_leak,
-        'growth_rate': growth_rate,
-        'peak_memory': peak,
+        "memory_per_run": memory_per_run,
+        "has_leak": has_leak,
+        "growth_rate": growth_rate,
+        "peak_memory": peak,
     }
 
     if has_leak:
@@ -828,10 +849,7 @@ def check_memory_leak(func, runs=5, *args, **kwargs):
             f"avg growth = {growth_rate:.2f} bytes/run over {runs} runs"
         )
     else:
-        logger.debug(
-            f"No memory leak detected in {func.__name__}: "
-            f"avg growth = {growth_rate:.2f} bytes/run"
-        )
+        logger.debug(f"No memory leak detected in {func.__name__}: avg growth = {growth_rate:.2f} bytes/run")
 
     return result
 
@@ -843,9 +861,9 @@ class TestResultCollector:
 
     def __init__(self):
         self.results = {
-            'correctness': [],
-            'performance': [],
-            'memory': [],
+            "correctness": [],
+            "performance": [],
+            "memory": [],
         }
 
     def add_result(self, category, name, passed, details=None):
@@ -862,9 +880,9 @@ class TestResultCollector:
             raise ValueError(f"Unknown category: {category}. Must be one of {list(self.results.keys())}")
 
         result = {
-            'name': name,
-            'passed': passed,
-            'details': details or {},
+            "name": name,
+            "passed": passed,
+            "details": details or {},
         }
         self.results[category].append(result)
         logger.debug(f"Added {category} result for {name}: passed={passed}")
@@ -881,24 +899,24 @@ class TestResultCollector:
         total_tests = 0
 
         for category, results in self.results.items():
-            passed = sum(1 for r in results if r['passed'])
+            passed = sum(1 for r in results if r["passed"])
             total = len(results)
             summary[category] = {
-                'total': total,
-                'passed': passed,
-                'failed': total - passed,
-                'pass_rate': passed / total if total > 0 else 0.0,
-                'results': results,
+                "total": total,
+                "passed": passed,
+                "failed": total - passed,
+                "pass_rate": passed / total if total > 0 else 0.0,
+                "results": results,
             }
             total_passed += passed
             total_tests += total
 
-        summary['overall'] = {
-            'total': total_tests,
-            'passed': total_passed,
-            'failed': total_tests - total_passed,
-            'pass_rate': total_passed / total_tests if total_tests > 0 else 0.0,
-            'all_passed': total_passed == total_tests,
+        summary["overall"] = {
+            "total": total_tests,
+            "passed": total_passed,
+            "failed": total_tests - total_passed,
+            "pass_rate": total_passed / total_tests if total_tests > 0 else 0.0,
+            "all_passed": total_passed == total_tests,
         }
 
         logger.info(

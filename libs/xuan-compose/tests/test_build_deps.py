@@ -62,11 +62,7 @@ class TestResolveContextDependencies(unittest.TestCase):
         # A depends on B and C. B depends on D. C depends on D.
         # This is a perfectly cromulent arrangement
         services = {
-            "service_a": {
-                "build": {
-                    "additional_contexts": ["ctx1=service:service_b", "ctx2=service:service_c"]
-                }
-            },
+            "service_a": {"build": {"additional_contexts": ["ctx1=service:service_b", "ctx2=service:service_c"]}},
             "service_b": {"build": {"additional_contexts": ["ctx=service:service_d"]}},
             "service_c": {"build": {"additional_contexts": ["ctx=service:service_d"]}},
             "service_d": {"image": "image_d"},

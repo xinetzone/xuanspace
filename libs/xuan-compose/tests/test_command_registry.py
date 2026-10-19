@@ -52,11 +52,7 @@ class TestCommandRegistry(IsolatedAsyncioTestCase):
     def test_every_handler_has_two_positional_params(self) -> None:
         for name, handler in COMMAND_HANDLERS.items():
             sig = inspect.signature(handler)
-            params = [
-                p
-                for p in sig.parameters.values()
-                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-            ]
+            params = [p for p in sig.parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
             assert len(params) == 2, (name, sig)
 
     async def test_install_handlers_populates_command_lookup(self) -> None:

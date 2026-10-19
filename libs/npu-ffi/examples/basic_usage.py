@@ -12,6 +12,7 @@ npu-ffi VTA Python API 基本使用示例
 使用方法:
     python examples/basic_usage.py
 """
+
 from __future__ import annotations
 
 import os
@@ -92,10 +93,10 @@ def demo_command_context() -> None:
     section("6. CommandContext - 自动同步")
     with CommandContext() as cmd:
         print(f"  在 with 块内: cmd=0x{cmd:x}")
-        inp = Buffer(1024)
-        wgt = Buffer(1024)
-        acc = Buffer(1024)
-        print(f"  分配了 3 个缓冲区")
+        Buffer(1024)
+        Buffer(1024)
+        Buffer(1024)
+        print("  分配了 3 个缓冲区")
         vta.uop_push(0, 1, 0, 0, 0, int(vta.ALUOpcode.ADD), 0, 0)
         print("  推送了 uop 命令")
     print("  退出 with 块时自动同步")
@@ -160,7 +161,7 @@ def demo_repr() -> None:
     print(f"  Buffer repr: {buf!r}")
     ctx = CommandContext()
     print(f"  CommandContext (未进入): {ctx!r}")
-    with ctx as cmd:
+    with ctx:
         print(f"  CommandContext (已进入): {ctx!r}")
     buf.reset()
 

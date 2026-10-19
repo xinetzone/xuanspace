@@ -13,10 +13,10 @@ These tests are pure numpy and do NOT require the C++ extension. Importing
 ``caffe_ffi`` may optionally load the native extension (or fall back to
 Python-only mode); the ``sequence`` subpackage is pure Python either way.
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from caffe_ffi import sequence
 
@@ -30,6 +30,7 @@ ATOL = 1e-5
 # ---------------------------------------------------------------------------
 # 1. API surface / import
 # ---------------------------------------------------------------------------
+
 
 def test_api_surface():
     """``from caffe_ffi import sequence`` exposes RNN/LSTM and all helpers."""
@@ -50,6 +51,7 @@ def test_api_surface():
 # 2. Known-value tests (hand-computed)
 # ---------------------------------------------------------------------------
 
+
 def test_rnn_known_value():
     """RNN single-step tanh: h = tanh(W_ih @ x) with identity W_ih, zero bias.
 
@@ -57,12 +59,14 @@ def test_rnn_known_value():
     → h = tanh([0.5, -0.3]) = [0.4621..., -0.2913...]
     """
     rnn = sequence.RNN(2, 2)
-    rnn.load_weights({
-        "W_ih": np.eye(2, dtype=np.float32),
-        "W_hh": np.zeros((2, 2), dtype=np.float32),
-        "b_ih": np.zeros(2, dtype=np.float32),
-        "b_hh": np.zeros(2, dtype=np.float32),
-    })
+    rnn.load_weights(
+        {
+            "W_ih": np.eye(2, dtype=np.float32),
+            "W_hh": np.zeros((2, 2), dtype=np.float32),
+            "b_ih": np.zeros(2, dtype=np.float32),
+            "b_hh": np.zeros(2, dtype=np.float32),
+        }
+    )
     x = np.array([[[0.5, -0.3]]], dtype=np.float32)  # (1, 1, 2)
     out, h_n = rnn.forward(x)
     expected = np.tanh(np.array([0.5, -0.3], dtype=np.float64)).astype(np.float32)
@@ -78,12 +82,14 @@ def test_rnn_relu_activation():
     x = [[[1.0, -2.0]]] → relu([1.0, -2.0]) = [1.0, 0.0].
     """
     rnn = sequence.RNN(2, 2, activation="relu")
-    rnn.load_weights({
-        "W_ih": np.eye(2, dtype=np.float32),
-        "W_hh": np.zeros((2, 2), dtype=np.float32),
-        "b_ih": np.zeros(2, dtype=np.float32),
-        "b_hh": np.zeros(2, dtype=np.float32),
-    })
+    rnn.load_weights(
+        {
+            "W_ih": np.eye(2, dtype=np.float32),
+            "W_hh": np.zeros((2, 2), dtype=np.float32),
+            "b_ih": np.zeros(2, dtype=np.float32),
+            "b_hh": np.zeros(2, dtype=np.float32),
+        }
+    )
     x = np.array([[[1.0, -2.0]]], dtype=np.float32)  # (1, 1, 2)
     out, h_n = rnn.forward(x)
     expected = np.array([1.0, 0.0], dtype=np.float32)
@@ -101,8 +107,9 @@ def test_lstm_known_value():
     H, D = 1, 1
     weights = {g: np.zeros((H, D), dtype=np.float32) for g in ("W_ii", "W_if", "W_io", "W_ig")}
     weights.update({g: np.zeros((H, H), dtype=np.float32) for g in ("W_hi", "W_hf", "W_ho", "W_hg")})
-    weights.update({g: np.zeros(H, dtype=np.float32) for g in (
-        "b_ii", "b_if", "b_io", "b_ig", "b_hi", "b_hf", "b_ho", "b_hg")})
+    weights.update(
+        {g: np.zeros(H, dtype=np.float32) for g in ("b_ii", "b_if", "b_io", "b_ig", "b_hi", "b_hf", "b_ho", "b_hg")}
+    )
     lstm.load_weights(weights)
 
     x = np.array([[[0.5]]], dtype=np.float32)  # (1, 1, 1)
@@ -116,6 +123,7 @@ def test_lstm_known_value():
 # ---------------------------------------------------------------------------
 # 3. Shape tests
 # ---------------------------------------------------------------------------
+
 
 def test_rnn_forward_shape():
     """RNN (T, N, D) → output (T, N, H), h_n (N, H)."""
@@ -174,6 +182,7 @@ def test_bidirectional_shape():
 # 4. Layout consistency (batch_first vs time-first)
 # ---------------------------------------------------------------------------
 
+
 def test_layout_consistency_rnn():
     """Same weights: batch_first=False equals batch_first=True (transposed)."""
     T, N, D, H = 5, 3, 4, 8
@@ -206,6 +215,7 @@ def test_layout_consistency_lstm():
 # 5. Caffe-style packed weight loading consistency
 # ---------------------------------------------------------------------------
 
+
 def test_lstm_weights_consistency_caffe_packed():
     """Loading Caffe packed (W, b) matches loading the dict form directly."""
     D, H = 4, 8
@@ -233,6 +243,7 @@ def test_lstm_weights_consistency_caffe_packed():
 # ---------------------------------------------------------------------------
 # 6. Final-state correctness
 # ---------------------------------------------------------------------------
+
 
 def test_rnn_final_state():
     """Unidirectional RNN: h_n equals the last time-step output."""
@@ -277,6 +288,7 @@ def test_bidirectional_final_state():
 # 7. numpy self-consistency (class API vs direct reference functions)
 # ---------------------------------------------------------------------------
 
+
 def test_rnn_numpy_consistency():
     """RNN.forward equals rnn_forward called directly with the same weights."""
     T, N, D, H = 5, 3, 4, 8
@@ -290,7 +302,10 @@ def test_rnn_numpy_consistency():
 
     out_ref, h_ref = sequence.rnn_forward(
         x,
-        w["W_ih"], w["W_hh"], w["b_ih"], w["b_hh"],
+        w["W_ih"],
+        w["W_hh"],
+        w["b_ih"],
+        w["b_hh"],
         activation="tanh",
     )
     np.testing.assert_allclose(out_cls, out_ref, rtol=RTOL, atol=ATOL)
@@ -310,10 +325,22 @@ def test_lstm_numpy_consistency():
 
     out_ref, (hn_ref, cn_ref) = sequence.lstm_forward(
         x,
-        w["W_ii"], w["W_if"], w["W_io"], w["W_ig"],
-        w["W_hi"], w["W_hf"], w["W_ho"], w["W_hg"],
-        w["b_ii"], w["b_if"], w["b_io"], w["b_ig"],
-        w["b_hi"], w["b_hf"], w["b_ho"], w["b_hg"],
+        w["W_ii"],
+        w["W_if"],
+        w["W_io"],
+        w["W_ig"],
+        w["W_hi"],
+        w["W_hf"],
+        w["W_ho"],
+        w["W_hg"],
+        w["b_ii"],
+        w["b_if"],
+        w["b_io"],
+        w["b_ig"],
+        w["b_hi"],
+        w["b_hf"],
+        w["b_ho"],
+        w["b_hg"],
     )
     np.testing.assert_allclose(out_cls, out_ref, rtol=RTOL, atol=ATOL)
     np.testing.assert_allclose(hn_cls, hn_ref, rtol=RTOL, atol=ATOL)

@@ -153,10 +153,12 @@ class TestGetNetArgs(unittest.TestCase):
             ],
         )
 
-    @parameterized.expand([
-        "mac_address",
-        "x-podman.mac_address",
-    ])
+    @parameterized.expand(
+        [
+            "mac_address",
+            "x-podman.mac_address",
+        ]
+    )
     def test_mac_on_network(self, mac_attr: str) -> None:
         mac = "00:11:22:33:44:55"
         compose = get_networked_compose()
@@ -259,9 +261,7 @@ class TestGetNetArgs(unittest.TestCase):
         }
         container["mac_address"] = mac_1
 
-        expected_exception = (
-            r"specifying mac_address on both container and network level is not supported"
-        )
+        expected_exception = r"specifying mac_address on both container and network level is not supported"
         self.assertRaisesRegex(RuntimeError, expected_exception, get_net_args, compose, container)
 
     def test_mixed_config(self) -> None:
@@ -290,22 +290,24 @@ class TestGetNetArgs(unittest.TestCase):
             ],
         )
 
-    @parameterized.expand([
-        ("bridge", [f"--network=bridge:alias={SERVICE_NAME},mac=11:22:33:44:55:66"]),
-        (
-            "bridge:ip=10.88.0.3",
-            [f"--network=bridge:ip=10.88.0.3,alias={SERVICE_NAME},mac=11:22:33:44:55:66"],
-        ),
-        ("host", ["--network=host"]),
-        ("none", ["--network=none"]),
-        ("slirp4netns", ["--network=slirp4netns"]),
-        ("slirp4netns:cidr=10.42.0.0/24", ["--network=slirp4netns:cidr=10.42.0.0/24"]),
-        ("private", ["--network=private"]),
-        ("pasta", ["--network=pasta"]),
-        ("pasta:--ipv4-only,-a,10.0.2.0", ["--network=pasta:--ipv4-only,-a,10.0.2.0"]),
-        ("ns:my_namespace", ["--network=ns:my_namespace"]),
-        ("container:my_container", ["--network=container:my_container"]),
-    ])
+    @parameterized.expand(
+        [
+            ("bridge", [f"--network=bridge:alias={SERVICE_NAME},mac=11:22:33:44:55:66"]),
+            (
+                "bridge:ip=10.88.0.3",
+                [f"--network=bridge:ip=10.88.0.3,alias={SERVICE_NAME},mac=11:22:33:44:55:66"],
+            ),
+            ("host", ["--network=host"]),
+            ("none", ["--network=none"]),
+            ("slirp4netns", ["--network=slirp4netns"]),
+            ("slirp4netns:cidr=10.42.0.0/24", ["--network=slirp4netns:cidr=10.42.0.0/24"]),
+            ("private", ["--network=private"]),
+            ("pasta", ["--network=pasta"]),
+            ("pasta:--ipv4-only,-a,10.0.2.0", ["--network=pasta:--ipv4-only,-a,10.0.2.0"]),
+            ("ns:my_namespace", ["--network=ns:my_namespace"]),
+            ("container:my_container", ["--network=container:my_container"]),
+        ]
+    )
     def test_network_modes(self, network_mode: str, expected_args: list) -> None:
         compose = get_networked_compose()
         container = get_minimal_container()

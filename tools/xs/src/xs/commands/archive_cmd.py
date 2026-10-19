@@ -3,7 +3,6 @@ xs archive 命令模块
 将子项目归档到 attic/ 目录
 """
 
-
 from pathlib import Path
 
 import typer

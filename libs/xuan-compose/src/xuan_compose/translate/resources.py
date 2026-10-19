@@ -73,26 +73,32 @@ def container_to_gpu_res_args(cnt: dict[str, Any], podman_args: list[str]) -> No
         device_ids = device.get("device_ids", "all")
         if device_ids != "all" and len(device_ids) > 0:
             for device_id in device_ids:
-                podman_args.extend((
-                    "--device",
-                    f"nvidia.com/gpu={device_id}",
-                ))
+                podman_args.extend(
+                    (
+                        "--device",
+                        f"nvidia.com/gpu={device_id}",
+                    )
+                )
             gpu_on = True
             continue
 
         if count != "all":
             for device_id in range(count):
-                podman_args.extend((
-                    "--device",
-                    f"nvidia.com/gpu={device_id}",
-                ))
+                podman_args.extend(
+                    (
+                        "--device",
+                        f"nvidia.com/gpu={device_id}",
+                    )
+                )
             gpu_on = True
             continue
 
-        podman_args.extend((
-            "--device",
-            "nvidia.com/gpu=all",
-        ))
+        podman_args.extend(
+            (
+                "--device",
+                "nvidia.com/gpu=all",
+            )
+        )
         gpu_on = True
 
     if gpu_on:
@@ -120,27 +126,35 @@ def container_to_cpu_res_args(cnt: dict[str, Any], podman_args: list[str]) -> No
     # add args
     cpus = cpus_limit_v3 or cpus_limit_v2
     if cpus:
-        podman_args.extend((
-            "--cpus",
-            str(cpus),
-        ))
+        podman_args.extend(
+            (
+                "--cpus",
+                str(cpus),
+            )
+        )
     if cpu_shares_v2:
-        podman_args.extend((
-            "--cpu-shares",
-            str(cpu_shares_v2),
-        ))
+        podman_args.extend(
+            (
+                "--cpu-shares",
+                str(cpu_shares_v2),
+            )
+        )
     mem = mem_limit_v3 or mem_limit_v2
     if mem:
-        podman_args.extend((
-            "-m",
-            str(mem).lower(),
-        ))
+        podman_args.extend(
+            (
+                "-m",
+                str(mem).lower(),
+            )
+        )
     mem_res = mem_res_v3 or mem_res_v2
     if mem_res:
-        podman_args.extend((
-            "--memory-reservation",
-            str(mem_res).lower(),
-        ))
+        podman_args.extend(
+            (
+                "--memory-reservation",
+                str(mem_res).lower(),
+            )
+        )
 
     # Handle pids limit from both container level and deploy section
     pids_limit = cnt.get("pids_limit")

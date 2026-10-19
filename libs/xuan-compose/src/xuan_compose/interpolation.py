@@ -70,9 +70,7 @@ def var_interpolate(value: str, env: dict[str, Any]) -> str:
 
             if self.operator == VarInterpolationOperators.REQUIRED_NONEMPTY.value:
                 if var_value is None or var_value == "":
-                    interpolated_operand = (
-                        interpolate_str(self.operand, env) if self.operand else ""
-                    )
+                    interpolated_operand = interpolate_str(self.operand, env) if self.operand else ""
                     raise PodmanComposeError(
                         f"required variable {self.name} is missing a value: {interpolated_operand}"
                     )
@@ -80,9 +78,7 @@ def var_interpolate(value: str, env: dict[str, Any]) -> str:
 
             if self.operator == VarInterpolationOperators.REQUIRED_SET.value:
                 if var_value is None:
-                    interpolated_operand = (
-                        interpolate_str(self.operand, env) if self.operand else ""
-                    )
+                    interpolated_operand = interpolate_str(self.operand, env) if self.operand else ""
                     raise PodmanComposeError(
                         f"required variable {self.name} is missing a value: {interpolated_operand}"
                     )
@@ -139,8 +135,7 @@ def var_interpolate(value: str, env: dict[str, Any]) -> str:
         # Refuse to interpolate otherwise. This is how Docker behaves.
         if len(content) == 0 or content[0] not in var_name_start_chars:
             raise ValueError(
-                f"Invalid interpolation format: ${{{content}}}."
-                " You may need to escape any $ with another $"
+                f"Invalid interpolation format: ${{{content}}}. You may need to escape any $ with another $"
             )
 
         i, name = var_name_lookahead(0, list(content))

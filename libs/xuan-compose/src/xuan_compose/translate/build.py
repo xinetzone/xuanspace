@@ -55,9 +55,7 @@ def container_to_build_args(
         dockerfile_inline = str(dockerfile_inline)
         # Error if both `dockerfile_inline` and `dockerfile` are set
         if dockerfile and dockerfile_inline:
-            raise PodmanComposeError(
-                "dockerfile_inline and dockerfile can't be used simultaneously"
-            )
+            raise PodmanComposeError("dockerfile_inline and dockerfile can't be used simultaneously")
         dockerfile = tempfile.NamedTemporaryFile(delete=False, suffix=".containerfile")
         dockerfile.write(dockerfile_inline.encode())
         dockerfile.close()
@@ -136,10 +134,12 @@ def container_to_build_args(
 
     args_list = norm_as_list(build_desc.get("args", {}))
     for build_arg in args_list + args.build_arg:
-        build_args.extend((
-            "--build-arg",
-            build_arg,
-        ))
+        build_args.extend(
+            (
+                "--build-arg",
+                build_arg,
+            )
+        )
     for cache_img in build_desc.get("cache_from", []):
         build_args.extend(["--cache-from", cache_img])
     for cache_img in build_desc.get("cache_to", []):

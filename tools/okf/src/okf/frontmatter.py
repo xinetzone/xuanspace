@@ -64,7 +64,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
         return {}, text
     data = _YamlParser(m.group("fm")).parse()
     _normalize_verified(data)
-    return data, text[m.end():]
+    return data, text[m.end() :]
 
 
 def parse_concept(filepath: Path) -> Concept:
@@ -271,7 +271,7 @@ class _YamlParser:
         return self._indent(self._current_line())
 
     def _current_content(self) -> str:
-        return self._current_line()[self._current_indent():]
+        return self._current_line()[self._current_indent() :]
 
     # ── 块级映射 ────────────────────────────────────────────────────────
 
@@ -303,14 +303,14 @@ class _YamlParser:
                 # 键跨行或格式错误，回退
                 return None, ""
             key = _unquote(content[: end + 1])
-            rest = content[end + 2:].strip()
+            rest = content[end + 2 :].strip()
             return key, rest
         # 普通键
         colon = content.find(":")
         if colon == -1:
             return None, ""
         key = content[:colon].strip()
-        rest = content[colon + 1:].strip()
+        rest = content[colon + 1 :].strip()
         return key, rest
 
     # ── 值解析 ──────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ class _YamlParser:
             content = self._current_content()
             if not (content.startswith("- ") or content == "-"):
                 break
-            rest = content[content.index("-") + 1:].strip()
+            rest = content[content.index("-") + 1 :].strip()
             self._pos += 1
             if rest == "" or rest == "|" or rest == ">":
                 result.append(self._parse_indented_value(indent))

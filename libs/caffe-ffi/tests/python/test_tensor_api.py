@@ -6,8 +6,10 @@ Verifies:
 - Blob.set_diff() accepts numpy arrays
 - Data integrity after transfer
 """
-import caffe_ffi
+
 import numpy as np
+
+import caffe_ffi
 
 
 def _make_blob():

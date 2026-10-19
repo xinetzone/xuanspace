@@ -1,6 +1,5 @@
 """Buffer class for VTA memory management."""
 
-from typing import Optional
 from . import _ffi_api
 
 
@@ -17,7 +16,7 @@ class Buffer:
         _data: Raw buffer pointer as integer.
     """
 
-    def __init__(self, size: int, data: Optional[int] = None, owns: bool = True):
+    def __init__(self, size: int, data: int | None = None, owns: bool = True):
         """Allocate a new buffer or wrap an existing pointer.
 
         Args:
@@ -62,13 +61,10 @@ class Buffer:
 
     def __repr__(self) -> str:
         """Return string representation of Buffer."""
-        return (
-            f"Buffer(data=0x{self._data:x}, size={self._size}, "
-            f"owns={self._owns})"
-        )
+        return f"Buffer(data=0x{self._data:x}, size={self._size}, owns={self._owns})"
 
     @classmethod
-    def from_foreign_pointer(cls, data: int, size: int) -> 'Buffer':
+    def from_foreign_pointer(cls, data: int, size: int) -> Buffer:
         """Wrap an existing foreign pointer without taking ownership.
 
         This is a convenience method for wrapping external pointers that
@@ -132,9 +128,7 @@ class Buffer:
             start: Start element index.
             extent: Number of elements.
         """
-        _ffi_api.write_barrier(
-            int(cmd), self._data, int(elem_bits), int(start), int(extent)
-        )
+        _ffi_api.write_barrier(int(cmd), self._data, int(elem_bits), int(start), int(extent))
 
     def read_barrier(self, cmd: int, elem_bits: int, start: int, extent: int):
         """Perform read barrier.
@@ -145,9 +139,7 @@ class Buffer:
             start: Start element index.
             extent: Number of elements.
         """
-        _ffi_api.read_barrier(
-            int(cmd), self._data, int(elem_bits), int(start), int(extent)
-        )
+        _ffi_api.read_barrier(int(cmd), self._data, int(elem_bits), int(start), int(extent))
 
     def __len__(self) -> int:
         """Return buffer size in bytes."""

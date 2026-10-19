@@ -4,39 +4,40 @@ Tests cover:
 - TestSplitTopologies: basic 1->N split, residual connections with explicit Split,
   in-place branches, N=1 passthrough, multi-level splits, performance benchmarking
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-import caffe_ffi
 from caffe_ffi import (
-    Net, Blob,
-    net_param_from_string, net_from_param,
+    Net,
+    net_from_param,
+    net_param_from_string,
 )
-from .conftest import require_cpp_extension, perf_trace
 
+from .conftest import require_cpp_extension
 
 # ─── Prototxt builders ─────────────────────────────────────────────
+
 
 def _make_basic_split_prototxt(num_top: int = 2, feat_dim: int = 4) -> str:
     """Basic 1->N split: data -> Split{top1,...,topN}."""
     lines = [
         'name: "basic_split"',
-        'layer {',
+        "layer {",
         '  name: "data"',
         '  type: "Input"',
         '  top: "data"',
-        f'  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}',
-        '}',
-        'layer {',
+        f"  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}",
+        "}",
+        "layer {",
         '  name: "split"',
         '  type: "Split"',
         '  bottom: "data"',
     ]
     for i in range(num_top):
         lines.append(f'  top: "split_{i}"')
-    lines.append('}')
+    lines.append("}")
     return "\n".join(lines)
 
 
@@ -44,28 +45,28 @@ def _make_split_concat_prototxt(num_branches: int = 3, feat_dim: int = 4) -> str
     """Split into N branches then Concat back (round-trip test)."""
     lines = [
         'name: "split_concat"',
-        'layer {',
+        "layer {",
         '  name: "data"',
         '  type: "Input"',
         '  top: "data"',
-        f'  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}',
-        '}',
-        'layer {',
+        f"  input_param {{ shape {{ dim: 2 dim: {feat_dim} }} }}",
+        "}",
+        "layer {",
         '  name: "split"',
         '  type: "Split"',
         '  bottom: "data"',
     ]
     for i in range(num_branches):
         lines.append(f'  top: "branch_{i}"')
-    lines.append('}')
-    lines.append('layer {')
+    lines.append("}")
+    lines.append("layer {")
     lines.append('  name: "concat"')
     lines.append('  type: "Concat"')
     for i in range(num_branches):
         lines.append(f'  bottom: "branch_{i}"')
     lines.append('  top: "concat_out"')
-    lines.append('  concat_param { axis: 1 }')
-    lines.append('}')
+    lines.append("  concat_param { axis: 1 }")
+    lines.append("}")
     return "\n".join(lines)
 
 
@@ -191,48 +192,63 @@ def _make_split_mlp_perf_prototxt(batch: int, feat_dim: int, n_branches: int, br
     """Split + IP branches + Concat + IP + Softmax for performance testing."""
     lines = [
         'name: "split_perf"',
-        'layer {',
-        '  name: "data"', '  type: "Input"', '  top: "data"',
-        f'  input_param {{ shape {{ dim: {batch} dim: {feat_dim} }} }}',
-        '}',
-        'layer {',
-        '  name: "split"', '  type: "Split"', '  bottom: "data"',
+        "layer {",
+        '  name: "data"',
+        '  type: "Input"',
+        '  top: "data"',
+        f"  input_param {{ shape {{ dim: {batch} dim: {feat_dim} }} }}",
+        "}",
+        "layer {",
+        '  name: "split"',
+        '  type: "Split"',
+        '  bottom: "data"',
     ]
     for i in range(n_branches):
         lines.append(f'  top: "b{i}"')
-    lines.append('}')
+    lines.append("}")
     for i in range(n_branches):
-        lines.extend([
-            'layer {',
-            f'  name: "ip_b{i}"', '  type: "InnerProduct"',
-            f'  bottom: "b{i}"', f'  top: "b{i}_out"',
-            f'  inner_product_param {{ num_output: {branch_ip_dim} bias_term: false }}',
-            '}',
-        ])
-    lines.append('layer {')
+        lines.extend(
+            [
+                "layer {",
+                f'  name: "ip_b{i}"',
+                '  type: "InnerProduct"',
+                f'  bottom: "b{i}"',
+                f'  top: "b{i}_out"',
+                f"  inner_product_param {{ num_output: {branch_ip_dim} bias_term: false }}",
+                "}",
+            ]
+        )
+    lines.append("layer {")
     lines.append('  name: "concat"')
     lines.append('  type: "Concat"')
     for i in range(n_branches):
         lines.append(f'  bottom: "b{i}_out"')
     lines.append('  top: "concat"')
-    lines.append('  concat_param { axis: 1 }')
-    lines.append('}')
-    concat_dim = branch_ip_dim * n_branches
-    lines.extend([
-        'layer {',
-        '  name: "ip_out"', '  type: "InnerProduct"',
-        '  bottom: "concat"', '  top: "ip_out"',
-        '  inner_product_param { num_output: 10 bias_term: true }',
-        '}',
-        'layer {',
-        '  name: "prob"', '  type: "Softmax"',
-        '  bottom: "ip_out"', '  top: "prob"',
-        '}',
-    ])
+    lines.append("  concat_param { axis: 1 }")
+    lines.append("}")
+    branch_ip_dim * n_branches
+    lines.extend(
+        [
+            "layer {",
+            '  name: "ip_out"',
+            '  type: "InnerProduct"',
+            '  bottom: "concat"',
+            '  top: "ip_out"',
+            "  inner_product_param { num_output: 10 bias_term: true }",
+            "}",
+            "layer {",
+            '  name: "prob"',
+            '  type: "Softmax"',
+            '  bottom: "ip_out"',
+            '  top: "prob"',
+            "}",
+        ]
+    )
     return "\n".join(lines)
 
 
 # ─── Helper: set weights ──────────────────────────────────────────
+
 
 def _set_random_weights(net: Net, rng: np.random.RandomState, scale: float = 0.1) -> None:
     """Set small random weights into all InnerProduct layers."""
@@ -248,6 +264,7 @@ def _set_random_weights(net: Net, rng: np.random.RandomState, scale: float = 0.1
 
 # ─── Test Class ────────────────────────────────────────────────────
 
+
 @require_cpp_extension
 class TestSplitTopologies:
     """Tests for explicit Split layer multi-branch topologies."""
@@ -258,13 +275,13 @@ class TestSplitTopologies:
         with ptrace("Net(basic_split_1to2)") as t:
             param = net_param_from_string(prototxt)
             net = net_from_param(param)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
 
         rng = np.random.RandomState(123)
         inp = rng.randn(2, 4).astype(np.float32)
         with ptrace("Forward(basic_split_1to2)") as t:
             net.Forward({"data": inp})
-            t['shape'] = str(inp.shape)
+            t["shape"] = str(inp.shape)
 
         split_0 = net.blob_by_name("split_0")
         split_1 = net.blob_by_name("split_1")
@@ -291,7 +308,7 @@ class TestSplitTopologies:
         for i in range(num_branches):
             branch = net.blob_by_name(f"branch_{i}")
             np.testing.assert_array_equal(branch.to_numpy(), inp)
-        expected = np.concatenate([inp]*num_branches, axis=1)
+        expected = np.concatenate([inp] * num_branches, axis=1)
         np.testing.assert_array_equal(concat_data, expected)
 
     def test_residual_with_split(self, ptrace):
@@ -312,7 +329,7 @@ class TestSplitTopologies:
         inp = rng.randn(2, feat_dim).astype(np.float32) + 1.0
         with ptrace("Forward(residual_split)") as t:
             net.Forward({"data": inp})
-            t['shape'] = str(inp.shape)
+            t["shape"] = str(inp.shape)
 
         identity = net.blob_by_name("identity")
         np.testing.assert_array_equal(identity.to_numpy(), inp)
@@ -336,11 +353,10 @@ class TestSplitTopologies:
         inp = rng.randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(split_inplace)") as t:
             net.Forward({"data": inp})
-            t['shape'] = str(inp.shape)
+            t["shape"] = str(inp.shape)
 
         raw = net.blob_by_name("raw_branch").to_numpy()
-        np.testing.assert_array_equal(raw, inp,
-            err_msg="In-place ReLU on one branch corrupted sibling branch data!")
+        np.testing.assert_array_equal(raw, inp, err_msg="In-place ReLU on one branch corrupted sibling branch data!")
         relu = net.blob_by_name("relu_branch").to_numpy()
         np.testing.assert_array_equal(relu, np.maximum(inp, 0))
 
@@ -357,7 +373,7 @@ class TestSplitTopologies:
         inp = rng.randn(2, feat_dim).astype(np.float32)
         with ptrace("Forward(n1_split)") as t:
             net.Forward({"data": inp})
-            t['shape'] = str(inp.shape)
+            t["shape"] = str(inp.shape)
 
         pt_data = net.blob_by_name("passthrough").to_numpy()
         np.testing.assert_array_equal(pt_data, inp)
@@ -396,8 +412,8 @@ class TestSplitTopologies:
         ]
         for feat_dim, batch, num_tops in configs:
             proto = _make_split_mlp_perf_prototxt(
-                batch=batch, feat_dim=feat_dim,
-                n_branches=num_tops, branch_ip_dim=feat_dim)
+                batch=batch, feat_dim=feat_dim, n_branches=num_tops, branch_ip_dim=feat_dim
+            )
             param = net_param_from_string(proto)
             net = net_from_param(param)
             _set_random_weights(net, np.random.RandomState(0), scale=0.01)
@@ -410,7 +426,7 @@ class TestSplitTopologies:
             with ptrace(label) as t:
                 net.Forward({"data": inp})
                 nbytes = batch * feat_dim * 4 * num_tops
-                t['batch'] = batch
-                t['feat_dim'] = feat_dim
-                t['num_tops'] = num_tops
-                t['total_bytes'] = nbytes
+                t["batch"] = batch
+                t["feat_dim"] = feat_dim
+                t["num_tops"] = num_tops
+                t["total_bytes"] = nbytes

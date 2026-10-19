@@ -70,7 +70,7 @@ def _git_commit(vendor: Path) -> str:
             text=True,
         )
         return out.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return "unknown"
 
 
@@ -105,9 +105,7 @@ def main() -> None:
         "note": "由 tests/generate_parity_snapshots.py 生成；仅上游基线升级时重新生成",
     }
     SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_PATH.write_text(
-        json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    SNAPSHOT_PATH.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {SNAPSHOT_PATH}")
     print(f"commands: {len(snapshot['commands'])} (含 help 伪命令)")
     print(f"upstream commit: {snapshot['meta']['commit']}")

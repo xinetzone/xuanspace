@@ -51,72 +51,74 @@ class TestCanMergeBuild(unittest.TestCase):
                 os.environ[k] = v
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    @parameterized.expand([
-        ({}, {}, {}),
-        ({}, {"test": "test"}, {"test": "test"}),
-        ({"test": "test"}, {}, {"test": "test"}),
-        ({"test": "test-1"}, {"test": "test-2"}, {"test": "test-2"}),
-        ({}, {"build": "."}, {"build": {"context": "."}}),
-        ({"build": "."}, {}, {"build": {"context": "."}}),
-        ({"build": "./dir-1"}, {"build": "./dir-2"}, {"build": {"context": "./dir-2"}}),
-        ({}, {"build": {"context": "./dir-1"}}, {"build": {"context": "./dir-1"}}),
-        ({"build": {"context": "./dir-1"}}, {}, {"build": {"context": "./dir-1"}}),
-        (
-            {"build": {"context": "./dir-1"}},
-            {"build": {"context": "./dir-2"}},
-            {"build": {"context": "./dir-2"}},
-        ),
-        (
-            {},
-            {"build": {"dockerfile": "dockerfile-1"}},
-            {"build": {"dockerfile": "dockerfile-1"}},
-        ),
-        (
-            {"build": {"dockerfile": "dockerfile-1"}},
-            {},
-            {"build": {"dockerfile": "dockerfile-1"}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1"}},
-            {"build": {"dockerfile": "./dockerfile-2"}},
-            {"build": {"dockerfile": "./dockerfile-2"}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1"}},
-            {"build": {"context": "./dir-2"}},
-            {"build": {"dockerfile": "./dockerfile-1", "context": "./dir-2"}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1", "context": "./dir-1"}},
-            {"build": {"dockerfile": "./dockerfile-2", "context": "./dir-2"}},
-            {"build": {"dockerfile": "./dockerfile-2", "context": "./dir-2"}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1"}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./dockerfile-1"}},
-            {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1"]}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV2=2"]}},
-            {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1", "ENV2=2"]}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1", "args": {"ENV1": "1"}}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": {"ENV2": "2"}}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1", "ENV2=2"]}},
-        ),
-        (
-            {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": {"ENV2": "2"}}},
-            {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1", "ENV2=2"]}},
-        ),
-    ])
+    @parameterized.expand(
+        [
+            ({}, {}, {}),
+            ({}, {"test": "test"}, {"test": "test"}),
+            ({"test": "test"}, {}, {"test": "test"}),
+            ({"test": "test-1"}, {"test": "test-2"}, {"test": "test-2"}),
+            ({}, {"build": "."}, {"build": {"context": "."}}),
+            ({"build": "."}, {}, {"build": {"context": "."}}),
+            ({"build": "./dir-1"}, {"build": "./dir-2"}, {"build": {"context": "./dir-2"}}),
+            ({}, {"build": {"context": "./dir-1"}}, {"build": {"context": "./dir-1"}}),
+            ({"build": {"context": "./dir-1"}}, {}, {"build": {"context": "./dir-1"}}),
+            (
+                {"build": {"context": "./dir-1"}},
+                {"build": {"context": "./dir-2"}},
+                {"build": {"context": "./dir-2"}},
+            ),
+            (
+                {},
+                {"build": {"dockerfile": "dockerfile-1"}},
+                {"build": {"dockerfile": "dockerfile-1"}},
+            ),
+            (
+                {"build": {"dockerfile": "dockerfile-1"}},
+                {},
+                {"build": {"dockerfile": "dockerfile-1"}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1"}},
+                {"build": {"dockerfile": "./dockerfile-2"}},
+                {"build": {"dockerfile": "./dockerfile-2"}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1"}},
+                {"build": {"context": "./dir-2"}},
+                {"build": {"dockerfile": "./dockerfile-1", "context": "./dir-2"}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1", "context": "./dir-1"}},
+                {"build": {"dockerfile": "./dockerfile-2", "context": "./dir-2"}},
+                {"build": {"dockerfile": "./dockerfile-2", "context": "./dir-2"}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1"}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./dockerfile-1"}},
+                {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1"]}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV2=2"]}},
+                {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1", "ENV2=2"]}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1", "args": {"ENV1": "1"}}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": {"ENV2": "2"}}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1", "ENV2=2"]}},
+            ),
+            (
+                {"build": {"dockerfile": "./dockerfile-1", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": {"ENV2": "2"}}},
+                {"build": {"dockerfile": "./dockerfile-2", "args": ["ENV1=1", "ENV2=2"]}},
+            ),
+        ]
+    )
     def test_parse_compose_file_when_multiple_composes(self, input, override, expected):
         compose_test_1 = {"services": {"test-service": input}}
         compose_test_2 = {"services": {"test-service": override}}
@@ -130,9 +132,7 @@ class TestCanMergeBuild(unittest.TestCase):
 
         actual_compose = {}
         if podman_compose.services:
-            actual_compose = podman_compose.original_configuration(
-                podman_compose.services["test-service"]
-            )
+            actual_compose = podman_compose.original_configuration(podman_compose.services["test-service"])
         self.assertEqual(actual_compose, expected)
 
     def test_parse_with_map_merge_into_none(self):
@@ -157,35 +157,35 @@ class TestCanMergeBuild(unittest.TestCase):
         self.assertEqual(actual_compose, expected)
 
     # $$$ is a placeholder for either command or entrypoint
-    @parameterized.expand([
-        ({}, {"$$$": []}, {"$$$": []}),
-        ({"$$$": []}, {}, {"$$$": []}),
-        ({"$$$": []}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
-        ({"$$$": "sh-2"}, {"$$$": []}, {"$$$": []}),
-        ({}, {"$$$": "sh"}, {"$$$": "sh"}),
-        ({"$$$": "sh"}, {}, {"$$$": "sh"}),
-        ({"$$$": "sh-1"}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
-        ({"$$$": ["sh-1"]}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
-        ({"$$$": "sh-1"}, {"$$$": ["sh-2"]}, {"$$$": ["sh-2"]}),
-        ({"$$$": "sh-1"}, {"$$$": ["sh-2", "sh-3"]}, {"$$$": ["sh-2", "sh-3"]}),
-        ({"$$$": ["sh-1"]}, {"$$$": ["sh-2", "sh-3"]}, {"$$$": ["sh-2", "sh-3"]}),
-        ({"$$$": ["sh-1", "sh-2"]}, {"$$$": ["sh-3", "sh-4"]}, {"$$$": ["sh-3", "sh-4"]}),
-        ({}, {"$$$": ["sh-3", "sh      4"]}, {"$$$": ["sh-3", "sh      4"]}),
-        ({"$$$": "sleep infinity"}, {"$$$": "sh"}, {"$$$": "sh"}),
-        ({"$$$": "sh"}, {"$$$": "sleep infinity"}, {"$$$": "sleep infinity"}),
-        (
-            {},
-            {"$$$": "bash -c 'sleep infinity'"},
-            {"$$$": "bash -c 'sleep infinity'"},
-        ),
-    ])
+    @parameterized.expand(
+        [
+            ({}, {"$$$": []}, {"$$$": []}),
+            ({"$$$": []}, {}, {"$$$": []}),
+            ({"$$$": []}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
+            ({"$$$": "sh-2"}, {"$$$": []}, {"$$$": []}),
+            ({}, {"$$$": "sh"}, {"$$$": "sh"}),
+            ({"$$$": "sh"}, {}, {"$$$": "sh"}),
+            ({"$$$": "sh-1"}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
+            ({"$$$": ["sh-1"]}, {"$$$": "sh-2"}, {"$$$": "sh-2"}),
+            ({"$$$": "sh-1"}, {"$$$": ["sh-2"]}, {"$$$": ["sh-2"]}),
+            ({"$$$": "sh-1"}, {"$$$": ["sh-2", "sh-3"]}, {"$$$": ["sh-2", "sh-3"]}),
+            ({"$$$": ["sh-1"]}, {"$$$": ["sh-2", "sh-3"]}, {"$$$": ["sh-2", "sh-3"]}),
+            ({"$$$": ["sh-1", "sh-2"]}, {"$$$": ["sh-3", "sh-4"]}, {"$$$": ["sh-3", "sh-4"]}),
+            ({}, {"$$$": ["sh-3", "sh      4"]}, {"$$$": ["sh-3", "sh      4"]}),
+            ({"$$$": "sleep infinity"}, {"$$$": "sh"}, {"$$$": "sh"}),
+            ({"$$$": "sh"}, {"$$$": "sleep infinity"}, {"$$$": "sleep infinity"}),
+            (
+                {},
+                {"$$$": "bash -c 'sleep infinity'"},
+                {"$$$": "bash -c 'sleep infinity'"},
+            ),
+        ]
+    )
     def test_parse_compose_file_when_multiple_composes_keys_command_entrypoint(
         self, base_template, override_template, expected_template
     ):
         for key in ["command", "entrypoint"]:
-            base, override, expected = template_to_expression(
-                base_template, override_template, expected_template, key
-            )
+            base, override, expected = template_to_expression(base_template, override_template, expected_template, key)
             compose_test_1 = {"services": {"test-service": base}}
             compose_test_2 = {"services": {"test-service": override}}
             dump_yaml(compose_test_1, "test-compose-1.yaml")
@@ -198,9 +198,7 @@ class TestCanMergeBuild(unittest.TestCase):
 
             actual = {}
             if podman_compose.services:
-                actual = podman_compose.original_configuration(
-                    podman_compose.services["test-service"]
-                )
+                actual = podman_compose.original_configuration(podman_compose.services["test-service"])
             self.assertEqual(actual, expected)
 
 

@@ -4,21 +4,27 @@
 在with块退出时b仍然存活，因此C++析构不会立即触发（这是Python正常行为）。
 要验证内存释放，需在del b或函数返回（b超出作用域）后调用mem_check()。
 """
+
 import gc
 import weakref
 
+from caffe_ffi.tools import (
+    BlobRef,
+    blob_snapshot,
+    mem_check,
+    setup_debug,
+    setup_quiet,
+    tracked_blob,
+)
+
 import caffe_ffi
 from caffe_ffi import Blob
-from caffe_ffi.tools import (
-    setup_debug, setup_quiet,
-    tracked_blob, BlobRef, blob_snapshot, mem_check,
-)
 
 
 def header(title: str) -> None:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 # ============================================================
@@ -85,6 +91,7 @@ def test_blobref_weakref():
             msg = f"[CALLBACK] BlobRef destroyed, data_ptr was 0x{ptr_val:016x}, label={label_val!r}"
             callback_called.append(msg)
             print(msg)
+
         return on_destroy
 
     br = BlobRef([3, 3], label="weakref_test")
@@ -116,7 +123,7 @@ def test_nested():
             print("  inner exception caught")
             del inner  # 显式释放内层
             gc.collect()
-        print(f"  outer still accessible: {float(outer.data_tensor[0,0])}")
+        print(f"  outer still accessible: {float(outer.data_tensor[0, 0])}")
     setup_quiet()
 
 
@@ -165,9 +172,9 @@ if __name__ == "__main__":
     gc.collect()
     final_mem = caffe_ffi.total_allocated_bytes()
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if final_mem == 0:
         print("  Final memory: 0 bytes ✅ (no leaks)")
     else:
         print(f"  Final memory: {final_mem} bytes ❌ (LEAK DETECTED)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

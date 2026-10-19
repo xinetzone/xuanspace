@@ -4,9 +4,12 @@ Reshape is a pure shape-transformation layer:
   - Forward: data is memcpy'd (or same blob if in-place); only shape metadata changes
   - Backward: top_diff is memcpy'd back (identity pass-through, shape restored)
 """
+
 import textwrap
+
 import numpy as np
 import pytest
+
 from caffe_ffi import Net
 
 from .conftest import require_cpp_extension
@@ -19,7 +22,7 @@ def _make_reshape_proto(input_shape, shape_dims, axis=0, num_axes=-1, inplace=Fa
     return textwrap.dedent(f"""\
         name: "reshape_test"
         input: "data"
-        input_shape {{ dim: {dims_str.replace(' ', ' dim: ')} }}
+        input_shape {{ dim: {dims_str.replace(" ", " dim: ")} }}
         layer {{
           name: "reshape"
           type: "Reshape"
@@ -69,44 +72,113 @@ def _resolve_reshape(input_shape, shape_dims, axis=0, num_axes=-1):
 
 # Common 4D shapes used in CNNs
 _4D_SHAPES = [
-    (1, 1, 1, 1), (1, 1, 2, 2), (1, 1, 3, 3), (1, 1, 4, 4), (1, 1, 5, 5),
-    (1, 1, 7, 7), (1, 1, 8, 8), (1, 1, 14, 14), (1, 1, 28, 28),
-    (1, 3, 1, 1), (1, 3, 2, 2), (1, 3, 3, 3), (1, 3, 4, 4), (1, 3, 8, 8),
-    (1, 3, 16, 16), (1, 3, 32, 32),
-    (1, 8, 1, 1), (1, 8, 2, 2), (1, 8, 3, 3), (1, 8, 7, 7), (1, 8, 14, 14),
-    (1, 16, 1, 1), (1, 16, 2, 2), (1, 16, 3, 3), (1, 16, 7, 7),
-    (1, 32, 1, 1), (1, 32, 2, 2), (1, 32, 3, 3), (1, 32, 7, 7),
-    (1, 64, 1, 1), (1, 64, 2, 2), (1, 64, 3, 3), (1, 64, 7, 7),
-    (2, 1, 1, 1), (2, 1, 28, 28), (2, 3, 4, 4), (2, 3, 8, 8),
-    (2, 8, 2, 2), (2, 8, 3, 3), (2, 8, 7, 7),
-    (2, 16, 3, 3), (2, 16, 7, 7), (2, 32, 3, 3),
-    (4, 1, 28, 28), (4, 3, 4, 4), (4, 3, 8, 8),
-    (4, 8, 3, 3), (4, 16, 3, 3), (4, 32, 7, 7),
-    (8, 1, 28, 28), (8, 3, 8, 8), (8, 16, 3, 3),
-    (16, 1, 28, 28), (16, 3, 8, 8), (16, 16, 3, 3),
-    (32, 1, 28, 28), (32, 3, 8, 8), (32, 16, 3, 3),
+    (1, 1, 1, 1),
+    (1, 1, 2, 2),
+    (1, 1, 3, 3),
+    (1, 1, 4, 4),
+    (1, 1, 5, 5),
+    (1, 1, 7, 7),
+    (1, 1, 8, 8),
+    (1, 1, 14, 14),
+    (1, 1, 28, 28),
+    (1, 3, 1, 1),
+    (1, 3, 2, 2),
+    (1, 3, 3, 3),
+    (1, 3, 4, 4),
+    (1, 3, 8, 8),
+    (1, 3, 16, 16),
+    (1, 3, 32, 32),
+    (1, 8, 1, 1),
+    (1, 8, 2, 2),
+    (1, 8, 3, 3),
+    (1, 8, 7, 7),
+    (1, 8, 14, 14),
+    (1, 16, 1, 1),
+    (1, 16, 2, 2),
+    (1, 16, 3, 3),
+    (1, 16, 7, 7),
+    (1, 32, 1, 1),
+    (1, 32, 2, 2),
+    (1, 32, 3, 3),
+    (1, 32, 7, 7),
+    (1, 64, 1, 1),
+    (1, 64, 2, 2),
+    (1, 64, 3, 3),
+    (1, 64, 7, 7),
+    (2, 1, 1, 1),
+    (2, 1, 28, 28),
+    (2, 3, 4, 4),
+    (2, 3, 8, 8),
+    (2, 8, 2, 2),
+    (2, 8, 3, 3),
+    (2, 8, 7, 7),
+    (2, 16, 3, 3),
+    (2, 16, 7, 7),
+    (2, 32, 3, 3),
+    (4, 1, 28, 28),
+    (4, 3, 4, 4),
+    (4, 3, 8, 8),
+    (4, 8, 3, 3),
+    (4, 16, 3, 3),
+    (4, 32, 7, 7),
+    (8, 1, 28, 28),
+    (8, 3, 8, 8),
+    (8, 16, 3, 3),
+    (16, 1, 28, 28),
+    (16, 3, 8, 8),
+    (16, 16, 3, 3),
+    (32, 1, 28, 28),
+    (32, 3, 8, 8),
+    (32, 16, 3, 3),
 ]
 
 _SMALL_SHAPES = [s for s in _4D_SHAPES if int(np.prod(s)) <= 200]
 
 _2D_SHAPES = [
-    (1, 1), (1, 2), (1, 10), (1, 100), (1, 784),
-    (2, 1), (2, 2), (2, 10), (2, 100), (2, 784),
-    (4, 10), (4, 100), (8, 10), (8, 100),
-    (16, 10), (16, 100), (32, 10), (32, 100),
-    (64, 10), (64, 100), (100, 1), (100, 10),
+    (1, 1),
+    (1, 2),
+    (1, 10),
+    (1, 100),
+    (1, 784),
+    (2, 1),
+    (2, 2),
+    (2, 10),
+    (2, 100),
+    (2, 784),
+    (4, 10),
+    (4, 100),
+    (8, 10),
+    (8, 100),
+    (16, 10),
+    (16, 100),
+    (32, 10),
+    (32, 100),
+    (64, 10),
+    (64, 100),
+    (100, 1),
+    (100, 10),
 ]
 
 _3D_SHAPES = [
-    (1, 1, 1), (1, 10, 10), (2, 3, 4), (2, 8, 8), (4, 16, 3),
-    (4, 3, 32), (8, 16, 7), (16, 64, 7), (32, 1, 28),
+    (1, 1, 1),
+    (1, 10, 10),
+    (2, 3, 4),
+    (2, 8, 8),
+    (4, 16, 3),
+    (4, 3, 32),
+    (8, 16, 7),
+    (16, 64, 7),
+    (32, 1, 28),
 ]
 
 _1D_SHAPES = [1, 2, 5, 10, 100, 128, 256, 512, 784]
 
 _5D_SHAPES = [
-    (1, 1, 1, 1, 1), (1, 3, 2, 2, 2), (2, 8, 2, 2, 2),
-    (1, 16, 2, 3, 4), (2, 3, 4, 5, 6),
+    (1, 1, 1, 1, 1),
+    (1, 3, 2, 2, 2),
+    (2, 8, 2, 2, 2),
+    (1, 16, 2, 3, 4),
+    (2, 3, 4, 5, 6),
 ]
 
 
@@ -124,7 +196,6 @@ def _batch_feat_dims(shape):
 
 @require_cpp_extension
 class TestReshapeBackwardIdentity:
-
     @pytest.mark.parametrize("input_shape", _4D_SHAPES)
     def test_reshape_flatten_all(self, input_shape):
         """Flatten entire 4D tensor to 1D."""
@@ -228,13 +299,16 @@ class TestReshapeBackwardIdentity:
         dx = net.blob_by_name("data").diff
         np.testing.assert_array_equal(dx, dy.reshape(input_shape))
 
-    @pytest.mark.parametrize("input_shape,shape_dims", [
-        ((2, 3, 4, 5), (2, 3, 4, 5)),
-        ((4, 6, 3, 3), (4, 6, 9)),
-        ((8, 16, 3, 3), (8, 144)),
-        ((2, 3, 4, 5), (2, 60)),
-        ((4, 3, 8, 8), (4, 192)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,shape_dims",
+        [
+            ((2, 3, 4, 5), (2, 3, 4, 5)),
+            ((4, 6, 3, 3), (4, 6, 9)),
+            ((8, 16, 3, 3), (8, 144)),
+            ((2, 3, 4, 5), (2, 60)),
+            ((4, 3, 8, 8), (4, 192)),
+        ],
+    )
     def test_reshape_partial(self, input_shape, shape_dims):
         """Reshape to multi-dim target."""
         proto = _make_reshape_proto(input_shape, shape_dims)
@@ -248,13 +322,16 @@ class TestReshapeBackwardIdentity:
         dx = net.blob_by_name("data").diff
         np.testing.assert_array_equal(dx, dy.reshape(input_shape))
 
-    @pytest.mark.parametrize("input_shape,shape_dims", [
-        ((120,), (2, 3, 4, 5)),
-        ((60,), (3, 4, 5)),
-        ((54,), (6, 3, 3)),
-        ((784,), (1, 28, 28)),
-        ((100,), (10, 10)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,shape_dims",
+        [
+            ((120,), (2, 3, 4, 5)),
+            ((60,), (3, 4, 5)),
+            ((54,), (6, 3, 3)),
+            ((784,), (1, 28, 28)),
+            ((100,), (10, 10)),
+        ],
+    )
     def test_reshape_1d_to_nd(self, input_shape, shape_dims):
         """1D -> multi-dim unflatten."""
         proto = _make_reshape_proto(input_shape, shape_dims)
@@ -270,13 +347,14 @@ class TestReshapeBackwardIdentity:
 
 @require_cpp_extension
 class TestReshapeBackwardNumerical:
-
     def _num_grad(self, net, x, h=1e-3):
         grad = np.zeros_like(x)
         for idx in np.ndindex(x.shape):
-            xp = x.copy(); xp[idx] += h
+            xp = x.copy()
+            xp[idx] += h
             fp = float(np.sum(net.forward({"data": xp})["reshaped"] ** 2))
-            xm = x.copy(); xm[idx] -= h
+            xm = x.copy()
+            xm[idx] -= h
             fm = float(np.sum(net.forward({"data": xm})["reshaped"] ** 2))
             grad[idx] = (fp - fm) / (2 * h)
         return grad
@@ -317,13 +395,16 @@ class TestReshapeBackwardNumerical:
         dx_num = self._num_grad(net, x)
         np.testing.assert_allclose(dx_an, dx_num, rtol=1e-2, atol=2e-3)
 
-    @pytest.mark.parametrize("input_shape,shape_dims", [
-        ((1, 8, 2, 2), (1, -1)),
-        ((2, 3, 4), (2, 12)),
-        ((2, 6, 2, 2), (4, -1)),
-        ((2, 3, 2, 2), (-1,)),
-        ((4, 3, 3), (2, -1)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,shape_dims",
+        [
+            ((1, 8, 2, 2), (1, -1)),
+            ((2, 3, 4), (2, 12)),
+            ((2, 6, 2, 2), (4, -1)),
+            ((2, 3, 2, 2), (-1,)),
+            ((4, 3, 3), (2, -1)),
+        ],
+    )
     def test_reshape_numerical_gradient_multi_dim(self, input_shape, shape_dims):
         proto = _make_reshape_proto(input_shape, shape_dims)
         net = Net(proto)
@@ -338,7 +419,6 @@ class TestReshapeBackwardNumerical:
 
 @require_cpp_extension
 class TestReshapeBackwardEdgeCases:
-
     @pytest.mark.parametrize("input_shape", [s for s in _SMALL_SHAPES if int(np.prod(s)) <= 100])
     def test_zero_dy_zero_dx(self, input_shape):
         proto = _make_reshape_proto(input_shape, (-1,))
@@ -358,15 +438,17 @@ class TestReshapeBackwardEdgeCases:
         for n in (n1, n2):
             n.forward({"data": x})
             n.backward({"reshaped": dy})
-        np.testing.assert_array_equal(
-            n1.blob_by_name("data").diff, n2.blob_by_name("data").diff)
+        np.testing.assert_array_equal(n1.blob_by_name("data").diff, n2.blob_by_name("data").diff)
 
-    @pytest.mark.parametrize("input_shape,shape_dims", [
-        ((3, 4, 5), (-1,)),
-        ((2, 3, 4, 5), (-1,)),
-        ((1, 1, 1, 1), (-1,)),
-        ((8, 3, 16, 16), (0, -1)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,shape_dims",
+        [
+            ((3, 4, 5), (-1,)),
+            ((2, 3, 4, 5), (-1,)),
+            ((1, 1, 1, 1), (-1,)),
+            ((8, 3, 16, 16), (0, -1)),
+        ],
+    )
     def test_shapes_dtypes(self, input_shape, shape_dims):
         proto = _make_reshape_proto(input_shape, shape_dims)
         net = Net(proto)
@@ -391,9 +473,15 @@ class TestReshapeBackwardEdgeCases:
         out1 = net.forward({"data": x})["reshaped"]
         np.testing.assert_array_equal(out1, out0)
 
-    @pytest.mark.parametrize("conv_ch,kernel,ip_out", [
-        (4, 3, 2), (8, 3, 4), (2, 1, 2), (16, 3, 10),
-    ])
+    @pytest.mark.parametrize(
+        "conv_ch,kernel,ip_out",
+        [
+            (4, 3, 2),
+            (8, 3, 4),
+            (2, 1, 2),
+            (16, 3, 10),
+        ],
+    )
     def test_reshape_in_chain(self, conv_ch, kernel, ip_out):
         proto = textwrap.dedent(f"""\
             name: "reshape_chain"
@@ -417,7 +505,7 @@ class TestReshapeBackwardEdgeCases:
         """)
         net = Net(proto)
         k = kernel
-        spatial_out = 4 + 2*1 - k + 1
+        spatial_out = 4 + 2 * 1 - k + 1
         conv_w = np.random.randn(conv_ch, 3, k, k).astype(np.float32) * 0.5
         ip_in_dim = conv_ch * spatial_out * spatial_out
         ip_w = np.random.randn(ip_out, ip_in_dim).astype(np.float32) * 0.5
@@ -442,11 +530,11 @@ class TestReshapeBackwardEdgeCases:
         input_shape = (2, 3, 4, 5)
         total = int(np.prod(input_shape))
         proto_r = _make_reshape_proto(input_shape, (-1,))
-        proto_f = textwrap.dedent(f"""\
+        proto_f = textwrap.dedent("""\
             name: "flat"
             input: "data"
-            input_shape {{ dim: 2 dim: 3 dim: 4 dim: 5 }}
-            layer {{ name: "flat" type: "Flatten" bottom: "data" top: "flat" flatten_param {{ axis: 0 }} }}
+            input_shape { dim: 2 dim: 3 dim: 4 dim: 5 }
+            layer { name: "flat" type: "Flatten" bottom: "data" top: "flat" flatten_param { axis: 0 } }
         """)
         nr = Net(proto_r)
         nf = Net(proto_f)
@@ -477,10 +565,19 @@ class TestReshapeBackwardEdgeCases:
         assert dx.shape == input_shape
         np.testing.assert_allclose(dx.flat[0], fill_val * 2, rtol=1e-6)
 
-    @pytest.mark.parametrize("input_shape", [
-        (5,), (1,), (100,), (256,), (512,),
-        (2, 3, 4, 5, 6), (1, 2, 3, 4, 5), (1, 3, 2, 2, 2),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape",
+        [
+            (5,),
+            (1,),
+            (100,),
+            (256,),
+            (512,),
+            (2, 3, 4, 5, 6),
+            (1, 2, 3, 4, 5),
+            (1, 3, 2, 2, 2),
+        ],
+    )
     def test_1d_5d_inputs(self, input_shape):
         total = int(np.prod(input_shape))
         proto = _make_reshape_proto(input_shape, (-1,))
@@ -493,16 +590,19 @@ class TestReshapeBackwardEdgeCases:
         dx = net.blob_by_name("data").diff
         np.testing.assert_array_equal(dx, dy.reshape(input_shape))
 
-    @pytest.mark.parametrize("input_shape,axis,num_axes,shape_dims,expected_shape", [
-        ((2, 3, 4, 5), 1, 2, (12,), (2, 12, 5)),
-        ((2, 3, 4, 5), 2, -1, (20,), (2, 3, 20)),
-        ((4, 6, 3, 3), 1, -1, (0, -1), (4, 6, 9)),
-        ((2, 3, 4, 5), 0, 2, (6,), (6, 4, 5)),
-        ((2, 3, 4, 5), 1, 3, (0, -1), (2, 3, 20)),
-        ((2, 3, 4), 1, 2, (12,), (2, 12)),
-        ((4, 6, 3), 1, -1, (0, -1), (4, 6, 3)),
-        ((2, 3, 4, 5), 2, 3, (-1,), (2, 3, 20)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,axis,num_axes,shape_dims,expected_shape",
+        [
+            ((2, 3, 4, 5), 1, 2, (12,), (2, 12, 5)),
+            ((2, 3, 4, 5), 2, -1, (20,), (2, 3, 20)),
+            ((4, 6, 3, 3), 1, -1, (0, -1), (4, 6, 9)),
+            ((2, 3, 4, 5), 0, 2, (6,), (6, 4, 5)),
+            ((2, 3, 4, 5), 1, 3, (0, -1), (2, 3, 20)),
+            ((2, 3, 4), 1, 2, (12,), (2, 12)),
+            ((4, 6, 3), 1, -1, (0, -1), (4, 6, 3)),
+            ((2, 3, 4, 5), 2, 3, (-1,), (2, 3, 20)),
+        ],
+    )
     def test_reshape_with_axis_num_axes(self, input_shape, axis, num_axes, shape_dims, expected_shape):
         proto = _make_reshape_proto(input_shape, shape_dims, axis=axis, num_axes=num_axes)
         net = Net(proto)
@@ -514,12 +614,15 @@ class TestReshapeBackwardEdgeCases:
         dx = net.blob_by_name("data").diff
         np.testing.assert_array_equal(dx, dy.reshape(input_shape))
 
-    @pytest.mark.parametrize("input_shape,shape_dims", [
-        ((1, 1, 1, 1), (1,)),
-        ((2, 1, 1, 1), (2,)),
-        ((1, 100, 1, 1), (1, -1)),
-        ((100, 1, 1, 1), (100,)),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,shape_dims",
+        [
+            ((1, 1, 1, 1), (1,)),
+            ((2, 1, 1, 1), (2,)),
+            ((1, 100, 1, 1), (1, -1)),
+            ((100, 1, 1, 1), (100,)),
+        ],
+    )
     def test_degenerate_shapes(self, input_shape, shape_dims):
         proto = _make_reshape_proto(input_shape, shape_dims)
         net = Net(proto)
@@ -532,10 +635,15 @@ class TestReshapeBackwardEdgeCases:
         dx = net.blob_by_name("data").diff
         np.testing.assert_array_equal(dx, dy.reshape(input_shape))
 
-    @pytest.mark.parametrize("input_shape,dy_val", [
-        ((2, 3, 4, 5), 0.001), ((2, 3, 4, 5), -0.001),
-        ((4, 8, 3, 3), 1e-6), ((1, 1, 1, 1), 3.14159),
-    ])
+    @pytest.mark.parametrize(
+        "input_shape,dy_val",
+        [
+            ((2, 3, 4, 5), 0.001),
+            ((2, 3, 4, 5), -0.001),
+            ((4, 8, 3, 3), 1e-6),
+            ((1, 1, 1, 1), 3.14159),
+        ],
+    )
     def test_small_and_large_dy(self, input_shape, dy_val):
         total = int(np.prod(input_shape))
         proto = _make_reshape_proto(input_shape, (-1,))

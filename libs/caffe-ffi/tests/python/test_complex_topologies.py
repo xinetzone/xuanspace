@@ -5,20 +5,22 @@ Tests cover:
 - TestNetReshapeDynamics: varying batch sizes, channel counts, dynamic reshaping
 - TestLargeScaleForward: large batches, repeated forwards, memory stability
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-import caffe_ffi
 from caffe_ffi import (
-    Net, Blob, Layer,
-    net_param_from_string, net_from_param,
+    Net,
+    net_from_param,
+    net_param_from_string,
 )
+
 from .conftest import require_cpp_extension
 
-
 # ─── Helper prototxt builders ──────────────────────────────────────
+
 
 def _make_two_branch_prototxt(fc_dim: int = 4) -> str:
     """Two-branch network with two separate Inputs: data1/data2 -> FC -> Concat -> prob.
@@ -122,41 +124,52 @@ layer {
 
 def _make_deep_mlp_prototxt(n_hidden: int = 3, hidden_dim: int = 8) -> str:
     """Deep MLP: Input -> (IP -> ReLU) * n_hidden -> IP -> Softmax."""
-    lines = ['name: "deep_mlp"', 'layer {', '  name: "data"', '  type: "Input"',
-             '  top: "data"', '  input_param { shape { dim: 2 dim: 4 } }', '}']
+    lines = [
+        'name: "deep_mlp"',
+        "layer {",
+        '  name: "data"',
+        '  type: "Input"',
+        '  top: "data"',
+        "  input_param { shape { dim: 2 dim: 4 } }",
+        "}",
+    ]
     prev_top = "data"
     for i in range(n_hidden):
-        lines.extend([
-            'layer {',
-            f'  name: "ip{i+1}"',
+        lines.extend(
+            [
+                "layer {",
+                f'  name: "ip{i + 1}"',
+                '  type: "InnerProduct"',
+                f'  bottom: "{prev_top}"',
+                f'  top: "ip{i + 1}"',
+                f"  inner_product_param {{ num_output: {hidden_dim} bias_term: true }}",
+                "}",
+                "layer {",
+                f'  name: "relu{i + 1}"',
+                '  type: "ReLU"',
+                f'  bottom: "ip{i + 1}"',
+                f'  top: "ip{i + 1}"',
+                "}",
+            ]
+        )
+        prev_top = f"ip{i + 1}"
+    lines.extend(
+        [
+            "layer {",
+            '  name: "ip_out"',
             '  type: "InnerProduct"',
             f'  bottom: "{prev_top}"',
-            f'  top: "ip{i+1}"',
-            f'  inner_product_param {{ num_output: {hidden_dim} bias_term: true }}',
-            '}',
-            'layer {',
-            f'  name: "relu{i+1}"',
-            '  type: "ReLU"',
-            f'  bottom: "ip{i+1}"',
-            f'  top: "ip{i+1}"',
-            '}',
-        ])
-        prev_top = f"ip{i+1}"
-    lines.extend([
-        'layer {',
-        f'  name: "ip_out"',
-        '  type: "InnerProduct"',
-        f'  bottom: "{prev_top}"',
-        '  top: "ip_out"',
-        '  inner_product_param { num_output: 2 bias_term: true }',
-        '}',
-        'layer {',
-        '  name: "prob"',
-        '  type: "Softmax"',
-        '  bottom: "ip_out"',
-        '  top: "prob"',
-        '}',
-    ])
+            '  top: "ip_out"',
+            "  inner_product_param { num_output: 2 bias_term: true }",
+            "}",
+            "layer {",
+            '  name: "prob"',
+            '  type: "Softmax"',
+            '  bottom: "ip_out"',
+            '  top: "prob"',
+            "}",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -351,6 +364,7 @@ def _load_identity_weights(net: Net, rng: np.random.RandomState | None = None) -
 
 # ─── P2-A1: Network topology tests ────────────────────────────────
 
+
 @require_cpp_extension
 class TestNetTopologies:
     """Complex network topology tests: branches, multi-input, deep, in-place, residual."""
@@ -362,17 +376,18 @@ class TestNetTopologies:
             proto = _make_two_branch_prototxt(fc_dim=fc_dim)
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         inp1 = np.random.randn(2, 3).astype(np.float32)
         inp2 = np.random.randn(2, 3).astype(np.float32)
         with ptrace("forward two-branch net") as t:
             out = net.forward({"data1": inp1, "data2": inp2})
-            t['out_keys'] = list(out.keys())
+            t["out_keys"] = list(out.keys())
         assert "prob" in out
-        assert out["prob"].shape == (2, fc_dim * 2), \
-            f"Expected (2, {fc_dim*2}), got {out['prob'].shape}"
+        assert out["prob"].shape == (2, fc_dim * 2), f"Expected (2, {fc_dim * 2}), got {out['prob'].shape}"
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_two_branch_concat_values_deterministic(self, ptrace):
@@ -387,7 +402,7 @@ class TestNetTopologies:
         with ptrace("forward x2") as t:
             out1 = net.forward({"data1": inp1, "data2": inp2})
             out2 = net.forward({"data1": inp1, "data2": inp2})
-            t['max_diff'] = float(np.max(np.abs(out1["prob"] - out2["prob"])))
+            t["max_diff"] = float(np.max(np.abs(out1["prob"] - out2["prob"])))
         np.testing.assert_array_equal(out1["prob"], out2["prob"])
 
     def test_multi_input_concat(self, ptrace):
@@ -396,17 +411,19 @@ class TestNetTopologies:
             proto = _make_multi_input_prototxt()
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
-            t['blobs'] = len(net.blobs_array())
+            t["layers"] = len(net.layers_array())
+            t["blobs"] = len(net.blobs_array())
         inp1 = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         inp2 = np.array([[7, 8, 9], [10, 11, 12]], dtype=np.float32)
         with ptrace("forward multi-input net") as t:
             out = net.forward({"data1": inp1, "data2": inp2})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert "prob" in out
         assert out["prob"].shape == (2, 2)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_multi_input_different_batch_sizes_error(self, ptrace):
@@ -419,10 +436,10 @@ class TestNetTopologies:
         inp2 = np.random.randn(4, 3).astype(np.float32)  # Mismatched batch!
         with ptrace("forward mismatched batch (expect error/undefined)") as t:
             try:
-                out = net.forward({"data1": inp1, "data2": inp2})
-                t['result'] = 'no_crash'
+                net.forward({"data1": inp1, "data2": inp2})
+                t["result"] = "no_crash"
             except (ValueError, RuntimeError) as e:
-                t['result'] = f'raised: {type(e).__name__}'
+                t["result"] = f"raised: {type(e).__name__}"
 
     def test_deep_mlp_forward(self, ptrace):
         """Deep MLP with n_hidden=5 hidden layers forwards correctly."""
@@ -432,14 +449,16 @@ class TestNetTopologies:
             proto = _make_deep_mlp_prototxt(n_hidden=n_hidden, hidden_dim=hidden_dim)
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         inp = np.random.randn(2, 4).astype(np.float32)
         with ptrace("forward deep MLP") as t:
             out = net.forward({"data": inp})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert out["prob"].shape == (2, 2)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_inplace_chain_forward(self, ptrace):
@@ -448,15 +467,17 @@ class TestNetTopologies:
             proto = _make_inplace_chain_prototxt()
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         inp = np.random.randn(2, 4).astype(np.float32)
         with ptrace("forward in-place chain x3") as t:
             for i in range(3):
                 out = net.forward({"data": inp})
-            t['iterations'] = 3
+            t["iterations"] = 3
         assert out["prob"].shape == (2, 2)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_inplace_inner_product_shape_change_rejected(self, ptrace):
@@ -492,16 +513,18 @@ layer {
             proto = _make_residual_prototxt()
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         inp1 = np.random.randn(2, 4).astype(np.float32)
         inp2 = np.random.randn(2, 4).astype(np.float32)
         with ptrace("forward dual-path sum net") as t:
             out = net.forward({"data": inp1, "data2": inp2})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert "prob" in out
         assert out["prob"].shape == (2, 2)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_lenet_like_classification(self, ptrace):
@@ -510,15 +533,17 @@ layer {
             proto = _make_lenet_like_prototxt()
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net)
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         inp = np.random.randn(2, 1).astype(np.float32)
         with ptrace("forward lenet-like net") as t:
             out = net.forward({"data": inp})
-            t['prob_range'] = f"[{out['prob'].min():.4f}, {out['prob'].max():.4f}]"
+            t["prob_range"] = f"[{out['prob'].min():.4f}, {out['prob'].max():.4f}]"
         assert out["prob"].shape == (2, 2)
         assert np.all(out["prob"] >= 0) and np.all(out["prob"] <= 1)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(2), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(2),
+            rtol=1e-5,
         )
 
     def test_eltwise_coeff_sum(self, ptrace):
@@ -541,7 +566,7 @@ layer {
         with ptrace("forward eltwise coeff") as t:
             out = net.forward({"a": a, "b": b})
             expected = 2.0 * a + 0.5 * b
-            t['max_diff'] = float(np.max(np.abs(out["sum"] - expected)))
+            t["max_diff"] = float(np.max(np.abs(out["sum"] - expected)))
         np.testing.assert_allclose(out["sum"], expected, rtol=1e-5)
 
     def test_eltwise_prod(self, ptrace):
@@ -564,11 +589,12 @@ layer {
         with ptrace("forward eltwise prod") as t:
             out = net.forward({"a": a, "b": b})
             expected = a * b
-            t['max_diff'] = float(np.max(np.abs(out["prod"] - expected)))
+            t["max_diff"] = float(np.max(np.abs(out["prod"] - expected)))
         np.testing.assert_allclose(out["prod"], expected, rtol=1e-5)
 
 
 # ─── P2-A2: Dynamic shape tests ──────────────────────────────────
+
 
 @require_cpp_extension
 class TestNetReshapeDynamics:
@@ -586,7 +612,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         with ptrace("build dynamic MLP") as t:
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net, rng=np.random.RandomState(99))
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         return net
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4, 8])
@@ -595,11 +621,14 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.random.randn(batch_size, 3).astype(np.float32)
         with ptrace(f"forward batch={batch_size}") as t:
             out = simple_mlp.forward({"data": inp})
-            t['out_shape'] = str(out["prob"].shape)
-        assert out["prob"].shape == (batch_size, 2), \
+            t["out_shape"] = str(out["prob"].shape)
+        assert out["prob"].shape == (batch_size, 2), (
             f"batch={batch_size}: expected ({batch_size}, 2), got {out['prob'].shape}"
+        )
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(batch_size), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(batch_size),
+            rtol=1e-5,
         )
 
     def test_batch_size_1(self, simple_mlp, ptrace):
@@ -607,7 +636,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.array([[0.5, -0.3, 1.2]], dtype=np.float32)
         with ptrace("forward batch=1") as t:
             out = simple_mlp.forward({"data": inp})
-            t['prob'] = str(out["prob"].flatten())
+            t["prob"] = str(out["prob"].flatten())
         assert out["prob"].shape == (1, 2)
         assert np.allclose(out["prob"].sum(), 1.0, rtol=1e-5)
 
@@ -617,7 +646,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.random.randn(batch, 3).astype(np.float32)
         with ptrace(f"forward batch={batch}") as t:
             out = simple_mlp.forward({"data": inp})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert out["prob"].shape == (batch, 2)
 
     def test_large_batch_128(self, simple_mlp, ptrace):
@@ -626,12 +655,13 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         inp = np.random.randn(batch, 3).astype(np.float32)
         with ptrace(f"forward batch={batch}") as t:
             out = simple_mlp.forward({"data": inp})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert out["prob"].shape == (batch, 2)
 
     def test_forwards_with_increasing_batch_sizes(self, simple_mlp, ptrace):
         """Sequentially increasing batch sizes (1→2→4→8→16) all work."""
         import time as _time
+
         batch_sizes = [1, 2, 4, 8, 16]
         results = []
         fwd_times = []
@@ -644,16 +674,16 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                 fwd_times.append((bs, round(_dt, 3)))
                 assert out["prob"].shape == (bs, 2)
                 results.append(out["prob"].sum())
-            t['n_batches'] = len(batch_sizes)
-            t['fwd_times_ms'] = str(fwd_times)
+            t["n_batches"] = len(batch_sizes)
+            t["fwd_times_ms"] = str(fwd_times)
         # Each batch should produce valid probability distributions
         for i, bs in enumerate(batch_sizes):
-            assert np.isclose(results[i], float(bs), rtol=1e-4), \
-                f"batch={bs}: sum(prob)={results[i]}, expected {bs}"
+            assert np.isclose(results[i], float(bs), rtol=1e-4), f"batch={bs}: sum(prob)={results[i]}, expected {bs}"
 
     def test_forwards_with_decreasing_batch_sizes(self, simple_mlp, ptrace):
         """Sequentially decreasing batch sizes (16→8→4→2→1) all work."""
         import time as _time
+
         batch_sizes = [16, 8, 4, 2, 1]
         fwd_times = []
         with ptrace(f"forward decreasing batches {batch_sizes}") as t:
@@ -664,8 +694,8 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                 _dt = (_time.perf_counter() - _t0) * 1000.0
                 fwd_times.append((bs, round(_dt, 3)))
                 assert out["prob"].shape == (bs, 2)
-            t['n_batches'] = len(batch_sizes)
-            t['fwd_times_ms'] = str(fwd_times)
+            t["n_batches"] = len(batch_sizes)
+            t["fwd_times_ms"] = str(fwd_times)
 
     def test_same_input_different_batch_layout(self, ptrace):
         """Same logical samples produce consistent probabilities regardless of batch layout."""
@@ -695,10 +725,10 @@ layer { name: "prob" type: "Softmax" bottom: "ip" top: "prob" }"""
         with ptrace("forward wrong dim (expect error)") as t:
             try:
                 out = simple_mlp.forward({"data": inp})
-                t['result'] = 'no_crash (shape adapted?)'
-                t['out_shape'] = str(out.get("prob", out).shape)
+                t["result"] = "no_crash (shape adapted?)"
+                t["out_shape"] = str(out.get("prob", out).shape)
             except (ValueError, RuntimeError, IndexError) as e:
-                t['result'] = f'raised: {type(e).__name__}'
+                t["result"] = f"raised: {type(e).__name__}"
 
     def test_blob_reshape_between_forwards(self, ptrace):
         """Reshaping input blob between forwards handles new shape."""
@@ -720,11 +750,12 @@ layer { name: "prob" type: "Softmax" bottom: "ip" top: "prob" }"""
         inp2 = np.random.randn(4, 3).astype(np.float32)
         with ptrace("forward batch=4 (after reshape)") as t:
             out2 = net.forward({"data": inp2})
-            t['out_shape'] = str(out2["prob"].shape)
+            t["out_shape"] = str(out2["prob"].shape)
         assert out2["prob"].shape[0] == 4
 
 
 # ─── P2-A3: Large-scale forward stability ────────────────────────
+
 
 @require_cpp_extension
 class TestLargeScaleForward:
@@ -750,13 +781,14 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                     if len(layer.blobs) >= 2:
                         layer.blobs[1].from_numpy(np.zeros(layer.blobs[1].shape, dtype=np.float32))
                     n_ip += 1
-            t['layers'] = len(net.layers_array())
-            t['ip_layers'] = n_ip
+            t["layers"] = len(net.layers_array())
+            t["ip_layers"] = n_ip
         return net
 
     def test_100_forwards_no_memory_growth(self, small_mlp, ptrace):
         """100 forward passes with no memory leak (Δblobs=0)."""
         from caffe_ffi import live_blob_count, total_allocated_bytes
+
         rng = np.random.RandomState(0)
         n_iters = 100
         mem_before = total_allocated_bytes()
@@ -765,6 +797,7 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         sample_indices = {0, n_iters // 2, n_iters - 1}
         forward_times_ms = []
         import time as _time
+
         with ptrace(f"forward x{n_iters}") as t:
             for i in range(n_iters):
                 inp = rng.randn(4, 3).astype(np.float32)
@@ -774,20 +807,21 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                 if i in sample_indices:
                     forward_times_ms.append((i, round(_dt, 3)))
                 assert out["prob"].shape == (4, 2)
-            t['iterations'] = n_iters
-            t['sample_times_ms'] = str(forward_times_ms)
+            t["iterations"] = n_iters
+            t["sample_times_ms"] = str(forward_times_ms)
         mem_after = total_allocated_bytes()
         blobs_after = live_blob_count()
         delta_blobs = blobs_after - blobs_before
         delta_mem = mem_after - mem_before
-        t['delta_blobs'] = delta_blobs
-        t['delta_mem'] = delta_mem
+        t["delta_blobs"] = delta_blobs
+        t["delta_mem"] = delta_mem
         assert delta_blobs == 0, f"Memory leak: +{delta_blobs} Blobs after {n_iters} forwards"
         assert delta_mem <= 4096, f"Memory leak: +{delta_mem} bytes after {n_iters} forwards"
 
     def test_500_forwards_deterministic(self, small_mlp, ptrace):
         """500 forwards with same input always produce same output."""
         import time as _time
+
         inp = np.random.RandomState(123).randn(4, 3).astype(np.float32)
         n_iters = 500
         sample_indices = {0, n_iters // 4, n_iters // 2, 3 * n_iters // 4, n_iters - 1}
@@ -804,9 +838,9 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                     max_diff = diff
                 if i in sample_indices:
                     sample_times.append((i, round(_dt, 3)))
-            t['iterations'] = n_iters
-            t['max_diff'] = max_diff
-            t['sample_times_ms'] = str(sample_times)
+            t["iterations"] = n_iters
+            t["max_diff"] = max_diff
+            t["sample_times_ms"] = str(sample_times)
         assert max_diff == 0.0, f"Non-deterministic after {n_iters} iters: max_diff={max_diff}"
 
     def test_large_batch_256_stable(self, ptrace):
@@ -820,20 +854,23 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
         with ptrace("build large-batch net (256x16→32→10)") as t:
             net = net_from_param(net_param_from_string(proto))
             _load_identity_weights(net, rng=np.random.RandomState(55))
-            t['layers'] = len(net.layers_array())
+            t["layers"] = len(net.layers_array())
         batch = 256
         inp = np.random.randn(batch, 16).astype(np.float32)
         with ptrace(f"forward batch={batch}") as t:
             out = net.forward({"data": inp})
-            t['out_shape'] = str(out["prob"].shape)
+            t["out_shape"] = str(out["prob"].shape)
         assert out["prob"].shape == (batch, 10)
         np.testing.assert_allclose(
-            out["prob"].sum(axis=1), np.ones(batch), rtol=1e-5,
+            out["prob"].sum(axis=1),
+            np.ones(batch),
+            rtol=1e-5,
         )
 
     def test_alternating_batch_sizes_stable(self, small_mlp, ptrace):
         """Alternating batch sizes (1↔32) 50 times each is stable."""
         import time as _time
+
         rng = np.random.RandomState(77)
         n_pairs = 50
         batch1_times = []
@@ -855,15 +892,17 @@ layer { name: "prob" type: "Softmax" bottom: "ip2" top: "prob" }"""
                 if i == 0 or i == n_pairs - 1:
                     batch1_times.append(round(_dt, 3))
                     batch32_times.append(round(_dt32, 3))
-            t['switches'] = n_pairs
-            t['batch1_sample_ms'] = str(batch1_times)
-            t['batch32_sample_ms'] = str(batch32_times)
+            t["switches"] = n_pairs
+            t["batch1_sample_ms"] = str(batch1_times)
+            t["batch32_sample_ms"] = str(batch32_times)
         # No assertion beyond no crash and correct shapes
 
     def test_net_destruction_and_recreation(self, ptrace):
         """Creating and destroying many nets in sequence doesn't leak."""
         import time as _time
+
         from caffe_ffi import live_blob_count, total_allocated_bytes
+
         n_nets = 20
         blobs_before = live_blob_count()
         mem_before = total_allocated_bytes()
@@ -888,23 +927,26 @@ layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
                     create_times.append(round(_dt_create, 3))
                     forward_times.append(round(_dt_fwd, 3))
                 del net
-            t['nets'] = n_nets
-            t['create_sample_ms'] = str(create_times)
-            t['fwd_sample_ms'] = str(forward_times)
+            t["nets"] = n_nets
+            t["create_sample_ms"] = str(create_times)
+            t["fwd_sample_ms"] = str(forward_times)
         import gc
+
         for _ in range(5):
             gc.collect()
         blobs_after = live_blob_count()
         mem_after = total_allocated_bytes()
-        t['delta_blobs'] = blobs_after - blobs_before
-        t['delta_mem'] = mem_after - mem_before
+        t["delta_blobs"] = blobs_after - blobs_before
+        t["delta_mem"] = mem_after - mem_before
         # After GC, blob count should be stable (small tolerance for Python ref cycles)
-        assert blobs_after - blobs_before <= 2, \
+        assert blobs_after - blobs_before <= 2, (
             f"Net leak: +{blobs_after - blobs_before} Blobs after {n_nets} create/destroy cycles"
+        )
 
     def test_multi_net_parallel_usage(self, ptrace):
         """Multiple independent Net objects coexist and forward correctly."""
         import time as _time
+
         n_nets = 5
         nets = []
         with ptrace(f"create {n_nets} independent nets") as t:
@@ -916,7 +958,7 @@ layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
                 net = net_from_param(net_param_from_string(proto))
                 _load_identity_weights(net, rng=np.random.RandomState(i * 100))
                 nets.append(net)
-            t['nets'] = len(nets)
+            t["nets"] = len(nets)
 
         inp = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         results = []
@@ -929,12 +971,14 @@ layer {{ name: "prob" type: "Softmax" bottom: "ip" top: "prob" }}"""
                 results.append(out["prob"])
                 fwd_times.append(round(_dt, 3))
                 assert out["prob"].shape == (2, 2)
-            t['results'] = len(results)
-            t['fwd_times_ms'] = str(fwd_times)
+            t["results"] = len(results)
+            t["fwd_times_ms"] = str(fwd_times)
 
         # All outputs should be valid probability distributions
         for i, prob in enumerate(results):
             np.testing.assert_allclose(
-                prob.sum(axis=1), np.ones(2), rtol=1e-5,
+                prob.sum(axis=1),
+                np.ones(2),
+                rtol=1e-5,
                 err_msg=f"net[{i}] probabilities don't sum to 1",
             )

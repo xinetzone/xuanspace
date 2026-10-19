@@ -16,17 +16,19 @@ Covers the absolute-value activation ``y = |x|`` with derivative
 """
 
 import textwrap
+
 import numpy as np
 import pytest
 
 from caffe_ffi import Net
-from .conftest import require_cpp_extension
+
 from .caffe_test_helpers import avoid_c1_discontinuity
+from .conftest import require_cpp_extension
 
 # ---------------------------------------------------------------------------
 # Global configuration
 # ---------------------------------------------------------------------------
-EPS = 1e-3       # central finite-difference step
+EPS = 1e-3  # central finite-difference step
 NUM_RTOL = 5e-3  # Type-B (C¹ discontinuous) tolerance; float32 forward limits precision
 NUM_ATOL = 1e-4
 
@@ -34,6 +36,7 @@ NUM_ATOL = 1e-4
 # ---------------------------------------------------------------------------
 # Prototxt builder
 # ---------------------------------------------------------------------------
+
 
 def _make_absval_prototxt(N=1, C=1, H=4, W=5):
     """Create a minimal Input(N,C,H,W) -> AbsVal prototxt."""
@@ -56,6 +59,7 @@ def _make_absval_prototxt(N=1, C=1, H=4, W=5):
 # ---------------------------------------------------------------------------
 # Reference numpy implementations
 # ---------------------------------------------------------------------------
+
 
 def _absval_ref(x):
     """Forward y = |x| and backward factor dx/dy (Caffe branch semantics)."""
@@ -90,6 +94,7 @@ def _num_grad(net, x, dy, h=EPS):
 # ---------------------------------------------------------------------------
 # Tests: AbsVal Forward
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestAbsValForward:
@@ -132,6 +137,7 @@ class TestAbsValForward:
 # ---------------------------------------------------------------------------
 # Tests: AbsVal Backward (analytical)
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestAbsValGradient:
@@ -210,6 +216,7 @@ class TestAbsValGradient:
 # ---------------------------------------------------------------------------
 # Tests: AbsVal Numerical Gradient
 # ---------------------------------------------------------------------------
+
 
 @require_cpp_extension
 class TestAbsValNumericalGradient:

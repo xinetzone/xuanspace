@@ -4,12 +4,13 @@
 FFI 绑定正确性，覆盖 Blob 级 API 调用流程和生命周期转换。
 """
 
-import pytest
 import numpy as np
+import pytest
 
 try:
     import caffe_ffi
     from caffe_ffi import Blob
+
     from .conftest import require_cpp_extension
 except ImportError:
     pytest.skip("caffe_ffi not installed", allow_module_level=True)
@@ -17,9 +18,11 @@ except ImportError:
 
 # ── Prototxt helper ───────────────────────────────────────────────────
 
+
 def _dims_str(dims):
     """Convert a dimension tuple to protobuf text format repeated dim entries."""
     return " ".join(f"dim: {d}" for d in dims)
+
 
 def _make_split_prototxt(num_top, dims):
     dims_field = _dims_str(dims)
@@ -44,6 +47,7 @@ layer {{
 # TestSetShapeOnlyFFI — Blob-level FFI binding validation
 # ============================================================================
 
+
 class TestSetShapeOnlyFFI:
     """验证 set_shape_only / is_lazy_allocated FFI 绑定基本功能。"""
 
@@ -52,20 +56,17 @@ class TestSetShapeOnlyFFI:
     def test_set_shape_only_available(self):
         """set_shape_only 方法可通过 FFI 调用。"""
         blob = Blob()
-        assert hasattr(blob, "set_shape_only"), \
-            "set_shape_only FFI binding not found"
+        assert hasattr(blob, "set_shape_only"), "set_shape_only FFI binding not found"
 
     def test_is_lazy_allocated_available(self):
         """is_lazy_allocated 方法可通过 FFI 调用。"""
         blob = Blob()
-        assert hasattr(blob, "is_lazy_allocated"), \
-            "is_lazy_allocated FFI binding not found"
+        assert hasattr(blob, "is_lazy_allocated"), "is_lazy_allocated FFI binding not found"
 
     def test_default_not_lazy(self):
         """新创建的 Blob 默认不是 lazy 状态。"""
         blob = Blob()
-        assert not blob.is_lazy_allocated(), \
-            "New Blob should not be lazy-allocated"
+        assert not blob.is_lazy_allocated(), "New Blob should not be lazy-allocated"
 
     # ── set_shape_only 调用流程 ───────────────────────────────────────
 
@@ -92,8 +93,7 @@ class TestSetShapeOnlyFFI:
         """set_shape_only 后 is_lazy_allocated 为 True（data 未分配）。"""
         blob = Blob()
         blob.set_shape_only([64, 3, 32, 32])
-        assert blob.is_lazy_allocated(), \
-            "Lazy blob should have is_lazy_allocated() == True"
+        assert blob.is_lazy_allocated(), "Lazy blob should have is_lazy_allocated() == True"
         # Shape metadata should still be accessible
         assert blob.num_axes == 4
 
@@ -106,8 +106,7 @@ class TestSetShapeOnlyFFI:
         assert blob.is_lazy_allocated()
 
         blob.Reshape([2, 10])
-        assert not blob.is_lazy_allocated(), \
-            "Reshape should clear lazy flag"
+        assert not blob.is_lazy_allocated(), "Reshape should clear lazy flag"
         assert blob.data_tensor is not None
         assert blob.data_tensor.shape == (2, 10)
 
@@ -143,6 +142,7 @@ class TestSetShapeOnlyFFI:
 # ============================================================================
 # TestSetShapeOnlyLifecycle — 完整生命周期集成测试
 # ============================================================================
+
 
 class TestSetShapeOnlyLifecycle:
     """验证 SetShapeOnly → ShareData → 下游层 的完整生命周期。"""
@@ -190,8 +190,7 @@ class TestSetShapeOnlyLifecycle:
 
         # Verify all tops share the same data
         for i in range(1, num_top):
-            assert tops[i].SharesDataWith(tops[0]), \
-                f"top[{i}] should share data with top[0]"
+            assert tops[i].SharesDataWith(tops[0]), f"top[{i}] should share data with top[0]"
 
     def test_lazy_blob_mutable_data_triggers_allocation(self):
         """mutable_data_tensor() 在 lazy blob 上应触发防御性分配。"""
@@ -201,10 +200,8 @@ class TestSetShapeOnlyLifecycle:
 
         # mutable_data_tensor() should auto-allocate
         t = blob.mutable_data_tensor()
-        assert t is not None, \
-            "mutable_data_tensor() should auto-allocate for lazy blob"
-        assert not blob.is_lazy_allocated(), \
-            "mutable_data_tensor() should clear lazy flag after allocation"
+        assert t is not None, "mutable_data_tensor() should auto-allocate for lazy blob"
+        assert not blob.is_lazy_allocated(), "mutable_data_tensor() should clear lazy flag after allocation"
         assert blob.data_tensor is not None
         assert blob.count() == 32
 
@@ -212,6 +209,7 @@ class TestSetShapeOnlyLifecycle:
 # ============================================================================
 # TestSetShapeOnlySplitIntegration — Split 层集成测试（基于 Net/prototxt）
 # ============================================================================
+
 
 @require_cpp_extension
 class TestSetShapeOnlySplitIntegration:
@@ -224,15 +222,12 @@ class TestSetShapeOnlySplitIntegration:
 
         for i in range(4):
             top = net.blob_by_name(f"split_{i}")
-            assert not top.is_lazy_allocated(), \
-                f"N=4 split_{i} should not be lazy"
+            assert not top.is_lazy_allocated(), f"N=4 split_{i} should not be lazy"
 
         inp = np.random.randn(1, 3, 32, 32).astype(np.float32)
-        out = net.Forward({"data": inp})
+        net.Forward({"data": inp})
         for i in range(4):
-            np.testing.assert_array_almost_equal(
-                net.blob_by_name(f"split_{i}").to_numpy(), inp
-            )
+            np.testing.assert_array_almost_equal(net.blob_by_name(f"split_{i}").to_numpy(), inp)
 
     def test_split_n64_lazy_reshape(self):
         """N=64 应触发 lazy 分配（高于 kLazyReshapeThreshold=16）。"""
@@ -241,16 +236,14 @@ class TestSetShapeOnlySplitIntegration:
 
         for i in range(64):
             top = net.blob_by_name(f"split_{i}")
-            assert top.is_lazy_allocated(), \
-                f"N=64 split_{i} should be lazy after Reshape"
+            assert top.is_lazy_allocated(), f"N=64 split_{i} should be lazy after Reshape"
 
         inp = np.random.randn(1, 3, 32, 32).astype(np.float32)
-        out = net.Forward({"data": inp})
+        net.Forward({"data": inp})
 
         for i in range(64):
             top = net.blob_by_name(f"split_{i}")
-            assert not top.is_lazy_allocated(), \
-                f"split_{i} should not be lazy after Forward"
+            assert not top.is_lazy_allocated(), f"split_{i} should not be lazy after Forward"
             np.testing.assert_array_almost_equal(top.to_numpy(), inp)
 
     def test_split_n64_downstream_relu(self):
@@ -279,8 +272,7 @@ layer {{
 }}
 """
         net = caffe_ffi.Net(prototxt)
-        inp = np.array([[[-1.0, 2.0, -3.0, 4.0],
-                         [5.0, -6.0, 7.0, -8.0]]], dtype=np.float32)
+        inp = np.array([[[-1.0, 2.0, -3.0, 4.0], [5.0, -6.0, 7.0, -8.0]]], dtype=np.float32)
         out = net.Forward({"data": inp})
 
         assert "relu_out" in out

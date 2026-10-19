@@ -116,7 +116,7 @@ async def container_to_args(
 
     log_config = cnt.get("logging")
     if log_config is not None:
-        podman_args.append(f'--log-driver={log_config.get("driver", "k8s-file")}')
+        podman_args.append(f"--log-driver={log_config.get('driver', 'k8s-file')}")
         log_opts = log_config.get("options", {})
         podman_args += [f"--log-opt={name}={value}" for name, value in log_opts.items()]
     for secret in cnt.get("secrets", []):
@@ -236,10 +236,12 @@ async def container_to_args(
         # If it's a string, it's equivalent to specifying CMD-SHELL
         if isinstance(healthcheck_test, str):
             # podman does not add shell to handle command with whitespace
-            podman_args.extend([
-                "--health-cmd",
-                json.dumps(["CMD-SHELL", healthcheck_test]),
-            ])
+            podman_args.extend(
+                [
+                    "--health-cmd",
+                    json.dumps(["CMD-SHELL", healthcheck_test]),
+                ]
+            )
         elif is_list(healthcheck_test):
             healthcheck_test = healthcheck_test.copy()
             # If it's a list, first item is either NONE, CMD or CMD-SHELL.
@@ -254,8 +256,7 @@ async def container_to_args(
                 podman_args.extend(["--health-cmd", json.dumps(healthcheck_test)])
             else:
                 raise ValueError(
-                    f"unknown healthcheck test type [{healthcheck_type}], "
-                    "expecting NONE, CMD or CMD-SHELL."
+                    f"unknown healthcheck test type [{healthcheck_type}], expecting NONE, CMD or CMD-SHELL."
                 )
         else:
             raise ValueError("'healthcheck.test' either a string or a list")
@@ -277,8 +278,7 @@ async def container_to_args(
     # handle podman extension
     if "x-podman" in cnt:
         raise ValueError(
-            "Configuration under x-podman has been migrated to x-podman.uidmaps and "
-            "x-podman.gidmaps fields"
+            "Configuration under x-podman has been migrated to x-podman.uidmaps and x-podman.gidmaps fields"
         )
 
     rootfs_mode = False

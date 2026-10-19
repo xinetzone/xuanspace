@@ -174,9 +174,7 @@ def test_parse_sources_skips_non_dict_items():
 
 
 def test_parse_verification_skips_non_dict_items():
-    generated, events = parse_verification(
-        {"verified": [123, "abc", {"by": "human:x", "at": "2024-01-01T00:00:00"}]}
-    )
+    generated, events = parse_verification({"verified": [123, "abc", {"by": "human:x", "at": "2024-01-01T00:00:00"}]})
     assert generated is None
     assert len(events) == 1
     assert events[0].by == "human:x"

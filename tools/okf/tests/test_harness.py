@@ -152,9 +152,7 @@ def test_from_config_no_arg_walks_up_to_find_pyproject():
 
 
 def test_from_config_nonexistent_pyproject_uses_defaults(tmp_path, sample_bundle_path):
-    harness = Harness.from_config(
-        pyproject_path=tmp_path / "nonexistent.toml", bundle_path=sample_bundle_path
-    )
+    harness = Harness.from_config(pyproject_path=tmp_path / "nonexistent.toml", bundle_path=sample_bundle_path)
     assert isinstance(harness.ctx.get("bundle_accessor"), Bundle)
     assert isinstance(harness.ctx.get("conformance_report"), ConformanceReport)
 

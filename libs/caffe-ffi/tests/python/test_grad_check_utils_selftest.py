@@ -7,12 +7,14 @@ Verifies:
 4. assert_backward_matches_reference regression utility works (mock net)
 5. Logging works as expected
 """
+
 from __future__ import annotations
 
-import sys
 import logging
-import numpy as np
+import sys
 from pathlib import Path
+
+import numpy as np
 
 # Add tests/python to path
 _test_dir = Path(__file__).resolve().parent
@@ -21,11 +23,11 @@ sys.path.insert(0, str(_test_dir))
 # Configure logging to see GRAD logs
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-from _grad_check_utils import (
+from _grad_check_utils import (  # noqa: E402  # 需先注入 sys.path
+    assert_backward_matches_reference,
+    assert_grad_close,
     compare_gradients,
     numerical_gradient,
-    assert_grad_close,
-    assert_backward_matches_reference,
 )
 
 
@@ -63,7 +65,7 @@ def test_numerical_gradient_quadratic():
     x_work = x0.copy()
 
     def forward():
-        return (x_work ** 2).astype(np.float32)
+        return (x_work**2).astype(np.float32)
 
     def get_param():
         return x_work.copy()
@@ -132,6 +134,7 @@ def test_assert_grad_close_raises():
 # Mock net for testing assert_backward_matches_reference without C++ extension
 # ---------------------------------------------------------------------------
 
+
 class _MockPoolingNet:
     """Minimal mock Net that implements 2x2 stride-2 MAX pooling in pure numpy.
 
@@ -171,7 +174,7 @@ class _MockPoolingNet:
             for c in range(C):
                 for ph in range(H_out):
                     for pw in range(W_out):
-                        patch = x[n, c, ph*2:ph*2+2, pw*2:pw*2+2]
+                        patch = x[n, c, ph * 2 : ph * 2 + 2, pw * 2 : pw * 2 + 2]
                         y[n, c, ph, pw] = patch.max()
         self._blobs["data"].data = x.copy()
         self._blobs["pool"].data = y
@@ -187,10 +190,10 @@ class _MockPoolingNet:
             for c in range(C):
                 for ph in range(H_out):
                     for pw in range(W_out):
-                        patch = x[n, c, ph*2:ph*2+2, pw*2:pw*2+2]
+                        patch = x[n, c, ph * 2 : ph * 2 + 2, pw * 2 : pw * 2 + 2]
                         flat_idx = int(np.argmax(patch))
-                        wh = ph*2 + flat_idx // 2
-                        ww = pw*2 + flat_idx % 2
+                        wh = ph * 2 + flat_idx // 2
+                        ww = pw * 2 + flat_idx % 2
                         dX[n, c, wh, ww] += dy[n, c, ph, pw]
         # Inject deliberate error for negative testing
         if self._inject_error != 0.0:
@@ -202,7 +205,7 @@ class _MockPoolingNet:
         return self._blobs[name]
 
 
-def _mock_maxpool_backward_ref(dy, x, kernel_size=2, stride=2, pool_type='MAX'):
+def _mock_maxpool_backward_ref(dy, x, kernel_size=2, stride=2, pool_type="MAX"):
     """Numpy reference for 2x2 s=2 MAX pooling backward (same logic as _MockPoolingNet)."""
     N, C, H, W = x.shape
     H_out, W_out = H // stride, W // stride
@@ -211,10 +214,10 @@ def _mock_maxpool_backward_ref(dy, x, kernel_size=2, stride=2, pool_type='MAX'):
         for c in range(C):
             for ph in range(H_out):
                 for pw in range(W_out):
-                    patch = x[n, c, ph*stride:ph*stride+kernel_size, pw*stride:pw*stride+kernel_size]
+                    patch = x[n, c, ph * stride : ph * stride + kernel_size, pw * stride : pw * stride + kernel_size]
                     flat_idx = int(np.argmax(patch))
-                    wh = ph*stride + flat_idx // kernel_size
-                    ww = pw*stride + flat_idx % kernel_size
+                    wh = ph * stride + flat_idx // kernel_size
+                    ww = pw * stride + flat_idx % kernel_size
                     dx[n, c, wh, ww] += dy[n, c, ph, pw]
     return dx.astype(np.float32)
 
@@ -227,11 +230,15 @@ def test_assert_backward_matches_reference_passes():
 
     net = _MockPoolingNet(inject_error=0.0)
     result = assert_backward_matches_reference(
-        net, _mock_maxpool_backward_ref,
-        input_name="data", output_name="pool",
-        x=x, dy=dy,
+        net,
+        _mock_maxpool_backward_ref,
+        input_name="data",
+        output_name="pool",
+        x=x,
+        dy=dy,
         name="mock_maxpool",
-        rtol=1e-5, atol=1e-6,
+        rtol=1e-5,
+        atol=1e-6,
         skip_numerical=True,  # skip numerical since mock doesn't support perturbation
         verbose=True,
     )
@@ -252,11 +259,15 @@ def test_assert_backward_matches_reference_fails():
     net = _MockPoolingNet(inject_error=1.0)
     try:
         assert_backward_matches_reference(
-            net, _mock_maxpool_backward_ref,
-            input_name="data", output_name="pool",
-            x=x, dy=dy,
+            net,
+            _mock_maxpool_backward_ref,
+            input_name="data",
+            output_name="pool",
+            x=x,
+            dy=dy,
             name="mock_buggy",
-            rtol=1e-5, atol=1e-6,
+            rtol=1e-5,
+            atol=1e-6,
             skip_numerical=True,
             verbose=False,
         )
@@ -276,13 +287,18 @@ def test_assert_backward_matches_reference_skip_numerical():
 
     net = _MockPoolingNet(inject_error=0.0)
     import time
+
     t0 = time.perf_counter()
     result = assert_backward_matches_reference(
-        net, _mock_maxpool_backward_ref,
-        input_name="data", output_name="pool",
-        x=x, dy=dy,
+        net,
+        _mock_maxpool_backward_ref,
+        input_name="data",
+        output_name="pool",
+        x=x,
+        dy=dy,
         name="mock_skip_num",
-        rtol=1e-5, atol=1e-6,
+        rtol=1e-5,
+        atol=1e-6,
         skip_numerical=True,
         verbose=False,
     )
@@ -290,7 +306,7 @@ def test_assert_backward_matches_reference_skip_numerical():
     assert result["ref_passed"]
     assert result["numerical_passed"] is None
     assert elapsed < 1.0, f"skip_numerical should be fast, took {elapsed:.2f}s"
-    print(f"  ✓ test_assert_backward_matches_reference_skip_numerical passed ({elapsed*1000:.1f}ms)")
+    print(f"  ✓ test_assert_backward_matches_reference_skip_numerical passed ({elapsed * 1000:.1f}ms)")
 
 
 if __name__ == "__main__":

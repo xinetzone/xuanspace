@@ -163,9 +163,7 @@ class TestAssertVolume:
         c = mock.Mock()
         c.project_name = "proj"
         # 调用序列：首次 inspect 失败 → create 成功 → 再次 inspect 成功
-        c.podman.output = mock.AsyncMock(
-            side_effect=[CalledProcessError(1, []), b"", b""]
-        )
+        c.podman.output = mock.AsyncMock(side_effect=[CalledProcessError(1, []), b"", b""])
         mnt = {
             "type": "volume",
             "_vol": {
@@ -189,9 +187,7 @@ class TestAssertVolume:
     def test_missing_volume_minimal_create(self) -> None:
         c = mock.Mock()
         c.project_name = "proj"
-        c.podman.output = mock.AsyncMock(
-            side_effect=[CalledProcessError(1, []), b"", b""]
-        )
+        c.podman.output = mock.AsyncMock(side_effect=[CalledProcessError(1, []), b"", b""])
         mnt = {"type": "volume", "_vol": {"name": "v"}, "target": "/d"}
         asyncio.run(assert_volume(c, mnt))
         args = c.podman.output.await_args_list[1].args[2]
@@ -230,18 +226,18 @@ class TestMountArgStrings:
         assert s == "type=tmpfs,destination=/t,tmpfs-size=100m,tmpfs-mode=1777"
 
     def test_bind_selinux(self) -> None:
-        s = mount_desc_to_mount_args(
-            {"type": "bind", "source": "/h", "target": "/c", "bind": {"selinux": "Z"}}
-        )
+        s = mount_desc_to_mount_args({"type": "bind", "source": "/h", "target": "/c", "bind": {"selinux": "Z"}})
         assert s == "type=bind,source=/h,destination=/c,Z"
 
     def test_glob_and_image_types(self) -> None:
-        assert mount_desc_to_mount_args(
-            {"type": "glob", "source": "./d*", "target": "/c"}
-        ) == "type=glob,source=./d*,destination=/c"
-        assert mount_desc_to_mount_args(
-            {"type": "image", "source": "img", "target": "/c", "image": {"subpath": "x"}}
-        ) == "type=image,source=img,destination=/c,subpath=x"
+        assert (
+            mount_desc_to_mount_args({"type": "glob", "source": "./d*", "target": "/c"})
+            == "type=glob,source=./d*,destination=/c"
+        )
+        assert (
+            mount_desc_to_mount_args({"type": "image", "source": "img", "target": "/c", "image": {"subpath": "x"}})
+            == "type=image,source=img,destination=/c,subpath=x"
+        )
 
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown mount type"):
@@ -303,9 +299,7 @@ class TestGetMntDictAndGetMountArgs:
         compose.vols = {}
         compose.podman.output = mock.AsyncMock()
         args = asyncio.run(
-            get_mount_args(
-                compose, {"_service": "web"}, {"type": "bind", "source": "/h", "target": "/c"}
-            )
+            get_mount_args(compose, {"_service": "web"}, {"type": "bind", "source": "/h", "target": "/c"})
         )
         # 上游 assert_volume 对 bind 源做 os.path.abspath 本机归一：
         # POSIX 恒为 /h，Windows 解析为当前盘符 <盘符>:\h；容器目标 /c 不变

@@ -23,7 +23,7 @@ import pytest
 logger = logging.getLogger(__name__)
 
 # Use relative import to avoid sys.path conflicts with ops/utils.py
-from . import utils as _utils_module  # noqa: F401
+from . import utils as _utils_module  # noqa: E402,F401  # 相对导入需在日志配置后执行
 
 logger.info(f"networks conftest: utils loaded from {_utils_module.__file__}")
 

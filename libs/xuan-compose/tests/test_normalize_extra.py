@@ -73,9 +73,7 @@ class TestNormalizeServiceTags:
         assert normalize_service(tag) is tag
 
     def test_override_tag_unwrapped_to_mapping_value(self) -> None:
-        svc = yaml.safe_load(
-            "x: !override\n  image: img:1\n  command: [\"a\"]\n"
-        )["x"]
+        svc = yaml.safe_load('x: !override\n  image: img:1\n  command: ["a"]\n')["x"]
         result = normalize_service(svc)
         assert result == {"image": "img:1", "command": ["a"]}
         assert not isinstance(result, OverrideTag)
@@ -97,9 +95,7 @@ class TestNormalizeServiceBuild:
         assert svc["build"]["context"] == os.path.join("sub", "").rstrip("/")
 
     def test_additional_contexts_dict_to_list(self) -> None:
-        svc = normalize_service(
-            {"build": {"context": ".", "additional_contexts": {"shared": "/srv/shared"}}}
-        )
+        svc = normalize_service({"build": {"context": ".", "additional_contexts": {"shared": "/srv/shared"}}})
         assert sorted(svc["build"]["additional_contexts"]) == ["shared=/srv/shared"]
 
     def test_build_args_dict_to_list(self) -> None:
@@ -110,17 +106,13 @@ class TestNormalizeServiceBuild:
 
 class TestNormalizeServiceScalarLists:
     def test_string_fields_wrapped(self) -> None:
-        svc = normalize_service(
-            {"env_file": ".env", "security_opt": "seccomp:unconfined", "volumes": "/data:/data"}
-        )
+        svc = normalize_service({"env_file": ".env", "security_opt": "seccomp:unconfined", "volumes": "/data:/data"})
         assert svc["env_file"] == [".env"]
         assert svc["security_opt"] == ["seccomp=unconfined"]
         assert svc["volumes"] == ["/data:/data"]
 
     def test_security_opt_known_unconfined_replaced(self) -> None:
-        svc = normalize_service(
-            {"security_opt": ["seccomp:unconfined", "apparmor:unconfined", "label=user:foo"]}
-        )
+        svc = normalize_service({"security_opt": ["seccomp:unconfined", "apparmor:unconfined", "label=user:foo"]})
         assert svc["security_opt"] == [
             "seccomp=unconfined",
             "apparmor=unconfined",
@@ -158,7 +150,7 @@ class TestNormalizeDependsOn:
         assert svc["depends_on"] == {"db": {"condition": "service_healthy"}}
 
     def test_override_tag_sequence_becomes_mapping(self) -> None:
-        svc = yaml.safe_load("x:\n  depends_on: !override [\"db\", \"cache\"]\n")["x"]
+        svc = yaml.safe_load('x:\n  depends_on: !override ["db", "cache"]\n')["x"]
         out = normalize_service(svc)
         deps = out["depends_on"]
         assert isinstance(deps, OverrideTag)
@@ -185,8 +177,7 @@ class TestNormalizeSubdirPaths:
 
     def test_relative_env_file_string_and_dict_path(self) -> None:
         svc = normalize_service(
-            {"env_file": ["./.env", {"path": "./dev.env", "required": False},
-                          {"path": "/abs.env", "required": True}]},
+            {"env_file": ["./.env", {"path": "./dev.env", "required": False}, {"path": "/abs.env", "required": True}]},
             sub_dir="sub",
         )
         # 上游原样：短格式与 dict.path 均不剥离 "./"

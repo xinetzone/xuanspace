@@ -160,105 +160,105 @@ class TestParseComposeFileBuild(unittest.TestCase):
 
         actual_compose = {}
         if podman_compose.services:
-            actual_compose = podman_compose.original_configuration(
-                podman_compose.services["test-service"]
-            )
+            actual_compose = podman_compose.original_configuration(podman_compose.services["test-service"])
         self.assertEqual(actual_compose, _native_abs_build_context(expected))
 
-    @parameterized.expand([
-        (
-            {},
-            {"build": "."},
-            {"build": {"context": cwd}},
-        ),
-        (
-            {"build": "."},
-            {},
-            {"build": {"context": cwd}},
-        ),
-        (
-            {"build": "/workspace/absolute"},
-            {"build": "./relative"},
-            {
-                "build": {
-                    "context": os.path.normpath(os.path.join(cwd, "./relative")),
-                }
-            },
-        ),
-        (
-            {"build": "./relative"},
-            {"build": "/workspace/absolute"},
-            {"build": {"context": "/workspace/absolute"}},
-        ),
-        (
-            {"build": "./relative"},
-            {"build": "/workspace/absolute"},
-            {"build": {"context": "/workspace/absolute"}},
-        ),
-        (
-            {"build": {"dockerfile": "test-dockerfile"}},
-            {},
-            {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
-        ),
-        (
-            {},
-            {"build": {"dockerfile": "test-dockerfile"}},
-            {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
-        ),
-        (
-            {},
-            {"build": {"dockerfile": "test-dockerfile"}},
-            {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
-        ),
-        (
-            {"build": {"dockerfile": "test-dockerfile-1"}},
-            {"build": {"dockerfile": "test-dockerfile-2"}},
-            {"build": {"context": cwd, "dockerfile": "test-dockerfile-2"}},
-        ),
-        (
-            {"build": "/workspace/absolute"},
-            {"build": {"dockerfile": "test-dockerfile"}},
-            {"build": {"context": "/workspace/absolute", "dockerfile": "test-dockerfile"}},
-        ),
-        (
-            {"build": {"dockerfile": "test-dockerfile"}},
-            {"build": "/workspace/absolute"},
-            {"build": {"context": "/workspace/absolute", "dockerfile": "test-dockerfile"}},
-        ),
-        (
-            {"build": {"dockerfile": "./test-dockerfile-1"}},
-            {"build": {"dockerfile": "./test-dockerfile-2", "args": ["ENV1=1"]}},
-            {
-                "build": {
-                    "context": cwd,
-                    "dockerfile": "./test-dockerfile-2",
-                    "args": ["ENV1=1"],
-                }
-            },
-        ),
-        (
-            {"build": {"dockerfile": "./test-dockerfile-1", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./test-dockerfile-2"}},
-            {
-                "build": {
-                    "context": cwd,
-                    "dockerfile": "./test-dockerfile-2",
-                    "args": ["ENV1=1"],
-                }
-            },
-        ),
-        (
-            {"build": {"dockerfile": "./test-dockerfile-1", "args": ["ENV1=1"]}},
-            {"build": {"dockerfile": "./test-dockerfile-2", "args": ["ENV2=2"]}},
-            {
-                "build": {
-                    "context": cwd,
-                    "dockerfile": "./test-dockerfile-2",
-                    "args": ["ENV1=1", "ENV2=2"],
-                }
-            },
-        ),
-    ])
+    @parameterized.expand(
+        [
+            (
+                {},
+                {"build": "."},
+                {"build": {"context": cwd}},
+            ),
+            (
+                {"build": "."},
+                {},
+                {"build": {"context": cwd}},
+            ),
+            (
+                {"build": "/workspace/absolute"},
+                {"build": "./relative"},
+                {
+                    "build": {
+                        "context": os.path.normpath(os.path.join(cwd, "./relative")),
+                    }
+                },
+            ),
+            (
+                {"build": "./relative"},
+                {"build": "/workspace/absolute"},
+                {"build": {"context": "/workspace/absolute"}},
+            ),
+            (
+                {"build": "./relative"},
+                {"build": "/workspace/absolute"},
+                {"build": {"context": "/workspace/absolute"}},
+            ),
+            (
+                {"build": {"dockerfile": "test-dockerfile"}},
+                {},
+                {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
+            ),
+            (
+                {},
+                {"build": {"dockerfile": "test-dockerfile"}},
+                {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
+            ),
+            (
+                {},
+                {"build": {"dockerfile": "test-dockerfile"}},
+                {"build": {"context": cwd, "dockerfile": "test-dockerfile"}},
+            ),
+            (
+                {"build": {"dockerfile": "test-dockerfile-1"}},
+                {"build": {"dockerfile": "test-dockerfile-2"}},
+                {"build": {"context": cwd, "dockerfile": "test-dockerfile-2"}},
+            ),
+            (
+                {"build": "/workspace/absolute"},
+                {"build": {"dockerfile": "test-dockerfile"}},
+                {"build": {"context": "/workspace/absolute", "dockerfile": "test-dockerfile"}},
+            ),
+            (
+                {"build": {"dockerfile": "test-dockerfile"}},
+                {"build": "/workspace/absolute"},
+                {"build": {"context": "/workspace/absolute", "dockerfile": "test-dockerfile"}},
+            ),
+            (
+                {"build": {"dockerfile": "./test-dockerfile-1"}},
+                {"build": {"dockerfile": "./test-dockerfile-2", "args": ["ENV1=1"]}},
+                {
+                    "build": {
+                        "context": cwd,
+                        "dockerfile": "./test-dockerfile-2",
+                        "args": ["ENV1=1"],
+                    }
+                },
+            ),
+            (
+                {"build": {"dockerfile": "./test-dockerfile-1", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./test-dockerfile-2"}},
+                {
+                    "build": {
+                        "context": cwd,
+                        "dockerfile": "./test-dockerfile-2",
+                        "args": ["ENV1=1"],
+                    }
+                },
+            ),
+            (
+                {"build": {"dockerfile": "./test-dockerfile-1", "args": ["ENV1=1"]}},
+                {"build": {"dockerfile": "./test-dockerfile-2", "args": ["ENV2=2"]}},
+                {
+                    "build": {
+                        "context": cwd,
+                        "dockerfile": "./test-dockerfile-2",
+                        "args": ["ENV1=1", "ENV2=2"],
+                    }
+                },
+            ),
+        ]
+    )
     def test_parse_when_multiple_composes(self, input, override, expected):
         compose_test_1 = {"services": {"test-service": input}}
         compose_test_2 = {"services": {"test-service": override}}
@@ -276,9 +276,7 @@ class TestParseComposeFileBuild(unittest.TestCase):
 
         actual_compose = {}
         if podman_compose.services:
-            actual_compose = podman_compose.original_configuration(
-                podman_compose.services["test-service"]
-            )
+            actual_compose = podman_compose.original_configuration(podman_compose.services["test-service"])
         self.assertEqual(actual_compose, _native_abs_build_context(expected))
 
 

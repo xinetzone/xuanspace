@@ -1,6 +1,5 @@
 """Tests for xs CLI config module."""
 
-
 from xs.config import check_python_version, get_python_version
 
 
