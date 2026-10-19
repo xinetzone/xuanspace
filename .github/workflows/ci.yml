@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  # Windows runner 默认编码非 UTF-8，强制 UTF-8 避免 Python 输出中文时
+  # 抛 UnicodeEncodeError（覆盖 pytest/mypy 等非 xs 进程）
+  PYTHONUTF8: "1"
+
 jobs:
   # ============================================
   # 跨平台 + 多包管理器 测试矩阵
@@ -230,7 +235,7 @@ jobs:
 
       - name: Build Python template project
         run: |
-          cd test-python-tpl
+          cd libs/test-python-tpl
           python -m pip install -e .
 
       # --- Native 模板 ---
@@ -239,7 +244,7 @@ jobs:
 
       - name: Build Native template project
         run: |
-          cd test-native-tpl
+          cd libs/test-native-tpl
           python -m pip install -e . -v
 
       # --- Static 模板 ---
@@ -248,7 +253,7 @@ jobs:
 
       - name: Verify Static template project
         run: |
-          test -f test-static-tpl/index.html && echo "Static template OK"
+          test -f apps/test-static-tpl/index.html && echo "Static template OK"
 
   # ============================================
   # Python 版本兼容性检查
