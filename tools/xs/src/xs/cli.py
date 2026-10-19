@@ -4,6 +4,8 @@ xs CLI 主应用模块
 """
 
 
+import sys
+
 import typer
 from rich.console import Console
 
@@ -23,6 +25,12 @@ from .commands.toolchain_cmd import app as toolchain_app
 from .commands.update_cmd import update_cmd
 from .commands.version_cmd import app as version_app
 from .discovery import find_affected_projects
+
+# Windows 控制台/CI（如 GitHub Actions windows runner）默认编码可能非 UTF-8，
+# 输出中文时触发 UnicodeEncodeError。入口处统一强制 UTF-8 输出流。
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
 
 console = Console()
 
