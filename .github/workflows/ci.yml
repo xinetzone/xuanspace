@@ -66,7 +66,11 @@ jobs:
       # --- 安装依赖 ---
       - name: Install dependencies (PDM)
         if: matrix.pm == 'pdm'
-        run: python -m pdm install
+        run: |
+          # pdm 默认安装进项目 .venv，后续步骤直接用解释器调用
+          # ruff/mypy/pytest，故关闭 venv 使依赖装入当前解释器
+          python -m pdm config python.use_venv false
+          python -m pdm install -G dev
 
       - name: Install dependencies (pip)
         if: matrix.pm == 'pip'
@@ -123,9 +127,10 @@ jobs:
       - name: Build all projects
         run: xs build --type all
 
-      # --- Windows DLL 自检 (A3) ---
+      # --- Windows DLL 自检 (A3)：仅当 caffe-ffi 已有构建产物时执行
+      #（CI 裸环境无 Protobuf/OpenBLAS，caffe-ffi 声明 auto-build=false）---
       - name: Run Windows DLL self-check
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && hashFiles('libs/caffe-ffi/build/**/*.dll') != ''
         run: python libs/caffe-ffi/scripts/check_windows_dll.py --skip-load
 
       # --- 文档构建 ---
