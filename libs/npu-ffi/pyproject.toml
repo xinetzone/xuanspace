@@ -24,6 +24,9 @@ ninja.make-fallback = false
 build-dir = "build"
 cmake.args = [
   "-DNPU_FFI_VTA_USE_STUB=ON",
+  # wheel 构建不编译 C++ 测试/示例（对齐 caffe-ffi 约定：CMake ON / wheel OFF）
+  "-DNPU_FFI_BUILD_TESTS=OFF",
+  "-DNPU_FFI_BUILD_EXAMPLES=OFF",
 ]
 
 editable.rebuild = false

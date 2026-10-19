@@ -168,9 +168,9 @@ enum class ALUOpcode : uint32_t {
   SHL = 6
 };
 
-// kAllocAlignment is defined in npu_ffi/common.h as ::npu_ffi::kAllocAlignment.
+// kAllocAlignment is defined in npu_ffi/common.h at global scope (::kAllocAlignment).
 // Bring it into the vta namespace for backward compatibility.
-using ::npu_ffi::kAllocAlignment;
+using ::kAllocAlignment;
 
 }  // namespace vta
 }  // namespace npu_ffi
