@@ -67,10 +67,14 @@ jobs:
       - name: Install dependencies (PDM)
         if: matrix.pm == 'pdm'
         run: |
-          # pdm 默认安装进项目 .venv，后续步骤直接用解释器调用
-          # ruff/mypy/pytest，故关闭 venv 使依赖装入当前解释器
-          python -m pdm config python.use_venv false
           python -m pdm install -G dev
+          # pdm 默认安装进项目 .venv，将其 bin 目录前置到 PATH，
+          # 使后续步骤的 python/xs 调用透明使用 pdm 管理的环境
+          if [ -d ".venv/bin" ]; then
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          else
+            echo "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+          fi
 
       - name: Install dependencies (pip)
         if: matrix.pm == 'pip'
