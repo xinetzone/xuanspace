@@ -12,6 +12,7 @@ keywords = ["xuanspace", "xuanjing", "cli", "monorepo", "devops"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
+  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.14",
@@ -27,7 +28,7 @@ dependencies = [
 authors = [
   {name = "xinetzone"}
 ]
-license = {text = "MIT"}
+license = "Apache-2.0"
 
 [project.urls]
 Homepage = "https://github.com/xinetzone/xuanspace"

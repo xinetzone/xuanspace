@@ -11,7 +11,11 @@ dependencies = []
 authors = [
     {name = "xinetzone"}
 ]
-license = {text = "MIT"}
+license = "Apache-2.0"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.14",
+]
 
 # 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
 # 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
