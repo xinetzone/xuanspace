@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -58,7 +58,7 @@ lint = [
 ]
 build = [
     "build>=1.2",
-    "scikit-build-core>=0.10",
+    "scikit-build-core>=0.11",
     "cmake>=3.26",
     "ninja",
 ]
@@ -82,7 +82,7 @@ dev = [
     "black>=24.4",
     "isort>=5.13",
     "build>=1.2",
-    "scikit-build-core>=0.10",
+    "scikit-build-core>=0.11",
     "cmake>=3.26",
     "ninja",
 ]
@@ -120,7 +120,7 @@ lint = [
 ]
 build = [
     "build>=1.2",
-    "scikit-build-core>=0.10",
+    "scikit-build-core>=0.11",
     "cmake>=3.26",
     "ninja",
 ]
@@ -139,7 +139,7 @@ packages = [
 # pip install -e ".[dev]" 无需 cmake/ninja；原生扩展子项目各自独立构建，
 # 原生工具链由下方 dev/build extras 与 CI 按需要安装。
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 
 [tool.scikit-build.wheel]
 cmake = false

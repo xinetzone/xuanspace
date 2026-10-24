@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -70,7 +70,7 @@ lint = [
 # scikit-build-core 按 wheel.packages 直接打包，产出 py3-none-any 通用 wheel；
 # sdist 构建同样无需 cmake/ninja（scikit-build-core 1.0+ 语义，见 build/wheel.py）。
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 build-dir = "build/{wheel_tag}"
 
 [tool.scikit-build.wheel]

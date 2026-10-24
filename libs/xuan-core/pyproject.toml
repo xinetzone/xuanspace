@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -19,7 +19,7 @@ classifiers = [
 # 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
 # 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 
 [tool.scikit-build.wheel]
 cmake = false

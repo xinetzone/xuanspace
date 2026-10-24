@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "ninja>=1.11", "cmake>=3.26", "apache-tvm-ffi>0.1.12"]
+requires = ["scikit-build-core>=0.11", "ninja>=1.11", "cmake>=3.26", "apache-tvm-ffi>0.1.12"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -44,7 +44,7 @@ Homepage = "https://github.com/xinetzone/caffe-ffi"
 Repository = "https://github.com/xinetzone/caffe-ffi"
 
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 wheel.py-api = "py3"
 wheel.packages = ["python/caffe_ffi"]
 wheel.install-dir = "caffe_ffi"
