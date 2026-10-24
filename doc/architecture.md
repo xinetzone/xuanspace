@@ -100,7 +100,7 @@ xuanspace/
 docs = ["sphinx>=8.0", "myst-parser>=4.0"]
 test = ["pytest>=8.0", "pytest-cov>=5.0"]
 lint = ["mypy>=1.10", "ruff>=0.4"]
-build = ["build>=1.2", "scikit-build-core>=0.10", "cmake>=3.26", "ninja"]
+build = ["build>=1.2", "scikit-build-core>=0.11", "cmake>=3.26", "ninja"]
 dev = ["pdm", "typer>=0.12", "xuanspace[docs,test,lint,build]"]
 ```
 

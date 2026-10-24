@@ -28,6 +28,6 @@ dependencies:
   - cxx-compiler
   - pip
   - pip:
-    - scikit-build-core>=0.10.0
+    - scikit-build-core>=0.11.0
     - protobuf>=7.0.0
     - pytest>=8.0

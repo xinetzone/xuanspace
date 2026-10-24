@@ -41,7 +41,7 @@ python --version
 
 # 3. 安装编译依赖（如果尚未安装）
 conda install -c conda-forge cmake>=3.26 ninja>=1.11 cxx-compiler pip
-pip install "scikit-build-core>=0.10.0" "protobuf>=7.0.0" "pytest>=8.0"
+pip install "scikit-build-core>=0.11.0" "protobuf>=7.0.0" "pytest>=8.0"
 
 # 4. 设置 Windows OpenMP 环境变量
 #    永久设置（仅需执行一次，对所有新终端生效）
@@ -76,7 +76,7 @@ python --version
 
 # 3. 安装编译依赖
 conda install -c conda-forge cmake>=3.26 ninja>=1.11 cxx-compiler pip
-pip install "scikit-build-core>=0.10.0" "protobuf>=7.0.0" "pytest>=8.0"
+pip install "scikit-build-core>=0.11.0" "protobuf>=7.0.0" "pytest>=8.0"
 
 # 4. 设置 OpenMP 环境变量（当前会话）
 export KMP_DUPLICATE_LIB_OK=TRUE

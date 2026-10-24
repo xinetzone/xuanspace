@@ -70,7 +70,7 @@ lint = [
 ]
 build = [
     "build>=1.2",
-    "scikit-build-core>=0.10",
+    "scikit-build-core>=0.11",
     "cmake>=3.26",
     "ninja",
 ]

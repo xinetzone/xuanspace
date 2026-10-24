@@ -43,6 +43,12 @@ Xuanspace **全仓库统一采用 `scikit-build-core` 构建后端**，按项目
 
 所有子项目遵循 PEP 621 规范，使用 `pyproject.toml` 声明构建配置。
 
+> **版本下限为 `>=0.11`（硬约束）**：PEP 639 的 `license = "<SPDX 表达式>"` 字符串与
+> `[project].license-files` 自 scikit-build-core 0.11.0 起才被接受，0.9/0.10 在解析元数据时
+> 直接报配置错误。`[tool.scikit-build].minimum-version` 必须同步声明为 `"0.11"`，或写
+> `"build-system.requires"` 由依赖下限派生。该下限由 `scripts/check_pyproject_style.py`
+> 在 CI 中强制校验，声明低于下限会直接失败。
+
 ### 纯 Python 项目配置
 
 纯 Python 项目使用 scikit-build-core 的纯 Python 模式：**不创建 CMakeLists.txt**，
@@ -50,7 +56,7 @@ Xuanspace **全仓库统一采用 `scikit-build-core` 构建后端**，按项目
 
 ```toml
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -59,7 +65,7 @@ version = "0.1.0"
 requires-python = ">=3.14.6"
 
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 
 [tool.scikit-build.wheel]
 cmake = false
@@ -78,7 +84,7 @@ packages = ["src/my_lib"]
 
 ```toml
 [build-system]
-requires = ["scikit-build-core>=0.10", "cmake>=3.26", "ninja"]
+requires = ["scikit-build-core>=0.11", "cmake>=3.26", "ninja"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -87,7 +93,7 @@ version = "0.1.0"
 requires-python = ">=3.14.6"
 
 [tool.scikit-build]
-minimum-version = "0.10"
+minimum-version = "0.11"
 cmake.build-type = "Release"
 wheel.packages = ["my_ext"]
 ninja.make-fallback = false

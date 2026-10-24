@@ -31,7 +31,7 @@ requirements:
     - {{ stdlib('c') }}
     - cmake>=3.26
     - ninja>=1.11
-    - scikit-build-core>=0.10.0
+    - scikit-build-core>=0.11.0
     - patchelf  # [linux]
     - cctools   # [osx]
     - make      # [osx]
@@ -42,7 +42,7 @@ requirements:
   host:
     - python>=3.14
     - pip
-    - scikit-build-core>=0.10.0
+    - scikit-build-core>=0.11.0
     - libprotobuf>=7.0.0
     - protobuf>=7.0.0
     - numpy>=2.3

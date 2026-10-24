@@ -76,7 +76,7 @@ conda install -c conda-forge \
   -y
 
 # 安装 Python 构建工具
-pip install scikit-build-core>=0.10 --no-build-isolation
+pip install scikit-build-core>=0.11 --no-build-isolation
 
 # 验证关键版本
 echo "=== 版本验证 ==="
@@ -317,7 +317,7 @@ conda install -c conda-forge -y \
   "libprotobuf>=7.0.0" "protobuf>=7.0.0" \
   libopenblas pytest numpy
 
-pip install scikit-build-core>=0.10 --no-build-isolation
+pip install scikit-build-core>=0.11 --no-build-isolation
 
 # Step 3: 验证
 echo "=== Environment verification ==="
