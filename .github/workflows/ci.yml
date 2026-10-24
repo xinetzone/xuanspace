@@ -149,7 +149,6 @@ jobs:
       # --- 链接检查 ---
       - name: Check documentation links
         run: xs docs linkcheck
-        continue-on-error: true
 
   # ============================================
   # 质量门禁：四项自动化检查（doctor/meta/lfs/docs）
