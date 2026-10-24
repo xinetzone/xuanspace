@@ -8,6 +8,12 @@ version: "0.1.0"
 x-toml-ref: ".meta/toml/specs/unify-scikit-build-core.toml"
 ```
 
+> **勘误（2026-10-24）**：本 Spec 正文中的 `scikit-build-core>=0.10` 与 `minimum-version = "0.10"`
+> 已被取代。PEP 639 的 `license = "<SPDX>"` 字符串与 `[project].license-files` 自
+> scikit-build-core **0.11.0** 才开始被接受（0.9/0.10 会报配置错误），全仓下限已统一提升为
+> `>=0.11` / `minimum-version = "0.11"`（`libs/tvm-book` 使用 `"build-system.requires"` 派生）。
+> 该下限现由 `scripts/check_pyproject_style.py` 强制校验，本 Spec 正文保留为历史记录，不再作为当前契约。
+
 ## Why
 
 玄境（Xuanspace）monorepo 中 `pyproject.toml` 的构建后端**不统一**：

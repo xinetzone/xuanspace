@@ -10,6 +10,10 @@
    纯 Python 项目（[tool.scikit-build.wheel] cmake=false）禁止声明
    cmake/ninja 构建需求，且同目录不得携带 CMakeLists.txt
 5. 无 setuptools / tool.setuptools 残留（作为唯一构建后端）
+6. scikit-build-core 版本下限 >= 0.11（PEP 639 的 license 字符串 +
+   project.license-files 自 0.11.0 起才被接受），且
+   [tool.scikit-build].minimum-version 必须与之下限一致或写
+   "build-system.requires" 交由构建系统派生
 
 用法：python scripts/check_pyproject_style.py
 退出码：0 全部通过；1 存在不合规项；2 脚本自身错误。
@@ -51,6 +55,34 @@ DENIED_MARKERS = {
     "tool.pdm.build",
 }
 DENIED_BACKENDS = {"setuptools.build_meta", "setuptools.build_meta:__legacy__"}
+
+# PEP 639 元数据（license 字符串 / project.license-files）在
+# scikit-build-core 0.11.0 才被接受，0.9/0.10 会直接拒绝 SPDX 字符串
+SCIKIT_MIN_VERSION = (0, 11)
+SCIKIT_MIN_VERSION_TEXT = "0.11"
+# minimum-version 允许用该哨兵把下限交给 build-system.requires 派生
+MINIMUM_VERSION_FROM_REQUIRES = "build-system.requires"
+
+
+def _version_tuple(text: str) -> tuple[int, ...] | None:
+    """把 '0.11.0' / 'v0.11' 解析成可比较的数字元组；无法解析返回 None。"""
+    match = re.fullmatch(r"[vV]?([0-9]+(?:\.[0-9]+)*)", text.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def _normalized(version: tuple[int, ...], width: int) -> tuple[int, ...]:
+    """补齐位数后比较，避免 (0, 11) 与 (0, 11, 0) 被判不等。"""
+    return version + (0,) * max(0, width - len(version))
+
+
+def _lower_bound(req: str) -> tuple[int, ...] | None:
+    """取 requirement 的版本下限；无下限或无法解析返回 None。"""
+    match = re.search(r"(?:>=|==|~=)\s*([0-9][0-9.]*)", req)
+    if not match:
+        return None
+    return _version_tuple(match.group(1))
 
 
 def _req_name(req: str) -> str:
@@ -94,18 +126,38 @@ def iter_pyproject(root: Path):
             yield path
 
 
-def _is_nested_submodule(root: Path, project_dir: Path) -> bool:
-    """嵌套 git submodule（gitlink）判定：非根目录且内含 .git 文件或目录。
+def _submodule_paths(root: Path) -> list[str]:
+    """读取 .gitmodules 声明的子模块路径；无该文件返回空表。"""
+    gitmodules = root / ".gitmodules"
+    if not gitmodules.exists():
+        return []
+    paths: list[str] = []
+    for line in gitmodules.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"\s*path\s*=\s*(.+?)\s*$", line)
+        if match:
+            paths.append(match.group(1))
+    return paths
 
-    submodule 是独立仓库（如 vendor/*、libs/tvm-book、libs/mystx），
-    有各自的构建标准与 CI，不受本仓 canonical 风格约束；
-    根目录自身的 .git 是本仓标志，不算嵌套 submodule。
+
+def _is_nested_submodule(root: Path, project_dir: Path) -> bool:
+    """子模块判定：项目目录落在 .gitmodules 声明的路径之内。
+
+    submodule 是独立仓库（vendor/*、libs/tvm-book、libs/mystx），
+    有各自的构建标准与 CI，不受本仓 canonical 风格约束。
+    不能只用「目录内有 .git」判定：libs/caffe-ffi、libs/demo-ffi 是
+    主仓直接追踪的普通目录，但残留了各自的 .git，会被误判为子模块。
     """
     try:
-        project_dir.relative_to(root)
+        rel = project_dir.relative_to(root)
     except ValueError:
         return False
-    return project_dir != root and (project_dir / ".git").exists()
+    if rel == Path("."):
+        return False
+    for sub in _submodule_paths(root):
+        parts = Path(sub).parts
+        if rel.parts[: len(parts)] == parts:
+            return True
+    return False
 
 
 def check_one(path: Path) -> list[str]:
@@ -155,6 +207,37 @@ def check_one(path: Path) -> list[str]:
     for marker in DENIED_MARKERS:
         if marker in data.get("tool", {}):
             issues.append(f"存在 [{marker}] 配置，应迁移到 [tool.scikit-build]")
+
+    # 5. scikit-build-core 版本下限契约（PEP 639 元数据需要 >= 0.11.0）
+    if isinstance(requires, list):
+        for req in requires:
+            if _req_name(req) != "scikit-build-core":
+                continue
+            bound = _lower_bound(req)
+            if bound is None:
+                issues.append(
+                    f"[build-system].requires 的 {req!r} 未声明版本下限，"
+                    f"应写为 scikit-build-core>={SCIKIT_MIN_VERSION_TEXT}"
+                )
+            elif _normalized(bound, 2) < _normalized(SCIKIT_MIN_VERSION, 2):
+                issues.append(
+                    f"[build-system].requires 的 {req!r} 下限低于 {SCIKIT_MIN_VERSION_TEXT}（PEP 639 元数据所需）"
+                )
+            break
+
+    minimum_version = data.get("tool", {}).get("scikit-build", {}).get("minimum-version")
+    if minimum_version is None:
+        issues.append(
+            f"[tool.scikit-build] 缺少 minimum-version，"
+            f'应为 "{SCIKIT_MIN_VERSION_TEXT}" 或 "{MINIMUM_VERSION_FROM_REQUIRES}"'
+        )
+    elif minimum_version != MINIMUM_VERSION_FROM_REQUIRES:
+        parsed = _version_tuple(str(minimum_version))
+        if parsed is None or _normalized(parsed, 2) < _normalized(SCIKIT_MIN_VERSION, 2):
+            issues.append(
+                f"[tool.scikit-build].minimum-version 为 {minimum_version!r}，"
+                f'应 >= "{SCIKIT_MIN_VERSION_TEXT}" 或 "{MINIMUM_VERSION_FROM_REQUIRES}"'
+            )
 
     return issues
 
