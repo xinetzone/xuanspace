@@ -34,6 +34,14 @@ adr/index
 ```
 
 ```{toctree}
+:caption: 规划
+:maxdepth: 1
+
+blueprint
+recommendations
+```
+
+```{toctree}
 :hidden:
 
 genindex
