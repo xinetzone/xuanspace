@@ -30,7 +30,7 @@ Xuanspace（玄境）是一个以 **Python 3.14.6+ 为版本下限**（[pyprojec
 
 ### 洞察 I1：同名漂移 —— 文档写得多，但引用的是一张被重构前的地图
 
-- **现象**：`docs/` 与 `doc/` 两种写法**在同一文件内共存**。[AGENTS.md](../AGENTS.md#L66) 写 `docs/`，同文件 [AGENTS.md](../AGENTS.md#L96) 写 `doc/`；[doc/README.md](README.md#L5) 写 `docs/`、[doc/README.md](README.md#L89) 写 `doc/`；[CHANGELOG.md](../CHANGELOG.md#L13)、[.agents/ONBOARDING.md](../.agents/ONBOARDING.md#L103)、[doc/architecture.md](architecture.md#L71) 用 `docs/`，而 [README.md](../README.md#L152) 与 [doc/conf.py](conf.py#L101) 用 `doc/`。
+- **现象**：`docs/` 与 `doc/` 两种写法**在同一文件内共存**：[AGENTS.md](../AGENTS.md#L66) 写 `docs/`，同文件 [AGENTS.md](../AGENTS.md#L96) 写 `doc/`；[doc/README.md](README.md#L5) 写 `docs/`、同文件 [doc/README.md](README.md#L89) 写 `doc/`。逐仓清点为 **11 处、跨 8 个文件**：[AGENTS.md](../AGENTS.md#L66)、[.agents/ONBOARDING.md](../.agents/ONBOARDING.md#L103)、[.agents/context-routing.md](../.agents/context-routing.md#L17)（该处同时是断链）、[CHANGELOG.md](../CHANGELOG.md#L13)、[CONTRIBUTING.md](../CONTRIBUTING.md#L709) 与 [CONTRIBUTING.md](../CONTRIBUTING.md#L714)、[doc/README.md](README.md#L1)、[doc/README.md](README.md#L5)、[doc/README.md](README.md#L18)、[doc/architecture.md](architecture.md#L71)、[doc/dependency-report.md](dependency-report.md#L28)；反面一侧写 `doc/` 的是 [README.md](../README.md#L152) 与 [doc/conf.py](conf.py#L101)。判定范围、排除项与复现命令见[优化建议书 P0-1](recommendations.md)。
 - **解释**：项目经历过一次目录改名（`docs/` → `doc/`），磁盘与部分引用已更新，全仓引用未做同批次回改；漂移集中在**人写的说明性文本**，机械解析的配置（`path_to_docs = "doc"`）保持正确。
 - **反常识**：文档陈旧通常被归因于「没写文档」；此处恰好相反——**文档写得越多，改名后的残留面越大**。漂移量随文档体量**递增**，而非递减。
 - **行动**：把路径引用纳入可运行门禁（断链检查）；把制度动作定为「改名 = 同批次全仓引用回改」。
@@ -275,9 +275,9 @@ Xuanspace 的核心张力可表述为两极：
 | 26 | `doc/conf.py` 第 48–54 行 `exclude_patterns` 含 `"README.md"` | [conf.py](conf.py#L48-L54) |
 | 27 | `doc/conf.py` 第 56 行 `master_doc = "index"`，第 101 行 `path_to_docs = "doc"` | [conf.py](conf.py#L56)、[conf.py](conf.py#L101) |
 | 28 | `doc/conf.py` 第 40–72 行主题回退顺序为 `mystx` → `sphinx_book_theme` → `alabaster`；第 74 行 `html_title = "Xuanspace（玄境）"` | [conf.py](conf.py#L40-L72)、[conf.py](conf.py#L74) |
-| 29 | `doc/README.md` 第 5 行用 `docs/`，第 89 行用 `doc/` | [doc/README.md](README.md#L5)、[doc/README.md](README.md#L89) |
-| 30 | `AGENTS.md` 第 66 行用 `docs/`，第 96 行用 `doc/` | [AGENTS.md](../AGENTS.md#L66)、[AGENTS.md](../AGENTS.md#L96) |
-| 31 | `doc/architecture.md` 第 71 行用 `docs/` | [architecture.md](architecture.md#L71) |
+| 29 | `doc/README.md` 第 1／5／18 行用 `docs/`，同文件第 89 行用 `doc/` | [doc/README.md](README.md#L1)、[doc/README.md](README.md#L5)、[doc/README.md](README.md#L18)、[doc/README.md](README.md#L89) |
+| 30 | `AGENTS.md` 第 66 行用 `docs/`，同文件第 96 行用 `doc/` | [AGENTS.md](../AGENTS.md#L66)、[AGENTS.md](../AGENTS.md#L96) |
+| 31 | 根文档目录命名漂移合计 11 处、跨 8 个文件；除第 29／30 条所列 4 处外，另 7 处为 `.agents/ONBOARDING.md` 第 103 行、`.agents/context-routing.md` 第 17 行（该处同时是断链）、`CHANGELOG.md` 第 13 行、`CONTRIBUTING.md` 第 709／714 行、`doc/architecture.md` 第 71 行、`doc/dependency-report.md` 第 28 行 | [ONBOARDING.md](../.agents/ONBOARDING.md#L103)、[context-routing.md](../.agents/context-routing.md#L17)、[CHANGELOG.md](../CHANGELOG.md#L13)、[CONTRIBUTING.md](../CONTRIBUTING.md#L709)、[CONTRIBUTING.md](../CONTRIBUTING.md#L714)、[architecture.md](architecture.md#L71)、[dependency-report.md](dependency-report.md#L28) |
 | 32 | `doc/architecture.md` 第 78 行声明仓库根存在 `CMakeLists.txt`；仓库根目录无该文件 | [architecture.md](architecture.md#L78) |
 
 ### E. 治理与 CI
