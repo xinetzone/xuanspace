@@ -99,14 +99,22 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["scikit-build-core>=0.5"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 ```
 
-## 现有子项目示例
+## 现有子项目
+
+> 以下清单与 `libs/` 磁盘目录一致（按字母序），新增子项目时须同步更新。
 
 | 目录名 | 类型 | 说明 |
 |--------|------|------|
+| `caffe-ffi/` | 原生扩展 | Caffe 深度学习框架 FFI 绑定 |
+| `demo-ffi/` | 原生扩展 | FFI 扩展开发模板（Stub/Real 双运行时） |
+| `mystx/` | Python（子模块） | MyST 文档工具链/主题 |
+| `npu-ffi/` | 原生扩展 | VTA NPU 加速器 FFI 绑定 |
+| `tvm-book/` | Python（子模块） | TVM 中文手册 + flexloopy |
+| `xuan-compose/` | 纯 Python | Compose 规范声明式容器编排引擎（podman-compose 重构） |
 | `xuan-core/` | 纯 Python | 核心工具库，提供基础类型、通用函数、错误处理 |
 | `xuan-ext-demo/` | 原生扩展 | C/C++ 扩展示例库 |
 

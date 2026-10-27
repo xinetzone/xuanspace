@@ -95,11 +95,25 @@ xuanspace/
 
 ```toml
 [project.optional-dependencies]
-docs = ["sphinx>=8.0", "myst-parser>=4.0"]
-test = ["pytest>=8.0", "pytest-cov>=5.0"]
-lint = ["mypy>=1.10", "ruff>=0.4"]
+docs = [
+    "sphinx>=8.0",
+    "myst-parser>=4.0",
+    "sphinx-book-theme>=1.1",
+    "sphinx-design",
+    "sphinx-copybutton",
+    "sphinxcontrib-mermaid",
+]
+test = ["pytest>=8.0", "pytest-cov>=5.0", "pytest-xdist>=3.5"]
+lint = ["mypy>=1.10", "ruff>=0.4", "black>=24.4", "isort>=5.13"]
 build = ["build>=1.2", "scikit-build-core>=0.11", "cmake>=3.26", "ninja"]
-dev = ["pdm", "typer>=0.12", "xuanspace[docs,test,lint,build]"]
+
+[dependency-groups]
+dev = [
+    {include-group = "docs"},
+    {include-group = "test"},
+    {include-group = "lint"},
+    {include-group = "build"},
+]
 ```
 
 ### 包管理器选择
@@ -141,9 +155,9 @@ xuan-ext-demo@0.1.1
 
 ### 自建库（projects/）
 
-- 在 SpecWeave 主仓库中作为 Git 子模块
+- 作为上层工作区的 Git 子模块
 - 独立开发，独立版本控制
-- 通过子模块指针在主仓库中统一管理
+- 通过子模块指针在上层工作区中统一管理
 
 ## 设计决策
 

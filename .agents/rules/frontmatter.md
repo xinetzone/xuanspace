@@ -6,6 +6,8 @@
 
 **注意：当前阶段（Task 20 之前）不要添加 YAML frontmatter，本规范为后续任务准备。**
 
+**Task 20 解冻触发条件**：当 `xs meta` 具备从 Markdown 文档生成并校验 `.meta/toml/` 镜像的稳定能力（`xs meta scan` / `xs meta sync` 端到端可用）时，「当前阶段」结束，本规范由「预备」转为「生效」。在此之前，[.meta/README.md](../../.meta/README.md) 中的 frontmatter 与 TOML 镜像示例仅描述目标态，不构成当前动作要求（规则层优先于说明层）。
+
 ## 1. YAML frontmatter 规范
 
 Markdown 文件顶部的 YAML frontmatter 仅允许以下 4 个字段：

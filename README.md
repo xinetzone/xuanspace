@@ -100,11 +100,15 @@ x-toml-ref: ".meta/toml/README.toml"
 |------|------|------|------|---------|------|------|
 | xs | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](doc/cli/index.md) |
 | okf | OKF v0.2 工具链（校验/脚手架/合成/信任推导） | Python 3.14 | tools | 活跃 | 0.1.0 | [OKF 文档](doc/okf/index.md) |
-| templates | 项目模板（Python/Native/Static） | 多语言 | tools | 活跃 | 0.1.0 | [模板说明](tools/templates/) |
+| templates | 项目模板（Python/Native/Native-FFI/Static） | 多语言 | tools | 活跃 | 0.1.0 | [模板说明](tools/templates/) |
 | caffe-ffi | Caffe 深度学习框架 FFI 绑定 | Python/C++ | lib | 活跃 | 1.2.0 | [README](libs/caffe-ffi/README.md) |
 | demo-ffi | FFI 扩展开发模板（Stub/Real 双运行时） | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/demo-ffi/README.md) |
+| mystx | MyST 文档工具链/主题（子模块） | Python | lib(submodule) | 上游 | - | [README](libs/mystx/README.md) |
 | npu-ffi | VTA NPU 加速器 FFI 绑定 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/npu-ffi/README.md) |
 | tvm-book | TVM 中文手册 + flexloopy（子模块） | Python/C++ | lib(submodule) | 上游 | v0.1.4 | [README](libs/tvm-book/README.md) |
+| xuan-compose | Compose 规范声明式容器编排引擎（podman-compose 重构） | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-compose/README.md) |
+| xuan-core | 核心工具库，提供基础类型、通用函数、错误处理 | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-core/README.md) |
+| xuan-ext-demo | C/C++ 扩展示例库 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/xuan-ext-demo/README.md) |
 | tvm-ffi | Apache TVM C++ FFI 跨语言绑定库（子模块） | C++ | vendor(submodule) | 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
 | caffe | Caffe 深度学习框架（子模块） | C++ | vendor(submodule) | 上游 | - | [上游仓库](https://github.com/daoflows/caffe) |
 
@@ -121,7 +125,7 @@ graph TD
 
     subgraph 法[法 · 规范层]
         Conventions[项目规范]
-        Conventions[AGENTS.md]
+        AgentsMd[AGENTS.md]
         Workflow[工作流]
     end
 

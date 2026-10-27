@@ -4,6 +4,14 @@
 
 `.meta/` 目录存放外部 TOML 元数据文件，实现**内容-元数据二分法**架构。文档内容（Markdown）与元数据（TOML）分离存储，保持文档正文的纯粹性。
 
+## 当前阶段冻结（重要）
+
+> **当前阶段（Task 20 之前）：请勿为本仓库的 Markdown 文档添加 YAML frontmatter，也不要新建 `.meta/toml/` 镜像文件。**
+>
+> 本文档以下各节描述的是**目标态**，不是当前动作要求。当前阶段的唯一权威为 [.agents/rules/frontmatter.md](../.agents/rules/frontmatter.md)（规则层优先于说明层）。
+>
+> **解冻触发条件（Task 20）**：当 `xs meta` 具备从 Markdown 文档生成并校验 `.meta/toml/` 镜像的稳定能力（`xs meta scan` / `xs meta sync` 端到端可用）时，「当前阶段」结束，本文档各节由「目标态」转为「生效」。
+
 ## 目录结构
 
 ```

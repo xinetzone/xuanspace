@@ -13,6 +13,7 @@ tools/
 └── templates/       # 项目模板目录
     ├── python/      # Python 库/应用模板
     ├── native/      # C/C++ 原生扩展/应用模板
+    ├── native-ffi/  # C/C++ FFI 原生扩展模板（Stub/Real 双运行时）
     └── static/      # 纯 HTML/JS 静态项目模板
 ```
 
@@ -52,6 +53,7 @@ tools/
 |----------|------|----------|
 | `templates/python/` | Python 库和应用模板 | `xs new --type python` |
 | `templates/native/` | C/C++ 原生扩展和应用模板 | `xs new --type native` |
+| `templates/native-ffi/` | C/C++ FFI 原生扩展模板（Stub/Real 双运行时） | 由模板内 `generate.py` 生成 |
 | `templates/static/` | 纯 HTML/JS 静态项目模板 | `xs new --type static` |
 
 每个模板目录包含该类型项目的标准结构、pyproject.toml 配置、示例代码和 README。
