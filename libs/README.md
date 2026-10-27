@@ -105,7 +105,9 @@ build-backend = "scikit_build_core.build"
 
 ## 现有子项目
 
-> 以下清单与 `libs/` 磁盘目录一致（按字母序），新增子项目时须同步更新。
+> 以下清单由 `scripts/check_declaration_consistency.py` 从 `libs/` 磁盘目录派生（按字母序），**块内内容请勿手改**；新增子项目后须在脚本的 `LIB_PROJECT_META` 中登记类型与说明，再运行 `python scripts/check_declaration_consistency.py --generate` 刷新本块。
+
+<!-- BEGIN GENERATED: libs-projects -->
 
 | 目录名 | 类型 | 说明 |
 |--------|------|------|
@@ -117,6 +119,8 @@ build-backend = "scikit_build_core.build"
 | `xuan-compose/` | 纯 Python | Compose 规范声明式容器编排引擎（podman-compose 重构） |
 | `xuan-core/` | 纯 Python | 核心工具库，提供基础类型、通用函数、错误处理 |
 | `xuan-ext-demo/` | 原生扩展 | C/C++ 扩展示例库 |
+
+<!-- END GENERATED: libs-projects -->
 
 ## 依赖规则
 

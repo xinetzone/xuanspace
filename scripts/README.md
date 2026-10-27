@@ -153,7 +153,7 @@ scripts/ 中的脚本**不应该**依赖 `libs/` 或 `apps/` 中的内部包（�
 | `run_benchmarks.py` | 测试类 | 运行性能基准测试并生成报告 | 是 |
 | `migrate_toml_schema.py` | 迁移类 | 将旧版 TOML 配置迁移到新版 Schema | 否（需备份） |
 | `check_pyproject_style.py` | 校验类 | 校验各 `pyproject.toml` 的 canonical 风格（CI quality job） | 是 |
-| `check_declaration_consistency.py` | 校验类 | 校验声明—实现一致性：CLI 命令清单 / 子项目清单 / 目录名口径（`--generate` 刷新快照，CI quality job） | 是 |
+| `check_declaration_consistency.py` | 校验类 | 校验声明—实现一致性：CLI 命令清单 / 子项目清单（`libs/README.md` 生成块）/ 目录名口径（`--generate` 刷新快照与清单生成块，CI quality job） | 是 |
 
 ## 脚本目录结构
 

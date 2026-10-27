@@ -7,13 +7,14 @@
 覆盖三类声明：
   A. CLI 命令清单：README.md「N 个子命令」与 doc/intro.md 命令表
                    ↔ tools/xs/src/xs/cli.py 的注册表
-  B. 子项目清单  ：libs/README.md「现有子项目」表 ↔ libs/ 磁盘目录
+  B. 子项目清单  ：libs/README.md「现有子项目」生成块 ↔ libs/ 磁盘目录（P1-4①：
+                   块由本脚本从磁盘派生并注入，门禁比对「块 == 脚本渲染结果」）
   C. 目录名口径  ：README.md「目录结构」块声明的目录 ↔ 磁盘存在性，
                    且顶层不得出现 docs/（文档目录约定为 doc/）
 
 使用方法：
   python scripts/check_declaration_consistency.py            # 校验模式（默认）
-  python scripts/check_declaration_consistency.py --generate # 生成模式：刷新清单快照
+  python scripts/check_declaration_consistency.py --generate # 生成模式：刷新清单快照与清单生成块
   python scripts/check_declaration_consistency.py --json     # 以 JSON 输出结果
 
 退出码：0 全部一致；1 存在不一致；2 脚本自身错误（声明源缺失或结构不可解析）。
@@ -50,6 +51,22 @@ FORBIDDEN_TOP_DIRS = ("docs",)
 # 目录扫描时忽略的系统目录
 IGNORED_DIR_NAMES = {"__pycache__", ".git", "node_modules"}
 
+# --- 生成块标记与子项目元数据（P1-4①） ---
+# libs/README.md「现有子项目」表由本脚本从 libs/ 磁盘目录派生，块内内容勿手改。
+LIBS_GENERATED_BEGIN = "<!-- BEGIN GENERATED: libs-projects -->"
+LIBS_GENERATED_END = "<!-- END GENERATED: libs-projects -->"
+# 子项目元数据：目录名 -> (类型, 说明)；新增 libs/ 子目录须先在此登记，否则门禁报错。
+LIB_PROJECT_META: dict[str, tuple[str, str]] = {
+    "caffe-ffi": ("原生扩展", "Caffe 深度学习框架 FFI 绑定"),
+    "demo-ffi": ("原生扩展", "FFI 扩展开发模板（Stub/Real 双运行时）"),
+    "mystx": ("Python（子模块）", "MyST 文档工具链/主题"),
+    "npu-ffi": ("原生扩展", "VTA NPU 加速器 FFI 绑定"),
+    "tvm-book": ("Python（子模块）", "TVM 中文手册 + flexloopy"),
+    "xuan-compose": ("纯 Python", "Compose 规范声明式容器编排引擎（podman-compose 重构）"),
+    "xuan-core": ("纯 Python", "核心工具库，提供基础类型、通用函数、错误处理"),
+    "xuan-ext-demo": ("原生扩展", "C/C++ 扩展示例库"),
+}
+
 # --- 声明提取正则 ---
 # cli.py：命令组 `app.add_typer(x, name="...")` 与直接命令 `app.command("...")`
 _CLI_GROUP_RE = re.compile(r'app\.add_typer\(\s*[\w.]+,\s*name="([^"]+)"')
@@ -58,8 +75,6 @@ _CLI_COMMAND_RE = re.compile(r'app\.command\("([^"]+)"\)')
 _README_CMD_COUNT_RE = re.compile(r"（\s*(\d+)\s*个子命令\s*）")
 # doc/intro.md 命令表中的 `xs <cmd>` 行
 _INTRO_CMD_ROW_RE = re.compile(r"^\|\s*`xs ([a-z0-9\-]+)`\s*\|", re.MULTILINE)
-# libs/README.md「现有子项目」表中的 `dir/` 行
-_LIB_ROW_RE = re.compile(r"^\|\s*`([a-z0-9\-]+)/`", re.MULTILINE)
 # README.md「目录结构」代码块中的 `├── name/` 行
 _STRUCT_DIR_RE = re.compile(r"[├└]──\s*([A-Za-z0-9_.\-]+)/")
 
@@ -70,16 +85,6 @@ def _read_text(root: Path, rel: str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"缺少声明源文件：{rel}")
     return path.read_text(encoding="utf-8")
-
-
-def _section(text: str, header: str) -> str:
-    """截取 header 起始到下一个二级标题之间的正文。"""
-    idx = text.find(header)
-    if idx == -1:
-        raise ValueError(f"未找到章节：{header}")
-    rest = text[idx + len(header) :]
-    nxt = re.search(r"^##\s", rest, re.MULTILINE)
-    return rest[: nxt.start()] if nxt else rest
 
 
 def _first_fenced_block(text: str, header: str) -> str:
@@ -94,6 +99,15 @@ def _first_fenced_block(text: str, header: str) -> str:
     if end == -1:
         raise ValueError(f"{header} 的代码块未闭合")
     return text[start + 3 : end]
+
+
+def _generated_block(text: str, begin: str, end: str) -> str:
+    """截取生成标记包裹的整段（含标记行）；缺失或顺序错误时抛 ValueError。"""
+    start = text.find(begin)
+    stop = text.find(end)
+    if start == -1 or stop == -1 or stop < start:
+        raise ValueError(f"未找到成对的生成标记 {begin} / {end}")
+    return text[start : stop + len(end)]
 
 
 def extract_cli_commands(root: Path) -> list[str]:
@@ -116,6 +130,26 @@ def extract_lib_projects(root: Path) -> list[str]:
     return sorted(names)
 
 
+def render_lib_projects_table(root: Path) -> tuple[str, list[str]]:
+    """渲染 libs/README.md「现有子项目」生成块（含标记行）。
+
+    返回 (markdown, 未在 LIB_PROJECT_META 中登记的目录名)。
+    """
+    names = extract_lib_projects(root)
+    missing = [n for n in names if n not in LIB_PROJECT_META]
+    lines = [
+        LIBS_GENERATED_BEGIN,
+        "",
+        "| 目录名 | 类型 | 说明 |",
+        "|--------|------|------|",
+    ]
+    for name in names:
+        kind, desc = LIB_PROJECT_META.get(name, ("（待补）", "（待补说明）"))
+        lines.append(f"| `{name}/` | {kind} | {desc} |")
+    lines += ["", LIBS_GENERATED_END]
+    return "\n".join(lines), missing
+
+
 def declared_cli_count(root: Path) -> int | None:
     """README.md 声明的「（N 个子命令）」命令数；未声明返回 None。"""
     match = _README_CMD_COUNT_RE.search(_read_text(root, README_FILE))
@@ -125,12 +159,6 @@ def declared_cli_count(root: Path) -> int | None:
 def declared_intro_commands(root: Path) -> list[str]:
     """doc/intro.md 命令表中 `xs <cmd>` 行的命令名集合。"""
     return sorted(set(_INTRO_CMD_ROW_RE.findall(_read_text(root, INTRO_FILE))))
-
-
-def declared_lib_projects(root: Path) -> list[str]:
-    """libs/README.md「现有子项目」表中声明的目录名集合。"""
-    body = _section(_read_text(root, LIBS_README), "## 现有子项目")
-    return sorted(set(_LIB_ROW_RE.findall(body)))
 
 
 def declared_structure_dirs(root: Path) -> list[str]:
@@ -163,7 +191,6 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
 
     manifest = collect_manifest(root)
     cli_commands = set(manifest["cli_commands"])
-    lib_projects = set(manifest["lib_projects"])
 
     # A. CLI 命令清单
     count = declared_cli_count(root)
@@ -177,10 +204,17 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
     if diff:
         failures.append(diff)
 
-    # B. 子项目清单
-    diff = _diff_failure(f"{LIBS_README}「现有子项目」", set(declared_lib_projects(root)), lib_projects)
-    if diff:
-        failures.append(diff)
+    # B. 子项目清单（生成块 ↔ 磁盘事实，P1-4①）
+    try:
+        block = _generated_block(_read_text(root, LIBS_README), LIBS_GENERATED_BEGIN, LIBS_GENERATED_END)
+    except ValueError as exc:
+        failures.append(str(exc))
+    else:
+        rendered, missing = render_lib_projects_table(root)
+        if missing:
+            failures.append(f"{LIBS_README} 生成块缺元数据登记：{missing}（请在 LIB_PROJECT_META 补充类型/说明）")
+        if block != rendered:
+            failures.append(f"{LIBS_README}「现有子项目」生成块与磁盘事实不一致（已过期），请运行 --generate 刷新")
 
     # C. 目录名口径
     absent = [d for d in declared_structure_dirs(root) if not (root / d).is_dir()]
@@ -205,25 +239,49 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
     return failures, notes
 
 
+def inject_lib_projects_block(root: Path) -> bool:
+    """把 libs/README.md 的生成块重写为磁盘派生的表（幂等）；返回是否发生写入。"""
+    path = root / LIBS_README
+    text = path.read_text(encoding="utf-8")
+    start = text.find(LIBS_GENERATED_BEGIN)
+    stop = text.find(LIBS_GENERATED_END)
+    if start == -1 or stop == -1 or stop < start:
+        raise ValueError(f"{LIBS_README} 未找到成对的生成标记 {LIBS_GENERATED_BEGIN} / {LIBS_GENERATED_END}")
+    rendered, _ = render_lib_projects_table(root)
+    updated = text[:start] + rendered + text[stop + len(LIBS_GENERATED_END) :]
+    if updated == text:
+        return False
+    path.write_text(updated, encoding="utf-8", newline="\n")
+    return True
+
+
 def generate(root: Path) -> int:
-    """生成模式：把事实清单写入快照文件（幂等）。"""
+    """生成模式：刷新清单快照与 libs/README.md 生成块（幂等）。"""
     manifest = collect_manifest(root)
     content = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     path = root / SNAPSHOT_FILE
     if path.exists() and path.read_text(encoding="utf-8") == content:
         print(f"清单快照已是目标状态，跳过：{SNAPSHOT_FILE}")
-        return 0
-    path.write_text(content, encoding="utf-8", newline="\n")
-    print(f"已刷新清单快照：{SNAPSHOT_FILE}")
-    print(content, end="")
+    else:
+        path.write_text(content, encoding="utf-8", newline="\n")
+        print(f"已刷新清单快照：{SNAPSHOT_FILE}")
+
+    _, missing = render_lib_projects_table(root)
+    if missing:
+        print(f"[ERROR] 以下目录未在 LIB_PROJECT_META 中登记：{missing}", file=sys.stderr)
+        return 2
+    if inject_lib_projects_block(root):
+        print(f"已刷新生成块：{LIBS_README}")
+    else:
+        print(f"生成块已是目标状态，跳过：{LIBS_README}")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Xuanspace「声明—实现一致性」门禁校验（P0-4）",
+        description="Xuanspace「声明—实现一致性」门禁校验（P0-4 / P1-4①）",
     )
-    parser.add_argument("--generate", action="store_true", help="生成模式：刷新可提取清单快照")
+    parser.add_argument("--generate", action="store_true", help="生成模式：刷新可提取清单快照与 libs 清单生成块")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出校验结果")
     args = parser.parse_args()
 
