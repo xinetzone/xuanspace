@@ -13,6 +13,9 @@ build/
 .ruff_cache/
 *.whl
 
+# setuptools-scm 生成的版本文件（构建时再生，不入库）
+src/xuanspace/_version.py
+
 # Virtual environments
 .venv/
 venv/

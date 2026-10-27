@@ -62,7 +62,7 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
     从 pyproject.toml 中提取项目名称、版本和依赖
 
     支持动态版本：当 [project] 未声明静态 version（dynamic = ["version"]）时，
-    从 [tool.setuptools.dynamic].version.attr 指向的模块文件解析 __version__。
+    交由 resolve_dynamic_version() 按构建后端解析。
 
     Args:
         path: pyproject.toml 文件路径
@@ -75,7 +75,7 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
         data = load_pyproject(path)
         project = data.get("project", {})
         name = project.get("name", fallback)
-        version = project.get("version") or _resolve_dynamic_version(path, data)
+        version = project.get("version") or resolve_dynamic_version(path, data)
         dependencies = get_project_dependencies(data)
         dep_names = []
         for dep in dependencies:
@@ -86,12 +86,15 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
         return fallback, "0.0.0", []
 
 
-def _resolve_dynamic_version(pyproject_path: Path, data: dict) -> str:
+def resolve_dynamic_version(pyproject_path: Path, data: dict) -> str:
     """
     解析动态版本号
 
-    当 pyproject 使用 dynamic = ["version"] 时，从 [tool.setuptools.dynamic]
-    的 version.attr（如 "xs.__version__"）指向的模块文件解析版本值。
+    当 pyproject 使用 dynamic = ["version"] 时，按构建后端分支解析：
+    - scikit-build-core + setuptools-scm：读取 [tool.setuptools_scm] 的
+      version_file/write_to 生成文件（如 src/xuanspace/_version.py）的 __version__。
+    - setuptools：[tool.setuptools.dynamic].version.attr（如 "xs.__version__"）
+      指向的模块文件中的 __version__。
 
     Args:
         pyproject_path: pyproject.toml 文件路径
@@ -101,7 +104,26 @@ def _resolve_dynamic_version(pyproject_path: Path, data: dict) -> str:
         解析出的版本字符串，解析失败返回 "0.0.0"
     """
     try:
-        setuptools_cfg = data.get("tool", {}).get("setuptools", {})
+        tool_cfg = data.get("tool", {})
+        scikit_build_cfg = tool_cfg.get("scikit-build", {})
+        provider = scikit_build_cfg.get("metadata", {}).get("version", {}).get("provider", "")
+        if provider == "scikit_build_core.metadata.setuptools_scm":
+            scm_cfg = tool_cfg.get("setuptools_scm", {})
+            version_file = scm_cfg.get("version_file") or scm_cfg.get("write_to")
+            if version_file:
+                version_path = pyproject_path.parent / version_file
+                if version_path.exists():
+                    text = version_path.read_text(encoding="utf-8")
+                    match = re.search(
+                        r'^__version__\s*=\s*(?:version\s*=\s*)?["\']([^"\']+)["\']',
+                        text,
+                        re.MULTILINE,
+                    )
+                    if match:
+                        return match.group(1)
+            return "0.0.0"
+
+        setuptools_cfg = tool_cfg.get("setuptools", {})
         version_cfg = setuptools_cfg.get("dynamic", {}).get("version") or {}
         attr = version_cfg.get("attr", "")
         if not attr:

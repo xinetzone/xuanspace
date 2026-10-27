@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 
 from ..config import find_workspace_root, load_pyproject
-from ..discovery import discover_projects, find_project_by_name
+from ..discovery import discover_projects, find_project_by_name, resolve_dynamic_version
 
 console = Console()
 
@@ -78,8 +78,11 @@ def version_show(
         return
 
     try:
-        root_data = load_pyproject(workspace_root / "pyproject.toml")
-        root_ver = root_data.get("project", {}).get("version", "0.0.0")
+        root_pyproject = workspace_root / "pyproject.toml"
+        root_data = load_pyproject(root_pyproject)
+        root_ver = root_data.get("project", {}).get("version") or resolve_dynamic_version(
+            root_pyproject, root_data
+        )
         console.print(f"[bold]Xuanspace 工作区版本:[/bold] [green]{root_ver}[/green]")
     except Exception:
         pass

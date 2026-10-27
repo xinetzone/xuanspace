@@ -1,10 +1,10 @@
 [build-system]
-requires = ["scikit-build-core>=0.11"]
+requires = ["scikit-build-core>=0.11", "setuptools-scm>=8.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "xuanspace"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Xuanspace（玄境）- Python monorepo 项目"
 readme = "README.md"
 license = "Apache-2.0"
@@ -140,10 +140,17 @@ packages = [
 # 原生工具链由下方 dev/build extras 与 CI 按需要安装。
 [tool.scikit-build]
 minimum-version = "0.11"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
 
 [tool.scikit-build.wheel]
 cmake = false
 packages = ["src/xuanspace"]
+
+# 版本号由 git 标签经 setuptools-scm 动态推导（对齐 libs/mystx），
+# 生成 src/xuanspace/_version.py 作为构建与运行时的单一事实来源。
+[tool.setuptools_scm]
+version_file = "src/xuanspace/_version.py"
+write_to = "src/xuanspace/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
