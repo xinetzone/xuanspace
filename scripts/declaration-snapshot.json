@@ -1,0 +1,29 @@
+{
+  "cli_commands": [
+    "affected",
+    "archive",
+    "build",
+    "deps",
+    "doc",
+    "doctor",
+    "init",
+    "lfs",
+    "list",
+    "meta",
+    "new",
+    "py-compat",
+    "toolchain",
+    "update",
+    "version"
+  ],
+  "lib_projects": [
+    "caffe-ffi",
+    "demo-ffi",
+    "mystx",
+    "npu-ffi",
+    "tvm-book",
+    "xuan-compose",
+    "xuan-core",
+    "xuan-ext-demo"
+  ]
+}

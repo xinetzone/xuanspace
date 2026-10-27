@@ -71,6 +71,10 @@
 # -*- coding: utf-8 -*-
 ```
 
+> **Python 3.14 例外**：本项目 `requires-python >= 3.14.6`，源码默认 UTF-8，且 ruff 的 `UP`
+> 规则集（pyupgrade）在 py314 下会报 `UP009`（编码声明多余）。因此**新增脚本省略
+> `# -*- coding: utf-8 -*-` 行**，仅保留 shebang 与模块 docstring；存量脚本见到该行即删。
+
 ### 2. 文档字符串
 
 每个脚本必须有模块级 docstring，说明：
@@ -148,6 +152,8 @@ scripts/ 中的脚本**不应该**依赖 `libs/` 或 `apps/` 中的内部包（�
 | `init_dev_env.py` | 环境类 | 初始化开发环境，安装 git hooks 等 | 是 |
 | `run_benchmarks.py` | 测试类 | 运行性能基准测试并生成报告 | 是 |
 | `migrate_toml_schema.py` | 迁移类 | 将旧版 TOML 配置迁移到新版 Schema | 否（需备份） |
+| `check_pyproject_style.py` | 校验类 | 校验各 `pyproject.toml` 的 canonical 风格（CI quality job） | 是 |
+| `check_declaration_consistency.py` | 校验类 | 校验声明—实现一致性：CLI 命令清单 / 子项目清单 / 目录名口径（`--generate` 刷新快照，CI quality job） | 是 |
 
 ## 脚本目录结构
 

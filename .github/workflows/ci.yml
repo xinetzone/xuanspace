@@ -151,7 +151,7 @@ jobs:
         run: xs doc linkcheck
 
   # ============================================
-  # 质量门禁：四项自动化检查（doctor/meta/lfs/docs）
+  # 质量门禁：五项自动化检查（pyproject/declaration/doctor/meta/lfs/docs）
   # ============================================
   quality:
     name: Quality Gates
@@ -183,19 +183,23 @@ jobs:
       - name: Check pyproject.toml canonical style
         run: python scripts/check_pyproject_style.py
 
-      # --- 1. 环境诊断 ---
+      # --- 1. 声明—实现一致性校验（P0-4：CLI 命令/子项目/目录名三类声明） ---
+      - name: Check declaration consistency
+        run: python scripts/check_declaration_consistency.py
+
+      # --- 2. 环境诊断 ---
       - name: xs doctor
         run: xs doctor
 
-      # --- 2. 元数据校验 ---
+      # --- 3. 元数据校验 ---
       - name: xs meta validate
         run: xs meta validate
 
-      # --- 3. LFS 大文件检查 ---
+      # --- 4. LFS 大文件检查 ---
       - name: xs lfs check
         run: xs lfs check
 
-      # --- 4. 文档构建 ---
+      # --- 5. 文档构建 ---
       - name: xs doc build
         run: xs doc build
 
