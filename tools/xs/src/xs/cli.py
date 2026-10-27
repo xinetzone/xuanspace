@@ -12,7 +12,7 @@ from . import __version__
 from .commands.archive_cmd import app as archive_app
 from .commands.build_cmd import build_project
 from .commands.deps_cmd import app as deps_app
-from .commands.docs_cmd import app as docs_app
+from .commands.doc_cmd import app as doc_app
 from .commands.doctor_cmd import doctor
 from .commands.init_cmd import init_workspace
 from .commands.lfs_cmd import app as lfs_app
@@ -42,7 +42,7 @@ app = typer.Typer(
 
 app.add_typer(toolchain_app, name="toolchain")
 app.add_typer(deps_app, name="deps")
-app.add_typer(docs_app, name="doc")
+app.add_typer(doc_app, name="doc")
 app.add_typer(version_app, name="version")
 app.add_typer(meta_app, name="meta")
 app.add_typer(archive_app, name="archive")

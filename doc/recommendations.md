@@ -37,7 +37,7 @@
 - **判据**：仓库根及根级资产中，凡指**根文档目录**处一律写 `doc/`，不再出现 `docs/`。判定范围为根 `AGENTS.md`／`README.md`／`CONTRIBUTING.md`／`CHANGELOG.md` 与 `.agents/`／`doc/`／`tools/`／`scripts/`／`tests/`／`apps/`／`attic/`／`.trae/`。
 - **排除项（同类字串，但**不属**本条款，不纳入修正）**：
   - **语义不同**：[CONTRIBUTING.md](../CONTRIBUTING.md#L316) 第 316 行的**分支命名** `docs/<name>`。
-  - **有意兼容实现**：[docs_cmd.py](../tools/xs/src/xs/commands/docs_cmd.py#L21) 第 21／24 行与 [doctor_cmd.py](../tools/xs/src/xs/commands/doctor_cmd.py#L200) 第 200／210 行按 `("doc", "docs")` 依次回退查找目录；[test_doctor_sphinx.py](../tests/test_doctor_sphinx.py#L19) 第 19 行注释「兼容通用 docs/ 命名」。这三处是正确实现，改动会收窄兼容面。
+  - **有意兼容实现**：[doc_cmd.py](../tools/xs/src/xs/commands/doc_cmd.py#L21) 第 21／24 行与 [doctor_cmd.py](../tools/xs/src/xs/commands/doctor_cmd.py#L200) 第 200／210 行按 `("doc", "docs")` 依次回退查找目录；[test_doctor_sphinx.py](../tests/test_doctor_sphinx.py#L19) 第 19 行注释「兼容通用 docs/ 命名」。这三处是正确实现，改动会收窄兼容面。
   - **历史记录与归档**：[CHANGELOG.md](../CHANGELOG.md#L12) 第 12 行的 **v0.1.0 发布记录**（子命令列写 `…version/docs/meta…`；该行为发布历史，其中 `docs` 子命令已改名为 `xs doc`，但**历史发布记录不改写**）；[attic/README.md](../attic/README.md#L72) 第 72 行（归档目录内的示例说明）；`.trae/specs/unify-scikit-build-core/` 下 7 处引用 `docs/build-system.md`（历史 spec 记录，该文件现为 [doc/build-system.md](build-system.md)）。
   - **子包与第三方自有命名空间**：`libs/caffe-ffi/docs/`、`libs/npu-ffi/docs/` 等子包自建目录；`vendor/` 与 `libs/mystx`、`libs/tvm-book` 三个 git submodule。
 - **现状证据（7 处／6 个文件）**（原始清点为 11 处／8 个文件；其中 3 处位于原 `doc/README.md`、1 处为 `.agents/context-routing.md` 第 17 行的断链，均已在「文档入口合并」变更中一并消除，见[蓝图事实 #29](blueprint.md)，故不再列为待修正项）：
@@ -56,7 +56,7 @@
   1. 逐点复核上列 7 处的最终文本。
   2. 在仓库根执行
      `rg -n "docs/" --hidden --glob '!vendor/**' --glob '!libs/**' --glob '!.git/**' --glob '!.trae/**' --glob '!attic/**' --glob '!doc/blueprint.md' --glob '!doc/recommendations.md'`
-     剩余命中应为 **7 行**，且**全部落在白名单**内：`docs_cmd.py:21/24`、`doctor_cmd.py:200/210`、`test_doctor_sphinx.py:19`、`CONTRIBUTING.md:316`、`CHANGELOG.md:12`；白名单之外应为零命中。
+     剩余命中应为 **7 行**，且**全部落在白名单**内：`doc_cmd.py:21/24`、`doctor_cmd.py:200/210`、`test_doctor_sphinx.py:19`、`CONTRIBUTING.md:316`、`CHANGELOG.md:12`；白名单之外应为零命中。
      **必须带 `--hidden`**：`rg` 默认不扫隐藏目录，而本条款 7 处中有 1 处位于 `.agents/`（`ONBOARDING.md`）。缺该参数时命令会**静默漏报该处并显示「修复已生效」**——这正是本条建议所针对的失效模式本身。
   3. 随后 `pdm run sphinx-build -b html doc/ doc/_build/html` 无新增告警。
 

@@ -26,7 +26,7 @@ def _get_docs_dir(workspace_root: Path) -> Path:
     return docs_dir
 
 
-def docs_build(
+def doc_build(
     builder: str = typer.Option("html", "--builder", "-b", help="构建器类型: html, linkcheck"),
     output_dir: str | None = typer.Option(None, "--output", "-o", help="输出目录"),
 ) -> None:
@@ -63,7 +63,7 @@ def docs_build(
         raise typer.Exit(1)
 
 
-def docs_serve(
+def doc_serve(
     port: int = typer.Option(8000, "--port", "-p", help="HTTP 服务端口"),
     no_browser: bool = typer.Option(False, "--no-browser", help="不自动打开浏览器"),
 ) -> None:
@@ -106,7 +106,7 @@ def docs_serve(
         console.print("\n[green]服务已停止[/green]")
 
 
-def docs_clean() -> None:
+def doc_clean() -> None:
     """清理文档构建产物"""
     import shutil
 
@@ -123,13 +123,13 @@ def docs_clean() -> None:
         console.print("[dim]没有需要清理的构建产物[/dim]")
 
 
-def docs_linkcheck() -> None:
+def doc_linkcheck() -> None:
     """检查文档中的链接有效性"""
-    docs_build(builder="linkcheck")
+    doc_build(builder="linkcheck")
 
 
 app = typer.Typer(help="文档管理命令", add_completion=False)
-app.command("build")(docs_build)
-app.command("serve")(docs_serve)
-app.command("clean")(docs_clean)
-app.command("linkcheck")(docs_linkcheck)
+app.command("build")(doc_build)
+app.command("serve")(doc_serve)
+app.command("clean")(doc_clean)
+app.command("linkcheck")(doc_linkcheck)
