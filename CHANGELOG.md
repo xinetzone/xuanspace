@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 初始版本发布
 - xs CLI 工具（list/doctor/init/build/new/update/py-compat/deps/version/docs/meta/toolchain）
-- Monorepo 目录结构（apps/libs/vendor/tools/docs/scripts/attic/.agents/.meta）
+- Monorepo 目录结构（apps/libs/vendor/tools/doc/scripts/attic/.agents/.meta）
 - Sphinx + MyST Markdown 文档系统
 - CMakePresets.json 跨平台构建预设
 - AGENTS.md AI 协作规范

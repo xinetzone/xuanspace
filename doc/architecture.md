@@ -68,7 +68,7 @@ xuanspace/
 │   ├── xs/            #   xs CLI 工具
 │   ├── templates/     #   项目模板
 │   └── ...
-├── docs/              # Sphinx 文档源文件
+├── doc/               # Sphinx 文档源文件
 ├── scripts/           # 构建和维护脚本
 ├── attic/             # 归档项目（不活跃但有参考价值）
 ├── .agents/           # AI 智能体规范目录

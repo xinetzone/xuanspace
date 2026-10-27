@@ -706,12 +706,12 @@ xs lfs check --threshold 10
 
 ## 12. 文档贡献
 
-文档使用 **Sphinx + MyST Markdown** 编写，位于 `docs/` 目录。
+文档使用 **Sphinx + MyST Markdown** 编写，位于 `doc/` 目录。
 
 ### 12.1 文档结构
 
 ```
-docs/
+doc/
 ├── conf.py          # Sphinx 配置
 ├── index.md         # 文档首页
 ├── _static/         # 静态资源（图片、CSS 等）

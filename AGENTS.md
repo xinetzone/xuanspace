@@ -63,7 +63,7 @@ xuanspace/
 ├── libs/              # 可复用Python库和C++原生扩展
 ├── vendor/            # 第三方依赖和外部项目（只读）
 ├── tools/             # 项目工具链（xs CLI、模板）
-├── docs/              # 文档目录（Sphinx+MyST）
+├── doc/               # 文档目录（Sphinx+MyST）
 ├── scripts/           # 构建和维护脚本
 ├── attic/             # 归档/废弃内容
 ├── .agents/           # AI智能体规范目录（本规范所在目录）

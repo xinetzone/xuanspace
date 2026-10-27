@@ -100,7 +100,7 @@ xuanspace/
 ├── tools/      # 项目工具链
 │   ├── xs/             # xs CLI源码
 │   └── templates/      # 新项目模板
-├── docs/       # Sphinx文档
+├── doc/        # Sphinx文档
 ├── vendor/     # 第三方依赖（只读）
 └── .agents/    # AI智能体规范
 ```

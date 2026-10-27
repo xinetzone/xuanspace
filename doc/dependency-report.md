@@ -25,7 +25,7 @@ xuanspace/                          # 根项目（Monorepo）
 │       └── 3rdparty/
 │           ├── dlpack/             # [nested submodule] DLPack v1.3
 │           └── libbacktrace/       # [nested submodule] libbacktrace
-├── docs/                           # Sphinx + MyST 文档
+├── doc/                            # Sphinx + MyST 文档
 ├── tests/                          # 项目级测试
 ├── scripts/                        # 构建/运维脚本
 ├── attic/                          # 归档项目
