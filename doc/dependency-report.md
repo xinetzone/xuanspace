@@ -109,7 +109,7 @@ flexloopy → apache-tvm-ffi → typing-extensions
 
 | Job | 触发条件 | 覆盖 |
 |-----|---------|------|
-| `quality` | push/PR | `xs doctor` + `xs meta validate` + `xs lfs check` + `xs docs build` |
+| `quality` | push/PR | `xs doctor` + `xs meta validate` + `xs lfs check` + `xs doc build` |
 | `template-validation` | push/PR | 3 平台 x 3 模板类型（python/native/static） |
 | `test` | push/PR | Python 3.14 单元测试 |
 | `lint` | push/PR | ruff + mypy + black |

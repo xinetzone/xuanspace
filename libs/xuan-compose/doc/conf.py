@@ -3,8 +3,8 @@
 
 遵循 xuanspace monorepo 文档体系约定（参照根 doc/conf.py），按 lib 级惯例
 裁剪（参照 libs/mystx、libs/tvm-book）：纯 Markdown 文档集，无
-Makefile/make.bat（本地手动 ``sphinx-build``；主仓 ``xs docs`` 仅构建根
-docs/，不覆盖本目录）。
+Makefile/make.bat（本地手动 ``sphinx-build``；主仓 ``xs doc`` 仅构建根
+doc/，不覆盖本目录）。
 """
 
 import importlib.util as _ilut

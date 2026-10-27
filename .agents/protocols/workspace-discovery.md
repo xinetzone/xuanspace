@@ -51,7 +51,7 @@ xs doctor → 完整环境诊断报告
 ```
 ✓ 工作区根目录: /path/to/xuanspace
 ✓ Python 3.14.x
-✓ 可用命令: xs list, xs build, xs deps check, xs docs build
+✓ 可用命令: xs list, xs build, xs deps check, xs doc build
 ```
 
 ## 实现

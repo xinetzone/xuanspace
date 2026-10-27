@@ -26,7 +26,7 @@ tools/
 - `xs build` - 构建项目
 - `xs doctor` - 检查开发环境
 - `xs list` - 列出所有项目
-- `xs docs` - 文档相关操作
+- `xs doc` - 文档相关操作
 - 其他开发辅助命令
 
 `xs` CLI 是项目的主要开发入口，apps/xs-cli/ 只是入口点包装，实际实现在 tools/xs/ 中。

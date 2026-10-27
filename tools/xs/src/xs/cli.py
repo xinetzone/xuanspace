@@ -42,7 +42,7 @@ app = typer.Typer(
 
 app.add_typer(toolchain_app, name="toolchain")
 app.add_typer(deps_app, name="deps")
-app.add_typer(docs_app, name="docs")
+app.add_typer(docs_app, name="doc")
 app.add_typer(version_app, name="version")
 app.add_typer(meta_app, name="meta")
 app.add_typer(archive_app, name="archive")

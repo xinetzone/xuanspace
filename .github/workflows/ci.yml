@@ -144,11 +144,11 @@ jobs:
 
       # --- 文档构建 ---
       - name: Build documentation
-        run: xs docs build
+        run: xs doc build
 
       # --- 链接检查 ---
       - name: Check documentation links
-        run: xs docs linkcheck
+        run: xs doc linkcheck
 
   # ============================================
   # 质量门禁：四项自动化检查（doctor/meta/lfs/docs）
@@ -196,8 +196,8 @@ jobs:
         run: xs lfs check
 
       # --- 4. 文档构建 ---
-      - name: xs docs build
-        run: xs docs build
+      - name: xs doc build
+        run: xs doc build
 
   # ============================================
   # 模板验证：三平台（Windows/macOS/Linux）模板创建 + 构建

@@ -20,7 +20,7 @@
 | `xs init` | 初始化工作区 |
 | `xs deps` | 依赖管理 |
 | `xs version` | 版本管理 |
-| `xs docs` | 文档管理 |
+| `xs doc` | 文档管理 |
 | `xs meta` | 元数据管理 |
 | `xs toolchain` | 工具链管理 |
 | `xs py-compat` | Python 兼容性检查 |
@@ -136,15 +136,15 @@ xs version bump <name> --type major|minor|patch [--no-tag] [--no-changelog]
 | `--no-tag` | 不创建 Git 标签 |
 | `--no-changelog` | 不更新 CHANGELOG |
 
-## xs docs
+## xs doc
 
 文档管理命令组。
 
 ```bash
-xs docs build              # 构建 HTML 文档
-xs docs serve [--port 8000]  # 启动文档预览服务器
-xs docs clean              # 清理构建产物
-xs docs linkcheck          # 检查文档链接
+xs doc build              # 构建 HTML 文档
+xs doc serve [--port 8000]  # 启动文档预览服务器
+xs doc clean              # 清理构建产物
+xs doc linkcheck          # 检查文档链接
 ```
 
 ## xs meta

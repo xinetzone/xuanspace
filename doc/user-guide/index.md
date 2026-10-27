@@ -154,29 +154,29 @@ xs toolchain list
 ### 构建文档
 
 ```bash
-xs docs build
+xs doc build
 ```
 
 ### 预览文档
 
 ```bash
 # 默认端口 8000
-xs docs serve
+xs doc serve
 
 # 指定端口
-xs docs serve --port 9000
+xs doc serve --port 9000
 ```
 
 ### 清理构建产物
 
 ```bash
-xs docs clean
+xs doc clean
 ```
 
 ### 检查链接
 
 ```bash
-xs docs linkcheck
+xs doc linkcheck
 ```
 
 ## 元数据管理

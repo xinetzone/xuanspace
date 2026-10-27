@@ -36,9 +36,9 @@
 
 - **判据**：仓库根及根级资产中，凡指**根文档目录**处一律写 `doc/`，不再出现 `docs/`。判定范围为根 `AGENTS.md`／`README.md`／`CONTRIBUTING.md`／`CHANGELOG.md` 与 `.agents/`／`doc/`／`tools/`／`scripts/`／`tests/`／`apps/`／`attic/`／`.trae/`。
 - **排除项（同类字串，但**不属**本条款，不纳入修正）**：
-  - **语义不同**：[CONTRIBUTING.md](../CONTRIBUTING.md#L316) 第 316 行的**分支命名** `docs/<name>`；[CHANGELOG.md](../CHANGELOG.md#L12) 第 12 行的**子命令名** `xs docs`（写作 `version/docs/meta`）。
+  - **语义不同**：[CONTRIBUTING.md](../CONTRIBUTING.md#L316) 第 316 行的**分支命名** `docs/<name>`。
   - **有意兼容实现**：[docs_cmd.py](../tools/xs/src/xs/commands/docs_cmd.py#L21) 第 21／24 行与 [doctor_cmd.py](../tools/xs/src/xs/commands/doctor_cmd.py#L200) 第 200／210 行按 `("doc", "docs")` 依次回退查找目录；[test_doctor_sphinx.py](../tests/test_doctor_sphinx.py#L19) 第 19 行注释「兼容通用 docs/ 命名」。这三处是正确实现，改动会收窄兼容面。
-  - **历史记录与归档**：[attic/README.md](../attic/README.md#L72) 第 72 行（归档目录内的示例说明）；`.trae/specs/unify-scikit-build-core/` 下 7 处引用 `docs/build-system.md`（历史 spec 记录，该文件现为 [doc/build-system.md](build-system.md)）。
+  - **历史记录与归档**：[CHANGELOG.md](../CHANGELOG.md#L12) 第 12 行的 **v0.1.0 发布记录**（子命令列写 `…version/docs/meta…`；该行为发布历史，其中 `docs` 子命令已改名为 `xs doc`，但**历史发布记录不改写**）；[attic/README.md](../attic/README.md#L72) 第 72 行（归档目录内的示例说明）；`.trae/specs/unify-scikit-build-core/` 下 7 处引用 `docs/build-system.md`（历史 spec 记录，该文件现为 [doc/build-system.md](build-system.md)）。
   - **子包与第三方自有命名空间**：`libs/caffe-ffi/docs/`、`libs/npu-ffi/docs/` 等子包自建目录；`vendor/` 与 `libs/mystx`、`libs/tvm-book` 三个 git submodule。
 - **现状证据（7 处／6 个文件）**（原始清点为 11 处／8 个文件；其中 3 处位于原 `doc/README.md`、1 处为 `.agents/context-routing.md` 第 17 行的断链，均已在「文档入口合并」变更中一并消除，见[蓝图事实 #29](blueprint.md)，故不再列为待修正项）：
   1. [AGENTS.md](../AGENTS.md#L66)：目录树写 `├── docs/              # 文档目录（Sphinx+MyST）`；而同文件 [AGENTS.md](../AGENTS.md#L96) 又写 `配置见\`doc/conf.py\``。
@@ -51,12 +51,12 @@
 - **反证（正确一侧）**：[README.md](../README.md#L152) 写 `├── doc/           # Sphinx 文档源文件`；[doc/conf.py](conf.py#L101) 写 `"path_to_docs": "doc"`；磁盘目录名为 `doc/`。
 - **期望态**：上述 7 处统一为 `doc/`，与磁盘实际、`conf.py` 的 `path_to_docs` 一致。
 - **落地动作**：逐处将 `docs/` 改为 `doc/`；改后须复跑断链检查与 Sphinx 构建，确认无新增断链、无新增告警。（原 `doc/README.md` 与 `.agents/context-routing.md` 相关 4 处已在「文档入口合并」变更中完成，见[蓝图事实 #29](blueprint.md)。）
-- **附带决策项（不在本次必修范围）**：[init_cmd.py](../tools/xs/src/xs/commands/init_cmd.py#L296-L306) 的 `xs init` 脚手架**实际会创建 `docs/` 目录**，其模板文本（第 35 行 `!docs/make.bat`、第 124 行 `` - `docs/` — 项目文档 ``）与之一致，但与根仓约定相反。因 `xs doctor`／`xs docs` 按 `("doc", "docs")` 兼容两种命名，脚手架功能不受影响，故仅登记为独立决策项（是「脚手架改用 `doc/`」还是「保留 `docs/` 并记录差异」），不并入本条款。
+- **附带决策项（已裁定并落地）**：[init_cmd.py](../tools/xs/src/xs/commands/init_cmd.py#L296-L306) 的 `xs init` 脚手架原会创建 `docs/` 目录，其模板文本（第 35 行 `!docs/make.bat`、第 124 行 `` - `docs/` — 项目文档 ``）与之一致，但与根仓约定相反。该决策项已裁定为「脚手架改用 `doc/`」，并随 `xs docs` → `xs doc` 命令改名一并落地：脚手架现创建 `doc/`，模板文本同步更新为 `!doc/make.bat` 与 `` - `doc/` — 项目文档 ``。
 - **验证方式**：
   1. 逐点复核上列 7 处的最终文本。
   2. 在仓库根执行
      `rg -n "docs/" --hidden --glob '!vendor/**' --glob '!libs/**' --glob '!.git/**' --glob '!.trae/**' --glob '!attic/**' --glob '!doc/blueprint.md' --glob '!doc/recommendations.md'`
-     剩余命中应为 **9 行**，且**全部落在白名单**内：`docs_cmd.py:21/24`、`doctor_cmd.py:200/210`、`init_cmd.py:35/124`（附带决策项）、`test_doctor_sphinx.py:19`、`CONTRIBUTING.md:316`、`CHANGELOG.md:12`；白名单之外应为零命中。
+     剩余命中应为 **7 行**，且**全部落在白名单**内：`docs_cmd.py:21/24`、`doctor_cmd.py:200/210`、`test_doctor_sphinx.py:19`、`CONTRIBUTING.md:316`、`CHANGELOG.md:12`；白名单之外应为零命中。
      **必须带 `--hidden`**：`rg` 默认不扫隐藏目录，而本条款 7 处中有 1 处位于 `.agents/`（`ONBOARDING.md`）。缺该参数时命令会**静默漏报该处并显示「修复已生效」**——这正是本条建议所针对的失效模式本身。
   3. 随后 `pdm run sphinx-build -b html doc/ doc/_build/html` 无新增告警。
 

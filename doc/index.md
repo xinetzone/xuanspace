@@ -19,9 +19,9 @@
 
 ```bash
 # 方式一：xs CLI（推荐）
-xs docs build      # 构建 HTML
-xs docs serve      # 本地预览（自动刷新）
-xs docs linkcheck  # 链接检查
+xs doc build      # 构建 HTML
+xs doc serve      # 本地预览（自动刷新）
+xs doc linkcheck  # 链接检查
 
 # 方式二：直接调用 Sphinx
 pdm run sphinx-build -b html doc/ doc/_build/html
@@ -80,8 +80,8 @@ search
 
 提交文档变更时需满足：
 
-- [ ] `xs docs build` 构建无错误和警告（允许 nitpick 警告）
-- [ ] `xs docs linkcheck` 链接检查通过
+- [ ] `xs doc build` 构建无错误和警告（允许 nitpick 警告）
+- [ ] `xs doc linkcheck` 链接检查通过
 - [ ] 新增文档已正确添加到对应目录的 index.md 目录树
 - [ ] 所有代码示例可正常运行（如有必要，包含对应的测试）
 - [ ] 图片等静态资源放入 `_static/` 目录

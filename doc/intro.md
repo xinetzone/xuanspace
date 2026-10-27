@@ -51,7 +51,7 @@ Xuanspace 目前处于活跃开发阶段，核心 CLI 工具 `xs` 已实现以�
 | `xs init` | 初始化工作区 | ✅ |
 | `xs deps` | 依赖管理（check/tree/outdated/update） | ✅ |
 | `xs version` | 版本管理（show/bump） | ✅ |
-| `xs docs` | 文档管理（build/serve/clean） | ✅ |
+| `xs doc` | 文档管理（build/serve/clean） | ✅ |
 | `xs meta` | 元数据管理（init/validate/scan/sync） | ✅ |
 | `xs toolchain` | 工具链管理（check/list/install） | ✅ |
 | `xs py-compat` | Python 兼容性检查 | ✅ |

@@ -94,10 +94,10 @@ xs list
 
 ```bash
 # 构建 HTML 文档
-xs docs build
+xs doc build
 
 # 启动本地预览（默认端口 8000）
-xs docs serve
+xs doc serve
 ```
 
 ## 下一步

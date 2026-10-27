@@ -32,7 +32,7 @@ htmlcov/
 venv/
 env/
 *.bat
-!docs/make.bat
+!doc/make.bat
 .temp/
 external/
 """
@@ -112,8 +112,8 @@ xs new --type native my-ext
 xs build
 
 # 文档
-xs docs build
-xs docs serve
+xs doc build
+xs doc serve
 ```
 
 ## 目录结构
@@ -121,7 +121,7 @@ xs docs serve
 - `apps/` — 应用项目
 - `libs/` — 库项目
 - `tools/` — 工具脚本和 CLI
-- `docs/` — 项目文档
+- `doc/` — 项目文档
 - `scripts/` — 维护脚本
 - `vendor/` — 第三方依赖
 - `attic/` — 归档项目
@@ -293,17 +293,17 @@ def init_workspace(
         _create_gitkeep(cwd / "scripts")
         _create_gitkeep(cwd / "vendor")
         _create_gitkeep(cwd / "attic")
-        _create_gitkeep(cwd / "docs" / "_static")
-        _create_gitkeep(cwd / "docs" / "cli")
-        _create_gitkeep(cwd / "docs" / "user-guide")
+        _create_gitkeep(cwd / "doc" / "_static")
+        _create_gitkeep(cwd / "doc" / "cli")
+        _create_gitkeep(cwd / "doc" / "user-guide")
         _create_gitkeep(cwd / "tests")
 
         _create_file(cwd / ".gitignore", WORKSPACE_GITIGNORE, overwrite=force)
         _create_file(cwd / "pyproject.toml", WORKSPACE_PYPROJECT_TEMPLATE.format(name=ws_name), overwrite=force)
         _create_file(cwd / "README.md", WORKSPACE_README.format(name=ws_name), overwrite=force)
-        _create_file(cwd / "docs" / "conf.py", DOCS_CONF.format(name=ws_name), overwrite=force)
-        _create_file(cwd / "docs" / "index.md", DOCS_INDEX.format(name=ws_name), overwrite=force)
-        _create_file(cwd / "docs" / "quickstart.md", DOCS_QUICKSTART, overwrite=force)
+        _create_file(cwd / "doc" / "conf.py", DOCS_CONF.format(name=ws_name), overwrite=force)
+        _create_file(cwd / "doc" / "index.md", DOCS_INDEX.format(name=ws_name), overwrite=force)
+        _create_file(cwd / "doc" / "quickstart.md", DOCS_QUICKSTART, overwrite=force)
 
         console.print()
         console.print(
@@ -331,7 +331,7 @@ def init_workspace(
             "  xs doctor       环境诊断\n"
             "  xs new --type python my-lib  创建新项目\n"
             "  xs build        构建项目\n"
-            "  xs docs build   构建文档",
+            "  xs doc build   构建文档",
             border_style="green",
         )
     )

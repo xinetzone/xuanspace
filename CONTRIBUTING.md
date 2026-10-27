@@ -342,7 +342,7 @@ Fork → Clone → 创建分支 → 开发 → 测试 → 提交 → 创建 PR �
    ```bash
    pytest          # 运行测试
    xs build        # 构建 C++ 扩展（如有）
-   xs docs build   # 构建文档（如修改了文档）
+   xs doc build   # 构建文档（如修改了文档）
    ruff check .    # Lint 检查
    mypy .          # 类型检查
    ```
@@ -398,8 +398,8 @@ xs new --type static <site-name>
 | `xs list` | 列出所有子项目 |
 | `xs build` | 构建所有 C++ 扩展 |
 | `xs build --debug` | Debug 模式构建 |
-| `xs docs build` | 构建 Sphinx 文档 |
-| `xs docs serve` | 启动本地文档服务器预览 |
+| `xs doc build` | 构建 Sphinx 文档 |
+| `xs doc serve` | 启动本地文档服务器预览 |
 | `xs new` | 创建新子项目（交互式向导） |
 | `pytest` | 运行所有测试 |
 | `pytest tests/test_file.py -v` | 运行指定测试 |
@@ -737,12 +737,12 @@ docs/
 
 ```bash
 # 构建 HTML 文档
-xs docs build
+xs doc build
 # 或
 sphinx-build -b html doc doc/_build/html
 
 # 启动本地预览服务器（自动重载）
-xs docs serve
+xs doc serve
 # 或
 sphinx-autobuild doc doc/_build/html
 ```

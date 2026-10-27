@@ -1,5 +1,5 @@
 """
-xs docs 命令模块
+xs doc 命令模块
 文档构建和预览
 """
 
@@ -82,7 +82,7 @@ def docs_serve(
             cwd=workspace_root,
         )
         if build_result.returncode != 0:
-            console.print("[red]文档构建失败，请先运行 xs docs build[/red]")
+            console.print("[red]文档构建失败，请先运行 xs doc build[/red]")
             raise typer.Exit(1)
 
     url = f"http://localhost:{port}"
