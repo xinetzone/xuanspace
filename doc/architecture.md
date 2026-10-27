@@ -56,9 +56,7 @@ graph TD
 
 ```
 xuanspace/
-├── apps/              # 可执行应用和 CLI 工具
-│   ├── culture/       #   文化类应用（子目录分组）
-│   └── ...
+├── apps/              # 可执行应用（当前为空目录，预留应用位）
 ├── libs/              # 可复用 Python 库和 C++ 原生扩展
 │   ├── xuan-core/     #   核心 Python 库
 │   ├── xuan-ext-demo/ #   C++ 原生扩展示例
@@ -84,7 +82,7 @@ xuanspace/
 
 | 目录 | 适用场景 | 示例 |
 |---|---|---|
-| `apps/` | 可执行应用、CLI 工具、面向最终用户的程序 | 竹简悟道（HTML/JS 文化应用） |
+| `apps/` | 可执行应用、CLI 工具、面向最终用户的程序 | 当前为空目录，预留应用位 |
 | `libs/` | 可复用的 Python 库、C++ 原生扩展 | xuan-core（核心库）、xuan-ext-demo（原生扩展） |
 | `vendor/` | 第三方依赖、fork 的外部项目（只读） | 需要 patch 的第三方库 |
 | `tools/` | 项目内部工具链、模板、构建辅助 | xs CLI |

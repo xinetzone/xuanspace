@@ -29,7 +29,7 @@ tools/
 - `xs doc` - 文档相关操作
 - 其他开发辅助命令
 
-`xs` CLI 是项目的主要开发入口，apps/xs-cli/ 只是入口点包装，实际实现在 tools/xs/ 中。
+`xs` CLI 是项目的主要开发入口，实现全部位于 `tools/xs/`（发行版名称 `xs-cli`），不存在 `apps/xs-cli/` 包装层。
 
 ### tools/okf/ - OKF v0.2 工具链
 
@@ -77,6 +77,6 @@ tools/
 ## 依赖规则
 
 - **可以依赖**：`libs/` 中的共享库、PyPI 开发类依赖
-- **可以被依赖**：`apps/` 中的入口应用（如 apps/xs-cli/ 调用 tools/xs/）
+- **可以被依赖**：`apps/` 中的入口应用（通过 `xs` CLI 使用 tools 能力）
 - **不应依赖**：`apps/` 中的业务应用
 - **不进入生产环境**：tools 中的依赖不应出现在运行时依赖列表中
