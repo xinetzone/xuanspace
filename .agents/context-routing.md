@@ -17,7 +17,7 @@
 | **编写/修改 Markdown 文档** | [rules/frontmatter.md](rules/frontmatter.md) | [../doc/index.md](../doc/index.md) |
 | **修改 Python 代码** | - | [../pyproject.toml](../pyproject.toml)（代码风格配置） |
 | **编写/修改 C++ 原生扩展** | - | [../libs/xuan-ext-demo/](../libs/xuan-ext-demo/)（示例项目）、[../tools/templates/native/](../tools/templates/native/) |
-| **修改 xs CLI 工具** | - | [../tools/xs/](../tools/xs/)、[../apps/xs-cli/](../apps/xs-cli/) |
+| **修改 xs CLI 工具** | - | [../tools/xs/](../tools/xs/) |
 | **构建问题/编译错误** | [ONBOARDING.md](ONBOARDING.md)（xs doctor） | - |
 | **修改 .agents/ 规范本身** | [README.md](README.md) | - |
 | **子项目内任务** | 该子项目的 README.md、pyproject.toml/CMakeLists.txt | 该子项目 AGENTS.md（若有） |

@@ -270,7 +270,6 @@ uv pip install -e ".[dev]"
 # 手动安装各子项目
 uv pip install -e libs/xuan-core
 uv pip install -e libs/xuan-ext-demo
-uv pip install -e apps/xs-cli
 uv pip install -e tools/xs
 ```
 
@@ -285,7 +284,6 @@ pip install -e ".[dev]"
 # 手动安装各子项目
 pip install -e libs/xuan-core
 pip install -e libs/xuan-ext-demo
-pip install -e apps/xs-cli
 pip install -e tools/xs
 ```
 
