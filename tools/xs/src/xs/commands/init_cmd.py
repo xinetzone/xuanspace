@@ -79,7 +79,7 @@ dev = [
     "typer>=0.12",
     "rich>=13.0",
     "packaging>=24.0",
-    "tomli-w>=1.0",
+    "tomlkit>=0.12",
     "{name}[docs,test,lint,build]",
 ]
 

@@ -67,7 +67,7 @@ dev = [
     "typer>=0.12",
     "rich>=13.0",
     "packaging>=24.0",
-    "tomli-w>=1.0",
+    "tomlkit>=0.12",
     "sphinx>=8.0",
     "myst-parser>=4.0",
     "sphinx-book-theme>=1.1",
@@ -97,7 +97,7 @@ dev = [
     "typer>=0.12",
     "rich>=13.0",
     "packaging>=24.0",
-    "tomli-w>=1.0",
+    "tomlkit>=0.12",
 ]
 docs = [
     "sphinx>=8.0",

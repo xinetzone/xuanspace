@@ -50,7 +50,7 @@ xuanspace (main repo)
 ```mermaid
 graph TD
     ROOT[xuanspace v0.1.0<br/>Python >= 3.14.6]
-    XS[xs-cli v0.1.0<br/>typer, rich, packaging, tomli-w]
+    XS[xs-cli v0.1.0<br/>typer, rich, packaging, tomlkit]
     XC[xuan-core v0.1.0]
     XED[xuan-ext-demo v0.1.0<br/>native/C++]
     FL[flexloopy<br/>tvm-book 子模块<br/>Python >= 3.8]
@@ -71,7 +71,7 @@ graph TD
 | 包名 | 来源 | 版本 | Python | 运行时依赖 | 类型 |
 |------|------|------|--------|-----------|------|
 | `xuanspace` | 根 | 0.1.0 | >=3.14.6 | — | monorepo-root |
-| `xs-cli` | self | 0.1.0 | >=3.14.6 | typer, rich, packaging, tomli-w | tools |
+| `xs-cli` | self | 0.1.0 | >=3.14.6 | typer, rich, packaging, tomlkit | tools |
 | `xuan-core` | self | 0.1.0 | >=3.14.6 | 无 | lib |
 | `xuan-ext-demo` | self | 0.1.0 | >=3.14.6 | 无 | lib(native) |
 | `flexloopy` | submodule | — | >=3.8 | typing-extensions, apache-tvm-ffi | lib |
@@ -103,7 +103,7 @@ flexloopy → apache-tvm-ffi → typing-extensions
 | **test** | pytest, pytest-cov, pytest-xdist | 测试框架 |
 | **lint** | mypy, ruff, black, isort | 代码质量 |
 | **build** | build, scikit-build-core, cmake, ninja | 构建系统 |
-| **dev** | pdm, typer, rich, packaging, tomli-w, xs-cli + 上述全部 | 全量开发环境 |
+| **dev** | pdm, typer, rich, packaging, tomlkit, xs-cli + 上述全部 | 全量开发环境 |
 
 ## 7. CI 流水线
 
@@ -116,3 +116,4 @@ flexloopy → apache-tvm-ffi → typing-extensions
 
 <!-- changelog -->
 - 2026-07-24 | docs | 初始版本，涵盖目录结构、Git 子模块树、Python 包依赖图、依赖矩阵、版本兼容性、开发依赖、CI 流水线
+- 2026-10-27 | chore | xs-cli 的 TOML 写入依赖由 `tomli-w` 换为 `tomlkit`，同步更新依赖图、矩阵与开发依赖表

@@ -116,35 +116,37 @@ def _from_toml_key(key: str) -> str:
     return key.replace("_", "-")
 
 
-def _write_toml_meta(toml_path: Path, extra_fields: dict, existing_data: dict | None = None) -> None:
+def _write_toml_meta(toml_path: Path, extra_fields: dict) -> None:
+    """写入 TOML 元数据（已存在的文件原地编辑）
+
+    标准库 tomllib 只能读，写入使用 tomlkit：对已存在的文件先 parse 再改字段，
+    未被触及的注释、空行与键序原样保留。
+    """
     try:
-        import tomli_w
+        import tomlkit
     except ImportError:
-        console.print("[red]错误: tomli_w 未安装，请运行 pip install tomli-w[/red]")
+        console.print("[red]错误: tomlkit 未安装，请运行 pip install tomlkit[/red]")
         raise typer.Exit(1)
 
-    if existing_data is None:
-        existing_data = {}
-        if toml_path.exists():
-            try:
-                with open(toml_path, "rb") as f:
-                    existing_data = tomllib.load(f)
-            except Exception:
-                existing_data = {}
+    if toml_path.exists():
+        try:
+            doc = tomlkit.parse(toml_path.read_text(encoding="utf-8"))
+        except Exception:
+            doc = tomlkit.document()
+    else:
+        doc = tomlkit.document()
 
-    data = dict(existing_data)
     for key, val in extra_fields.items():
         tk = _toml_key(key)
         if key == "tags" and isinstance(val, str):
             val = [t.strip() for t in val.strip("[]").split(",") if t.strip()]
-        data[tk] = val
+        doc[tk] = val
 
-    if "date" not in data:
-        data["date"] = datetime.now().strftime("%Y-%m-%d")
+    if "date" not in doc:
+        doc["date"] = datetime.now().strftime("%Y-%m-%d")
 
     toml_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(toml_path, "wb") as f:
-        tomli_w.dump(data, f)
+    toml_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
 def _read_toml_meta(toml_path: Path) -> dict:

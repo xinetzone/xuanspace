@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**：`xs docs` 子命令改名为 `xs doc`，按裁定不保留 `docs` 别名
 - **BREAKING**：`xs init` 脚手架现创建 `doc/` 目录（原为 `docs/`），模板文本同步更新为 `doc/`
 - 内部重构：`commands/docs_cmd.py` 重命名为 `commands/doc_cmd.py`，函数统一为 `doc_*` 前缀（不改变用户可见接口）
+- 依赖调整：`xs-cli` 的 TOML 写入库由 `tomli-w` 换为 `tomlkit`；`xs meta` 写入改为 parse→改字段→dumps 的原地编辑，保留既有注释、空行与键序
 
 ## [0.1.0] - 2026-07-23
 
