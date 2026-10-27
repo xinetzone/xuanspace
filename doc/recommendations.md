@@ -13,7 +13,7 @@
 
 | 编号 | 级别 | 一句话问题 | 影响面 |
 |---|---|---|---|
-| P0-1 | P0 | 根文档目录名 `docs/` 与 `doc/` 在多个文件内共存 | 11 处引用（跨 8 个文件） |
+| P0-1 | P0 | 根文档目录名 `docs/` 与 `doc/` 在多个文件内共存 | 7 处引用（跨 6 个文件） |
 | P0-2 | P0 | `apps/` 为空，但文档宣称其含「竹简悟道」「xs-cli」 | 3 处声明 |
 | P0-3 | P0 | 声明「3 个上游子模块」，实际 4 个 | 1 处声明 |
 | P0-4 | P0 | 无任何机制校验「声明与磁盘事实」一致 | 全套门禁 |
@@ -21,7 +21,7 @@
 | P1-2 | P1 | 依赖声明示例与实际 `pyproject.toml` 不一致 | 1 处示例 |
 | P1-3 | P1 | 构建后端版本下限声明不一（`>=0.5` vs `>=0.11`） | 1 处声明 |
 | P1-4 | P1 | 三份「现有子项目」清单与磁盘不符 | 4 处清单 |
-| P1-5 | P1 | `doc/README.md` 对目录结构与主题的描述与实现不符 | 2 处段落 |
+| P1-5 | P1 | `doc/README.md` 对目录结构与主题的描述与实现不符（已随「文档入口合并」消解） | 2 处段落 |
 | P1-6 | P1 | 两份元数据规范互相矛盾且无可判定触发条件 | 2 份规范 |
 | P2-1 | P2 | 命名溯源引文未标注版本 | 1 处引文 |
 | P2-2 | P2 | `doc/architecture.md` 存在上下文漂移 | 1 处段落 |
@@ -40,28 +40,24 @@
   - **有意兼容实现**：[docs_cmd.py](../tools/xs/src/xs/commands/docs_cmd.py#L21) 第 21／24 行与 [doctor_cmd.py](../tools/xs/src/xs/commands/doctor_cmd.py#L200) 第 200／210 行按 `("doc", "docs")` 依次回退查找目录；[test_doctor_sphinx.py](../tests/test_doctor_sphinx.py#L19) 第 19 行注释「兼容通用 docs/ 命名」。这三处是正确实现，改动会收窄兼容面。
   - **历史记录与归档**：[attic/README.md](../attic/README.md#L72) 第 72 行（归档目录内的示例说明）；`.trae/specs/unify-scikit-build-core/` 下 7 处引用 `docs/build-system.md`（历史 spec 记录，该文件现为 [doc/build-system.md](build-system.md)）。
   - **子包与第三方自有命名空间**：`libs/caffe-ffi/docs/`、`libs/npu-ffi/docs/` 等子包自建目录；`vendor/` 与 `libs/mystx`、`libs/tvm-book` 三个 git submodule。
-- **现状证据（11 处／8 个文件）**：
+- **现状证据（7 处／6 个文件）**（原始清点为 11 处／8 个文件；其中 3 处位于原 `doc/README.md`、1 处为 `.agents/context-routing.md` 第 17 行的断链，均已在「文档入口合并」变更中一并消除，见[蓝图事实 #29](blueprint.md)，故不再列为待修正项）：
   1. [AGENTS.md](../AGENTS.md#L66)：目录树写 `├── docs/              # 文档目录（Sphinx+MyST）`；而同文件 [AGENTS.md](../AGENTS.md#L96) 又写 `配置见\`doc/conf.py\``。
   2. [.agents/ONBOARDING.md](../.agents/ONBOARDING.md#L103)：目录树写 `├── docs/       # Sphinx文档`。
-  3. [.agents/context-routing.md](../.agents/context-routing.md#L17)：表格链接写 `[../docs/README.md](../docs/README.md)`——**该链接同时是断链**，正确目标为 `../doc/README.md`。
-  4. [CHANGELOG.md](../CHANGELOG.md#L13)：写 `Monorepo 目录结构（apps/libs/vendor/tools/docs/scripts/attic/.agents/.meta）`。
-  5. [CONTRIBUTING.md](../CONTRIBUTING.md#L709)：写 `文档使用 **Sphinx + MyST Markdown** 编写，位于 \`docs/\` 目录。`
-  6. [CONTRIBUTING.md](../CONTRIBUTING.md#L714)：第 12.1 节目录树首行写 `docs/`。
-  7. [doc/README.md](README.md#L1)：标题写 `# docs/ - 项目文档目录`。
-  8. [doc/README.md](README.md#L5)：写 `\`docs/\` 目录存放 Xuanspace（玄境）项目的所有文档源码`。
-  9. [doc/README.md](README.md#L18)：「文档结构」目录树首行写 `docs/`（同文件第 89 行已用 `doc/_build/`，构成同文件内共存）。
-  10. [doc/architecture.md](architecture.md#L71)：目录树写 `├── docs/              # Sphinx 文档源文件`。
-  11. [doc/dependency-report.md](dependency-report.md#L28)：目录树写 `├── docs/                           # Sphinx + MyST 文档`。
+  3. [CHANGELOG.md](../CHANGELOG.md#L13)：写 `Monorepo 目录结构（apps/libs/vendor/tools/docs/scripts/attic/.agents/.meta）`。
+  4. [CONTRIBUTING.md](../CONTRIBUTING.md#L709)：写 `文档使用 **Sphinx + MyST Markdown** 编写，位于 \`docs/\` 目录。`
+  5. [CONTRIBUTING.md](../CONTRIBUTING.md#L714)：第 12.1 节目录树首行写 `docs/`。
+  6. [doc/architecture.md](architecture.md#L71)：目录树写 `├── docs/              # Sphinx 文档源文件`。
+  7. [doc/dependency-report.md](dependency-report.md#L28)：目录树写 `├── docs/                           # Sphinx + MyST 文档`。
 - **反证（正确一侧）**：[README.md](../README.md#L152) 写 `├── doc/           # Sphinx 文档源文件`；[doc/conf.py](conf.py#L101) 写 `"path_to_docs": "doc"`；磁盘目录名为 `doc/`。
-- **期望态**：上述 11 处统一为 `doc/`，与磁盘实际、`conf.py` 的 `path_to_docs` 一致。
-- **落地动作**：逐处将 `docs/` 改为 `doc/`；其中 [doc/README.md](README.md) 的 3 处还需同步标题与「文档结构」目录树（该文件已被 [doc/conf.py](conf.py#L48-L54) 的 `exclude_patterns` 排除，不进构建，但仍被读者直接阅读）；[.agents/context-routing.md](../.agents/context-routing.md#L17) 改后须复跑断链检查，确认该链接由断转通。
+- **期望态**：上述 7 处统一为 `doc/`，与磁盘实际、`conf.py` 的 `path_to_docs` 一致。
+- **落地动作**：逐处将 `docs/` 改为 `doc/`；改后须复跑断链检查与 Sphinx 构建，确认无新增断链、无新增告警。（原 `doc/README.md` 与 `.agents/context-routing.md` 相关 4 处已在「文档入口合并」变更中完成，见[蓝图事实 #29](blueprint.md)。）
 - **附带决策项（不在本次必修范围）**：[init_cmd.py](../tools/xs/src/xs/commands/init_cmd.py#L296-L306) 的 `xs init` 脚手架**实际会创建 `docs/` 目录**，其模板文本（第 35 行 `!docs/make.bat`、第 124 行 `` - `docs/` — 项目文档 ``）与之一致，但与根仓约定相反。因 `xs doctor`／`xs docs` 按 `("doc", "docs")` 兼容两种命名，脚手架功能不受影响，故仅登记为独立决策项（是「脚手架改用 `doc/`」还是「保留 `docs/` 并记录差异」），不并入本条款。
 - **验证方式**：
-  1. 逐点复核上列 11 处的最终文本。
+  1. 逐点复核上列 7 处的最终文本。
   2. 在仓库根执行
      `rg -n "docs/" --hidden --glob '!vendor/**' --glob '!libs/**' --glob '!.git/**' --glob '!.trae/**' --glob '!attic/**' --glob '!doc/blueprint.md' --glob '!doc/recommendations.md'`
      剩余命中应为 **9 行**，且**全部落在白名单**内：`docs_cmd.py:21/24`、`doctor_cmd.py:200/210`、`init_cmd.py:35/124`（附带决策项）、`test_doctor_sphinx.py:19`、`CONTRIBUTING.md:316`、`CHANGELOG.md:12`；白名单之外应为零命中。
-     **必须带 `--hidden`**：`rg` 默认不扫隐藏目录，而本条款 11 处中有 2 处位于 `.agents/`（`ONBOARDING.md`、`context-routing.md`）。缺该参数时命令会**静默漏报这两处并显示「修复已生效」**——这正是本条建议所针对的失效模式本身。
+     **必须带 `--hidden`**：`rg` 默认不扫隐藏目录，而本条款 7 处中有 1 处位于 `.agents/`（`ONBOARDING.md`）。缺该参数时命令会**静默漏报该处并显示「修复已生效」**——这正是本条建议所针对的失效模式本身。
   3. 随后 `pdm run sphinx-build -b html doc/ doc/_build/html` 无新增告警。
 
 ### P0-2　修正 `apps/` 相关失实声明
@@ -124,13 +120,12 @@
 - **落地动作**：二选一——① 引入生成标记（如 `<!-- BEGIN GENERATED -->`）由脚本注入；② 在 P0-4 的脚本中增加「清单条目 ⊆ 磁盘目录」断言。
 - **验证方式**：新增任一子项目目录后运行检查，清单应被提示缺失。
 
-### P1-5　同步 `doc/README.md` 的结构与主题描述
+### P1-5　同步文档入口的结构与主题描述（已随「文档入口合并」消解）
 
-- **判据**：[doc/README.md](README.md) 对目录结构与主题的描述与 [doc/conf.py](conf.py) 及 `doc/` 实际一致。
-- **现状证据**：[doc/README.md](README.md#L11) 称使用 `sphinx-autodoc2`（从 Python 源码自动生成 API 文档），[doc/README.md](README.md#L12) 称主题「（待配置，推荐 furo 或 sphinx-rtd-theme）」；而实际 [doc/conf.py](conf.py#L40-L72) 的主题回退链为 `mystx` → `sphinx_book_theme` → `alabaster`，且未启用 autodoc2。[doc/README.md](README.md#L17-L44) 的目录树（`getting-started/`、`user-guide/`、`api-reference/`、`developer-guide/`、`architecture/`）与 `doc/` 的扁平实际结构不符。
-- **期望态**：描述与实现一致。
-- **落地动作**：按 [doc/conf.py](conf.py) 的实际主题链与 `doc/` 实际目录重写该文件的「目录结构」与「技术栈」两节。
-- **验证方式**：比对重写后的主题名与 [doc/conf.py](conf.py#L40-L72) 的候选列表。
+- **判据**：文档入口对目录结构与主题的描述与 [doc/conf.py](conf.py) 及 `doc/` 实际一致。
+- **现状证据（原始）**：原 `doc/README.md` 第 11 行称使用 `sphinx-autodoc2`（从 Python 源码自动生成 API 文档），第 12 行称主题「（待配置，推荐 furo 或 sphinx-rtd-theme）」；而实际 [doc/conf.py](conf.py#L27-L33) 启用的是 `sphinx.ext.autodoc`（非 autodoc2），第 67–72 行的主题回退链为 `mystx` → `sphinx_book_theme` → `alabaster`。其第 17–44 行的目录树（`getting-started/`、`user-guide/`、`api-reference/`、`developer-guide/`、`architecture/`）与 `doc/` 的扁平实际结构不符。
+- **处置结果**：原 `doc/README.md` 已删除，其独有内容并入 [doc/index.md](index.md)，并在迁移时一并修正上述两处技术栈错误（`sphinx-autodoc2` → `sphinx.ext.autodoc`、主题写成实际回退链），失真的目录树改由 `toctree` 承担导航。本条款随之消解。
+- **验证方式**：比对 [doc/index.md](index.md) 的「技术栈」节与 [doc/conf.py](conf.py#L27-L72)。
 
 ### P1-6　消解元数据规范冲突并定义「Task 20」触发条件
 
