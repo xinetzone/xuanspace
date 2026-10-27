@@ -173,4 +173,4 @@
 
 ---
 
-*本建议书与配套的 [项目蓝图](blueprint.md) 同批次产出；两份文档均以 H1 开头，不携带 YAML frontmatter，不创建 `.meta/toml/` 镜像。本轮不执行任何建议项，仅提出清单。*
+*本建议书与配套的 [项目蓝图](blueprint.md) 同批次产出；两份文档均以 H1 开头，不携带 YAML frontmatter，不创建 `.meta/toml/` 镜像。清单条目已陆续落地并全量闭环：P0-1~P0-4、P1-1~P1-4 与 P1-6（P1-5 随「文档入口合并」消解）、P2-1~P2-4 均已落地，落地证据见 SpecWeave 根仓本主题规格三件套（`spec.md` / `tasks.md` / `review.md`）。*
