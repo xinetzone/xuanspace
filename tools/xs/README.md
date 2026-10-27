@@ -46,7 +46,7 @@ pip install -e .
 
 ### 单源版本化
 
-版本号以 `src/xs/__init__.py` 中的 `__version__` 为单一事实来源，`pyproject.toml` 通过 `[tool.setuptools.dynamic]` 动态读取。使用 `xs version bump` 升级版本时，会同步更新 `__init__.py` 与 `pyproject.toml`，保证两者一致。
+版本号以 `pyproject.toml` 的 `[project].version` 为单一事实来源，运行时经 `importlib.metadata` 从已安装发行版元数据读取，代码中不再重复声明 `__version__`。使用 `xs version bump` 升级版本时仅改写 `pyproject.toml`。
 
 ### 运行测试 / 代码检查
 

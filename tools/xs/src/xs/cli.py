@@ -4,11 +4,12 @@ xs CLI 主应用模块
 """
 
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
 
 import typer
 from rich.console import Console
 
-from . import __version__
 from .commands.archive_cmd import app as archive_app
 from .commands.build_cmd import build_project
 from .commands.deps_cmd import app as deps_app
@@ -24,6 +25,12 @@ from .commands.toolchain_cmd import app as toolchain_app
 from .commands.update_cmd import update_cmd
 from .commands.version_cmd import app as version_app
 from .discovery import find_affected_projects
+
+# 版本号单一事实来源为 pyproject.toml，安装后由发行版元数据承载
+try:
+    __version__ = _dist_version("xs-cli")
+except PackageNotFoundError:  # 未安装（如直接从源码树运行）时的回退
+    __version__ = "0.0.0"
 
 # Windows 控制台/CI（如 GitHub Actions windows runner）默认编码可能非 UTF-8，
 # 输出中文时触发 UnicodeEncodeError。入口处统一强制 UTF-8 输出流。
