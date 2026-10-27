@@ -58,7 +58,7 @@ def _run_command(cmd: list[str], cwd: Path | None = None) -> tuple[bool, str, st
             cwd=cwd,
         )
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
-    except subprocess.TimeoutExpired, FileNotFoundError, OSError:
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False, "", ""
 
 
