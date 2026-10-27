@@ -1025,7 +1025,7 @@ class TestBlobExceptionSafety:
         for shape in invalid_shapes:
             try:
                 b.Reshape(shape)
-            except ValueError, RuntimeError, Exception:
+            except (ValueError, RuntimeError, Exception):
                 pass  # Expected; any exception type is fine as long as no leak
 
         # Blob should either be back to [4,4] or [0]; memory must be valid
@@ -1540,7 +1540,7 @@ class TestBlobExtremeBoundaries:
             # If it succeeds without error, verify data is correct and shapes match somehow
             # (implementation may reshape or just copy data)
             assert b2.size == b1.size or b2.shape == b1.shape
-        except ValueError, RuntimeError, Exception:
+        except (ValueError, RuntimeError, Exception):
             # Raising an error on shape mismatch is also acceptable
             pass
 

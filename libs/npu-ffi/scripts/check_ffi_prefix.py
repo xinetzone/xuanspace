@@ -207,7 +207,7 @@ def verify_python_imports(
             try:
                 if hasattr(os, "add_dll_directory"):
                     os.add_dll_directory(str(lib_dir))
-            except OSError, AttributeError:
+            except (OSError, AttributeError):
                 pass
             lib_str = str(lib_dir)
             if sys.platform == "win32":

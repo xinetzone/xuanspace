@@ -318,7 +318,7 @@ def _setup_windows_dll_paths():
         if d.exists():
             try:
                 os.add_dll_directory(str(d))
-            except OSError, AttributeError:
+            except (OSError, AttributeError):
                 pass
             path_entries.append(str(d))
 

@@ -353,7 +353,7 @@ class Podman:
         """
         try:
             await self.output(["info", "--format", "{{.Host.Arch}}"])
-        except CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError:
+        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
             return False
         return True
 
@@ -365,7 +365,7 @@ class Podman:
         """
         try:
             raw = await self.output(["machine", "list", "--format", "json"])
-        except CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError:
+        except (CalledProcessError, PodmanEngineNotReadyError, FileNotFoundError):
             return []
         try:
             data = json.loads(raw)

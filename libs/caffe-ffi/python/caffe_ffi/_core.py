@@ -537,7 +537,7 @@ class Net(_Object):
                 try:
                     blob = self.blob_by_name(name)
                     blob.data = arr
-                except KeyError, RuntimeError:
+                except (KeyError, RuntimeError):
                     pass
 
             result_map = self.Forward()

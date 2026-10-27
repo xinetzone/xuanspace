@@ -70,7 +70,7 @@ def _git_commit(vendor: Path) -> str:
             text=True,
         )
         return out.stdout.strip()
-    except OSError, subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
 

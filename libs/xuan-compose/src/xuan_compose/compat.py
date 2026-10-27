@@ -58,14 +58,14 @@ def try_int(i: int | str, fallback: None) -> int | None: ...
 def try_int(i: int | str, fallback: int | None = None) -> int | None:
     try:
         return int(i)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return fallback
 
 
 def try_float(i: int | str, fallback: float | None = None) -> float | None:
     try:
         return float(i)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return fallback
 
 

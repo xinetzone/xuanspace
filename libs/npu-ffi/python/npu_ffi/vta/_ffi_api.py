@@ -32,7 +32,7 @@ def _check_tvm_ffi_version() -> None:
         while len(version_parts) < 3:
             version_parts.append(0)
         version_tuple = tuple(version_parts)
-    except ValueError, AttributeError:
+    except (ValueError, AttributeError):
         version_tuple = (0, 0, 0)
 
     if version_tuple < _MIN_TVM_FFI_VERSION:
@@ -57,7 +57,7 @@ def _init_lib_path() -> None:
             if hasattr(os, "add_dll_directory"):
                 try:
                     os.add_dll_directory(str(lib_dir))
-                except OSError, FileNotFoundError:
+                except (OSError, FileNotFoundError):
                     pass
             else:
                 os.environ["PATH"] = str(lib_dir) + os.pathsep + os.environ.get("PATH", "")

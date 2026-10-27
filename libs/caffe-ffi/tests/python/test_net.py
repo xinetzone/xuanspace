@@ -324,7 +324,7 @@ class TestNetConstructorErrors:
                 net = Net("   \n\t  ")
                 t["result"] = "empty_net"
                 assert len(net.layers_array()) == 0
-            except ValueError, RuntimeError:
+            except (ValueError, RuntimeError):
                 t["result"] = "raised"
                 pass
 
