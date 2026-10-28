@@ -57,7 +57,6 @@ architecture
 :maxdepth: 1
 
 contributing
-dependency-report
 adr/index
 ```
 

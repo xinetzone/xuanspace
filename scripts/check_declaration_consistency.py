@@ -5,7 +5,7 @@
       不一致时以非零退出码使 CI 失败，防止文档声明与实现静默漂移。
 
 覆盖六类声明：
-  A. CLI 命令清单：README.md「N 个子命令」与 doc/intro.md 命令表
+  A. CLI 命令清单：README.md「N 个子命令」、doc/intro.md 与 doc/cli/index.md 命令表
                    ↔ tools/xs/src/xs/cli.py 的注册表
   B. 子项目清单  ：libs/README.md「现有子项目」生成块 ↔ libs/ 磁盘目录（P1-4①：
                    块由本脚本从磁盘派生并注入，门禁比对「块 == 脚本渲染结果」）
@@ -43,6 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CLI_MODULE = "tools/xs/src/xs/cli.py"
 README_FILE = "README.md"
 INTRO_FILE = "doc/intro.md"
+CLI_REF_FILE = "doc/cli/index.md"
 LIBS_README = "libs/README.md"
 LIBS_DIR = "libs"
 CONTRIBUTING_FILE = "CONTRIBUTING.md"
@@ -81,8 +82,8 @@ _CLI_GROUP_RE = re.compile(r'app\.add_typer\(\s*[\w.]+,\s*name="([^"]+)"')
 _CLI_COMMAND_RE = re.compile(r'app\.command\("([^"]+)"\)')
 # README.md 项目索引中的「（N 个子命令）」
 _README_CMD_COUNT_RE = re.compile(r"（\s*(\d+)\s*个子命令\s*）")
-# doc/intro.md 命令表中的 `xs <cmd>` 行
-_INTRO_CMD_ROW_RE = re.compile(r"^\|\s*`xs ([a-z0-9\-]+)`\s*\|", re.MULTILINE)
+# doc/intro.md 与 doc/cli/index.md 命令表中的 `xs <cmd>` 行
+_DOC_CMD_ROW_RE = re.compile(r"^\|\s*`xs ([a-z0-9\-]+)`\s*\|", re.MULTILINE)
 # README.md「目录结构」代码块中的 `├── name/` 行
 _STRUCT_DIR_RE = re.compile(r"[├└]──\s*([A-Za-z0-9_.\-]+)/")
 # .gitmodules 中的 `path = <子模块路径>` 行
@@ -253,9 +254,19 @@ def declared_cli_count(root: Path) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _declared_doc_commands(root: Path, rel: str) -> list[str]:
+    """声明源文档命令表中 `xs <cmd>` 行的命令名集合。"""
+    return sorted(set(_DOC_CMD_ROW_RE.findall(_read_text(root, rel))))
+
+
 def declared_intro_commands(root: Path) -> list[str]:
     """doc/intro.md 命令表中 `xs <cmd>` 行的命令名集合。"""
-    return sorted(set(_INTRO_CMD_ROW_RE.findall(_read_text(root, INTRO_FILE))))
+    return _declared_doc_commands(root, INTRO_FILE)
+
+
+def declared_cli_ref_commands(root: Path) -> list[str]:
+    """doc/cli/index.md「命令总览」表中 `xs <cmd>` 行的命令名集合。"""
+    return _declared_doc_commands(root, CLI_REF_FILE)
 
 
 def declared_structure_dirs(root: Path) -> list[str]:
@@ -299,6 +310,11 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
 
     intro_declared = set(declared_intro_commands(root))
     diff = _diff_failure(f"{INTRO_FILE} 命令表", intro_declared, cli_commands)
+    if diff:
+        failures.append(diff)
+
+    cli_ref_declared = set(declared_cli_ref_commands(root))
+    diff = _diff_failure(f"{CLI_REF_FILE} 命令总览", cli_ref_declared, cli_commands)
     if diff:
         failures.append(diff)
 

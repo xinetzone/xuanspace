@@ -26,6 +26,8 @@
 | `xs py-compat` | Python 兼容性检查 |
 | `xs update` | 子模块与依赖更新 |
 | `xs affected` | 检测受影响的子项目 |
+| `xs archive` | 子项目归档与恢复 |
+| `xs lfs` | Git LFS 大文件检查与管理 |
 
 ## xs list
 
@@ -191,3 +193,33 @@ xs update [--submodules] [--deps] [--all] [--dry-run]
 ```bash
 xs affected
 ```
+
+## xs archive
+
+子项目归档命令组，用于把不活跃的子项目移入 `attic/` 或从 `attic/` 恢复。
+
+```bash
+xs archive <name> [--reason|-r <text>] [--force|-f] [--dry-run]           # 归档到 attic/
+xs unarchive <name> [--target|-t apps|libs|tools] [--force|-f] [--dry-run]  # 从 attic/ 恢复
+```
+
+| 选项 | 说明 |
+|---|---|
+| `--reason` / `-r` | 归档原因 |
+| `--target` / `-t` | 恢复的目标目录（`apps`/`libs`/`tools`），默认按项目类型自动检测 |
+| `--force` / `-f` | 跳过确认 |
+| `--dry-run` | 预览操作，不实际执行 |
+
+## xs lfs
+
+Git LFS 大文件检查与管理。
+
+```bash
+xs lfs check [--threshold|-t <MB>] [--json|-j]   # 检查应使用 LFS 但未跟踪的大文件
+xs lfs patterns                                   # 列出 .gitattributes 中的 LFS 跟踪模式
+```
+
+| 选项 | 说明 |
+|---|---|
+| `--threshold` / `-t` | 大文件阈值（MB），默认 5 |
+| `--json` / `-j` | JSON 格式输出 |
