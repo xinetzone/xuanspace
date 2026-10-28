@@ -151,7 +151,7 @@ jobs:
         run: xs doc linkcheck
 
   # ============================================
-  # 质量门禁：五项自动化检查（pyproject/declaration/doctor/meta/lfs/docs）
+  # 质量门禁：七项自动化检查（pyproject/declaration/dependency/doctor/meta/lfs/docs）
   # ============================================
   quality:
     name: Quality Gates
@@ -186,6 +186,10 @@ jobs:
       # --- 1. 声明—实现一致性校验（P0-4：CLI 命令/子项目/目录名/vendor/子模块/项目索引六类声明） ---
       - name: Check declaration consistency
         run: python scripts/check_declaration_consistency.py
+
+      # --- 1b. 依赖方向断言（蓝图目标态特征 3：libs 不得依赖 apps/scripts/attic/vendor） ---
+      - name: Check dependency direction
+        run: python scripts/check_dependency_direction.py
 
       # --- 2. 环境诊断 ---
       - name: xs doctor

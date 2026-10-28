@@ -128,3 +128,7 @@ build-backend = "scikit_build_core.build"
 - **不应依赖**：`apps/` 中的任何应用项目（防止循环依赖）
 - **谨慎依赖**：`tools/` 中的工具库（tools 主要面向开发环境）
 - **禁止依赖**：`scripts/`、`attic/`、`vendor/` 中的代码
+
+> 上述规则并非仅作声明：由 [`scripts/check_dependency_direction.py`](../scripts/check_dependency_direction.py)
+> 在 CI `quality` job 中机械断言（解析 `libs/` 源码的 import，命中禁止分区即判失败）。
+> 该脚本的 `FORBIDDEN_IMPORTS` 是本规则的单一事实来源，调整规则须同步此表。
