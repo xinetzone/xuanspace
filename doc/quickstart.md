@@ -60,17 +60,7 @@ xs --version
 xs list
 ```
 
-输出示例：
-
-```
-  apps/
-    (无)
-  libs/
-    xuan-core           python    0.1.0
-    xuan-ext-demo       native    0.1.0
-  tools/
-    xs-cli              python    0.1.0
-```
+输出以表格逐行列出各子项目的名称、类型、版本与相对路径，并在末尾汇总项目总数与各类型计数。
 
 ### 检查开发环境
 

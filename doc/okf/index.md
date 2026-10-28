@@ -24,7 +24,6 @@ pip install .
 
 ```powershell
 okf --version
-# okf 0.1.0
 ```
 
 ## 教程导航

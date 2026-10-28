@@ -58,9 +58,14 @@ graph TD
 xuanspace/
 ├── apps/              # 可执行应用（当前为空目录，预留应用位）
 ├── libs/              # 可复用 Python 库和 C++ 原生扩展
-│   ├── xuan-core/     #   核心 Python 库
-│   ├── xuan-ext-demo/ #   C++ 原生扩展示例
-│   └── ...
+│   ├── caffe-ffi/     #   Caffe 框架 FFI 绑定（原生扩展）
+│   ├── demo-ffi/      #   FFI 扩展开发模板（原生扩展）
+│   ├── mystx/         #   MyST 文档工具链/主题（子模块）
+│   ├── npu-ffi/       #   VTA NPU 加速器 FFI 绑定（原生扩展）
+│   ├── tvm-book/      #   TVM 中文手册 + flexloopy（子模块）
+│   ├── xuan-compose/  #   声明式容器编排引擎
+│   ├── xuan-core/     #   核心工具库
+│   └── xuan-ext-demo/ #   C/C++ 扩展示例
 ├── vendor/            # 第三方依赖（Git 子模块，只读）
 ├── tools/             # 项目内部工具链
 │   ├── xs/            #   xs CLI 工具
@@ -90,7 +95,7 @@ xuanspace/
 
 ### 集中式依赖声明
 
-所有依赖在根 `pyproject.toml` 中按功能分组声明：
+所有依赖在根 `pyproject.toml` 中按功能分组声明（下方为节选示意，完整清单与版本下限以该文件为单一事实来源）：
 
 ```toml
 [project.optional-dependencies]

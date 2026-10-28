@@ -214,17 +214,7 @@ xs meta sync
 xs doctor
 ```
 
-输出示例：
-
-```
-Python:       3.14.6  ✓
-PDM:          2.22.0  ✓
-uv:           未安装  ⚠
-pip:          24.0    ✓
-CMake:        3.30.0  ✓
-Ninja:        1.12.0  ✓
-Sphinx:       8.0.0   ✓
-```
+输出以表格逐项列出检查结果（状态图标、工具名、版本、说明），覆盖 Python、Git、包管理器（PDM/uv/pip）、CMake、Ninja、Sphinx、各子模块指针一致性以及文档版本一致性等检查；缺失的可选工具会附安装建议。
 
 ## 子模块与依赖更新
 
