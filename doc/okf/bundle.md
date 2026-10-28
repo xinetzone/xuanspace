@@ -71,17 +71,17 @@ my-bundle/
 | `description` | 描述 |
 | `resource` | 来源资源标识 |
 | `tags` | 标签列表 |
-| `sources` | 来源数组（见[信任与保鲜](trust)） |
+| `sources` | 来源数组（见[信任与保鲜](trust.md)） |
 | `usage_window` | 使用窗口 |
 | `generated` | 生成信息 |
-| `verified` | 验证记录（见[信任与保鲜](trust)） |
+| `verified` | 验证记录（见[信任与保鲜](trust.md)） |
 | `status` | 状态（`draft` / `stable` / `deprecated`） |
-| `stale_after` | 失效日期（见[信任与保鲜](trust)） |
-| `runtime` | 计算运行时（见 [Attested Computation](attested)） |
-| `parameters` | 计算参数（见 [Attested Computation](attested)） |
-| `computation` | 计算逻辑（见 [Attested Computation](attested)） |
-| `executor` | 执行者（见 [Attested Computation](attested)） |
-| `attester` | 见证者（见 [Attested Computation](attested)） |
+| `stale_after` | 失效日期（见[信任与保鲜](trust.md)） |
+| `runtime` | 计算运行时（见 [Attested Computation](attested.md)） |
+| `parameters` | 计算参数（见 [Attested Computation](attested.md)） |
+| `computation` | 计算逻辑（见 [Attested Computation](attested.md)） |
+| `executor` | 执行者（见 [Attested Computation](attested.md)） |
+| `attester` | 见证者（见 [Attested Computation](attested.md)） |
 
 ## 解析规则细节
 
@@ -115,6 +115,6 @@ Customer master data table.
 
 ## 相关页面
 
-- [CLI 命令参考](commands)
-- [一致性校验](conformance)
-- [信任与保鲜](trust)
+- [CLI 命令参考](commands.md)
+- [一致性校验](conformance.md)
+- [信任与保鲜](trust.md)

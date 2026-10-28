@@ -31,7 +31,7 @@ Harness（`src/okf/harness.py`）借鉴 DeepSeek Harness，核心理念是：
 - **无特权内核**：`Harness` 本身不含业务逻辑，只负责装配。
 - **一切皆插件**：加载、校验、合成、信任、链接、CLI 适配全部是插件。
 - **配置驱动**：装配顺序由 `pyproject.toml` 的 `[tool.okf.plugins]` 配置节驱动（或用默认清单）。
-- **可替换**：任意插件可被第三方实现替换（见[插件开发](plugins)）。
+- **可替换**：任意插件可被第三方实现替换（见[插件开发](plugins.md)）。
 
 ## 设计主线二：插件生命周期状态机（Fiber）
 
@@ -94,6 +94,6 @@ PENDING → LOADING → ACTIVE → UNLOADING → DISPOSED
 
 ## 参见
 
-- [插件开发](plugins)
-- [一致性校验](conformance)
-- [索引、日志与链接](synthesis)
+- [插件开发](plugins.md)
+- [一致性校验](conformance.md)
+- [索引、日志与链接](synthesis.md)

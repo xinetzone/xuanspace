@@ -65,7 +65,7 @@ Xuanspace 目前处于活跃开发阶段，核心 CLI 工具 `xs` 已实现以�
 ## 相关资源
 
 - [GitHub 仓库](https://github.com/xinetzone/xuanspace)
-- [快速开始](quickstart)
-- [架构设计](architecture)
-- [构建系统](build-system)
-- [贡献指南](contributing)
+- [快速开始](quickstart.md)
+- [架构设计](architecture.md)
+- [构建系统](build-system.md)
+- [贡献指南](contributing.md)

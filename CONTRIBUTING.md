@@ -756,6 +756,7 @@ sphinx-autobuild doc doc/_build/html
 - 复杂概念配图表说明
 - 每个公开 API 都要有文档字符串
 - README 保持简洁，详细内容放到官方文档
+- 文档间交叉引用使用**带 `.md` 扩展名的相对路径**（如指向贡献指南写 `contributing.md`，不写 `contributing`）——省略扩展名虽可被 MyST 正确解析，但会被链接门禁判为断链
 
 ---
 

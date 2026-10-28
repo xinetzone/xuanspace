@@ -102,7 +102,7 @@ xs doc serve
 
 ## 下一步
 
-- 查看 [架构设计](architecture) 了解项目整体设计
-- 查看 [构建系统](build-system) 了解构建工具链
-- 查看 [CLI 参考](cli/index) 了解所有可用命令
-- 查看 [贡献指南](contributing) 参与项目开发
+- 查看 [架构设计](architecture.md) 了解项目整体设计
+- 查看 [构建系统](build-system.md) 了解构建工具链
+- 查看 [CLI 参考](cli/index.md) 了解所有可用命令
+- 查看 [贡献指南](contributing.md) 参与项目开发

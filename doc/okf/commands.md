@@ -30,7 +30,7 @@
 okf validate <path> [--strict]
 ```
 
-- 校验含严格项（错误）与宽松项（警告）两个层级，详见[一致性校验](conformance)。
+- 校验含严格项（错误）与宽松项（警告）两个层级，详见[一致性校验](conformance.md)。
 - **`--strict` 说明**：该标记当前被解析但未参与校验逻辑——`validate` 始终执行完整的严格项 + 宽松项检查；`--strict` 作为预留选项存在。
 
 ## okf init
@@ -55,7 +55,7 @@ okf init <path>
 okf index <path>
 ```
 
-生成结果遵循 §8 结构（详见[索引与日志合成](synthesis)），写入 `<path>/index.md` 并同时打印到标准输出。
+生成结果遵循 §8 结构（详见[索引与日志合成](synthesis.md)），写入 `<path>/index.md` 并同时打印到标准输出。
 
 ## okf inspect
 
@@ -79,7 +79,7 @@ okf trust <path> [concept_id]
 - **不带 `concept_id`**：输出全部概念的 `信任等级` 与 `保鲜状态`。
 - **带 `concept_id`**：只输出指定概念；概念不存在时输出错误并以退出码 1 结束。
 
-输出格式：`信任等级=<tier>, 保鲜状态=<已过期|保鲜中>`。推导规则详见[信任与保鲜](trust)。
+输出格式：`信任等级=<tier>, 保鲜状态=<已过期|保鲜中>`。推导规则详见[信任与保鲜](trust.md)。
 
 ## okf list
 

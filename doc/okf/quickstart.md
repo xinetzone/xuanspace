@@ -1,6 +1,6 @@
 # 快速上手
 
-本页用 5 分钟带你完成从创建 Bundle 到校验信任等级的完整一次流程。所有命令均要求已安装 `okf`（见[首页](index)）。
+本页用 5 分钟带你完成从创建 Bundle 到校验信任等级的完整一次流程。所有命令均要求已安装 `okf`（见[首页](index.md)）。
 
 ## 1. 创建 Bundle 骨架
 
@@ -69,7 +69,7 @@ okf index my-bundle
 okf validate my-bundle
 ```
 
-通过时输出 `Result: PASS`；存在错误时输出 `Result: FAIL` 并以退出码 1 结束。详见[一致性校验](conformance)。
+通过时输出 `Result: PASS`；存在错误时输出 `Result: FAIL` 并以退出码 1 结束。详见[一致性校验](conformance.md)。
 
 ## 6. 查看信任与保鲜状态
 
@@ -81,10 +81,10 @@ okf trust my-bundle concepts/metrics/active_users
 okf trust my-bundle
 ```
 
-输出形如 `信任等级=human_reviewed, 保鲜状态=保鲜中`。推导规则见[信任与保鲜](trust)。
+输出形如 `信任等级=human_reviewed, 保鲜状态=保鲜中`。推导规则见[信任与保鲜](trust.md)。
 
 ## 下一步
 
-- 理解 [Bundle 与概念](bundle) 的目录结构与 frontmatter 字段
-- 查阅 [CLI 命令参考](commands) 了解全部命令与选项
-- 阅读 [架构原理](architecture) 理解背后的插件化设计
+- 理解 [Bundle 与概念](bundle.md) 的目录结构与 frontmatter 字段
+- 查阅 [CLI 命令参考](commands.md) 了解全部命令与选项
+- 阅读 [架构原理](architecture.md) 理解背后的插件化设计
