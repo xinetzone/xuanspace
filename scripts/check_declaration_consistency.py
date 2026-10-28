@@ -4,13 +4,16 @@
 用途：把仓库中**可机械提取的文档声明**与**磁盘/代码事实**逐项比对，
       不一致时以非零退出码使 CI 失败，防止文档声明与实现静默漂移。
 
-覆盖三类声明：
+覆盖六类声明：
   A. CLI 命令清单：README.md「N 个子命令」与 doc/intro.md 命令表
                    ↔ tools/xs/src/xs/cli.py 的注册表
   B. 子项目清单  ：libs/README.md「现有子项目」生成块 ↔ libs/ 磁盘目录（P1-4①：
                    块由本脚本从磁盘派生并注入，门禁比对「块 == 脚本渲染结果」）
   C. 目录名口径  ：README.md「目录结构」块声明的目录 ↔ 磁盘存在性，
                    且顶层不得出现 docs/（文档目录约定为 doc/）
+  D. vendor 清单 ：vendor/README.md「现有子项目」表 ↔ .gitmodules 中 vendor/ 子模块
+  E. 子模块声明  ：CONTRIBUTING.md「N 个上游子模块」计数与子模块表 ↔ .gitmodules
+  F. 项目索引    ：README.md「项目索引」表 ↔ tools/ + libs/ 磁盘目录 + vendor/ 子模块
 
 使用方法：
   python scripts/check_declaration_consistency.py            # 校验模式（默认）
@@ -42,6 +45,11 @@ README_FILE = "README.md"
 INTRO_FILE = "doc/intro.md"
 LIBS_README = "libs/README.md"
 LIBS_DIR = "libs"
+CONTRIBUTING_FILE = "CONTRIBUTING.md"
+VENDOR_README = "vendor/README.md"
+VENDOR_DIR = "vendor"
+TOOLS_DIR = "tools"
+GITMODULES_FILE = ".gitmodules"
 SNAPSHOT_FILE = "scripts/declaration-snapshot.json"
 
 # 顶层目录命名约定：文档目录为 doc/，不得为 docs/
@@ -77,6 +85,12 @@ _README_CMD_COUNT_RE = re.compile(r"（\s*(\d+)\s*个子命令\s*）")
 _INTRO_CMD_ROW_RE = re.compile(r"^\|\s*`xs ([a-z0-9\-]+)`\s*\|", re.MULTILINE)
 # README.md「目录结构」代码块中的 `├── name/` 行
 _STRUCT_DIR_RE = re.compile(r"[├└]──\s*([A-Za-z0-9_.\-]+)/")
+# .gitmodules 中的 `path = <子模块路径>` 行
+_GITMODULES_PATH_RE = re.compile(r"^\s*path\s*=\s*(.+?)\s*$", re.MULTILINE)
+# CONTRIBUTING.md 的「包含 N 个上游子模块」
+_SUBMODULE_COUNT_RE = re.compile(r"包含\s*(\d+)\s*个上游子模块")
+# 章节标题（用于把表格解析限定在单一章节内）
+_SECTION_BREAK_RE = re.compile(r"^##\s", re.MULTILINE)
 
 
 def _read_text(root: Path, rel: str) -> str:
@@ -110,6 +124,43 @@ def _generated_block(text: str, begin: str, end: str) -> str:
     return text[start : stop + len(end)]
 
 
+def _section(text: str, header: str) -> str:
+    """截取 header 起始到下一个二级标题之前的正文；未找到 header 时抛 ValueError。"""
+    idx = text.find(header)
+    if idx == -1:
+        raise ValueError(f"未找到章节：{header}")
+    rest = text[idx + len(header) :]
+    match = _SECTION_BREAK_RE.search(rest)
+    return rest[: match.start()] if match else rest
+
+
+def _table_first_column(body: str) -> list[str]:
+    """解析 body 中第一张 Markdown 表格的首列数据（去表头与分隔行，去重排序）。
+
+    仅解析从首个 `|` 行开始、到首个非表格行为止的**连续**表格，
+    避免误吞同章节内的后续表格。
+    """
+    lines: list[str] = []
+    started = False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if line.startswith("|"):
+            started = True
+            lines.append(line)
+        elif started:
+            break
+    if len(lines) < 2:
+        return []
+    cells: list[str] = []
+    for line in lines[1:]:  # 跳过表头行
+        parts = [c.strip() for c in line.strip("|").split("|")]
+        first = parts[0] if parts else ""
+        if not first or set(first) <= set("-: "):
+            continue  # 分隔行
+        cells.append(first.strip("`").strip().rstrip("/"))
+    return sorted(set(cells))
+
+
 def extract_cli_commands(root: Path) -> list[str]:
     """从 cli.py 注册表提取一级命令名（命令组 + 直接命令，去重排序）。"""
     text = _read_text(root, CLI_MODULE)
@@ -119,15 +170,61 @@ def extract_cli_commands(root: Path) -> list[str]:
     return sorted(names)
 
 
-def extract_lib_projects(root: Path) -> list[str]:
-    """从 libs/ 磁盘目录提取子项目名（忽略隐藏项与系统目录，去重排序）。"""
-    lib = root / LIBS_DIR
-    if not lib.is_dir():
-        raise FileNotFoundError(f"缺少目录：{LIBS_DIR}")
+def extract_dir_names(root: Path, rel: str) -> list[str]:
+    """提取 rel 目录下的直接子目录名（忽略隐藏项与系统目录，去重排序）。"""
+    base = root / rel
+    if not base.is_dir():
+        raise FileNotFoundError(f"缺少目录：{rel}")
     names = [
-        p.name for p in lib.iterdir() if p.is_dir() and not p.name.startswith(".") and p.name not in IGNORED_DIR_NAMES
+        p.name for p in base.iterdir() if p.is_dir() and not p.name.startswith(".") and p.name not in IGNORED_DIR_NAMES
     ]
     return sorted(names)
+
+
+def extract_lib_projects(root: Path) -> list[str]:
+    """从 libs/ 磁盘目录提取子项目名（忽略隐藏项与系统目录，去重排序）。"""
+    return extract_dir_names(root, LIBS_DIR)
+
+
+def extract_submodules(root: Path) -> list[str]:
+    """从 .gitmodules 提取子模块路径（排序）。"""
+    paths = _GITMODULES_PATH_RE.findall(_read_text(root, GITMODULES_FILE))
+    if not paths:
+        raise ValueError(f"{GITMODULES_FILE} 未解析到任何子模块 path，文件结构已变化")
+    return sorted(paths)
+
+
+def extract_vendor_submodules(root: Path) -> list[str]:
+    """从 .gitmodules 提取 vendor/ 下的子模块名（如 `vendor/caffe` -> `caffe`，排序）。"""
+    prefix = f"{VENDOR_DIR}/"
+    return sorted(p[len(prefix) :] for p in extract_submodules(root) if p.startswith(prefix))
+
+
+def declared_vendor_projects(root: Path) -> list[str]:
+    """vendor/README.md「现有子项目」表首列的目录名。"""
+    return _table_first_column(_section(_read_text(root, VENDOR_README), "## 现有子项目"))
+
+
+def declared_contributing_submodules(root: Path) -> list[str]:
+    """CONTRIBUTING.md 子模块表首列的路径集合。"""
+    return _table_first_column(_section(_read_text(root, CONTRIBUTING_FILE), "### 3.5 顶层子模块延迟初始化策略"))
+
+
+def declared_submodule_count(root: Path) -> int | None:
+    """CONTRIBUTING.md 声明的「N 个上游子模块」计数；未声明返回 None。"""
+    match = _SUBMODULE_COUNT_RE.search(_read_text(root, CONTRIBUTING_FILE))
+    return int(match.group(1)) if match else None
+
+
+def declared_index_projects(root: Path) -> list[str]:
+    """README.md「项目索引」表首列的名称集合。"""
+    return _table_first_column(_section(_read_text(root, README_FILE), "## 项目索引"))
+
+
+def expected_index_projects(root: Path) -> list[str]:
+    """「项目索引」期望名称：tools/ + libs/ 直接子目录 ∪ vendor/ 子模块（去重排序）。"""
+    names = extract_dir_names(root, TOOLS_DIR) + extract_lib_projects(root) + extract_vendor_submodules(root)
+    return sorted(set(names))
 
 
 def render_lib_projects_table(root: Path) -> tuple[str, list[str]]:
@@ -172,6 +269,7 @@ def collect_manifest(root: Path) -> dict[str, list[str]]:
     return {
         "cli_commands": extract_cli_commands(root),
         "lib_projects": extract_lib_projects(root),
+        "submodules": extract_submodules(root),
     }
 
 
@@ -185,7 +283,7 @@ def _diff_failure(label: str, declared: set[str], facts: set[str]) -> str | None
 
 
 def run_checks(root: Path) -> tuple[list[str], list[str]]:
-    """执行三类声明校验与快照比对，返回 (failures, notes)。"""
+    """执行六类声明校验与快照比对，返回 (failures, notes)。"""
     failures: list[str] = []
     notes: list[str] = []
 
@@ -193,11 +291,11 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
     cli_commands = set(manifest["cli_commands"])
 
     # A. CLI 命令清单
-    count = declared_cli_count(root)
-    if count is None:
+    cmd_count = declared_cli_count(root)
+    if cmd_count is None:
         failures.append(f"{README_FILE} 未找到「N 个子命令」声明")
-    elif count != len(cli_commands):
-        failures.append(f"{README_FILE} 声明 {count} 个子命令，{CLI_MODULE} 实际注册 {len(cli_commands)} 个")
+    elif cmd_count != len(cli_commands):
+        failures.append(f"{README_FILE} 声明 {cmd_count} 个子命令，{CLI_MODULE} 实际注册 {len(cli_commands)} 个")
 
     intro_declared = set(declared_intro_commands(root))
     diff = _diff_failure(f"{INTRO_FILE} 命令表", intro_declared, cli_commands)
@@ -226,13 +324,42 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
     if not (root / CANONICAL_DOC_DIR).is_dir():
         failures.append(f"顶层缺少文档目录 {CANONICAL_DOC_DIR}/")
 
+    # D. vendor/README.md「现有子项目」表 ↔ .gitmodules 中 vendor/ 子模块
+    vendor_declared = set(declared_vendor_projects(root))
+    vendor_facts = set(extract_vendor_submodules(root))
+    if not vendor_declared:
+        failures.append(f"{VENDOR_README}「现有子项目」表未解析到任何数据行")
+    diff = _diff_failure(f"{VENDOR_README}「现有子项目」表", vendor_declared, vendor_facts)
+    if diff:
+        failures.append(diff)
+
+    # E. CONTRIBUTING.md 子模块计数与表 ↔ .gitmodules
+    submodules = set(manifest["submodules"])
+    sub_count = declared_submodule_count(root)
+    if sub_count is None:
+        failures.append(f"{CONTRIBUTING_FILE} 未找到「N 个上游子模块」声明")
+    elif sub_count != len(submodules):
+        failures.append(
+            f"{CONTRIBUTING_FILE} 声明 {sub_count} 个上游子模块，{GITMODULES_FILE} 实际登记 {len(submodules)} 个"
+        )
+    diff = _diff_failure(f"{CONTRIBUTING_FILE} 子模块表", set(declared_contributing_submodules(root)), submodules)
+    if diff:
+        failures.append(diff)
+
+    # F. README.md「项目索引」表 ↔ tools/ + libs/ 磁盘目录 + vendor/ 子模块
+    diff = _diff_failure(
+        f"{README_FILE}「项目索引」表", set(declared_index_projects(root)), set(expected_index_projects(root))
+    )
+    if diff:
+        failures.append(diff)
+
     # 快照比对：磁盘事实 ↔ 已提交的清单快照
     snap_path = root / SNAPSHOT_FILE
     if not snap_path.exists():
         notes.append(f"未找到清单快照 {SNAPSHOT_FILE}，请先运行 --generate 生成并提交")
     else:
         snapshot = json.loads(snap_path.read_text(encoding="utf-8"))
-        for key, facts in (("cli_commands", manifest["cli_commands"]), ("lib_projects", manifest["lib_projects"])):
+        for key, facts in manifest.items():
             if snapshot.get(key) != facts:
                 failures.append(f"清单快照 {SNAPSHOT_FILE} 的 {key} 已过期（磁盘事实已变），请运行 --generate 刷新")
 
@@ -279,7 +406,7 @@ def generate(root: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Xuanspace「声明—实现一致性」门禁校验（P0-4 / P1-4①）",
+        description="Xuanspace「声明—实现一致性」门禁校验（P0-4 / P1-4① / 六类声明）",
     )
     parser.add_argument("--generate", action="store_true", help="生成模式：刷新可提取清单快照与 libs 清单生成块")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出校验结果")
@@ -307,7 +434,7 @@ def main() -> int:
             for item in failures:
                 print(f"  - {item}")
             return 1
-        print("声明与实现一致：CLI 命令清单 / 子项目清单 / 目录名口径 全部通过。")
+        print("声明与实现一致：CLI 命令清单 / 子项目清单 / 目录名口径 / vendor 清单 / 子模块声明 / 项目索引 全部通过。")
         return 0
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)

@@ -25,5 +25,11 @@
     "xuan-compose",
     "xuan-core",
     "xuan-ext-demo"
+  ],
+  "submodules": [
+    "libs/mystx",
+    "libs/tvm-book",
+    "vendor/caffe",
+    "vendor/tvm-ffi"
   ]
 }

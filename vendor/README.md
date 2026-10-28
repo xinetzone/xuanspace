@@ -83,8 +83,6 @@ git add vendor/<library-name>
 
 ## 现有子项目
 
-（待实际添加后更新此表）
-
 | 目录名 | 来源 | 版本 | 本地修改 | 说明 |
 |--------|------|------|----------|------|
 | `tvm-ffi/` | [apache/tvm-ffi](https://github.com/apache/tvm-ffi) | v0.1.12+ | 无 | Apache TVM 的 C++ Foreign Function Interface 库，提供跨语言 FFI 绑定 |

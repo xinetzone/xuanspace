@@ -73,7 +73,6 @@ xuanspace/
 ├── .meta/toml/        # 文档元数据（TOML 格式）
 ├── AGENTS.md          # AI 智能体协作入口
 ├── pyproject.toml     # 根项目配置（PEP 621）
-├── CMakeLists.txt     # CMake 顶层配置
 ├── CMakePresets.json  # 跨平台构建预设
 └── README.md          # 项目说明
 ```
