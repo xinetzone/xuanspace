@@ -239,6 +239,27 @@ git submodule update --init --recursive
 
 > **说明**：未初始化的子模块目录为空属正常状态，不代表项目缺失，也不影响纯 Python 开发。
 
+### 3.6 子模块指针变更流程（G2 门禁）
+
+子模块指针由「声明—实现一致性」门禁（`scripts/check_declaration_consistency.py`，
+G 类断言）强制校验：已初始化子模块的 checkout 必须与索引一致，HEAD SHA 必须与
+`scripts/declaration-snapshot.json` 的 `submodule_status` 一致。指针变更必须走三步：
+
+```bash
+# ① 更新指针（推进到目标提交）
+git submodule update --remote <path>            # 或 git -C <path> checkout <目标提交>
+
+# ② 刷新声明快照（记录新指针，幂等）
+python scripts/check_declaration_consistency.py --generate
+
+# ③ 提交并注明上游范围
+git add <path> scripts/declaration-snapshot.json
+git commit -m "chore(submodules): 更新 <path> 至 <短SHA>（上游 <范围说明>）"
+```
+
+> **禁止裸指针变更**：直接更新指针后不刷新快照、或提交说明无上游范围的
+> `modified: <path>` 式裸提交，会被 G2 门禁拦截（指针漂移 / 快照过期均使 CI 失败）。
+
 ---
 
 ## 4. 安装开发依赖

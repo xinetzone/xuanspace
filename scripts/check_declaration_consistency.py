@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Xuanspace「声明—实现一致性」门禁校验脚本（《优化建议书》P0-4 落地）。
+"""Xuanspace「声明—实现一致性」门禁校验脚本（《优化建议书》P0-4 落地 + G 类子模块指针对账）。
 
 用途：把仓库中**可机械提取的文档声明**与**磁盘/代码事实**逐项比对，
       不一致时以非零退出码使 CI 失败，防止文档声明与实现静默漂移。
 
-覆盖六类声明：
+覆盖六类声明 + G 类子模块指针对账：
   A. CLI 命令清单：README.md「N 个子命令」、doc/intro.md 与 doc/cli/index.md 命令表
                    ↔ tools/xs/src/xs/cli.py 的注册表
   B. 子项目清单  ：libs/README.md「现有子项目」生成块 ↔ libs/ 磁盘目录（P1-4①：
@@ -14,13 +14,22 @@
   D. vendor 清单 ：vendor/README.md「现有子项目」表 ↔ .gitmodules 中 vendor/ 子模块
   E. 子模块声明  ：CONTRIBUTING.md「N 个上游子模块」计数与子模块表 ↔ .gitmodules
   F. 项目索引    ：README.md「项目索引」表 ↔ tools/ + libs/ 磁盘目录 + vendor/ 子模块
+  G. 子模块指针对账（submodule-alignment-gate spec）：
+    G1 状态可解析：git submodule status 输出可解析（未初始化 `-` 记 note，
+                   延迟初始化策略允许，见 CONTRIBUTING.md §3.5）
+    G2 指针=快照：已初始化子模块无 `+` 漂移（checkout 与索引不一致即漂移，
+                   必须 --generate 刷新后提交）；HEAD SHA 与
+                   declaration-snapshot.json 的 submodule_status 一致
+    G3 文档版本引用对账：CONTRIBUTING.md §3.5 中出现的版本号引用与
+                   git submodule status 描述标签主版本一致（rubric，warn）
 
 使用方法：
   python scripts/check_declaration_consistency.py            # 校验模式（默认）
   python scripts/check_declaration_consistency.py --generate # 生成模式：刷新清单快照与清单生成块
   python scripts/check_declaration_consistency.py --json     # 以 JSON 输出结果
 
-退出码：0 全部一致；1 存在不一致；2 脚本自身错误（声明源缺失或结构不可解析）。
+退出码：0 全部一致；1 存在不一致；2 脚本自身错误（声明源缺失或结构不可解析，
+        或存在子模块指针漂移时尝试 --generate 固化漂移状态）。
 
 幂等性：--generate 仅在内容变化时写盘，重复执行无副作用。
 
@@ -29,12 +38,14 @@
 parse_readme_index_table`）与检查器框架，但其按「主仓 scripts 相对导入」设计
 （`from .xxx` / `from constants import ...`），且**不在 xuanspace 仓库内**
 （单仓 CI 检出时不可导入）。故本脚本按 scripts/README.md「不导入项目内部包」
-规范自包含实现，仅镜像共享库的表格解析思路。
+规范自包含实现，仅镜像共享库的表格解析思路。子模块指针解析直接调用
+`git submodule status`（CI 环境 checkout 后 git 可用，无第三方依赖）。
 """
 
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -201,6 +212,71 @@ def extract_vendor_submodules(root: Path) -> list[str]:
     return sorted(p[len(prefix) :] for p in extract_submodules(root) if p.startswith(prefix))
 
 
+def extract_submodule_status(
+    root: Path,
+) -> tuple[dict[str, str], dict[str, str], list[str], list[str]]:
+    """解析 `git submodule status`，返回 (status_map, version_map, drift_failures, notes)。
+
+    - `status_map`: {path: HEAD_SHA}，仅**已初始化且与索引一致**的子模块；
+    - `version_map`: {path: 描述标签版本前缀}（如 `v0.3.8`），用于 G3 文档对账；
+    - `drift_failures`: `+` 前缀（checkout 与索引不一致 = 指针漂移）与解析/执行异常；
+    - `notes`: `-` 前缀（未初始化——延迟初始化策略允许，见 CONTRIBUTING.md §3.5，
+      跳过指针对账）。
+    """
+    status_map: dict[str, str] = {}
+    version_map: dict[str, str] = {}
+    drift_failures: list[str] = []
+    notes: list[str] = []
+    try:
+        proc = subprocess.run(
+            ["git", "submodule", "status"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        drift_failures.append(f"无法执行 git submodule status：{exc}")
+        return status_map, version_map, drift_failures, notes
+    if proc.returncode != 0:
+        drift_failures.append(f"git submodule status 退出码 {proc.returncode}：{proc.stderr.strip()}")
+        return status_map, version_map, drift_failures, notes
+    for line in proc.stdout.splitlines():
+        line = line.rstrip()
+        if not line.strip():
+            continue
+        flag = line[0]
+        rest = line[1:].strip()
+        parts = rest.split(" ", 2)
+        if len(parts) < 2:
+            drift_failures.append(f"无法解析 git submodule status 行：{line!r}")
+            continue
+        sha, path = parts[0], parts[1]
+        desc = ""
+        if len(parts) >= 3:
+            m = re.search(r"\(([^)]*)\)\s*$", parts[2])
+            if m:
+                desc = m.group(1)
+        version = ""
+        vm = re.search(r"(v\d+\.\d+(?:\.\d+)?)", desc)
+        if vm:
+            version = vm.group(1)
+        if flag == "-":
+            notes.append(f"子模块未初始化（延迟初始化策略允许，跳过指针对账）：{path}")
+        elif flag == "+":
+            drift_failures.append(
+                f"子模块指针漂移（checkout 与索引不一致，请更新后 --generate 刷新快照）：{path}（当前 {sha}）"
+            )
+        elif flag == " ":
+            status_map[path] = sha
+            if version:
+                version_map[path] = version
+        else:
+            drift_failures.append(f"未知状态前缀 {flag!r}：{line!r}")
+    return status_map, version_map, drift_failures, notes
+
+
 def declared_vendor_projects(root: Path) -> list[str]:
     """vendor/README.md「现有子项目」表首列的目录名。"""
     return _table_first_column(_section(_read_text(root, VENDOR_README), "## 现有子项目"))
@@ -275,12 +351,14 @@ def declared_structure_dirs(root: Path) -> list[str]:
     return sorted(set(_STRUCT_DIR_RE.findall(block)))
 
 
-def collect_manifest(root: Path) -> dict[str, list[str]]:
+def collect_manifest(root: Path) -> dict[str, list[str] | dict[str, str]]:
     """提取可机械校验的事实清单（生成模式的产出）。"""
+    status_map, _, _, _ = extract_submodule_status(root)
     return {
         "cli_commands": extract_cli_commands(root),
         "lib_projects": extract_lib_projects(root),
         "submodules": extract_submodules(root),
+        "submodule_status": status_map,
     }
 
 
@@ -369,6 +447,27 @@ def run_checks(root: Path) -> tuple[list[str], list[str]]:
     if diff:
         failures.append(diff)
 
+    # G. 子模块指针对账（G1 状态可解析 / G2 指针=快照 / G3 文档版本引用对账）
+    status_map, version_map, drift_failures, submodule_notes = extract_submodule_status(root)
+    notes.extend(submodule_notes)
+    failures.extend(drift_failures)
+
+    # G3: CONTRIBUTING.md §3.5 中出现的版本号引用与子模块描述标签主版本对账（rubric，warn）
+    try:
+        contributing_3_5 = _section(_read_text(root, CONTRIBUTING_FILE), "### 3.5 顶层子模块延迟初始化策略")
+        doc_versions = sorted(set(re.findall(r"v\d+\.\d+(?:\.\d+)?", contributing_3_5)))
+        actual_versions = sorted(set(version_map.values()))
+        unknown = [v for v in doc_versions if v not in actual_versions]
+        if doc_versions and unknown:
+            notes.append(
+                f"CONTRIBUTING.md §3.5 出现与子模块当前指针标签不一致的版本引用（G3 提示）："
+                f"文档 {unknown}，当前 {actual_versions or '（子模块未初始化或无版本标签）'}"
+            )
+        elif doc_versions:
+            notes.append(f"CONTRIBUTING.md §3.5 版本引用与子模块指针标签一致：{sorted(doc_versions)}")
+    except (FileNotFoundError, ValueError) as exc:
+        notes.append(f"G3 文档版本引用对账跳过：{exc}")
+
     # 快照比对：磁盘事实 ↔ 已提交的清单快照
     snap_path = root / SNAPSHOT_FILE
     if not snap_path.exists():
@@ -399,7 +498,15 @@ def inject_lib_projects_block(root: Path) -> bool:
 
 
 def generate(root: Path) -> int:
-    """生成模式：刷新清单快照与 libs/README.md 生成块（幂等）。"""
+    """生成模式：刷新清单快照与 libs/README.md 生成块（幂等）。
+
+    子模块指针存在漂移（`+` 前缀）时拒绝刷新并返回 2——禁止把漂移状态
+    固化进快照（submodule-alignment-gate spec G2）。
+    """
+    _, _, drift_failures, _ = extract_submodule_status(root)
+    if drift_failures:
+        print(f"[ERROR] 子模块指针存在漂移，拒绝刷新快照（请先对齐指针再 --generate）：{drift_failures}", file=sys.stderr)
+        return 2
     manifest = collect_manifest(root)
     content = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     path = root / SNAPSHOT_FILE
@@ -450,7 +557,10 @@ def main() -> int:
             for item in failures:
                 print(f"  - {item}")
             return 1
-        print("声明与实现一致：CLI 命令清单 / 子项目清单 / 目录名口径 / vendor 清单 / 子模块声明 / 项目索引 全部通过。")
+        print(
+            "声明与实现一致：CLI 命令清单 / 子项目清单 / 目录名口径 / vendor 清单 / 子模块声明 / "
+            "项目索引 / 子模块指针对账（G1-G3） 全部通过。"
+        )
         return 0
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
