@@ -30,7 +30,7 @@
     "libs/mystx": "18f3486a4877792c722812f131c0101f650ca115",
     "libs/tvm-book": "103bea7e5e600099187959e3b066bb07260d9cea",
     "vendor/caffe": "f938d88b2f76613c5aa23f8f9146bc338b9215f4",
-    "vendor/tvm-ffi": "6628c464e3b824d09c9cf65ac0c6c24f973f6d56"
+    "vendor/tvm-ffi": "e9fdc58fa4bf2e60ed701dacac48a01e41a3dc1f"
   },
   "submodules": [
     "libs/mystx",
