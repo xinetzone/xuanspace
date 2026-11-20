@@ -37,6 +37,13 @@ def test_format_command_matches_common_run(tmp_path):
     assert format_command(parts) == " ".join(_expected_quote(part) for part in parts)
 
 
+def test_format_command_windows_branch(monkeypatch):
+    """CI 仅在 Linux 运行，按 ci.yml 约定用 monkeypatch 覆盖 Windows 分支。"""
+    monkeypatch.setattr(os, "name", "nt")
+    parts = ["cmake", "-S", "a b", "-DX=1"]
+    assert format_command(parts) == " ".join(subprocess.list2cmdline([part]) for part in parts)
+
+
 def test_sdk_root_envvar_fallback(monkeypatch, tmp_path):
     monkeypatch.setenv("XM_SDK_ROOT", str(tmp_path))
     assert resolve_dir(None, envvar="XM_SDK_ROOT", label="SDK 根目录") == tmp_path
