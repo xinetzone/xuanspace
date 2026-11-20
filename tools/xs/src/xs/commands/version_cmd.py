@@ -80,9 +80,7 @@ def version_show(
     try:
         root_pyproject = workspace_root / "pyproject.toml"
         root_data = load_pyproject(root_pyproject)
-        root_ver = root_data.get("project", {}).get("version") or resolve_dynamic_version(
-            root_pyproject, root_data
-        )
+        root_ver = root_data.get("project", {}).get("version") or resolve_dynamic_version(root_pyproject, root_data)
         console.print(f"[bold]Xuanspace 工作区版本:[/bold] [green]{root_ver}[/green]")
     except Exception:
         pass

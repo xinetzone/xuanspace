@@ -506,7 +506,9 @@ def generate(root: Path) -> int:
     """
     _, _, drift_failures, _ = extract_submodule_status(root)
     if drift_failures:
-        print(f"[ERROR] 子模块指针存在漂移，拒绝刷新快照（请先对齐指针再 --generate）：{drift_failures}", file=sys.stderr)
+        print(
+            f"[ERROR] 子模块指针存在漂移，拒绝刷新快照（请先对齐指针再 --generate）：{drift_failures}", file=sys.stderr
+        )
         return 2
     manifest = collect_manifest(root)
     content = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
