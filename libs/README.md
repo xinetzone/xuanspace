@@ -133,3 +133,16 @@ build-backend = "scikit_build_core.build"
 > 上述规则并非仅作声明：由 [`scripts/check_dependency_direction.py`](../scripts/check_dependency_direction.py)
 > 在 CI `quality` job 中机械断言（解析 `libs/` 源码的 import，命中禁止分区即判失败）。
 > 该脚本的 `FORBIDDEN_IMPORTS` 是本规则的单一事实来源，调整规则须同步此表。
+
+## 工作区与跨仓复用边界
+
+`[tool.pdm.workspace]` 只解决**本仓内**解析：`pdm install` 后根环境可 `import` 本目录下的库，
+但这依赖工作区路径，不具备可传递性。跨仓复用（如另一个仓库的脚本引用本目录的库）只有两种合法介质：
+
+1. **可安装制品**：本库独立发布 wheel，对方以版本化依赖引用；对方解释器基线低于本库
+   `requires-python` 时，须先评估是否下调基线，不能用路径注入绕过。
+2. **源码复制**：对方随包携带该源码，并自行承担同步与校验。
+
+不采用的做法：把本仓路径写入对方 `PYTHONPATH` / `sys.path`；在对方配置中以路径源引用工作区成员；
+把根发行版聚合为携带本目录业务代码的大包（与根 `pyproject.toml` 中“各独立发行版”的设计相悖，
+且放大对方依赖面）。
