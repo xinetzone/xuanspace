@@ -106,6 +106,7 @@ x-toml-ref: ".meta/toml/README.toml"
 | mystx | MyST 文档工具链/主题（子模块） | Python | lib(submodule) | 上游 | - | [README](libs/mystx/README.md) |
 | npu-ffi | VTA NPU 加速器 FFI 绑定 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/npu-ffi/README.md) |
 | tvm-book | TVM 中文手册 + flexloopy（子模块） | Python/C++ | lib(submodule) | 上游 | v0.1.4 | [README](libs/tvm-book/README.md) |
+| xuan-cmd | 命令装配与工程路径解析工具库（invoke 任务通用件萃取） | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-cmd/README.md) |
 | xuan-compose | Compose 规范声明式容器编排引擎（podman-compose 重构） | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-compose/README.md) |
 | xuan-core | 核心工具库，提供基础类型、通用函数、错误处理 | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-core/README.md) |
 | xuan-ext-demo | C/C++ 扩展示例库 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/xuan-ext-demo/README.md) |

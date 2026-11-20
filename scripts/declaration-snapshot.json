@@ -22,6 +22,7 @@
     "mystx",
     "npu-ffi",
     "tvm-book",
+    "xuan-cmd",
     "xuan-compose",
     "xuan-core",
     "xuan-ext-demo"
