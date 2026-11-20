@@ -161,7 +161,10 @@ build-backend = "scikit_build_core.build"
    - **公开索引**：推送 `xuan-cmd-v<版本>` tag，参照 [`.github/workflows/release.yml`](../.github/workflows/release.yml)
      新增同构 job（改 `working-directory` 与 tag 前缀，复用 `PYPI_TOKEN`）；先用 `workflow_dispatch`
      的 dry-run 上传 TestPyPI 验证。现有流水线只覆盖 `xs-cli-v*`，新增库须用独立 tag 前缀避免误触发。
-   - **内网或离线**：上传到内网索引，或把 wheel 作为交付物随包附带，安装用
-     `pip install --no-index --find-links <目录> <库名>==<版本>`，并提供校验和。
+   - **内网或离线**：`python scripts/build_lib_dist.py --lib <库名>` 构建 wheel 并生成
+     `CHECKSUMS`（默认输出到 `dist/libs/<库名>/`，不入库）；该目录可直接作为内网索引的
+     文件源，或随交付物附带。消费方安装：
+     `pip install --no-index --find-links <目录> <库名>==<版本>`；
+     分发前用 `sha256sum -c CHECKSUMS` 校验完整性。
 5. **消费方声明固定版本**：`<库名>==<版本>`；交付类场景不用版本范围，避免客户侧漂移。
 6. **发布后核验**：在干净虚拟环境中安装成功并能 `import`，消费方跑一次其契约用例。
