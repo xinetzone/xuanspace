@@ -201,9 +201,11 @@ jobs:
       # 该包未发布到 PyPI，须由工作区先行提供以满足依赖解析。 ---
       - name: Run xuan-plugin + okf tests
         run: |
-          python -m pip install -e libs/xuan-plugin
+          python -m pip install -e "libs/xuan-plugin[test]"
           python -m pip install -e "tools/okf[dev]"
-          cd tools/okf
+          cd libs/xuan-plugin
+          python -m pytest
+          cd ../../tools/okf
           python -m pytest
 
       # --- 0. pyproject.toml canonical 风格校验 ---

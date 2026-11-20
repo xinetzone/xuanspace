@@ -1,7 +1,7 @@
 """插件生命周期状态机（Fiber）补充测试：epoch 切换、dispose、效应逆函数。"""
 
 from xuan_plugin.context import Context
-from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
+from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin, _config_digest, _digest
 
 
 def _mk_plugin(name="p", inject=None, provide=None, apply=None):
@@ -66,7 +66,7 @@ def test_epoch_change_unload_then_reload() -> None:
     fiber._refresh()
     assert fiber.state == FiberState.ACTIVE
     assert loaded == [impl1, impl2]
-    assert fiber._epoch == f"dep:{id(impl2)}"
+    assert fiber._epoch == f"dep:{_digest(impl2)}:{_config_digest(None)}"
 
 
 def test_unload_swallows_dispose_exception() -> None:

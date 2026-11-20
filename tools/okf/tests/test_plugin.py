@@ -1,7 +1,7 @@
 """插件生命周期状态机（Fiber）测试。"""
 
 from xuan_plugin.context import Context
-from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
+from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin, _config_digest, _digest
 
 
 def _make_plugin(name: str = "p", inject=None, provide=None, apply=None):
@@ -75,7 +75,7 @@ def test_epoch_valid_when_dependencies_satisfied():
 
     plugin = _make_plugin(inject=[InjectSpec("dep")])
     fiber = Fiber(plugin, ctx)
-    assert fiber._compute_epoch() == f"dep:{id(impl)}"
+    assert fiber._compute_epoch() == f"dep:{_digest(impl)}:{_config_digest(None)}"
 
 
 def test_dependency_missing_fiber_stays_pending():

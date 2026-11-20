@@ -2,9 +2,12 @@
 
 import contextlib
 import enum
+import hashlib
+import inspect
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .disposable import Disposable, DisposableList
 
@@ -25,6 +28,57 @@ class FiberState(enum.IntEnum):
 
 # 哨兵值：表示依赖未满足
 _INACTIVE = "__INACTIVE__"
+
+# 摘要截断长度：16 位十六进制（64 bit），足以区分实现差异且便于日志阅读
+_DIGEST_LEN = 16
+
+
+def _digest(value: object) -> str:
+    """计算实现对象的稳定摘要，作为 epoch 身份。
+
+    不使用 ``id()``：对象地址跨进程不可比，会使同一装配在两次独立进程中
+    得到不同的 epoch，从而无法复现装配结果。
+
+    优先以「模块 + 限定名 + 源码摘要」构成结构身份——源码相同则身份相同，
+    源码变更则身份变更，与对象地址无关。当源码不可得（内建对象、动态生成
+    的实例）时回退到 ``repr`` 摘要：可区分同类型的不同实例，但不跨进程。
+    """
+    if isinstance(value, (str, bytes, int, float, bool, type(None))):
+        return f"{type(value).__name__}:{value!r}"
+
+    module = getattr(value, "__module__", "") or ""
+    qualname = getattr(value, "__qualname__", None) or getattr(value, "__name__", None)
+    # getsource 的参数是联合类型，动态取值后静态类型无法收窄，故显式标注 Any
+    target: Any
+    if qualname:
+        target = value
+    else:
+        cls = type(value)
+        module = getattr(cls, "__module__", "") or module
+        qualname = getattr(cls, "__qualname__", cls.__name__)
+        target = cls
+
+    try:
+        source = inspect.getsource(target)
+    except OSError, TypeError:
+        source = ""
+    if source:
+        fingerprint = hashlib.sha256(source.encode("utf-8")).hexdigest()[:_DIGEST_LEN]
+    else:
+        fingerprint = hashlib.sha256(repr(value).encode("utf-8")).hexdigest()[:_DIGEST_LEN]
+    return f"{module}:{qualname}:{fingerprint}"
+
+
+def _config_digest(config: dict | None) -> str:
+    """计算注入配置的稳定摘要，键序无关。
+
+    ``sort_keys=True`` 保证 ``{"a": 1, "b": 2}`` 与 ``{"b": 2, "a": 1}``
+    得到同一摘要，使 epoch 不因字典构造顺序而变化。
+    """
+    if not config:
+        return "none"
+    payload = json.dumps(config, sort_keys=True, ensure_ascii=False, default=repr)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:_DIGEST_LEN]
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +138,11 @@ class Fiber:
         return undo
 
     def _compute_epoch(self) -> str:
-        """计算 epoch：所有依赖服务实现的唯一标识拼接。
+        """计算 epoch：依赖服务实现与注入配置的摘要拼接。
 
-        如果没有依赖，返回空字符串（总是激活）。
+        无依赖时返回空字符串（总是激活）。与旧实现相比，``id(impl)`` 已替换为
+        :func:`_digest` 摘要身份，并纳入 ``InjectSpec.config`` 的摘要——
+        依赖实现或注入配置任一变化都会产生新 epoch，从而触发退役重插。
         """
         if not self.plugin.inject:
             return ""
@@ -94,9 +150,9 @@ class Fiber:
         for spec in self.plugin.inject:
             try:
                 impl = self.ctx.get(spec.name)
-                parts.append(f"{spec.name}:{id(impl)}")
             except KeyError:
                 return _INACTIVE
+            parts.append(f"{spec.name}:{_digest(impl)}:{_config_digest(spec.config)}")
         return "|".join(parts)
 
     def _refresh(self) -> None:
