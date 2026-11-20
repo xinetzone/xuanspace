@@ -110,7 +110,7 @@ jobs:
         run: python -m ruff format --check .
 
       - name: Run mypy type checker
-        run: python -m mypy tools/xs libs/xuan-core libs/xuan-ext-demo libs/xuan-cmd
+        run: python -m mypy tools/xs libs/xuan-core libs/xuan-ext-demo libs/xuan-cmd libs/xuan-plugin
 
       # --- 测试 ---
       - name: Run tests
@@ -193,6 +193,17 @@ jobs:
         run: |
           python -m pip install -e "libs/xuan-compose[test]"
           cd libs/xuan-compose
+          python -m pytest
+
+      # --- okf 测试此前不在任何 CI 步骤中（根 pytest 的 testpaths 仅覆盖 tests/，
+      # tools/* 的测试不进入；quality job 原仅覆盖 xuan-cmd / xuan-compose）。
+      # 先装 xuan-plugin：okf 声明了 xuan-plugin>=0.1.0 运行时依赖，
+      # 该包未发布到 PyPI，须由工作区先行提供以满足依赖解析。 ---
+      - name: Run xuan-plugin + okf tests
+        run: |
+          python -m pip install -e libs/xuan-plugin
+          python -m pip install -e "tools/okf[dev]"
+          cd tools/okf
           python -m pytest
 
       # --- 0. pyproject.toml canonical 风格校验 ---

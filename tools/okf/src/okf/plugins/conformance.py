@@ -1,7 +1,8 @@
 """一致性校验插件。"""
 
+from xuan_plugin.plugin import InjectSpec, Plugin
+
 from ..conformance import check_bundle
-from ..plugin import InjectSpec, Plugin
 
 
 class ConformanceChecker:

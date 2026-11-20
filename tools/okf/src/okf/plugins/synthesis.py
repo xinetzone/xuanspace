@@ -1,6 +1,7 @@
 """索引与日志合成插件。"""
 
-from ..plugin import InjectSpec, Plugin
+from xuan_plugin.plugin import InjectSpec, Plugin
+
 from ..synthesis import generate_index, parse_log
 
 

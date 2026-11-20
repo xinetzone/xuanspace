@@ -25,7 +25,8 @@
     "xuan-cmd",
     "xuan-compose",
     "xuan-core",
-    "xuan-ext-demo"
+    "xuan-ext-demo",
+    "xuan-plugin"
   ],
   "submodule_status": {
     "libs/mystx": "18f3486a4877792c722812f131c0101f650ca115",

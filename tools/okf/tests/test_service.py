@@ -1,7 +1,7 @@
 """Capability Seam（ServiceDefinition / ServiceProvider / ServiceRegistry）测试。"""
 
-from okf.context import Context
-from okf.service import ServiceDefinition, ServiceProvider, ServiceRegistry
+from xuan_plugin.context import Context
+from xuan_plugin.service import ServiceDefinition, ServiceProvider, ServiceRegistry
 
 
 def test_service_definition_fields():

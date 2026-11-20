@@ -1,6 +1,7 @@
 """信任推导插件。"""
 
-from ..plugin import InjectSpec, Plugin
+from xuan_plugin.plugin import InjectSpec, Plugin
+
 from ..trust import derive_trust_tier, is_stale
 
 

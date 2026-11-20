@@ -1,9 +1,8 @@
 """统一上下文（Context）测试。"""
 
 import pytest
-
-from okf.context import Context
-from okf.plugin import FiberState, InjectSpec, Plugin
+from xuan_plugin.context import Context
+from xuan_plugin.plugin import FiberState, InjectSpec, Plugin
 
 
 def test_provide_get_and_undo():

@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
+from xuan_plugin.plugin import Plugin
+
 from ..loader import load_bundle
-from ..plugin import Plugin
 
 
 class BundleLoader:

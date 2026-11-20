@@ -1,7 +1,8 @@
 """链接解析插件。"""
 
+from xuan_plugin.plugin import InjectSpec, Plugin
+
 from ..links import check_broken_links, parse_links_with_context
-from ..plugin import InjectSpec, Plugin
 
 
 class LinkResolver:

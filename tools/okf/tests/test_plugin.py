@@ -1,7 +1,7 @@
 """插件生命周期状态机（Fiber）测试。"""
 
-from okf.context import Context
-from okf.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
+from xuan_plugin.context import Context
+from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
 
 
 def _make_plugin(name: str = "p", inject=None, provide=None, apply=None):

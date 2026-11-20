@@ -1,6 +1,6 @@
 """CLI 适配层插件。"""
 
-from ..plugin import InjectSpec, Plugin
+from xuan_plugin.plugin import InjectSpec, Plugin
 
 
 class CLIAdapter:

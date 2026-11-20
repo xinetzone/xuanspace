@@ -1,7 +1,7 @@
 """插件生命周期状态机（Fiber）补充测试：epoch 切换、dispose、效应逆函数。"""
 
-from okf.context import Context
-from okf.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
+from xuan_plugin.context import Context
+from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin
 
 
 def _mk_plugin(name="p", inject=None, provide=None, apply=None):

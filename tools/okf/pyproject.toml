@@ -18,8 +18,9 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Topic :: Software Development :: Build Tools",
 ]
-# 零运行时依赖：仅使用 Python 3.14.6 标准库（dataclasses/pathlib/argparse/re/asyncio/tomllib）
-dependencies = []
+# 运行时依赖仅 xuan-plugin（工作区内同名库，随 workspace 一起安装）；
+# 其余能力仍仅使用 Python 3.14.6 标准库（dataclasses/pathlib/argparse/re/asyncio/tomllib）。
+dependencies = ["xuan-plugin>=0.1.0"]
 authors = [
   {name = "xinetzone"}
 ]

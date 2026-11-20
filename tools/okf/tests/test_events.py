@@ -3,9 +3,9 @@
 import asyncio
 
 import pytest
+from xuan_plugin.context import Context
 
 from okf import events  # noqa: F401  # 导入即 monkey-patch Context 添加事件方法
-from okf.context import Context
 
 
 def test_emit_pure_notification_sync():

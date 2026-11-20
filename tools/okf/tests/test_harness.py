@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
+from xuan_plugin.plugin import InjectSpec, Plugin
+
 from okf.harness import Harness
 from okf.models import Bundle, ConformanceReport
-from okf.plugin import InjectSpec, Plugin
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
@@ -171,7 +172,7 @@ def test_from_config_empty_plugin_map_uses_defaults(tmp_path, sample_bundle_path
 
 def test_load_plugins_from_map_non_plugin_callable():
     harness = Harness()
-    harness._load_plugins_from_map({"x": "okf.context:Context"})
+    harness._load_plugins_from_map({"x": "xuan_plugin.context:Context"})
     # 非 Plugin 的可调用对象被包装为 Plugin 并注册 fiber
     assert "x" in harness.ctx._fibers
 

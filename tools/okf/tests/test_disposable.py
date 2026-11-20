@@ -1,6 +1,6 @@
 """可逆效应（Disposable）抽象测试。"""
 
-from okf.disposable import DisposableList, EffectMeta
+from xuan_plugin.disposable import DisposableList, EffectMeta
 
 
 def test_disposable_list_push_returns_undo():

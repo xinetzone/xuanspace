@@ -1,7 +1,7 @@
 """统一上下文（Context）补充测试：notify 边界、dispose、根效应。"""
 
-from okf.context import Context
-from okf.plugin import FiberState, InjectSpec, Plugin
+from xuan_plugin.context import Context
+from xuan_plugin.plugin import FiberState, InjectSpec, Plugin
 
 
 def test_effect_undo_swallows_exception() -> None:

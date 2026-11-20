@@ -120,6 +120,7 @@ build-backend = "scikit_build_core.build"
 | `xuan-compose/` | 纯 Python | Compose 规范声明式容器编排引擎（podman-compose 重构） |
 | `xuan-core/` | 纯 Python | 核心工具库，提供基础类型、通用函数、错误处理 |
 | `xuan-ext-demo/` | 原生扩展 | C/C++ 扩展示例库 |
+| `xuan-plugin/` | 纯 Python | 插件内核：可逆装配、能力注册与生命周期管理 |
 
 <!-- END GENERATED: libs-projects -->
 

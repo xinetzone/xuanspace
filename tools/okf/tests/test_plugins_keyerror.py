@@ -7,8 +7,8 @@
 from datetime import date
 
 import pytest
+from xuan_plugin.context import Context
 
-from okf.context import Context
 from okf.models import Bundle
 from okf.plugins.cli_adapter import CLIAdapter
 from okf.plugins.conformance import ConformanceChecker

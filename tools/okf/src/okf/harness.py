@@ -6,8 +6,8 @@ import traceback
 from collections import deque
 from pathlib import Path
 
-from .context import Context
-from .plugin import Plugin
+from xuan_plugin.context import Context
+from xuan_plugin.plugin import Plugin
 
 
 class Harness:
