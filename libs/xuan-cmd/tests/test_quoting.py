@@ -2,6 +2,7 @@
 
 import os
 import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,12 +14,14 @@ def test_quote_arg_plain_token_is_unchanged():
     assert quote_arg("-n") == "-n"
 
 
-def test_quote_arg_posix_quotes_space():
-    assert quote_arg("a b") == "'a b'"
+def test_quote_arg_quotes_space_by_platform():
+    expected = '"a b"' if os.name == "nt" else "'a b'"
+    assert quote_arg("a b") == expected
 
 
 def test_quote_arg_accepts_path():
-    assert quote_arg(Path("a b")) == "'a b'"
+    expected = '"a b"' if os.name == "nt" else "'a b'"
+    assert quote_arg(Path("a b")) == expected
 
 
 def test_quote_arg_roundtrip_with_shlex():
@@ -41,6 +44,10 @@ def test_format_command_empty():
 
 
 @pytest.mark.parametrize("token", ["--define", "A=B", "", "a'b"])
-def test_format_command_single_token_roundtrip(token):
+def test_format_command_single_token(token):
     """空串也被保留为单个空参数，不会被 shell 规则吞掉。"""
-    assert shlex.split(format_command([token])) == [token]
+    command = format_command([token])
+    if os.name == "nt":
+        assert command == subprocess.list2cmdline([token])
+    else:
+        assert shlex.split(command) == [token]
