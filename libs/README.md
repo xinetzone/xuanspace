@@ -146,3 +146,22 @@ build-backend = "scikit_build_core.build"
 不采用的做法：把本仓路径写入对方 `PYTHONPATH` / `sys.path`；在对方配置中以路径源引用工作区成员；
 把根发行版聚合为携带本目录业务代码的大包（与根 `pyproject.toml` 中“各独立发行版”的设计相悖，
 且放大对方依赖面）。
+
+### 跨仓发布流程（以 `xuan-cmd` 为例）
+
+1. **核对对方基线**：确认消费方的 `requires-python`。本库声明 `>=3.14.6`，若对方达不到，
+   先下调本库基线并同步 classifiers，在本库跑完全套测试再发版；不得要求对方用路径注入绕过。
+2. **确定版本**：修改 `libs/<库名>/pyproject.toml` 的 `version`，并在 `CHANGELOG.md` 记录变更。
+3. **本地构建与校验**（在库目录执行；Windows 用 `py`，Linux 用 `python`）：
+   ```bash
+   python -m build                 # 产出 sdist 与 py3-none-any wheel
+   python -m twine check dist/*
+   ```
+4. **发布**，二选一：
+   - **公开索引**：推送 `xuan-cmd-v<版本>` tag，参照 [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+     新增同构 job（改 `working-directory` 与 tag 前缀，复用 `PYPI_TOKEN`）；先用 `workflow_dispatch`
+     的 dry-run 上传 TestPyPI 验证。现有流水线只覆盖 `xs-cli-v*`，新增库须用独立 tag 前缀避免误触发。
+   - **内网或离线**：上传到内网索引，或把 wheel 作为交付物随包附带，安装用
+     `pip install --no-index --find-links <目录> <库名>==<版本>`，并提供校验和。
+5. **消费方声明固定版本**：`<库名>==<版本>`；交付类场景不用版本范围，避免客户侧漂移。
+6. **发布后核验**：在干净虚拟环境中安装成功并能 `import`，消费方跑一次其契约用例。
