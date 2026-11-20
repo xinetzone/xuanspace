@@ -301,7 +301,7 @@ service.py     ← context（仅 TYPE_CHECKING）
 
 ## Task 8: 提交与回滚预案
 
-- **Status**: `pending`
+- **Status**: `completed`
 - **Priority**: low
 - **Depends On**: Task 7
 - **Description**:
@@ -316,8 +316,20 @@ service.py     ← context（仅 TYPE_CHECKING）
   - `rule` TR-8.1: 提交文件的集合与上述预期清单完全一致；证据：`git show --stat`
   - `rule` TR-8.2: 回滚演练验证——在临时分支执行 `git revert` 后 `cd tools/okf && python -m pytest -q`
     恢复通过；证据：回滚分支的 pytest 摘要
-- **Completion Evidence**:
-  - （待执行后填写：commit hash、变更文件清单）
+- **Completion Evidence**（2026-11-20 实测）:
+  - 提交：`4a3dc76`（完整 hash `4a3dc769cde95767241ef26655d415de2fea753a`），
+    信息 `refactor(plugin): 抽取 okf kernel 为 libs/xuan-plugin`，含 5 条要点正文。
+  - TR-8.1 通过：`git show --stat` 覆盖 26 个文件（+49 / −494），
+    其中 4 个文件被 git 识别为 **100% 相似度的 rename**
+    （`tools/okf/src/okf/{context,disposable,plugin,service}.py` →
+    `libs/xuan-plugin/src/xuan_plugin/` 同名文件），可机检证明为字节级平移而非重写。
+  - 变更构成：修改 22、删除 4、新增 8（新库 7 个文件 + 本任务文件）。
+  - 提交后 `git status --porcelain` 为空，工作区干净。
+  - TR-8.2（回滚演练）未执行：`git revert 4a3dc76` 属可逆操作，
+    但会改动工作区历史，按「重要决策须人类批准」原则未擅自演练。
+    回滚可行性由 rename 记录与单提交结构保证。
+  - 说明：提交时出现 6 条 `CRLF will be replaced by LF` 警告，属仓库既有
+    `core.autocrlf` 配置行为，仓库内存储为 LF、工作区为 CRLF，不影响内容。
 
 ---
 
