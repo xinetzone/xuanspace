@@ -49,7 +49,7 @@ requires-python = ">=3.14.6"
 dependencies = []
 
 [project.optional-dependencies]
-docs = [
+doc = [
     "sphinx>=8.0",
     "myst-parser>=4.0",
     "sphinx-book-theme>=1.1",
@@ -80,7 +80,7 @@ dev = [
     "rich>=13.0",
     "packaging>=24.0",
     "tomlkit>=0.12",
-    "{name}[docs,test,lint,build]",
+    "{name}[doc,test,lint,build]",
 ]
 
 [tool.setuptools.packages.find]

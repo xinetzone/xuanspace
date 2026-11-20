@@ -741,7 +741,7 @@ doc/
 └── ...              # 其他文档页面
 ```
 
-文档依赖在根 `pyproject.toml` 的 `[project.optional-dependencies].docs` 中配置，安装方式：`pip install -e ".[docs]"` 或 `pdm install`（dev 组已包含 docs）。
+文档依赖在根 `pyproject.toml` 的 `[project.optional-dependencies].doc` 中配置，安装方式：`pip install -e ".[doc]"` 或 `pdm install`（dev 组已包含 doc）。
 
 ### 12.2 MyST Markdown
 

@@ -99,7 +99,7 @@ xuanspace/
 
 ```toml
 [project.optional-dependencies]
-docs = [
+doc = [
     "sphinx>=8.0",
     "myst-parser>=4.0",
     "sphinx-book-theme>=1.1",
@@ -113,7 +113,7 @@ build = ["build>=1.2", "scikit-build-core>=0.11", "cmake>=3.26", "ninja"]
 
 [dependency-groups]
 dev = [
-    {include-group = "docs"},
+    {include-group = "doc"},
     {include-group = "test"},
     {include-group = "lint"},
     {include-group = "build"},
