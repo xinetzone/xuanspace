@@ -531,3 +531,75 @@ Task 1–8 全部完成后，满足：
   - **已知上限**：入口点若无 `MANIFEST`/`manifest` 属性，只能按其元数据合成「零能力」节点，
     真实能力仍以清单对象为准；求解与回滚（拓扑定序、隔离域、逐字段对账）留待 P1-2。
 
+## Task P1-2-1: 装配求解器、事务回滚与 `xs plugin apply --dry-run`
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P1-1（`c193ab1`）
+- **Description**:
+  - 新库新增 `solver.py`（325 行、纯标准库）：`SolveError(kind ∈ cycle/missing/conflict)`、
+    `Solution(order, domains, inactive, provides)`、`solve(manifests, *, allow_inactive=True)`；
+    就绪集按 `(-priority, id)` 出队的 Kahn 定序，输入置换不改变结果；缺失必需依赖按设计 §5.4
+    第 3 步标 INACTIVE 并沿依赖闭包传播（`allow_inactive=False` 转为 `MISSING` 异常）；
+    跨 id 环报 `a -> b -> a` 明细，同键 `single` 多提供者或 `multi` 同优先级判冲突；隔离域
+    按共享 `isolate` 标签的连通簇划分，无标签者合并为默认域；
+  - `reconcile(solution, registered)`：声明 provide 与实际注册键逐项对账，缺/多分别列出；
+  - 新库新增 `assembly.py`（115 行）：按解序装配，节点非 `ACTIVE` 即判失败（防止「供应者未
+    真正登记键、消费者停在 PENDING」被计成假成功）；失败时逆序回滚并聚合撤销异常，静默断言
+    回滚后效应数 = 0 且已装配提供键全部从 store 清除；同一异常被 `dispose` 重复上报时按对象去重；
+  - `Context` 新增 `registered_keys()`；`Context.plugin()` 改为返回 `Fiber`，供装配器查证状态；
+  - `xs plugin apply --dry-run`（支持 `--json`）：输出定序、隔离域、失活原因与选定提供者；
+    未加 `--dry-run` 时显式拒绝并指向 P1-3，避免把空操作伪装成装配成功；
+  - 文档同步：`doc/cli/index.md`、`doc/intro.md`、`libs/xuan-plugin/README.md`。
+- **Acceptance Criteria Addressed**: 拓扑 + 隔离 + 对账 + 回滚 + 静默断言；对刻意构造的冲突/环/缺依赖样例给出确定性输出
+- **Test Requirements**:
+  - `rule` TR-P1.2-1: 供应者先于消费者，就绪集按 `(-priority, id)` 定序，输入置换不改变结果；
+    证据：`test_provider_precedes_consumer`、`test_ready_set_sorted_by_priority_then_id`、
+    `test_order_is_independent_of_input_order`
+  - `rule` TR-P1.2-2: 自提供键按 peer 语义不构成环；跨 id 环报 `a -> b -> a` 且两次求解文本一致；
+    证据：`test_self_dependency_is_peer_semantics`、`test_cross_cycle_is_rejected_with_deterministic_path`
+  - `rule` TR-P1.2-3: 同键 `single` 多提供者、`multi` 同优先级均判冲突，`multi` 异优先级按
+    priority 取胜出者；证据：`test_single_key_conflict_is_rejected`、`test_multi_providers_require_distinct_priority`
+  - `rule` TR-P1.2-4: 缺必需依赖标 INACTIVE 并沿闭包传播，`optional` 不阻塞，`disabled` 不入解；
+    证据：`test_missing_required_dependency_marks_inactive`、`test_inactive_propagates_to_dependents`、
+    `test_optional_dependency_never_blocks`、`test_strict_mode_rejects_missing_dependencies`、
+    `test_disabled_manifest_is_excluded`
+  - `rule` TR-P1.2-5: 隔离域按共享标签聚类、标签链传递合并、无标签归默认域；
+    证据：`test_domains_cluster_by_shared_isolate_label`、`test_domains_merge_transitively_across_labels`
+  - `rule` TR-P1.2-6: 对账缺/多分别列出，两侧一致时 `ok`；证据：`test_reconcile_reports_missing_and_unexpected`
+  - `rule` TR-P1.2-7: 装配失败逆序回滚，残留效应数与注册键均为 0，撤销异常被聚合；
+    证据：`test_failure_rolls_back_in_reverse_and_leaves_no_residue`、
+    `test_dispose_errors_are_aggregated_but_residue_still_zero`
+  - `rule` TR-P1.2-8: 供应者未真正登记键时消费者不被计为成功；
+    证据：`test_unregistered_provide_leaves_consumer_inactive_and_fails`
+  - `rule` TR-P1.2-9: 两次 `apply --dry-run --json` 输出逐字节一致；冲突/环/缺依赖三类反例给出
+    确定性输出；证据：`test_apply_dry_run_json_is_byte_identical`、`test_apply_conflict_is_deterministic`、
+    `test_apply_cycle_reports_path`、`test_apply_missing_dependency_is_reported_as_inactive`
+  - `rule` TR-P1.2-10: 未加 `--dry-run` 显式拒绝；证据：`test_apply_refuses_when_not_dry_run`
+  - `rule` TR-P1.2-11: `okf` 与既有根测试不回归；三套治理脚本全通过
+- **Completion Evidence**（2026-11-21 实测）:
+  - 提交：`a8be022`（完整 `a8be022b1bb4cacc1f7a39ad8412aa5b69017e4c`），
+    信息 `feat(plugin): 求解器与装配回滚及 apply --dry-run`，11 文件 +985 / −12。
+  - 新增文件：`libs/xuan-plugin/src/xuan_plugin/solver.py`（325 行）、
+    `libs/xuan-plugin/src/xuan_plugin/assembly.py`（115 行）、
+    `libs/xuan-plugin/tests/test_solver.py`（199 行、16 项）、
+    `libs/xuan-plugin/tests/test_assembly.py`（126 行、6 项）。
+  - 修改文件：`tools/xs/src/xs/commands/plugin_cmd.py` 183 → 293 行（新增 `apply` 命令）；
+    `tests/test_plugin_cmd.py` 89 → 208 行（新增 6 项）；`context.py`（`registered_keys()`、
+    `plugin()` 返回 `Fiber`）；`__init__.py` 导出新符号。
+  - `cd libs/xuan-plugin && python -m pytest -q` → **61 passed**（39 + 22）。
+  - 根 `tests/` → **48 passed**（42 + 6）。
+  - `cd tools/okf && python -m pytest -q` → **259 passed**（无回归）。
+  - 门禁：`ruff check` All checks passed；`ruff format --check` 451 files already formatted；
+    `mypy tools/xs libs/xuan-plugin` → Success: no issues found in 34 source files。
+  - 治理脚本：声明一致性、依赖方向、pyproject 风格三项均通过。
+  - 实机输出：`xs plugin apply --dry-run` → 「装配顺序 1 个节点 / 1. xs.commands priority=100
+    provide=16 / 隔离域（默认域）：xs.commands / 可解性：全部必需依赖可满足」；
+    两次 `--json` 输出 `-ceq` 比较为 `True`。
+- **Notes**:
+  - 设计文档 §5.4 第 3 步要求缺失必需依赖「标 INACTIVE 而不失败」，故 `solve` 默认不抛错；
+    `allow_inactive=False` 供需要「全量可激活」的调用方（如发布前检查）显式收紧。
+  - 真实装配（`apply` 不加 `--dry-run`）依赖 P1-3 的运行时插件实现，当前显式拒绝而非空转。
+  - `Fiber` 卸载成功后仍保留上一次的 `_error`，导致 `Context.dispose` 重复上报同一异常；
+    本轮在装配器按异常对象去重，未改动 `Fiber` 语义（留待后续按需修正）。
+
