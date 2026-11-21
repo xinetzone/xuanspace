@@ -6,6 +6,18 @@
 
 from .context import Context
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
+from .manifest import (
+    Edge,
+    InjectDecl,
+    ManifestError,
+    PluginGraph,
+    PluginManifest,
+    ProvideDecl,
+    build_graph,
+    manifest_from_pyproject,
+    merge_manifests,
+    parse_manifest,
+)
 from .plugin import Fiber, FiberState, InjectSpec, Plugin
 from .service import ServiceDefinition, ServiceProvider, ServiceRegistry
 
@@ -14,12 +26,22 @@ __all__ = [
     "Disposable",
     "DisposableList",
     "DisposalError",
+    "Edge",
     "EffectMeta",
     "Fiber",
     "FiberState",
+    "InjectDecl",
     "InjectSpec",
+    "ManifestError",
     "Plugin",
+    "PluginGraph",
+    "PluginManifest",
+    "ProvideDecl",
     "ServiceDefinition",
     "ServiceProvider",
     "ServiceRegistry",
+    "build_graph",
+    "manifest_from_pyproject",
+    "merge_manifests",
+    "parse_manifest",
 ]

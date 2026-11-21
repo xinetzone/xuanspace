@@ -20,6 +20,7 @@ from .commands.lfs_cmd import app as lfs_app
 from .commands.list_cmd import list_projects
 from .commands.meta_cmd import app as meta_app
 from .commands.new_cmd import create_new_project
+from .commands.plugin_cmd import app as plugin_app
 from .commands.py_compat_cmd import py_compat
 from .commands.toolchain_cmd import app as toolchain_app
 from .commands.update_cmd import update_cmd
@@ -54,6 +55,7 @@ app.add_typer(version_app, name="version")
 app.add_typer(meta_app, name="meta")
 app.add_typer(archive_app, name="archive")
 app.add_typer(lfs_app, name="lfs")
+app.add_typer(plugin_app, name="plugin")
 
 
 def _version_callback(value: bool) -> None:

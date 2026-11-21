@@ -11,6 +11,7 @@
     "list",
     "meta",
     "new",
+    "plugin",
     "py-compat",
     "toolchain",
     "update",

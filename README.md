@@ -98,7 +98,7 @@ x-toml-ref: ".meta/toml/README.toml"
 
 | 名称 | 描述 | 语言 | 类型 | 维护状态 | 版本 | 文档 |
 |------|------|------|------|---------|------|------|
-| xs | Xuanspace CLI 工具（15 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](doc/cli/index.md) |
+| xs | Xuanspace CLI 工具（16 个子命令） | Python 3.14 | tools | 活跃 | 0.1.0 | [CLI 参考](doc/cli/index.md) |
 | okf | OKF v0.2 工具链（校验/脚手架/合成/信任推导） | Python 3.14 | tools | 活跃 | 0.1.0 | [OKF 文档](doc/okf/index.md) |
 | templates | 项目模板（Python/Native/Native-FFI/Static） | 多语言 | tools | 活跃 | 0.1.0 | [模板说明](tools/templates/) |
 | caffe-ffi | Caffe 深度学习框架 FFI 绑定 | Python/C++ | lib | 活跃 | 1.2.0 | [README](libs/caffe-ffi/README.md) |

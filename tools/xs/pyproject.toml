@@ -22,7 +22,8 @@ dependencies = [
   "typer>=0.12",
   "rich>=13.0",
   "packaging>=24.0",
-  "tomlkit>=0.12"
+  "tomlkit>=0.12",
+  "xuan-plugin>=0.1.0"
 ]
 authors = [
   {name = "xinetzone"}
@@ -60,3 +61,61 @@ sdist.exclude = [
 [tool.scikit-build.wheel]
 cmake = false
 packages = ["src/xs"]
+
+# 插件清单（K2）：把内置子命令声明为能力供应，供 `xs plugin list/graph` 与后续
+# 动态装配消费。此处只做声明，命令注册仍由 cli.py 静态完成（P1-3 再切换）。
+# 声明与 cli.py 注册表的一致性由 tests/test_plugin_cmd.py 机检，防止双真相漂移。
+[tool.xuan.plugin]
+id = "xs.commands"
+version = "0.1.0"
+lifecycle = "reloadable"
+reversible = true
+priority = 100
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#list"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#doctor"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#init"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#build"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#new"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#update"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#py-compat"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#affected"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#toolchain"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#deps"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#doc"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#version"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#meta"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#archive"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#lfs"
+
+[[tool.xuan.plugin.provide]]
+key = "xuan:cli/commands#plugin"
