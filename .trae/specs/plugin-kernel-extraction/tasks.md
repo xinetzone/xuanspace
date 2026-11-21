@@ -5,7 +5,7 @@
 >
 > **范围声明**：本计划只做「kernel 换位置」，不做任何行为改造。`id(impl)` → 摘要身份（P0-2）、
 > 卸载异常聚合（P0-3）、`ServiceRegistry` 的 priority 选择（ADR-05，属 P2）、`xs` 命令改造（P1-3）
-> 全部不在本计划内。
+> 全部不在本计划内（P0-2 与 P0-3 已于 2026-11-21 另行执行，记录见文末「增量一」「增量二」）。
 >
 > **三条不变量**：
 > 1. 零行为变更——`Context` / `Fiber` / `Disposable` / `ServiceRegistry` 的公开 API 与运行语义逐项保持原样，
@@ -351,3 +351,108 @@ Task 1–8 全部完成后，满足：
 2. `libs/xuan-plugin` 可被 `libs/apps` 依赖（不再受 `tools/` 位置限制）；
 3. A–G 类声明断言与依赖方向断言在 CI 中全绿；
 4. 新增的 `okf` CI 测试步骤稳定通过，等价性有持续保障。
+
+---
+
+# 增量一：P0-2（epoch 摘要身份）— 执行记录
+
+> 2026-11-21 追加。自工作区级设计文档 `xuanspace-pluginization-design.md` §7 P0-2 派生。
+> 本增量**改变运行语义**（epoch 身份由对象地址改为内容摘要），与 P0-1 的「零行为变更」
+> 不变量不同，故独立成节，不回写 Task 1–8。
+
+## Task P2-1: epoch 改用摘要身份并纳入注入配置
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: Task 8（P0-1 提交 `4a3dc76`）
+- **Description**:
+  - `plugin.py` 新增 `_digest(value)`：标量取「类型名 + 字面量」；具备 `__qualname__` 者取
+    `module:qualname:sha256(source)[:16]`；源码不可得（内建对象、动态生成实例）回退
+    `sha256(repr(value))[:16]`；
+  - 新增 `_config_digest(config)`：`json.dumps(sort_keys=True, ensure_ascii=False, default=repr)`
+    后取 `sha256[:16]`，空字典或 `None` 返回 `"none"`；
+  - `_compute_epoch()` 的 `id(impl)` 替换为
+    `f"{spec.name}:{_digest(impl)}:{_config_digest(spec.config)}"`，依赖缺失仍返回 `_INACTIVE`；
+  - 新库 `pyproject.toml` 补 `[project.optional-dependencies] test = ["pytest>=8"]` 与
+    `[tool.pytest.ini_options] testpaths = ["tests"]`，使 CI 可进入库目录直接执行；
+  - `tools/okf` 两处 epoch 断言同步更新。
+- **Acceptance Criteria Addressed**: 装配结果跨进程可复现；配置键序不影响 epoch
+- **Test Requirements**:
+  - `rule` TR-P2.1: 同一实现两次摘要相同；证据：`test_digest.py` 确定性用例
+  - `rule` TR-P2.2: 摘要文本不含对象地址；证据：断言不含 `0x` 前缀与 `id` 数值
+  - `rule` TR-P2.3: 同类型不同实例可区分；证据：双 `object()` 实例用例
+  - `rule` TR-P2.4: 配置键序无关、`None` 与空字典等价；证据：`_config_digest` 用例
+  - `rule` TR-P2.5: 跨进程一致；证据：`subprocess` 两次子进程输出比对
+  - `rule` TR-P2.6: `tools/okf` 通过数不回归；证据：pytest 摘要行
+- **Completion Evidence**（2026-11-21 实测）:
+  - 提交：`a39c72d`（完整 `a39c72d903138699a9f43c9a7f0542e9a9fbe2b1`），
+    信息 `feat(plugin): epoch 改用摘要身份并纳入注入配置`，6 文件 +183 / −10。
+  - 新增 `libs/xuan-plugin/tests/test_digest.py`（109 行、11 项）：摘要确定性、源码不同则摘要不同、
+    不含 `0x`/id 地址、实例可区分、标量摘要、配置键序无关、`None` 与空等价、配置值变化可测、
+    epoch 含 config、epoch 组成相符、`test_epoch_reproducible_across_processes`
+    （以 `[sys.executable, "-c", code]` 起两次子进程、`cwd=TESTS_DIR` 比对）。
+  - TR-P2.1～P2.5 通过：新库 11 passed。
+  - TR-P2.6 通过：`cd tools/okf && python -m pytest -q` → **259 passed**，与 P0-1 基线一致。
+  - okf 侧断言同步：`test_plugin.py` 与 `test_plugin_extra.py` 的期望改为
+    `f"dep:{_digest(impl)}:{_config_digest(None)}"`。
+  - CI 同步：quality job 改为 `pip install -e "libs/xuan-plugin[test]"`，并在 okf 之前插入
+    `cd libs/xuan-plugin && python -m pytest`；test job 的 mypy 范围追加 `libs/xuan-plugin`。
+  - `mypy` 期间修正 1 处：`inspect.getsource` 形参为联合类型，动态取值无法静态收窄，
+    显式标注 `target: Any`。
+- **Notes**: 边界已写入 `_digest` 的 docstring——**无源码实例回退 `repr` 摘要**，
+  同一进程内可区分，但不保证跨进程稳定。这是本方案对「内建对象作依赖实现」场景的已知上限。
+
+---
+
+# 增量二：P0-3（撤销加固）— 执行记录
+
+> 2026-11-21 追加。自设计文档 §7 P0-3 派生，原文判据为「卸载异常聚合上报；FAILED 前强制撤销
+> 已登记 effect」，验收要求为「注入故障插件的测试断言 effect 数 = 0 且异常被上报」。
+
+## Task P3-1: 卸载异常聚合与装配失败回滚
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-1（`a39c72d`）
+- **Description**:
+  - `disposable.py` 新增 `DisposalError(errors)`：持有 `list[tuple[label, Exception]]`，
+    消息形如「N 个效应撤销失败: label: Type: msg; …」；
+  - 新增 `DisposableList.dispose_all(report=None) -> list[tuple[str, Exception]]`：逆序取出全部逆函数，
+    逐项隔离执行；label 取 `__name__`，否则 `dispose#index`；可选 `report` 逐项即时上报；
+    与 `clear()` 的分工是「异常隔离由本方法负责」；
+  - `Fiber._unload()` 改用 `dispose_all()`：效应数必归零；有失败则
+    `_error = DisposalError(errors)` 并置 `FAILED`，否则置 `PENDING`；
+  - `Fiber._reload()` 的 `apply` 失败路径先回滚已登记效应，把 `("apply", e)` 与清理期失败
+    合并为 `DisposalError`，避免失败组件留下部分装配痕迹；
+  - `Fiber.effect().undo()` 与 `Context.effect().undo()` 改为聚合抛 `DisposalError`，废弃静默吞异常；
+  - `Context.dispose(report=None)` 汇总全部 fiber 与根效应失败，**不主动抛出**（在 `__exit__`
+    抛出会掩盖代码块原有异常），结果留存供 `get_disposal_errors()` 查证；
+    `Fiber.dispose()` 在卸载后仍为 `FAILED` 时保留 `FAILED`，否则置 `DISPOSED`。
+- **Acceptance Criteria Addressed**: 卸载后效应数必为 0；失败以聚合异常上报而非静默丢失
+- **Test Requirements**:
+  - `rule` TR-P3.1: `dispose_all` 逆序执行且单点失败不中断；证据：`calls == ["last", "first"]`
+  - `rule` TR-P3.2: `report` 回调逐项收到失败；证据：回调收集列表长度与 label 相符
+  - `rule` TR-P3.3: `_unload` 后 `len(fiber._disposables) == 0` 且状态 `FAILED`、`error` 为 `DisposalError`
+  - `rule` TR-P3.4: `_reload` 失败时已登记 effect 被回滚；证据：故障插件用例
+  - `rule` TR-P3.5: 卸载失败后 `dispose()` 保留 `FAILED` 供查证
+  - `rule` TR-P3.6: `Context.dispose()` 同时收集 `fiber:*` 与 `root:*` 两类失败
+  - `rule` TR-P3.7: `tools/okf` 通过数不回归
+- **Completion Evidence**（2026-11-21 实测）:
+  - 提交：`2dadf4f`（完整 `2dadf4f841eb3accf725b137d6dbc8390c4809da`），
+    信息 `feat(plugin): 卸载异常聚合上报，废弃静默吞异常`，7 文件 +246 / −32。
+  - 新增 `libs/xuan-plugin/tests/test_disposal_errors.py`（121 行、7 项）：`dispose_all` 逆序不中断、
+    `report` 逐项、`_unload` 后效应数归零并置 `FAILED`、`_reload` 失败回滚、`dispose` 保留 `FAILED`、
+    `Context` 收集 `fiber:bad`、`Context` 收集 `root:_boom`。
+  - TR-P3.1～P3.6 通过：新库 **18 passed**（11 摘要 + 7 撤销）。
+  - TR-P3.7 通过：`cd tools/okf && python -m pytest -q` → **259 passed**（无回归）。
+  - 门禁：`ruff check` All checks passed；`ruff format --check` 54 files already formatted；
+    `mypy libs/xuan-plugin` → Success: no issues found in 7 source files。
+  - 旧契约改写 3 处：`tools/okf/tests/test_context_extra.py` 的 `test_effect_undo_aggregates_exception`、
+    `test_plugin_extra.py` 的同名用例与 `test_unload_aggregates_dispose_exception`——此前断言
+    「静默吞异常」，现改为断言 `DisposalError` 聚合、`len(errors) == 1`、效应数归零。
+  - 记录订正：`plugin.py` 中 `except OSError, TypeError:` 曾被误判为语法错误，实为 PEP 758
+    （Python 3.14 允许 `except` 省略括号）的合法写法；`ast.parse` 与 `py_compile` 均通过，
+    `ruff format` 的规范化结果即为此形式。
+- **Notes**: 设计取舍是「效应归零」优先于「首个异常立即抛出」——`DisposalError` 只承载汇总，
+  不改变既有 `try/except Exception` 的捕获面；`Context.dispose()` 保持不抛出属刻意选择。
+
