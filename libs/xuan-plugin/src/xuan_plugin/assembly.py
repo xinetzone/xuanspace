@@ -72,9 +72,12 @@ def assemble(
             errors.append((f"apply:{node}", fiber.error))
             break
         if fiber.state is not FiberState.ACTIVE:
-            # 依赖键未真正注册时 Fiber 停留在 PENDING；若计为成功会得到
+            # 依赖键未真正注册时 Fiber 停留在 INACTIVE；若计为成功会得到
             # 「顺序正确但节点未生效」的假成功，故按失败处理并回滚。
-            errors.append((f"apply:{node}", RuntimeError(f"节点未激活：state={fiber.state.name}")))
+            detail = f"节点未激活：state={fiber.state.name}"
+            if fiber.reason:
+                detail += f"，缺少注入 {', '.join(fiber.reason)}"
+            errors.append((f"apply:{node}", RuntimeError(detail)))
             break
         applied.append(node)
 

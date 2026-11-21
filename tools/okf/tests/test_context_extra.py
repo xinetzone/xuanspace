@@ -37,7 +37,7 @@ def test_notify_skips_disposed_fiber() -> None:
     plugin = Plugin("consumer", apply, inject=[InjectSpec("dep")])
     ctx.plugin(plugin)
     fiber = ctx._fibers["consumer"]
-    assert fiber.state == FiberState.PENDING
+    assert fiber.state == FiberState.INACTIVE
 
     fiber.dispose()
     assert fiber.state == FiberState.DISPOSED

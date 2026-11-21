@@ -35,16 +35,22 @@ Harness（`src/okf/harness.py`）借鉴 DeepSeek Harness，核心理念是：
 
 ## 设计主线二：插件生命周期状态机（Fiber）
 
-每个插件被包装为一个 `Fiber`（`src/okf/plugin.py`），它管理单个插件的完整生命周期，具有六个状态：
+每个插件被包装为一个 `Fiber`（内核位于 `libs/xuan-plugin/src/xuan_plugin/plugin.py`，`okf` 通过 `xuan-plugin` 复用），它管理单个插件的完整生命周期，具有七个状态：
 
 ```text
-PENDING → LOADING → ACTIVE → UNLOADING → DISPOSED
-                     ↘ FAILED
+PENDING ──→ INACTIVE ──→ LOADING ──→ ACTIVE ──→ UNLOADING ──→ PENDING
+              ↑                           │
+              └──── 依赖消失 ─────────────┘
+LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
+任意非 FAILED 状态 ──dispose──→ DISPOSED（终态，二次 dispose 幂等）
 ```
 
 - 插件通过 `Plugin.provide` 声明「提供哪些服务」，通过 `Plugin.inject` 声明「依赖哪些服务」。
-- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的 `id` 拼接）；快照变化时触发 `_refresh`，实现**响应式重载**。
-- 加载成功进入 `ACTIVE`，失败进入 `FAILED`；卸载时逆序回收本插件注册的资源。
+- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；快照变化时触发 `_refresh`，实现**响应式重载**。
+- `INACTIVE` 表示必需依赖暂不可得：不抛错、不持有任何效应，并通过 `Fiber.reason` 给出缺失键；依赖出现后自动迁移到 `LOADING`。
+- 加载成功进入 `ACTIVE`，失败进入 `FAILED`（已登记效应强制撤销）；`retry()` 提供显式重试通道。
+- 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级。
+- `lifecycle="static"` 的插件在 `ACTIVE` 后抑制热换（ADR-03）；`dispose` 仍执行逻辑退役，撤销能力句柄与效应，但不承诺卸载已映射的 `.so`。
 
 ## 设计主线三：可逆效应（Disposable）
 

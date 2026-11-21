@@ -137,7 +137,8 @@ def test_failed_recovery_and_epoch_change() -> None:
     # 依赖缺失 → INACTIVE
     fiber._refresh()
     assert fiber._epoch == _INACTIVE
-    assert fiber.state == FiberState.PENDING
+    assert fiber.state == FiberState.INACTIVE
+    assert fiber.reason == ("dep",)
 
     # 提供依赖 → 激活成功（首次 apply 失败）
     impl = object()

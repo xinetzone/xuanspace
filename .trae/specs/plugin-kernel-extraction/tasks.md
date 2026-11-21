@@ -834,3 +834,58 @@ Task 1–8 全部完成后，满足：
     `in-process` 与 `subprocess` 间替换，调用方只依赖 `FFIAPI`；跨名称替换
     （如 caffe → npu）仍须换键，因为契约以名称隔离能力域。
 
+## Task P2-4-1: 插件生命周期与状态机（§5.5 落地）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P0-2-1（epoch 结构化摘要）、P0-3-1（卸载异常聚合）、P2-3-1（`ea2fc0e`）
+- **Description**:
+  - `libs/xuan-plugin/src/xuan_plugin/plugin.py`：
+    - `FiberState` 增加 `INACTIVE = 6`（追加在末尾，既有六态数值不漂移）；
+    - 新增 `FiberTransitionError` 与 `_TRANSITIONS` 迁移表，表外迁移快速失败而非静默降级；
+    - `_refresh` 在依赖不可解时统一进入 `INACTIVE`（初次刷新与原因集合变化均覆盖），
+      `Fiber.reason` 返回缺失注入；`FAILED` 遇依赖消失时归一到 `INACTIVE`；
+    - 新增 `Fiber.retry()`：仅 `FAILED` 可调用，依赖仍缺则退回 `INACTIVE`；
+    - `DISPOSED` 为终态：`_refresh` / `retry` 抛 `FiberTransitionError`，二次 `dispose` 幂等；
+    - `apply` / 撤销期间 `provide → notify` 的重入被短路，避免 `LOADING → LOADING` 表外迁移；
+    - `Plugin.lifecycle`（`reloadable` | `static`）：静态插件 ACTIVE 后抑制热换，
+      `Fiber.suppressed_reloads` 计数可观测；`dispose` 仍执行逻辑退役（ADR-03）。
+  - `assembly.py`：未激活节点的失败信息携带 `state` 与缺失注入；
+  - `libs/xuan-ffi`：`PLUGIN` 声明 `lifecycle="static"`；
+  - `tools/okf` 测试与 `doc/okf/architecture.md` 同步七态契约（`PENDING` → `INACTIVE`）。
+- **Acceptance Criteria Addressed**: 设计文档 §5.5 状态表与不变量；D7 / ADR-03
+  （原生插件不承诺 `.so` 卸载，只承诺能力句柄可撤销）
+- **Test Requirements**:
+  - `rule` TR-P2.4-1: 依赖缺失时进入 `INACTIVE` 且 `reason` 给出缺失键，无残留效应；
+    证据：`test_missing_dependency_enters_inactive_with_reason`、
+    `test_reason_updates_when_partial_dependency_appears`
+  - `rule` TR-P2.4-2: 依赖出现自动激活、依赖消失退回 `INACTIVE`；
+    证据：`test_dependency_appearance_and_loss_transition`
+  - `rule` TR-P2.4-3: `FAILED` 可显式 `retry()`，非 `FAILED` 调用被拒绝；`DISPOSED`
+    终态且二次 `dispose` 幂等；证据：`test_failed_plugin_can_retry_explicitly`、
+    `test_retry_is_only_legal_from_failed`、`test_disposed_is_terminal_and_idempotent`
+  - `rule` TR-P2.4-4: 静态插件 ACTIVE 后不热换、不重复 `apply`，`dispose` 仍撤销句柄；
+    证据：`test_static_plugin_suppresses_hot_reload`、
+    `test_static_plugin_still_retires_handles_on_dispose`
+  - `rule` TR-P2.4-5: `apply` 内自依赖写入不重入状态机；证据：
+    `test_refresh_during_apply_does_not_reenter_state_machine`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 联跑 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **168 passed**（基线 157，新增 11，无删减）；
+  - `tools/okf` 独立运行 → **259 passed**（六态断言同步为七态）；
+  - 门禁：`ruff check` 与 `ruff format --check`（46 文件）通过；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （335 文件）、`check_spec_integrity.py`（任务编号 30）、
+    `check_declaration_consistency.py` 通过；
+  - 实机：`xs plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；对账：一致 20 键，
+    缺 0，多 0」。
+- **Notes**:
+  - `INACTIVE` 追加为枚举值 6 而非插入中间，避免日志/文档按数值比对时整体漂移（V2）；
+  - 依赖 epoch 变化仍自动重载（P0-2 反应式语义，既有测试依赖）；`retry()` 只覆盖
+    「epoch 未变但 `apply` 瞬时失败」的场景，两者语义互补（V4）；
+  - `FAILED → INACTIVE` 与 `FAILED → UNLOADING` 是对 §5.5 主路径的补充边，分别用于
+    「依赖消失」与「dispose 回收失败节点」，均满足「无效应、原因可解释」不变量（V6）；
+  - 状态机保持单线程契约（与 `Context` 一致）；并发隔离留给 P2-3 的子进程模式（V7）。
+

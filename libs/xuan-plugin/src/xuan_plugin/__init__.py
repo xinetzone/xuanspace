@@ -19,7 +19,7 @@ from .manifest import (
     merge_manifests,
     parse_manifest,
 )
-from .plugin import Fiber, FiberState, InjectSpec, Plugin
+from .plugin import Fiber, FiberState, FiberTransitionError, InjectSpec, Plugin
 from .service import ServiceDefinition, ServiceProvider, ServiceRegistry
 from .solver import (
     Domain,
@@ -43,6 +43,7 @@ __all__ = [
     "EffectMeta",
     "Fiber",
     "FiberState",
+    "FiberTransitionError",
     "InactiveReason",
     "InjectDecl",
     "InjectSpec",

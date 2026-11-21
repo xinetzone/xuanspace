@@ -27,8 +27,9 @@ def test_provide_notify_activates_dependent_plugin():
 
     plugin = Plugin("consumer", apply, inject=[InjectSpec("dep")])
     ctx.plugin(plugin)
-    # 初始依赖缺失，保持 PENDING
-    assert ctx._fibers["consumer"].state == FiberState.PENDING
+    # 初始依赖缺失，进入 INACTIVE 并记录原因（§5.5）
+    assert ctx._fibers["consumer"].state == FiberState.INACTIVE
+    assert ctx._fibers["consumer"].reason == ("dep",)
 
     impl = object()
     ctx.provide("dep", impl)
@@ -51,7 +52,7 @@ def test_provide_undo_deactivates_dependent_plugin():
     assert ctx._fibers["consumer"].state == FiberState.ACTIVE
 
     undo()
-    assert ctx._fibers["consumer"].state == FiberState.PENDING
+    assert ctx._fibers["consumer"].state == FiberState.INACTIVE
 
 
 def test_bundle_loader_activates_conformance_checker(sample_bundle_path):

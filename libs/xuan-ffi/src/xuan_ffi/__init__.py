@@ -61,6 +61,7 @@ PLUGIN = Plugin(
     name=PLUGIN_ID,
     apply=apply,
     provide=[ffi_key(name) for name in _NAMES],
+    lifecycle="static",
 )
 
 __all__ = [

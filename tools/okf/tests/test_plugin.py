@@ -78,8 +78,8 @@ def test_epoch_valid_when_dependencies_satisfied():
     assert fiber._compute_epoch() == f"dep:{_digest(impl)}:{_config_digest(None)}"
 
 
-def test_dependency_missing_fiber_stays_pending():
-    """依赖缺失时 epoch 为 INACTIVE 哨兵，fiber 保持 PENDING。"""
+def test_dependency_missing_fiber_becomes_inactive():
+    """依赖缺失时 epoch 为 INACTIVE 哨兵，fiber 进入 INACTIVE 并记录原因。"""
     ctx = Context()
     plugin = _make_plugin(inject=[InjectSpec("dep")])
     fiber = Fiber(plugin, ctx)
@@ -87,7 +87,8 @@ def test_dependency_missing_fiber_stays_pending():
     assert fiber._compute_epoch() == _INACTIVE
     fiber._refresh()
     assert fiber._epoch == _INACTIVE
-    assert fiber.state == FiberState.PENDING
+    assert fiber.state == FiberState.INACTIVE
+    assert fiber.reason == ("dep",)
 
 
 def test_fiber_unload_reverse_order():
