@@ -5,7 +5,8 @@
 >
 > **范围声明**：本计划只做「kernel 换位置」，不做任何行为改造。`id(impl)` → 摘要身份（P0-2）、
 > 卸载异常聚合（P0-3）、`ServiceRegistry` 的 priority 选择（ADR-05，属 P2）、`xs` 命令改造（P1-3）
-> 全部不在本计划内（P0-2 与 P0-3 已于 2026-11-21 另行执行，记录见文末「增量一」「增量二」）。
+> 全部不在本计划内（P0-2 与 P0-3 已于 2026-11-21 另行执行，记录见文末「增量一」「增量二」；
+> P1-1 见「增量三」）。
 >
 > **三条不变量**：
 > 1. 零行为变更——`Context` / `Fiber` / `Disposable` / `ServiceRegistry` 的公开 API 与运行语义逐项保持原样，
@@ -455,4 +456,78 @@ Task 1–8 全部完成后，满足：
     `ruff format` 的规范化结果即为此形式。
 - **Notes**: 设计取舍是「效应归零」优先于「首个异常立即抛出」——`DisposalError` 只承载汇总，
   不改变既有 `try/except Exception` 的捕获面；`Context.dispose()` 保持不抛出属刻意选择。
+
+---
+
+# 增量三：P1-1（清单解析与装配图）— 执行记录
+
+> 2026-11-21 追加。自设计文档 §7 P1-1 派生，原文判据为「`[tool.xuan.plugin]` schema +
+> `entry_points("xuan.plugins")` 合并 → 产出 `xs plugin list/graph`」，验收要求为
+> 「对内置命令生成等价图」。与 P0 系列不同，本增量新增公开命令与运行时依赖，故同样独立成节。
+
+## Task P1-1-1: K2 清单解析器与 `xs plugin list/graph`
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P3-1（`2dadf4f`）
+- **Description**:
+  - 新库新增 `manifest.py`（282 行、纯标准库）：`ProvideDecl` / `InjectDecl` / `PluginManifest`
+    三个不可变数据类；`parse_manifest` 做 K2 字段校验（必填 `id`/`version`、未知字段拦截、
+    `mode` 与 `lifecycle` 枚举、能力键语法 `xuan:<domain>/<owner>#<api>`、provide/inject 键去重、
+    TOML 布尔不得冒充 `priority` 整数）；`manifest_from_pyproject` 定位 `[tool.xuan.plugin]`；
+  - `merge_manifests`：同 id 且契约相同则去重（保留先到者），契约不同直接报错，杜绝双真相；
+    `source` 为诊断标记，不参与契约比较（`contract()` 显式剔除）；
+  - `build_graph`：展开节点（跳过 `disabled`）、依赖边、未解析的**必需**依赖与同键冲突；
+    多提供者按 `(-priority, id)` 定序，同键多提供者仅在全部为 `single` 时计冲突（`multi` 免冲突），
+    与 ADR-05 一致；另提供 `PluginGraph.to_dot()`；
+  - `tools/xs` 新增 `plugin_cmd.py`（183 行）：`xs plugin list` 与 `xs plugin graph`，支持
+    `--json` 与 `--dot`；数据来源＝工作区各 `pyproject.toml` 静态声明 ∪ `xuan.plugins` 入口点，
+    入口点加载失败或缺少清单对象时降级（告警跳过 / 按元数据合成最小清单）；
+  - `tools/xs/pyproject.toml` 新增 `[tool.xuan.plugin] id = "xs.commands"`，逐条声明 16 个能力键，
+    并登记运行时依赖 `xuan-plugin>=0.1.0`；`cli.py` 注册 `plugin` 子命令组；
+  - CI 四处 `Install xs-cli` 之前各插入一步内核安装（本地包不在 PyPI，否则依赖解析失败）；
+  - 治理同步：`README.md` 子命令数 15 → 16，`doc/intro.md` 与 `doc/cli/index.md` 补 `xs plugin`，
+    `declaration-snapshot.json` 重新生成。
+- **Acceptance Criteria Addressed**: 对内置命令生成等价图；清单违约可诊断；同 id 双真相被拒
+- **Test Requirements**:
+  - `rule` TR-P1.1: 最小清单解析出既定默认值；证据：`test_parse_minimal_defaults`
+  - `rule` TR-P1.2: 违约清单逐类被拒（缺必填、键语法、`mode`、`lifecycle`、未知字段、
+    重复 provide 键、`priority=true`）；证据：8 个 `ManifestError` 用例
+  - `rule` TR-P1.3: 同 id 同契约去重、不同契约报错；证据：`test_merge_manifests_*` 两项
+  - `rule` TR-P1.4: 依赖边正确，必需依赖未满足时记入 `unresolved`，`optional` 不计入
+  - `rule` TR-P1.5: 多提供者按 priority 定序；同键 `single` 记冲突、`multi` 免冲突
+  - `rule` TR-P1.6: `disabled` 插件不进入节点集与边集
+  - `rule` TR-P1.7: `to_dot()` 含 `digraph` 头与带键标签的边
+  - `rule` TR-P1.8: `tools/xs` 声明的能力键集合与 `cli.py` 注册表**逐项相等**；证据：
+    `test_declared_commands_match_cli_registry`（差异时报出两侧差集）
+  - `rule` TR-P1.9: 入口点清单被合并；加载失败的入口点被跳过且不影响静态声明
+  - `rule` TR-P1.10: 80 列终端下清单表格不出现省略号，ID、`reloadable`、来源完整可读
+  - `rule` TR-P1.11: `tools/okf` 与根 `tests/` 通过数不回归
+  - `rule` TR-P1.12: 声明一致性、依赖方向、pyproject 风格三项治理脚本全通过
+- **Completion Evidence**（2026-11-21 实测）:
+  - 提交：`b06aa1e`（完整 `b06aa1e0d95ad758727e3e8c055952aa825a939f`），
+    信息 `feat(plugin): 新增 K2 清单解析器与 xs plugin list/graph`，12 文件 +985 / −4；
+    后续 `e736bae`（完整 `e736bae6603b5f98bc0310e28296bbf4cc19e968`），
+    信息 `fix(xs): 插件清单表格窄终端截断与折行`，2 文件 +20 / −10。
+  - 新增文件：`libs/xuan-plugin/src/xuan_plugin/manifest.py`（282 行）、
+    `libs/xuan-plugin/tests/test_manifest.py`（154 行、21 项）、
+    `tools/xs/src/xs/commands/plugin_cmd.py`（183 行）、
+    `tests/test_plugin_cmd.py`（89 行、7 项）。
+  - TR-P1.1～P1.7 通过：`cd libs/xuan-plugin && python -m pytest -q` → **39 passed**（18 + 21）。
+  - TR-P1.8～P1.10 通过：根 `tests/` → **42 passed**（35 + 7）。
+  - TR-P1.11 通过：`cd tools/okf && python -m pytest -q` → **259 passed**（无回归）。
+  - TR-P1.12 通过：`check_declaration_consistency.py`、`check_dependency_direction.py`、
+    `check_pyproject_style.py` 均无输出（通过）。
+  - 门禁：`ruff check` All checks passed；`ruff format --check` 30 files already formatted；
+    `mypy tools/xs libs/xuan-plugin` → Success: no issues found in 30 source files。
+  - 实机输出：`xs plugin graph` → 「插件 1 个，能力键 16 个，依赖边 0 条，未解析 0，冲突 0」；
+    `xs plugin list` 表格宽 67 列，边框闭合、无省略号。
+- **Notes**:
+  - **计数偏差**：设计文档写「14 个内置命令」，Task 1 实测为 15 个；加上本阶段新增的 `plugin`
+    子命令组，清单共 **16** 条，故 TR-P1.8 以「两侧集合相等」而非固定数字为断言核心。
+  - **环境订正**：本机 `xs` 的 editable 安装原指向另一份拷贝 `D:\AI\projects\xuanspace`，
+    已按用户指示在仓库内重装（`pip install -e tools/xs --no-deps --no-build-isolation`），
+    `import xs` 现解析至本仓源码。
+  - **已知上限**：入口点若无 `MANIFEST`/`manifest` 属性，只能按其元数据合成「零能力」节点，
+    真实能力仍以清单对象为准；求解与回滚（拓扑定序、隔离域、逐字段对账）留待 P1-2。
 
