@@ -10,3 +10,6 @@
 [submodule "libs/mystx"]
 	path = libs/mystx
 	url = git@github.com:xinetzone/mystx.git
+[submodule "libs/tao"]
+	path = libs/tao
+	url = git@github.com:xinetzone/tao.git
