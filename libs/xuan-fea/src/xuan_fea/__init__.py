@@ -1,0 +1,65 @@
+"""Xuan-Fea：OpenType Feature（``.fea``）AST 构建原语。
+
+从 Maple Mono v7.9 构建系统萃取，零第三方依赖；对外行为与原实现逐字节一致。
+"""
+
+from .dsl import (
+    EMPTY_FEAT_CONTENT,
+    EMPTY_FEAT_SYMBOL,
+    SPC,
+    CharacterVariant,
+    Clazz,
+    Feature,
+    FeatureWithDocs,
+    Line,
+    Lookup,
+    StylisticSet,
+    clone_empty,
+    cls,
+    cls_states,
+    create,
+    filter_empty,
+    flatten_to_lines,
+    gly,
+    gly_seq,
+    ign,
+    lang,
+    langsys,
+    recursive_iterate,
+    script,
+    subst,
+    subst_liga,
+    subst_map,
+)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "EMPTY_FEAT_CONTENT",
+    "EMPTY_FEAT_SYMBOL",
+    "SPC",
+    "CharacterVariant",
+    "Clazz",
+    "Feature",
+    "FeatureWithDocs",
+    "Line",
+    "Lookup",
+    "StylisticSet",
+    "__version__",
+    "cls",
+    "cls_states",
+    "clone_empty",
+    "create",
+    "filter_empty",
+    "flatten_to_lines",
+    "gly",
+    "gly_seq",
+    "ign",
+    "lang",
+    "langsys",
+    "recursive_iterate",
+    "script",
+    "subst",
+    "subst_liga",
+    "subst_map",
+]
