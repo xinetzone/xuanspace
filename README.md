@@ -105,6 +105,7 @@ x-toml-ref: ".meta/toml/README.toml"
 | demo-ffi | FFI 扩展开发模板（Stub/Real 双运行时） | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/demo-ffi/README.md) |
 | mystx | MyST 文档工具链/主题（子模块） | Python | lib(submodule) | 上游 | - | [README](libs/mystx/README.md) |
 | npu-ffi | VTA NPU 加速器 FFI 绑定 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/npu-ffi/README.md) |
+| tao | AgentForge：AI Agent 协作基础设施（子模块） | Python | lib(submodule) | 上游 | v0.7.4 | [README](libs/tao/README.md) |
 | tvm-book | TVM 中文手册 + flexloopy（子模块） | Python/C++ | lib(submodule) | 上游 | v0.1.4 | [README](libs/tvm-book/README.md) |
 | xuan-build | 构建后端能力层：按项目类型分派 python/native/static 构建实现 | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-build/README.md) |
 | xuan-cmd | 命令装配与工程路径解析工具库（invoke 任务通用件萃取） | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-cmd/README.md) |

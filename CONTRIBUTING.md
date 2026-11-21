@@ -209,11 +209,12 @@ git submodule update --init --recursive
 
 ### 3.5 顶层子模块延迟初始化策略
 
-Xuanspace 仓库包含 4 个上游子模块，**默认不随仓库克隆初始化**（延迟初始化），仅在需要时按需初始化，避免拉取体积较大的第三方代码：
+Xuanspace 仓库包含 5 个上游子模块，**默认不随仓库克隆初始化**（延迟初始化），仅在需要时按需初始化，避免拉取体积较大的第三方代码：
 
 | 子模块路径 | 上游仓库 | 用途 |
 |-----------|---------|------|
 | `libs/tvm-book` | https://github.com/xinetzone/tvm-book.git | TVM 中文手册 + flexloopy 包 |
+| `libs/tao` | git@github.com:xinetzone/tao.git | AgentForge：AI Agent 协作基础设施（taolib） |
 | `libs/mystx` | git@github.com:xinetzone/mystx.git | mystx Sphinx 文档主题（文档构建的可选主题，缺失时回退 `sphinx-book-theme`） |
 | `vendor/tvm-ffi` | https://github.com/apache/tvm-ffi.git | Apache TVM C++ FFI 绑定库（demo-ffi/npu-ffi/caffe-ffi 的底层依赖） |
 | `vendor/caffe` | git@github.com:daoflows/caffe.git | Caffe 深度学习框架（caffe-ffi 的上游源码） |

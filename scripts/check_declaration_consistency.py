@@ -81,6 +81,7 @@ LIB_PROJECT_META: dict[str, tuple[str, str]] = {
     "demo-ffi": ("原生扩展", "FFI 扩展开发模板（Stub/Real 双运行时）"),
     "mystx": ("Python（子模块）", "MyST 文档工具链/主题"),
     "npu-ffi": ("原生扩展", "VTA NPU 加速器 FFI 绑定"),
+    "tao": ("Python（子模块）", "AgentForge：AI Agent 协作基础设施（taolib）"),
     "tvm-book": ("Python（子模块）", "TVM 中文手册 + flexloopy"),
     "xuan-build": ("纯 Python", "构建后端能力层：按项目类型分派 python/native/static 构建实现"),
     "xuan-cmd": ("纯 Python", "命令装配与工程路径解析工具库（invoke 任务通用件萃取）"),
