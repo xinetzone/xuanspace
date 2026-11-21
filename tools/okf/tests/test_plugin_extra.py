@@ -1,6 +1,8 @@
 """插件生命周期状态机（Fiber）补充测试：epoch 切换、dispose、效应逆函数。"""
 
+import pytest
 from xuan_plugin.context import Context
+from xuan_plugin.disposable import DisposalError
 from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin, _config_digest, _digest
 
 
@@ -33,8 +35,8 @@ def test_effect_single_callable() -> None:
     assert order == ["only"]
 
 
-def test_effect_undo_swallows_exception() -> None:
-    """逆函数执行时抛异常被吞掉，不回传。"""
+def test_effect_undo_aggregates_exception() -> None:
+    """逆函数执行时抛异常聚合为 DisposalError 回传，不再静默吞掉。"""
     ctx = Context()
     fiber = Fiber(_mk_plugin(), ctx)
 
@@ -42,7 +44,10 @@ def test_effect_undo_swallows_exception() -> None:
         raise RuntimeError("boom")
 
     undo = fiber.effect(lambda: [boom])
-    undo()  # 不应抛出
+    with pytest.raises(DisposalError) as excinfo:
+        undo()
+    assert len(excinfo.value.errors) == 1
+    assert str(excinfo.value.errors[0][1]) == "boom"
 
 
 def test_epoch_change_unload_then_reload() -> None:
@@ -69,8 +74,8 @@ def test_epoch_change_unload_then_reload() -> None:
     assert fiber._epoch == f"dep:{_digest(impl2)}:{_config_digest(None)}"
 
 
-def test_unload_swallows_dispose_exception() -> None:
-    """卸载时单个 disposable 抛异常被吞掉，其余仍执行，状态回退 PENDING。"""
+def test_unload_aggregates_dispose_exception() -> None:
+    """卸载时单个 disposable 抛异常被聚合上报，其余仍执行，状态置 FAILED。"""
     ctx = Context()
     fiber = Fiber(_mk_plugin(), ctx)
     order: list[str] = []
@@ -80,9 +85,11 @@ def test_unload_swallows_dispose_exception() -> None:
 
     fiber.effect(lambda: [boom, lambda: order.append("ok")])
     fiber._reload()
-    fiber._unload()  # 不应抛出
+    fiber._unload()  # 不抛出
     assert order == ["ok"]
-    assert fiber.state == FiberState.PENDING
+    assert fiber.state == FiberState.FAILED
+    assert isinstance(fiber.error, DisposalError)
+    assert len(fiber._disposables) == 0
 
 
 def test_dispose_active() -> None:

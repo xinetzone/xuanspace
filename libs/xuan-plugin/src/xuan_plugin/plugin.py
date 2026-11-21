@@ -1,6 +1,5 @@
 """插件生命周期状态机 —— Cordis Fiber 实现。"""
 
-import contextlib
 import enum
 import hashlib
 import inspect
@@ -9,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .disposable import Disposable, DisposableList
+from .disposable import Disposable, DisposableList, DisposalError
 
 if TYPE_CHECKING:
     from .context import Context
@@ -131,9 +130,14 @@ class Fiber:
             self._disposables.push(d)
 
         def undo() -> None:
+            errors: list[tuple[str, Exception]] = []
             for d in disposables:
-                with contextlib.suppress(Exception):
+                try:
                     d()
+                except Exception as exc:  # noqa: BLE001 —— 聚合后统一上报，不中断同批撤销
+                    errors.append((getattr(d, "__name__", "disposable"), exc))
+            if errors:
+                raise DisposalError(errors)
 
         return undo
 
@@ -173,27 +177,50 @@ class Fiber:
             self._reload()  # 再加载新实现
 
     def _reload(self) -> None:
-        """执行插件的 apply 函数，加载服务。"""
+        """执行插件的 apply 函数，加载服务。
+
+        apply 中途失败时必须先撤销已登记的 effect，否则失败组件会留下
+        部分装配痕迹，破坏「插入/退役是唯一外部输入」的隔离性。
+        """
         self.state = FiberState.LOADING
         self._error = None
         try:
             self.plugin.apply(self.ctx, self.config)
             self.state = FiberState.ACTIVE
         except Exception as e:
-            self._error = e
+            cleanup = self._disposables.dispose_all()
+            self._disposables = DisposableList()
+            self._error = DisposalError([("apply", e), *cleanup]) if cleanup else e
             self.state = FiberState.FAILED
 
     def _unload(self) -> None:
-        """卸载插件：逆序执行所有 disposable。"""
+        """卸载插件：逆序执行所有 disposable，聚合异常且不中断。
+
+        与旧实现的差异：不再用 ``contextlib.suppress`` 静默吞掉异常。全部
+        撤销尝试完成后效应数必归零；若有失败则置 FAILED 并通过 ``error``
+        暴露聚合异常。
+        """
         self.state = FiberState.UNLOADING
-        for dispose in self._disposables.clear():
-            with contextlib.suppress(Exception):
-                dispose()
+        errors = self._disposables.dispose_all()
         self._disposables = DisposableList()
-        self.state = FiberState.PENDING
+        if errors:
+            self._error = DisposalError(errors)
+            self.state = FiberState.FAILED
+        else:
+            self.state = FiberState.PENDING
+
+    @property
+    def error(self) -> Exception | None:
+        """最近一次装配或卸载失败的异常；None 表示无错误。"""
+        return self._error
 
     def dispose(self) -> None:
-        """彻底销毁 Fiber。"""
+        """彻底销毁 Fiber。
+
+        卸载期若发生异常，保留 FAILED 状态以便调用方通过 ``error`` 查证；
+        否则置 DISPOSED。
+        """
         if self.state in (FiberState.ACTIVE, FiberState.FAILED):
             self._unload()
-        self.state = FiberState.DISPOSED
+        if self.state != FiberState.FAILED:
+            self.state = FiberState.DISPOSED

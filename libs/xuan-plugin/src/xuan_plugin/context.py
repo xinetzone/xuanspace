@@ -5,7 +5,7 @@ import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from .disposable import Disposable, DisposableList, EffectMeta
+from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .plugin import Fiber, FiberState, Plugin
 
 
@@ -28,6 +28,7 @@ class Context:
     _effects: list[EffectMeta] = field(default_factory=list)
     _root_disposables: DisposableList = field(default_factory=DisposableList)
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
+    _disposal_errors: list[tuple[str, Exception]] = field(default_factory=list)
 
     def effect(self, execute: Callable[[], Disposable | list[Disposable]], label: str = "") -> Disposable:
         """注册可逆效应到根 DisposableList。"""
@@ -42,9 +43,14 @@ class Context:
             self._effects.append(EffectMeta(label=label))
 
         def undo() -> None:
+            errors: list[tuple[str, Exception]] = []
             for d in disposables:
-                with contextlib.suppress(Exception):
+                try:
                     d()
+                except Exception as exc:  # noqa: BLE001 —— 聚合后统一上报，不中断同批撤销
+                    errors.append((getattr(d, "__name__", "disposable"), exc))
+            if errors:
+                raise DisposalError(errors)
 
         return undo
 
@@ -92,17 +98,33 @@ class Context:
         """获取效应元信息树（用于调试与可观测性）。"""
         return list(self._effects)
 
-    def dispose(self) -> None:
-        """清理所有资源：逆序卸载所有 Fiber 并清空服务。"""
+    def dispose(self, report: Callable[[str, Exception], None] | None = None) -> list[tuple[str, Exception]]:
+        """清理所有资源：逆序卸载 Fiber 并回收根效应。
+
+        卸载期异常不中断流程——所有 Fiber 与根效应都会被执行，失败项汇总
+        返回并留存于 ``get_disposal_errors()``。``report`` 可选，用于逐项
+        即时上报（如写日志）。不主动抛出：``__exit__`` 中抛异常会掩盖
+        代码块原本的异常。
+        """
+        errors: list[tuple[str, Exception]] = []
         for fiber in reversed(list(self._fibers.values())):
-            with contextlib.suppress(Exception):
-                fiber.dispose()
+            fiber.dispose()
+            if fiber.error is not None:
+                label = f"fiber:{fiber.name}"
+                errors.append((label, fiber.error))
+                if report is not None:
+                    report(label, fiber.error)
         self._fibers.clear()
-        for dispose in self._root_disposables.clear():
-            with contextlib.suppress(Exception):
-                dispose()
+        for label, exc in self._root_disposables.dispose_all(report):
+            errors.append((f"root:{label}", exc))
         self._store.clear()
         self._effects.clear()
+        self._disposal_errors = errors
+        return errors
+
+    def get_disposal_errors(self) -> list[tuple[str, Exception]]:
+        """返回上一次 ``dispose()`` 期间的失败清单。"""
+        return list(self._disposal_errors)
 
     # ─── 上下文管理器协议 ───────────────────────────────────────────────
 

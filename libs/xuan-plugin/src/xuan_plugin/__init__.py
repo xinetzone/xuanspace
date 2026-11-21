@@ -5,7 +5,7 @@
 """
 
 from .context import Context
-from .disposable import Disposable, DisposableList, EffectMeta
+from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .plugin import Fiber, FiberState, InjectSpec, Plugin
 from .service import ServiceDefinition, ServiceProvider, ServiceRegistry
 
@@ -13,6 +13,7 @@ __all__ = [
     "Context",
     "Disposable",
     "DisposableList",
+    "DisposalError",
     "EffectMeta",
     "Fiber",
     "FiberState",

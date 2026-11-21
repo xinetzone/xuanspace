@@ -1,18 +1,23 @@
 """统一上下文（Context）补充测试：notify 边界、dispose、根效应。"""
 
+import pytest
 from xuan_plugin.context import Context
+from xuan_plugin.disposable import DisposalError
 from xuan_plugin.plugin import FiberState, InjectSpec, Plugin
 
 
-def test_effect_undo_swallows_exception() -> None:
-    """根效应逆函数抛异常被吞掉。"""
+def test_effect_undo_aggregates_exception() -> None:
+    """根效应逆函数抛异常时聚合为 DisposalError，不再静默吞掉。"""
     ctx = Context()
 
     def boom():
         raise RuntimeError("boom")
 
     undo = ctx.effect(lambda: [boom], label="bad")
-    undo()  # 不应抛出
+    with pytest.raises(DisposalError) as excinfo:
+        undo()
+    assert len(excinfo.value.errors) == 1
+    assert str(excinfo.value.errors[0][1]) == "boom"
 
 
 def test_effect_without_label_not_recorded() -> None:
