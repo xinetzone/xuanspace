@@ -475,7 +475,9 @@ class Fiber:
 
         与旧实现的差异：不再用 ``contextlib.suppress`` 静默吞掉异常。全部
         撤销尝试完成后效应数必归零；若有失败则置 FAILED 并通过 ``error``
-        暴露聚合异常。
+        暴露聚合异常。卸载成功后同时清空 ``_error``——``error`` 描述的是
+        「当前失败态」，而不是历史失败；历史异常应由其发生时的调用方就地
+        读取，否则 ``Context.dispose`` 会把早已处理的失败再上报一次。
         """
         self._transition(FiberState.UNLOADING)
         errors = self._disposables.dispose_all()
@@ -487,6 +489,7 @@ class Fiber:
         else:
             self._missing = ()
             self._inputs = None
+            self._error = None
             self._transition(FiberState.PENDING)
 
     def retry(self) -> None:
@@ -515,7 +518,12 @@ class Fiber:
 
     @property
     def error(self) -> Exception | None:
-        """最近一次装配或卸载失败的异常；None 表示无错误。"""
+        """当前失败态的异常；仅在 ``FAILED`` 时非空。
+
+        该属性是状态不变量的一部分：``state is FAILED`` 与 ``error is not None``
+        互为充要条件。卸载成功即清零，故 ``Context.dispose`` 不会把此前已由
+        调用方处理的装配失败重复计入处置错误（P2-8）。
+        """
         return self._error
 
     def dispose(self) -> None:

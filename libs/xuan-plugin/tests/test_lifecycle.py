@@ -7,7 +7,30 @@ DISPOSED 为终态且二次 dispose 幂等；静态插件 ACTIVE 后不热换（
 
 import pytest
 from xuan_plugin.context import Context
-from xuan_plugin.plugin import FiberState, FiberTransitionError, InjectSpec, Plugin
+from xuan_plugin.plugin import _TRANSITIONS, Fiber, FiberState, FiberTransitionError, InjectSpec, Plugin
+
+# 设计 §5.5 迁移表；另含代码注释显式补入的三条运行期边：
+# FAILED → INACTIVE（依赖消失）、FAILED → UNLOADING（dispose 回收失败节点）、
+# UNLOADING → FAILED（撤销异常）。其余 7x7 组合一律非法。
+_ALLOWED_TRANSITIONS = frozenset(
+    {
+        (FiberState.PENDING, FiberState.LOADING),
+        (FiberState.PENDING, FiberState.INACTIVE),
+        (FiberState.PENDING, FiberState.DISPOSED),
+        (FiberState.INACTIVE, FiberState.LOADING),
+        (FiberState.INACTIVE, FiberState.DISPOSED),
+        (FiberState.LOADING, FiberState.ACTIVE),
+        (FiberState.LOADING, FiberState.FAILED),
+        (FiberState.ACTIVE, FiberState.UNLOADING),
+        (FiberState.ACTIVE, FiberState.DISPOSED),
+        (FiberState.UNLOADING, FiberState.PENDING),
+        (FiberState.UNLOADING, FiberState.FAILED),
+        (FiberState.FAILED, FiberState.LOADING),
+        (FiberState.FAILED, FiberState.INACTIVE),
+        (FiberState.FAILED, FiberState.UNLOADING),
+        (FiberState.FAILED, FiberState.DISPOSED),
+    }
+)
 
 
 class DepV1:
@@ -169,3 +192,55 @@ def test_refresh_during_apply_does_not_reenter_state_machine() -> None:
 
     fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
     assert fiber.state is FiberState.ACTIVE
+
+
+def test_transition_table_matches_documented_edges() -> None:
+    """迁移表与设计 §5.5 逐项一致，且终态无出边。"""
+    assert set(_TRANSITIONS) == set(FiberState)
+    assert _TRANSITIONS[FiberState.DISPOSED] == frozenset()
+    actual = {(source, target) for source, targets in _TRANSITIONS.items() for target in targets}
+    assert actual == set(_ALLOWED_TRANSITIONS)
+
+
+def test_transition_rejects_every_edge_outside_the_table() -> None:
+    """穷举 7x7：表内迁移成功，表外必抛 FiberTransitionError 且状态不变。"""
+    for source in FiberState:
+        for target in FiberState:
+            fiber = Fiber(Plugin(name="p", apply=lambda ctx, cfg: None), Context())
+            fiber.state = source
+            if (source, target) in _ALLOWED_TRANSITIONS:
+                fiber._transition(target)
+                assert fiber.state is target
+            else:
+                with pytest.raises(FiberTransitionError):
+                    fiber._transition(target)
+                assert fiber.state is source
+
+
+def test_non_active_states_hold_no_effects() -> None:
+    """§5.5 不变量：PENDING / INACTIVE / FAILED / DISPOSED 下效应数恒为 0。"""
+    pending = Fiber(Plugin(name="pending", apply=lambda ctx, cfg: None), Context())
+    assert pending.state is FiberState.PENDING
+    assert len(pending._disposables) == 0
+
+    inactive = Fiber(
+        Plugin(name="inactive", apply=lambda ctx, cfg: None, inject=[InjectSpec("missing")]),
+        Context(),
+    )
+    inactive._refresh()
+    assert inactive.state is FiberState.INACTIVE
+    assert len(inactive._disposables) == 0
+
+    def boom(ctx: Context, config: dict) -> None:
+        ctx.effect(lambda: None)
+        raise RuntimeError("boom")
+
+    failed = Fiber(Plugin(name="failed", apply=boom), Context())
+    failed._refresh()
+    assert failed.state is FiberState.FAILED
+    assert len(failed._disposables) == 0
+
+    disposed = Fiber(Plugin(name="disposed", apply=lambda ctx, cfg: None), Context())
+    disposed.dispose()
+    assert disposed.state is FiberState.DISPOSED
+    assert len(disposed._disposables) == 0

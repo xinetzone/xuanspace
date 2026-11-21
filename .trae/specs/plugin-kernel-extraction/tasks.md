@@ -601,7 +601,7 @@ Task 1–8 全部完成后，满足：
     `allow_inactive=False` 供需要「全量可激活」的调用方（如发布前检查）显式收紧。
   - 真实装配（`apply` 不加 `--dry-run`）依赖 P1-3 的运行时插件实现，当前显式拒绝而非空转。
   - `Fiber` 卸载成功后仍保留上一次的 `_error`，导致 `Context.dispose` 重复上报同一异常；
-    本轮在装配器按异常对象去重，未改动 `Fiber` 语义（留待后续按需修正）。
+    本轮在装配器按异常对象去重，未改动 `Fiber` 语义（留待后续按需修正，已由 Task P2-8-1 处置）。
 
 ## Task P1-3-1: 命令注册切换为插件装配并接通真实 `apply`
 
@@ -651,7 +651,7 @@ Task 1–8 全部完成后，满足：
   - 快照为逐字比对，rich 升级会改变面板字符与宽度；升级后须按同一 harness 重建快照，
     不可手工编辑。
   - `Fiber` 卸载后仍保留 `_error` 的问题未在 P1-3 处理，仍由装配器按异常对象去重兜底
-    （承接 P1-2 的 A4 待办）。
+    （承接 P1-2 的 A4 待办，已由 Task P2-8-1 处置）。
 
 ## Task P2-1-1: 构建后端多提供者（`xuan:build/backend#dispatch`）
 
@@ -1104,4 +1104,62 @@ Task 1–8 全部完成后，满足：
   - **V4 性能**：无源码分支本就依赖 `repr`，折叠只增加一次线性正则扫描，
     相对 `inspect.getsource` 与 sha256 可忽略；
   - **V5 截断长度**：`_DIGEST_LEN=16`（64 bit）未变，碰撞概率与既有口径一致。
+
+## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-7-1（`62d42a0`）；处置 P1-2 / P1-3 遗留的 A4 待办
+- **Description**:
+  - 缺口一：`Fiber._unload` 成功后不清空 `_error`，卸载成功（→PENDING）的 Fiber 仍携带
+    上一次装配失败的异常；`Context.dispose` 因此把调用方早已读取的失败当成「处置错误」
+    二次上报，装配器只能在 `assembly.py` 中按 `id(exc)` 去重兜底（第二真相，且依赖地址）。
+  - 缺口二：`_TRANSITIONS` 是手写常量，缺少与设计 §5.5 绑定的机检；7×7 状态对中任何
+    「多一条或漏一条」都不会被现有路径测试发现。
+  - 改动：
+    - `plugin.py::_unload` 成功分支清空 `_error`；`Fiber.error` 口径改为「仅当前失败态，
+      `FAILED ⇔ error is not None`」；
+    - `assembly.py` 删除按异常对象去重，直接并入 `ctx.get_disposal_errors()`；
+    - `test_lifecycle.py` 新增迁移表逐项对账、7×7 穷举与四态零效应不变量；
+      `test_disposal_errors.py` 新增「卸载成功清零」「处置不重复上报装配失败」；
+    - `doc/okf/architecture.md`：状态图 dispose 边改为「任意状态（撤销成功时）」，
+      补充 `error` 互锁与穷举守护说明。
+- **Acceptance Criteria Addressed**: §5.5 状态不变量可机检；`Context.dispose` 只汇总真正的
+  处置失败；迁移表与设计漂移即失败
+- **Test Requirements**:
+  - `rule` TR-P2.8-1: 迁移表与 §5.5（含三条显式补边）逐项一致；证据：
+    `test_transition_table_matches_documented_edges`
+  - `rule` TR-P2.8-2: 7×7 穷举：表内迁移成功、表外抛错且状态不变；证据：
+    `test_transition_rejects_every_edge_outside_the_table`
+  - `rule` TR-P2.8-3: PENDING/INACTIVE/FAILED/DISPOSED 效应数恒为 0；证据：
+    `test_non_active_states_hold_no_effects`
+  - `rule` TR-P2.8-4: 卸载成功后 `error` 为 None；证据：
+    `test_error_is_cleared_after_successful_unload`
+  - `rule` TR-P2.8-5: `Context.dispose` 不重复上报已读取的装配失败；证据：
+    `test_context_dispose_does_not_repeat_apply_failure`
+  - `rule` TR-P2.8-6: 去掉去重后装配回滚的失败清单仍无重复；证据：
+    `test_failure_rolls_back_in_reverse_and_leaves_no_residue`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 第一批 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **194 passed**（P2-7 后基线 189，新增 5）；
+  - `tools/okf` 独立运行 → **259 passed**；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 58 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （337 文件）、`check_spec_integrity.py`（34 个任务编号）通过；
+    `check_declaration_consistency.py` 仍为既有 2 项失败（`libs/mystx` 指针漂移与快照过期）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 error 语义变化**：`error` 不再是历史账本。装配失败在 `ctx.plugin()` 返回时即可读，
+    调用方须就地取证；需要历史排障应依赖日志而非该属性。
+  - **V2 去重删除**：卸载失败会产生新的 `DisposalError`，与 apply 原始异常是两条不同事实，
+    同时上报是正确的；真正重复的来源（同一异常对象）已由清零消除。
+  - **V3 穷举测试直改 `state`**：靶子是 `_transition` 守卫本身；路径级状态覆盖由既有
+    `test_lifecycle.py` / `test_notification_batch.py` 承担，两者互补而非替代。
+  - **V4 三条补边**：`FAILED→INACTIVE`（依赖消失）、`FAILED→UNLOADING`（dispose 回收
+    失败节点）、`UNLOADING→FAILED`（撤销异常）在代码注释中已有说明，本轮纳入机检基线。
+  - **V5 不变量边界**：`FAILED ⇔ error is not None` 在 `_deactivate` 从 FAILED 直接转
+    INACTIVE 时同样成立（该分支显式清零）。
 

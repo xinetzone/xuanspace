@@ -84,10 +84,9 @@ def assemble(
     if errors:
         rolled_back = tuple(reversed(applied))
         ctx.dispose()
-        # 失败节点的 Fiber 保留 FAILED 与原始异常，dispose 会把同一异常再报一次；
-        # 按异常对象去重，避免「一次失败、两条记录」误导定位。
-        reported = {id(exc) for _, exc in errors}
-        errors.extend(item for item in ctx.get_disposal_errors() if id(item[1]) not in reported)
+        # 卸载成功的 Fiber 已清空 error（P2-8），装配失败不会在处置阶段被
+        # 二次上报；这里只补充真正的卸载失败，无需再按异常对象去重。
+        errors.extend(ctx.get_disposal_errors())
         residual_effects = len(ctx.get_effects())
         residual_keys = ctx.registered_keys()
         if residual_effects or residual_keys:

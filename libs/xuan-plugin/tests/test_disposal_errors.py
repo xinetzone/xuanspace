@@ -119,3 +119,35 @@ def test_context_dispose_collects_root_errors() -> None:
     assert errors[0][0] == "root:_boom"
     assert ctx.get_disposal_errors() == errors
     assert len(ctx._root_disposables) == 0
+
+
+def test_error_is_cleared_after_successful_unload() -> None:
+    """卸载成功后 error 清零：error 只描述当前失败态，不是历史账本。"""
+
+    def apply(c: Context, cfg: dict) -> None:
+        raise RuntimeError("boom")
+
+    ctx = Context()
+    fiber = Fiber(Plugin(name="p", apply=apply), ctx)
+    fiber._refresh()
+    assert fiber.state == FiberState.FAILED
+    assert isinstance(fiber.error, RuntimeError)
+
+    fiber._unload()
+
+    assert fiber.state == FiberState.PENDING
+    assert fiber.error is None
+
+
+def test_context_dispose_does_not_repeat_apply_failure() -> None:
+    """调用方已读取的装配失败不再计入处置错误（P1-2 A4 待办）。"""
+
+    def apply(c: Context, cfg: dict) -> None:
+        raise RuntimeError("boom")
+
+    ctx = Context()
+    ctx.plugin(Plugin(name="bad", apply=apply))
+    assert isinstance(ctx._fibers["bad"].error, RuntimeError)
+
+    assert ctx.dispose() == []
+    assert ctx.get_disposal_errors() == []

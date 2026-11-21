@@ -42,7 +42,7 @@ PENDING ──→ INACTIVE ──→ LOADING ──→ ACTIVE ──→ UNLOADIN
               ↑                           │
               └──── 依赖消失 ─────────────┘
 LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
-任意非 FAILED 状态 ──dispose──→ DISPOSED（终态，二次 dispose 幂等）
+任意状态（撤销成功时） ──dispose──→ DISPOSED（终态，二次 dispose 幂等）
 ```
 
 - 插件通过 `Plugin.provide` 声明「提供哪些服务」，通过 `Plugin.inject` 声明「依赖哪些服务」。
@@ -51,7 +51,8 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 - 依赖方只在**最终视图**上判定：`Fiber._refresh`、`retry`、`Context.plugin` 各自处于一次传播事务内，多键提供方的卸载/装载通知合并排空，依赖方不会看到「键暂时缺失」的中间态；一次逻辑变更只产生一轮替换（度量 M4）。
 - `INACTIVE` 且依赖已全部可解时立即重新装配（含「撤销后重供同一实现」），不会停在可激活而未激活的静默缺口。
 - 加载成功进入 `ACTIVE`，失败进入 `FAILED`（已登记效应强制撤销）；`retry()` 提供显式重试通道。
-- 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级。
+- `error` 与状态互锁：`FAILED ⇔ error is not None`。卸载成功后清零，`error` 只描述当前失败态；`Context.dispose` 因此只汇总真正的处置失败，不会把调用方已读取的装配失败二次上报。
+- 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级；7×7 状态对由 `test_lifecycle.py` 穷举守护，表与设计 §5.5 漂移即失败。
 - `lifecycle="static"` 的插件在 `ACTIVE` 后抑制热换（ADR-03）；`dispose` 仍执行逻辑退役，撤销能力句柄与效应，但不承诺卸载已映射的 `.so`。
 
 ## 设计主线三：可逆效应（Disposable）
