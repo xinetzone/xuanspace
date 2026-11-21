@@ -1163,3 +1163,59 @@ Task 1–8 全部完成后，满足：
   - **V5 不变量边界**：`FAILED ⇔ error is not None` 在 `_deactivate` 从 FAILED 直接转
     INACTIVE 时同样成立（该分支显式清零）。
 
+## Task P2-9-1: ACTIVE 与可解性互锁
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-8-1（`be6f6b7`）
+- **Description**:
+  - 缺口：`Fiber._reload` 在 `apply` 成功后重算输入快照，但 `snapshot is None`（apply 期间
+    必需依赖被移除）时只跳过 epoch 更新，仍迁移到 `ACTIVE`，形成「`ACTIVE` + 输入不可解」；
+    此时 `Fiber._inputs is None`、`ctx.get(必需键)` 抛 `KeyError`。不能指望后续传播补救：
+    触发撤销的那次 `notify` 可能在 `LOADING` 期被 `_refresh` 早退吞掉。
+  - 缺口二：`_replace` 在 `_reload` 后只区分 `ACTIVE` / 其它，若 `_reload` 自行降级为
+    `INACTIVE`，会被误计为一次回滚并留下无意义的 `_pending`。
+  - 改动：
+    - `plugin.py::_reload`：`snapshot is None` 时置 epoch 为 `_INACTIVE`，依迁移表先落
+      `ACTIVE` 再由 `_deactivate` 撤销刚登记的效应并收敛到 `INACTIVE`；
+    - `plugin.py::_replace`：`_reload` 后 `state is INACTIVE` 直接返回，不计 `reloads` /
+      `rollbacks`，不设 `_pending`、不记 `reload_reason`；
+    - `test_hot_reload.py` 新增两条重入用例（初次装配、热替换各一）；`test_lifecycle.py`
+      新增「`ACTIVE ⇒ 输入可解」不变量机检；
+    - `doc/okf/architecture.md`：状态机小节补充互锁说明。
+- **Acceptance Criteria Addressed**: §5.5 不变量「`ACTIVE` 必持有可解输入」可机检；热替换中
+  依赖消失不再产生伪回滚与失效 `_pending`
+- **Test Requirements**:
+  - `rule` TR-P2.9-1: apply 期间依赖消失时，事务未排空即已收敛到 INACTIVE 且零效应；证据：
+    `test_reload_converges_to_inactive_when_inputs_vanish_during_apply`
+  - `rule` TR-P2.9-2: 热替换的新装配期间依赖消失：终态 INACTIVE，`reloads`/`rollbacks`
+    均为 0、`pending_reload` 为 None、效应归零；证据：
+    `test_hot_reload_with_vanishing_dependency_is_neither_reload_nor_rollback`
+  - `rule` TR-P2.9-3: `ACTIVE ⇒ _inputs is not None 且 epoch ≠ _INACTIVE`；证据：
+    `test_active_implies_resolvable_inputs`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 第一批 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **197 passed**（P2-8 后基线 194，新增 3）；
+  - `tools/okf` 独立运行 → **259 passed**（未受影响）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 58 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （337 文件）、`check_spec_integrity.py`（35 个任务编号）通过；
+    `check_declaration_consistency.py` 仍为既有 2 项失败（`libs/mystx` 指针漂移与快照过期）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 瞬时 ACTIVE**：`LOADING → ACTIVE → INACTIVE` 是迁移表约束下的唯一合法路径，
+    `_transition` 不发布事件，方法返回时外部只见终态；语义正确性优先于瞬时状态。
+  - **V2 卸载失败优先级**：`_deactivate` 中撤销失败会保留 `FAILED`，`_replace` 遂按回滚记录。
+    这是 P2-8 的既有语义（卸载失败优先暴露），`retry()` 会重新计算 epoch，故不会误重试。
+  - **V3 为何不直接 `LOADING → INACTIVE`**：迁移表不允许该边；放宽会削弱「装配必有结论」
+    的约束，故选择委托 `_deactivate` 复用既有撤销逻辑，而不是新增边或复制卸载代码。
+  - **V4 副带修正**：`_epoch` 置为 `_INACTIVE` 后，「撤销后重供同一实现」从
+    `new_epoch == _epoch` 分支落到 `else` 分支，两条分支都会重新装配，行为等价；
+    后者同时把 epoch 更新为真实身份，消除 epoch 滞后于输入快照的隐患。
+  - **V5 测试用外层事务**：`with ctx.batch(): ctx.plugin(...)` 用的是公共 API，对应
+    「装配嵌套在既有传播事务内」的真实调用形态；断言在事务未排空时成立，正好证明
+    收敛不依赖通知补救。
+

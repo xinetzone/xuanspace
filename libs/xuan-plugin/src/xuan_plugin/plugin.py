@@ -414,6 +414,11 @@ class Fiber:
 
         self._epoch = new_epoch
         self._reload()
+        if self.state is FiberState.INACTIVE:
+            # 新实现装配期间依赖消失：_reload 已撤销其效应并自行收敛到 INACTIVE。
+            # 这既不是成功重载（无新身份生效），也不是回滚（无待重试目标），
+            # 故不计数、不留 _pending。
+            return
         if self.state is FiberState.ACTIVE:
             self._reloads += 1
             self._reload_reason = reason
@@ -459,8 +464,17 @@ class Fiber:
             # 造成反复重载甚至排空不收敛。
             snapshot = self._snapshot_inputs()
             self._inputs = snapshot
-            if snapshot is not None:
-                self._epoch = self._epoch_of(snapshot)
+            if snapshot is None:
+                # apply 期间必需依赖被移除：输入已不可解，留在 ACTIVE 会违反
+                # 「ACTIVE ⇒ 输入可解」不变量，且不能指望后续通知补救——触发撤销
+                # 的那次 notify 可能在 LOADING 期被早退吞掉。迁移表不允许
+                # LOADING → INACTIVE，故先落 ACTIVE，再由 _deactivate 撤销本次
+                # 登记的效应并收敛到 INACTIVE。
+                self._epoch = _INACTIVE
+                self._transition(FiberState.ACTIVE)
+                self._deactivate(self._missing_keys())
+                return
+            self._epoch = self._epoch_of(snapshot)
             self._pending = None
             self._transition(FiberState.ACTIVE)
         except Exception as e:

@@ -50,6 +50,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 - `INACTIVE` 表示必需依赖暂不可得：不抛错、不持有任何效应，并通过 `Fiber.reason` 给出缺失键；依赖出现后自动迁移到 `LOADING`。
 - 依赖方只在**最终视图**上判定：`Fiber._refresh`、`retry`、`Context.plugin` 各自处于一次传播事务内，多键提供方的卸载/装载通知合并排空，依赖方不会看到「键暂时缺失」的中间态；一次逻辑变更只产生一轮替换（度量 M4）。
 - `INACTIVE` 且依赖已全部可解时立即重新装配（含「撤销后重供同一实现」），不会停在可激活而未激活的静默缺口。
+- `ACTIVE` 与可解性互锁：装配期间必需依赖被移除时，`_reload` 不在 `ACTIVE` 上停留——先撤销刚登记的效应，再收敛到 `INACTIVE` 并由 `Fiber.reason` 给出缺失键；故 `ACTIVE ⇒ 输入快照可解` 恒成立。热替换中发生该情形既不计 `reloads`（无新身份生效）也不计 `rollbacks`（无待重试目标）。
 - 加载成功进入 `ACTIVE`，失败进入 `FAILED`（已登记效应强制撤销）；`retry()` 提供显式重试通道。
 - `error` 与状态互锁：`FAILED ⇔ error is not None`。卸载成功后清零，`error` 只描述当前失败态；`Context.dispose` 因此只汇总真正的处置失败，不会把调用方已读取的装配失败二次上报。
 - 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级；7×7 状态对由 `test_lifecycle.py` 穷举守护，表与设计 §5.5 漂移即失败。

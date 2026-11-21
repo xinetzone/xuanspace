@@ -7,7 +7,7 @@ DISPOSED 为终态且二次 dispose 幂等；静态插件 ACTIVE 后不热换（
 
 import pytest
 from xuan_plugin.context import Context
-from xuan_plugin.plugin import _TRANSITIONS, Fiber, FiberState, FiberTransitionError, InjectSpec, Plugin
+from xuan_plugin.plugin import _INACTIVE, _TRANSITIONS, Fiber, FiberState, FiberTransitionError, InjectSpec, Plugin
 
 # 设计 §5.5 迁移表；另含代码注释显式补入的三条运行期边：
 # FAILED → INACTIVE（依赖消失）、FAILED → UNLOADING（dispose 回收失败节点）、
@@ -244,3 +244,24 @@ def test_non_active_states_hold_no_effects() -> None:
     disposed.dispose()
     assert disposed.state is FiberState.DISPOSED
     assert len(disposed._disposables) == 0
+
+
+def test_active_implies_resolvable_inputs() -> None:
+    """§5.5 不变量：ACTIVE ⇒ 输入快照可解（``_inputs is not None`` 且 epoch 非 ``_INACTIVE``）。"""
+
+    def assert_invariant(fiber: Fiber) -> None:
+        if fiber.state is FiberState.ACTIVE:
+            assert fiber._inputs is not None
+            assert fiber._epoch != _INACTIVE
+
+    solo = Fiber(Plugin(name="solo", apply=lambda ctx, cfg: None), Context())
+    solo._refresh()
+    assert solo.state is FiberState.ACTIVE
+    assert_invariant(solo)
+
+    ctx = Context()
+    ctx.provide("dep", DepV1())
+    with_dep = Fiber(Plugin(name="p", apply=lambda ctx, cfg: None, inject=[InjectSpec("dep")]), ctx)
+    with_dep._refresh()
+    assert with_dep.state is FiberState.ACTIVE
+    assert_invariant(with_dep)

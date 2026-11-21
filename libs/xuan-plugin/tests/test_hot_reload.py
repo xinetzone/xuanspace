@@ -169,3 +169,56 @@ def test_consumer_hot_swap_preserves_downstream_key() -> None:
     assert fiber.reloads == 1
     assert produced == ["v1", "v2"]
     assert ctx.get("c") == "v2"
+
+
+def test_reload_converges_to_inactive_when_inputs_vanish_during_apply() -> None:
+    """apply 期间依赖消失：`_reload` 自行收敛到 INACTIVE，不依赖后续通知补救。"""
+    ctx = Context()
+    undo = ctx.provide("dep", ImplV1())
+
+    def apply(ctx, config) -> None:
+        ctx.get("dep")
+        undo()  # 撤销供应；notify 被外层事务延后，排空不会及时补救
+
+    with ctx.batch():
+        fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
+
+        assert fiber.state is FiberState.INACTIVE
+        assert fiber.reason == ("dep",)
+        assert len(fiber._disposables) == 0
+
+    # 事务排空后仍稳定在 INACTIVE
+    assert fiber.state is FiberState.INACTIVE
+    assert fiber.reason == ("dep",)
+
+
+def test_hot_reload_with_vanishing_dependency_is_neither_reload_nor_rollback() -> None:
+    """热替换的新装配期间依赖消失：撤销效应、收敛 INACTIVE，且不计成功也不计回滚。"""
+    undone: list[str] = []
+    calls = {"n": 0}
+    undo_new: list = []
+
+    def apply(ctx, config) -> None:
+        calls["n"] += 1
+        ctx.effect(lambda: [lambda: undone.append("undo")])
+        if calls["n"] == 2:
+            undo_new[0]()  # 新实现装配期间依赖被撤销
+
+    ctx = Context()
+    ctx.provide("dep", ImplV1())
+    fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
+    assert fiber.state is FiberState.ACTIVE
+
+    with ctx.batch():
+        undo_new.append(ctx.provide("dep", ImplV2()))
+        fiber._refresh()  # 事务内触发「先卸旧、再装新」
+
+        assert fiber.state is FiberState.INACTIVE
+        assert fiber.reason == ("dep",)
+        assert fiber.reloads == 0
+        assert fiber.rollbacks == 0
+        assert fiber.pending_reload is None
+        assert len(fiber._disposables) == 0
+        assert undone == ["undo", "undo"]
+
+    assert fiber.state is FiberState.INACTIVE
