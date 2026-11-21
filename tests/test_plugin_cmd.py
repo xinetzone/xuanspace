@@ -74,11 +74,14 @@ def test_plugin_graph_dot(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_plugin_list_text(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(REPO_ROOT)
-    # 默认 80 列下 rich 会截断 ID 列，测试改用宽终端以断言完整内容
-    monkeypatch.setattr(plugin_cmd, "console", Console(width=200))
+    # 固定 80 列以复现窄终端：ID 与来源必须以换行而非省略号呈现
+    monkeypatch.setattr(plugin_cmd, "console", Console(width=80))
     result = runner.invoke(cli_app, ["plugin", "list"])
     assert result.exit_code == 0, result.output
     assert "xs.commands" in result.output
+    assert "reloadable" in result.output
+    assert "tools/xs" in result.output
+    assert "…" not in result.output
     assert "共" in result.output
 
 

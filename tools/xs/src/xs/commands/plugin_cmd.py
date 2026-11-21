@@ -114,15 +114,22 @@ def list_plugins(
         console.print("[yellow]工作区内未发现 [tool.xuan.plugin] 声明，也无 xuan.plugins 入口点。[/yellow]")
         return
 
+    # rich 默认在窄终端把单元格截断为省略号（如 "xs.comma…"）。处理方式：
+    # 表头取紧凑写法、短字段禁换行、来源列折行、来源只显示项目目录，
+    # 使 7 列在 80 列终端内完整放下且不丢信息。
     table = Table(title="插件清单", show_lines=False)
-    table.add_column("ID", style="bold cyan")
-    table.add_column("VERSION", style="green")
-    table.add_column("LIFECYCLE")
-    table.add_column("PRIORITY", justify="right")
-    table.add_column("PROVIDES", justify="right")
-    table.add_column("INJECTS", justify="right")
-    table.add_column("SOURCE", style="dim")
+    table.add_column("ID", style="bold cyan", no_wrap=True)
+    table.add_column("VER", style="green", no_wrap=True)
+    table.add_column("LIFECYCLE", no_wrap=True)
+    table.add_column("PRIO", justify="right", no_wrap=True)
+    table.add_column("PROV", justify="right", no_wrap=True)
+    table.add_column("INJ", justify="right", no_wrap=True)
+    table.add_column("SOURCE", style="dim", overflow="fold")
     for manifest in manifests:
+        # 来源只展示所属项目目录——文件名恒为 pyproject.toml，完整路径由 --json 提供
+        source = manifest.source
+        if source.endswith("/pyproject.toml"):
+            source = source[: -len("/pyproject.toml")]
         table.add_row(
             manifest.id,
             manifest.version,
@@ -130,7 +137,7 @@ def list_plugins(
             str(manifest.priority),
             str(len(manifest.provide)),
             str(len(manifest.inject)),
-            manifest.source or "-",
+            source or "-",
         )
     console.print(table)
     keys = {p.key for m in manifests for p in m.provide}
