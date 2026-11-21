@@ -227,20 +227,22 @@ xs lfs patterns                                   # 列出 .gitattributes 中的
 
 ## xs plugin
 
-插件清单、装配图与求解计划。数据来源为工作区各项目 `pyproject.toml` 的 `[tool.xuan.plugin]`
-静态声明，以及 `xuan.plugins` 入口点；本命令只读取与展示，不激活插件。
+插件清单、装配图、求解计划与运行时装配。数据来源为工作区各项目 `pyproject.toml` 的
+`[tool.xuan.plugin]` 静态声明，以及 `xuan.plugins` 入口点。
 
 ```bash
 xs plugin list [--json|-j]      # 列出插件清单（id/版本/生命周期/优先级/供应与依赖数）
 xs plugin graph [--dot] [--json|-j]   # 候选节点与依赖边，标注未解析依赖与冲突键
-xs plugin apply --dry-run [--json|-j] # 输出确定性求解计划：定序、隔离域、可解性诊断
+xs plugin apply [--dry-run] [--json|-j] # 求解计划；不加 --dry-run 时对内置插件执行真实装配
 ```
 
-`apply` 在未加 `--dry-run` 时显式拒绝——真实装配需要各插件提供 `Plugin` 实现，
-待 P1-3 接线；求解面已可对刻意构造的冲突/环/缺依赖样例给出可复现输出。
+`apply` 默认执行真实装配：按解序装配内置插件，以 `FiberState.ACTIVE` 为生效判据逐节点校验，
+失败时逆序回滚，并以「声明 provide / 实际注册键」逐键对账收尾（缺、多均列出）。缺少运行时
+实现的插件会被显式列名退出，不会把空操作伪装成装配成功。`--dry-run` 只输出确定性求解计划
+（定序、隔离域、可解性诊断），不产生任何注册效应。
 
 | 选项 | 说明 |
 |---|---|
 | `--json` / `-j` | JSON 格式输出 |
 | `--dot` | 输出 Graphviz DOT（仅 `graph`） |
-| `--dry-run` | 只求解不装配（`apply` 必填） |
+| `--dry-run` | 只求解不装配（仅 `apply`） |

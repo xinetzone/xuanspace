@@ -6,7 +6,7 @@
 > **范围声明**：本计划只做「kernel 换位置」，不做任何行为改造。`id(impl)` → 摘要身份（P0-2）、
 > 卸载异常聚合（P0-3）、`ServiceRegistry` 的 priority 选择（ADR-05，属 P2）、`xs` 命令改造（P1-3）
 > 全部不在本计划内（P0-2 与 P0-3 已于 2026-11-21 另行执行，记录见文末「增量一」「增量二」；
-> P1-1 见「增量三」）。
+> P1-1 见「增量三」；P1-3 见「增量四」，已于 2026-11-21 完成）。
 >
 > **三条不变量**：
 > 1. 零行为变更——`Context` / `Fiber` / `Disposable` / `ServiceRegistry` 的公开 API 与运行语义逐项保持原样，
@@ -602,4 +602,54 @@ Task 1–8 全部完成后，满足：
   - 真实装配（`apply` 不加 `--dry-run`）依赖 P1-3 的运行时插件实现，当前显式拒绝而非空转。
   - `Fiber` 卸载成功后仍保留上一次的 `_error`，导致 `Context.dispose` 重复上报同一异常；
     本轮在装配器按异常对象去重，未改动 `Fiber` 语义（留待后续按需修正）。
+
+## Task P1-3-1: 命令注册切换为插件装配并接通真实 `apply`
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P1-2（`a8be022`）
+- **Description**:
+  - 新增 `tools/xs/src/xs/plugins/`：`registry.py`（`CommandRegistry`，`register` 返回撤销函数，
+    撤销后回到装配前空态）、`commands.py`（`COMMAND_SPECS` 16 条 + `MANIFEST` + `apply`，
+    每条命令与能力键均经 `ctx.effect` 登记，可整批回收）、`__init__.py`；
+  - `tools/xs/src/xs/cli.py`：不再逐个 import 子命令，改为构造 `Context` →
+    `ctx.plugin(COMMANDS_PLUGIN, {"registry": ...})` → 从 `CommandRegistry.entries()` 构建
+    Typer 应用；新增/移除内置命令只需改声明表；
+  - `tools/xs/src/xs/commands/affected_cmd.py`：把 `affected` 从 `cli.py` 抽出为独立命令模块；
+  - `tools/xs/pyproject.toml`：新增 `[project.entry-points."xuan.plugins"]`，静态清单与入口点
+    两条通道共用同一份声明；
+  - `plugin_cmd.py`：取消「未加 `--dry-run` 即拒绝」，默认执行真实装配（`assemble` +
+    `CommandRegistry`），节点非 `ACTIVE` 即判失败并逆序回滚；输出已装配节点、命令清单与
+    「声明 provide / 实际注册键」对账（missing/unexpected/matched）；缺运行时实现显式列名退出；
+  - `scripts/check_declaration_consistency.py`：CLI 命令的事实来源由 `cli.py` 正则改为
+    `plugins/commands.py` 的 `CommandSpec(...)` 登记表；
+  - 文档同步：`doc/cli/index.md`、`doc/intro.md` 改述真实装配、ACTIVE 判据与对账语义。
+- **Acceptance Criteria Addressed**: 装配后 `xs --help` 与改造前逐字一致；`apply` 真实装配可逆、
+  对账闭合；命令声明与实现单源，无双真相漂移
+- **Test Requirements**:
+  - `rule` TR-P1.3-1: 16 个命令由插件登记表声明，与 `pyproject.toml` 静态清单契约一致；
+    证据：`test_declared_commands_match_cli_registry`、`test_builtin_manifest_matches_static_declaration`
+  - `rule` TR-P1.3-2: 命令登记逐项可撤销，撤销后无残留；证据：`test_command_plugin_registration_is_reversible`
+  - `rule` TR-P1.3-3: 改为装配后 `xs --help` 与改造前快照逐字相同；证据：`test_help_output_matches_snapshot`
+  - `rule` TR-P1.3-4: `apply` 不加 `--dry-run` 时真实装配，16 条命令登记且对账一致；
+    证据：`test_apply_activates_builtin_plugin`
+  - `rule` TR-P1.3-5: 缺运行时实现显式报错退出，不把空操作伪装成成功；
+    证据：`test_apply_reports_missing_implementation`
+  - `rule` TR-P1.3-6: `--dry-run` 输出与 P1-2 逐字节一致（改造未影响求解面）；
+    证据：`test_apply_dry_run_json_is_byte_identical`
+  - `rule` TR-P1.3-7: 声明一致性门禁改读命令登记表后仍全通过
+- **Completion Evidence**（2026-11-21 实测）:
+  - 根 `tests/` → **52 passed**；`cd libs/xuan-plugin && python -m pytest -q` → **61 passed**；
+  - 门禁：`ruff check` All checks passed；`ruff format --check` 455 files already formatted；
+    `mypy tools/xs libs/xuan-plugin` → Success: no issues found in 38 source files；
+  - `python scripts/check_declaration_consistency.py` → 六类声明 + G 类子模块指针对账全部通过；
+  - 实机：`xs plugin apply` → 「装配完成：1 个节点 ACTIVE，16 条命令已登记 /
+    对账：一致 16 键，缺 0，多 0」；`xs plugin apply --dry-run` → 定序、隔离域、可解性输出不变；
+  - `tests/snapshots/xs_help.txt` 由与测试同源的 `CliRunner` 生成（rich 15.0.0，圆角面板），
+    与 `--help` 输出逐字相同。
+- **Notes**:
+  - 快照为逐字比对，rich 升级会改变面板字符与宽度；升级后须按同一 harness 重建快照，
+    不可手工编辑。
+  - `Fiber` 卸载后仍保留 `_error` 的问题未在 P1-3 处理，仍由装配器按异常对象去重兜底
+    （承接 P1-2 的 A4 待办）。
 

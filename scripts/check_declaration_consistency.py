@@ -6,7 +6,7 @@
 
 覆盖六类声明 + G 类子模块指针对账：
   A. CLI 命令清单：README.md「N 个子命令」、doc/intro.md 与 doc/cli/index.md 命令表
-                   ↔ tools/xs/src/xs/cli.py 的注册表
+                   ↔ tools/xs/src/xs/plugins/commands.py 的命令登记表
   B. 子项目清单  ：libs/README.md「现有子项目」生成块 ↔ libs/ 磁盘目录（P1-4①：
                    块由本脚本从磁盘派生并注入，门禁比对「块 == 脚本渲染结果」）
   C. 目录名口径  ：README.md「目录结构」块声明的目录 ↔ 磁盘存在性，
@@ -51,7 +51,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-CLI_MODULE = "tools/xs/src/xs/cli.py"
+CLI_MODULE = "tools/xs/src/xs/plugins/commands.py"
 README_FILE = "README.md"
 INTRO_FILE = "doc/intro.md"
 CLI_REF_FILE = "doc/cli/index.md"
@@ -90,9 +90,9 @@ LIB_PROJECT_META: dict[str, tuple[str, str]] = {
 }
 
 # --- 声明提取正则 ---
-# cli.py：命令组 `app.add_typer(x, name="...")` 与直接命令 `app.command("...")`
-_CLI_GROUP_RE = re.compile(r'app\.add_typer\(\s*[\w.]+,\s*name="([^"]+)"')
-_CLI_COMMAND_RE = re.compile(r'app\.command\("([^"]+)"\)')
+# 命令插件登记表：每条 `CommandSpec("name", "module:attr", kind=...)`
+# （P1-3 后 cli.py 只做装配调用，命令名的事实来源是插件登记表）
+_CLI_SPEC_RE = re.compile(r'CommandSpec\("([^"]+)"')
 # README.md 项目索引中的「（N 个子命令）」
 _README_CMD_COUNT_RE = re.compile(r"（\s*(\d+)\s*个子命令\s*）")
 # doc/intro.md 与 doc/cli/index.md 命令表中的 `xs <cmd>` 行
@@ -176,11 +176,11 @@ def _table_first_column(body: str) -> list[str]:
 
 
 def extract_cli_commands(root: Path) -> list[str]:
-    """从 cli.py 注册表提取一级命令名（命令组 + 直接命令，去重排序）。"""
+    """从命令插件登记表提取一级命令名（普通命令 + 命令组，去重排序）。"""
     text = _read_text(root, CLI_MODULE)
-    names = set(_CLI_GROUP_RE.findall(text)) | set(_CLI_COMMAND_RE.findall(text))
+    names = set(_CLI_SPEC_RE.findall(text))
     if not names:
-        raise ValueError(f"{CLI_MODULE} 未解析到任何命令注册，正则或文件结构已变化")
+        raise ValueError(f"{CLI_MODULE} 未解析到任何命令登记，正则或文件结构已变化")
     return sorted(names)
 
 

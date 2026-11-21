@@ -38,6 +38,10 @@ Issues = "https://github.com/xinetzone/xuanspace/issues"
 [project.scripts]
 xs = "xs.cli:app"
 
+# 入口点通道（P1-3）：加载模块后读取其 MANIFEST，与静态清单合并去重。
+[project.entry-points."xuan.plugins"]
+xs.commands = "xs.plugins.commands"
+
 # 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
 # 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
 [tool.scikit-build]
@@ -62,9 +66,9 @@ sdist.exclude = [
 cmake = false
 packages = ["src/xs"]
 
-# 插件清单（K2）：把内置子命令声明为能力供应，供 `xs plugin list/graph` 与后续
-# 动态装配消费。此处只做声明，命令注册仍由 cli.py 静态完成（P1-3 再切换）。
-# 声明与 cli.py 注册表的一致性由 tests/test_plugin_cmd.py 机检，防止双真相漂移。
+# 插件清单（K2）：把内置子命令声明为能力供应，供 `xs plugin list/graph` 与
+# 运行时装配消费。cli.py 只做装配调用，命令对象由 xs.plugins.commands 登记。
+# 声明与插件登记表的一致性由 tests/test_plugin_cmd.py 机检，防止双真相漂移。
 [tool.xuan.plugin]
 id = "xs.commands"
 version = "0.1.0"

@@ -1,9 +1,9 @@
-"""``xs plugin`` 命令：清单解析、装配图与求解计划（P1-1 / P1-2）。
+"""``xs plugin`` 命令：清单解析、装配图、求解与运行时装配（P1-1 / P1-2 / P1-3）。
 
 数据来源为「静态声明 ∪ entry points」：前者扫描工作区内各项目 ``pyproject.toml``
-的 ``[tool.xuan.plugin]``，后者读取 ``xuan.plugins`` 入口点。本命令只读取与展示，
-不激活插件；``apply --dry-run`` 输出求解计划（定序/隔离域/可解性），真实装配
-待 P1-3 提供运行时插件实现后接线。
+的 ``[tool.xuan.plugin]``，后者读取 ``xuan.plugins`` 入口点。``apply --dry-run``
+输出求解计划（定序/隔离域/可解性）；不加 ``--dry-run`` 时对内置插件执行真实
+装配，并以「声明 / 实际注册」逐键对账收尾。
 """
 
 import json
@@ -13,16 +13,20 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.table import Table
+from xuan_plugin.assembly import assemble
 from xuan_plugin.manifest import (
     PluginManifest,
     build_graph,
     manifest_from_pyproject,
     merge_manifests,
 )
-from xuan_plugin.solver import SolveError, solve
+from xuan_plugin.plugin import Plugin
+from xuan_plugin.solver import Solution, SolveError, solve
 
 from ..config import find_workspace_root, load_pyproject
 from ..discovery import discover_projects
+from ..plugins.commands import PLUGIN as COMMANDS_PLUGIN
+from ..plugins.registry import CommandRegistry
 
 console = Console()
 
@@ -216,15 +220,11 @@ def apply_plugins(
     dry_run: bool = typer.Option(False, "--dry-run", help="只输出求解计划，不执行装配"),
     json_output: bool = typer.Option(False, "--json", "-j", help="以 JSON 格式输出"),
 ) -> None:
-    """求解装配计划：定序、隔离域、可解性诊断（``--dry-run``）。
+    """求解并装配插件：定序、隔离域、可解性诊断与逐键对账。
 
-    真实装配需要各插件提供 ``Plugin`` 实现，P1-3 接线前只交付求解面；
-    未加 ``--dry-run`` 时显式拒绝，避免把「什么都没做」伪装成装配成功。
+    ``--dry-run`` 只输出求解计划；否则对已具备运行时实现的内置插件执行装配。
+    缺少实现的插件会显式列名退出，不会把「什么都没做」伪装成装配成功。
     """
-    if not dry_run:
-        console.print("[red]真实装配尚未接线（P1-3 提供运行时插件实现），请使用 --dry-run。[/red]")
-        raise typer.Exit(1)
-
     try:
         manifests = collect_manifests(find_workspace_root())
         solution = solve(manifests)
@@ -251,6 +251,15 @@ def apply_plugins(
         console.print(f"[red]清单解析失败：{exc}[/red]")
         raise typer.Exit(1) from exc
 
+    if dry_run:
+        _emit_plan(solution, manifests, json_output)
+        return
+
+    _apply_solution(solution, json_output)
+
+
+def _emit_plan(solution: Solution, manifests: tuple[PluginManifest, ...], json_output: bool) -> None:
+    """输出求解计划（``--dry-run``）。"""
     if json_output:
         typer.echo(
             json.dumps(
@@ -291,3 +300,75 @@ def apply_plugins(
             console.print(f"  {reason.describe()}")
     else:
         console.print("\n[dim]可解性：全部必需依赖可满足[/dim]")
+
+
+def _apply_solution(solution: Solution, json_output: bool) -> None:
+    """对内置插件执行真实装配，并输出对账结果。"""
+    builtin: dict[str, Plugin] = {COMMANDS_PLUGIN.name: COMMANDS_PLUGIN}
+    missing = [node for node in solution.order if node not in builtin]
+    if missing:
+        message = f"缺少运行时实现：{', '.join(missing)}"
+        if json_output:
+            typer.echo(json.dumps({"status": "error", "kind": "missing_impl", "message": message}, ensure_ascii=False))
+        else:
+            console.print(f"[red]{message}[/red]")
+        raise typer.Exit(1)
+
+    registry = CommandRegistry()
+    result = assemble(
+        solution,
+        {node: builtin[node] for node in solution.order},
+        configs={COMMANDS_PLUGIN.name: {"registry": registry}},
+    )
+    if not result.ok:
+        errors = [(label, f"{type(exc).__name__}: {exc}") for label, exc in result.errors]
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "kind": "assembly",
+                        "applied": list(result.applied),
+                        "rolled_back": list(result.rolled_back),
+                        "errors": [{"stage": label, "message": detail} for label, detail in errors],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            console.print("[red]装配失败，已回滚：[/red]")
+            for label, detail in errors:
+                console.print(f"  {label}: {detail}")
+        raise typer.Exit(1)
+
+    report = result.reconciled
+    if report is None:
+        raise RuntimeError("装配成功但缺少对账报告")
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "applied": list(result.applied),
+                    "commands": [entry.name for entry in registry.entries()],
+                    "reconciled": {
+                        "missing": [{"provider": owner, "key": key} for owner, key in report.missing],
+                        "unexpected": list(report.unexpected),
+                        "matched": list(report.matched),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    console.print(
+        f"[green]装配完成[/green]：{len(result.applied)} 个节点 ACTIVE，{len(registry.entries())} 条命令已登记"
+    )
+    console.print(
+        f"[dim]对账：一致 {len(report.matched)} 键，缺 {len(report.missing)}，多 {len(report.unexpected)}[/dim]"
+    )
+    if not report.ok:
+        raise typer.Exit(1)
