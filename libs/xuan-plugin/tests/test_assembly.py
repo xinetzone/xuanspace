@@ -107,7 +107,8 @@ def test_dispose_errors_are_aggregated_but_residue_still_zero() -> None:
     assert not result.ok
     labels = [label for label, _ in result.errors]
     assert "apply:b" in labels
-    assert any(label.startswith("root:") for label in labels)
+    # apply 期效应归属 Fiber（P2-5），撤销失败按 fiber:<id> 上报而非 root:<label>
+    assert any(label.startswith("fiber:") for label in labels)
     assert result.residual_effects == 0
     assert result.silenced
 

@@ -156,6 +156,12 @@ class Fiber:
         self._missing: tuple[str, ...] = ()
         self._suppressed_reloads = 0
         self._inject_names: frozenset[str] = frozenset(s.name for s in plugin.inject)
+        self._inputs: tuple[tuple[str, str, str], ...] | None = None
+        self._pending: str | None = None
+        self._reloads = 0
+        self._rollbacks = 0
+        self._last_reload_error: Exception | None = None
+        self._reload_reason: tuple[str, ...] = ()
 
     @property
     def name(self) -> str:
@@ -184,18 +190,52 @@ class Fiber:
         """
         return self._suppressed_reloads
 
+    @property
+    def reloads(self) -> int:
+        """成功完成的热重载次数（不含首次装配）。"""
+        return self._reloads
+
+    @property
+    def rollbacks(self) -> int:
+        """热重载失败并回滚已登记效应的次数。
+
+        「回滚」的边界是**不留半成品**：撤销本次已登记的效应、效应数归零，
+        而不是恢复被覆盖的依赖实现或外部副作用——后者在 Python 进程内不可逆
+        （ADR-03），故以 FAILED + 原始异常显式暴露（V1）。
+        """
+        return self._rollbacks
+
+    @property
+    def last_reload_error(self) -> Exception | None:
+        """最近一次热重载失败的原因；成功重载后保留，直到下一次失败覆盖。"""
+        return self._last_reload_error
+
+    @property
+    def reload_reason(self) -> tuple[str, ...]:
+        """最近一次热重载的逐字段变化，形如 ``dep:impl`` / ``dep:config``。
+
+        对应 §5.4 第 7 步的「逐字段对账」：只有摘要变化的依赖字段才会出现在
+        这里，未变化的依赖不构成重载理由（同一 epoch 不会触发重载）。
+        """
+        return self._reload_reason
+
+    @property
+    def pending_reload(self) -> str | None:
+        """失败重载对应的目标 epoch；无待重试目标时为 None。"""
+        return self._pending
+
     def effect(self, execute: Callable[[], Disposable | list[Disposable]], label: str = "") -> Disposable:
         """注册可逆效应，返回逆函数。"""
         disposables = execute()
         if callable(disposables) and not isinstance(disposables, list):
             disposables = [disposables]
 
-        for d in disposables:
-            self._disposables.push(d)
+        removers = [self._disposables.push(d) for d in disposables]
 
         def undo() -> None:
             errors: list[tuple[str, Exception]] = []
-            for d in disposables:
+            for remove, d in zip(removers, disposables):
+                remove()
                 try:
                     d()
                 except Exception as exc:  # noqa: BLE001 —— 聚合后统一上报，不中断同批撤销
@@ -205,6 +245,32 @@ class Fiber:
 
         return undo
 
+    def _snapshot_inputs(self) -> tuple[tuple[str, str, str], ...] | None:
+        """采集依赖身份快照：``(服务名, 实现摘要, 配置摘要)``。
+
+        任一必需依赖缺失时返回 None（对应 epoch ``_INACTIVE``）。快照既用于
+        计算 epoch，也用于重载时逐字段对账「到底哪一个字段变了」。
+        """
+        if not self.plugin.inject:
+            return ()
+        rows: list[tuple[str, str, str]] = []
+        for spec in self.plugin.inject:
+            try:
+                impl = self.ctx.get(spec.name)
+            except KeyError:
+                return None
+            rows.append((spec.name, _digest(impl), _config_digest(spec.config)))
+        return tuple(rows)
+
+    @staticmethod
+    def _epoch_of(inputs: tuple[tuple[str, str, str], ...] | None) -> str:
+        """把依赖快照编码为 epoch 字符串；None 编码为 ``_INACTIVE``。"""
+        if inputs is None:
+            return _INACTIVE
+        if not inputs:
+            return ""
+        return "|".join(f"{name}:{impl}:{config}" for name, impl, config in inputs)
+
     def _compute_epoch(self) -> str:
         """计算 epoch：依赖服务实现与注入配置的摘要拼接。
 
@@ -212,16 +278,30 @@ class Fiber:
         :func:`_digest` 摘要身份，并纳入 ``InjectSpec.config`` 的摘要——
         依赖实现或注入配置任一变化都会产生新 epoch，从而触发退役重插。
         """
-        if not self.plugin.inject:
-            return ""
-        parts: list[str] = []
-        for spec in self.plugin.inject:
-            try:
-                impl = self.ctx.get(spec.name)
-            except KeyError:
-                return _INACTIVE
-            parts.append(f"{spec.name}:{_digest(impl)}:{_config_digest(spec.config)}")
-        return "|".join(parts)
+        return self._epoch_of(self._snapshot_inputs())
+
+    @staticmethod
+    def _describe_change(
+        old: tuple[tuple[str, str, str], ...] | None,
+        new: tuple[tuple[str, str, str], ...] | None,
+    ) -> tuple[str, ...]:
+        """对比两份依赖快照，返回变化的字段标签（字典序）。"""
+        if old is None or new is None:
+            return ()
+        old_map = {name: (impl, config) for name, impl, config in old}
+        new_map = {name: (impl, config) for name, impl, config in new}
+        changes: list[str] = []
+        for name, (impl, config) in new_map.items():
+            previous = old_map.get(name)
+            if previous is None:
+                changes.append(f"{name}:added")
+                continue
+            if previous[0] != impl:
+                changes.append(f"{name}:impl")
+            if previous[1] != config:
+                changes.append(f"{name}:config")
+        changes.extend(f"{name}:lost" for name in old_map.keys() - new_map.keys())
+        return tuple(sorted(changes))
 
     def _transition(self, target: FiberState) -> None:
         """按 §5.5 迁移表切换状态；表外迁移抛 :class:`FiberTransitionError`。"""
@@ -248,7 +328,8 @@ class Fiber:
             # 否则会得到 LOADING → LOADING 这类表外迁移。
             return
 
-        new_epoch = self._compute_epoch()
+        inputs = self._snapshot_inputs()
+        new_epoch = self._epoch_of(inputs)
         missing = self._missing_keys() if new_epoch == _INACTIVE else ()
 
         # ADR-03：静态插件 ACTIVE 后不热换。直接抑制而非抛错，避免依赖方一次
@@ -262,17 +343,54 @@ class Fiber:
                 # 初次刷新即不可解（PENDING）、或原因集合变化（INACTIVE）：
                 # 都归一到 _deactivate，避免停在「未尝试」的 PENDING 上。
                 self._deactivate(missing)
+            elif self.state is FiberState.ACTIVE and self._pending is not None:
+                # 依赖已回到当前生效身份，此前的失败重载不再有待办意义。
+                self._pending = None
             return
 
-        self._epoch = new_epoch
-
         if new_epoch == _INACTIVE:
+            self._pending = None
             self._deactivate(missing)
             return
 
         if self.state is FiberState.ACTIVE:
-            self._unload()  # 依赖变更：先卸旧实现
-        self._reload()  # 再从 PENDING / INACTIVE / FAILED 载入新实现
+            self._replace(inputs, new_epoch)
+        else:
+            self._epoch = new_epoch
+            self._reload()
+
+    def _replace(
+        self,
+        inputs: tuple[tuple[str, str, str], ...] | None,
+        new_epoch: str,
+    ) -> None:
+        """热替换事务：先撤旧效应再应用新实现，失败则回滚到零残留。
+
+        「备份」体现为 ``old_inputs`` 快照与 ``reload_reason`` 的逐字段对账；
+        「恢复」的边界是不留半成品——新实现 ``apply`` 失败时撤销其已登记效应，
+        旧实现因依赖已被覆盖而无法原地还原（Python 进程内不可逆，V1），
+        故以 FAILED + 原始异常显式暴露，由 ``retry()`` 决定是否再次尝试。
+        """
+        reason = self._describe_change(self._inputs, inputs)
+        self._unload()
+        if self.state is FiberState.FAILED:
+            # 旧效应的撤销本身失败：保留 FAILED 与聚合异常，不再尝试新实现。
+            self._pending = new_epoch
+            self._reload_reason = reason
+            return
+
+        self._epoch = new_epoch
+        self._reload()
+        if self.state is FiberState.ACTIVE:
+            self._reloads += 1
+            self._reload_reason = reason
+            return
+
+        # 新实现失败：已登记效应由上方的 _reload 回滚为零，记录待重试目标。
+        self._rollbacks += 1
+        self._last_reload_error = self._error
+        self._pending = new_epoch
+        self._reload_reason = reason
 
     def _deactivate(self, missing: tuple[str, ...]) -> None:
         """进入 INACTIVE：先确保无残留效应，再记录原因。"""
@@ -285,23 +403,31 @@ class Fiber:
             return
         self._error = None
         self._missing = missing
+        self._pending = None
+        self._reload_reason = ()
         self._transition(FiberState.INACTIVE)
 
     def _reload(self) -> None:
         """执行插件的 apply 函数，加载服务。
 
         apply 中途失败时必须先撤销已登记的 effect，否则失败组件会留下
-        部分装配痕迹，破坏「插入/退役是唯一外部输入」的隔离性。
+        部分装配痕迹，破坏「插入/退役是唯一外部输入」的隔离性。``apply``
+        期间经 ``Context.effect`` 登记的效应归属本 Fiber（``_apply_scope``），
+        使「撤销」在热替换时真正发生，而不是留在根上下文里。
         """
         self._transition(FiberState.LOADING)
         self._error = None
         try:
-            self.plugin.apply(self.ctx, self.config)
+            with self.ctx._apply_scope(self):
+                self.plugin.apply(self.ctx, self.config)
             self._missing = ()
+            self._inputs = self._snapshot_inputs()
+            self._pending = None
             self._transition(FiberState.ACTIVE)
         except Exception as e:
             cleanup = self._disposables.dispose_all()
             self._disposables = DisposableList()
+            self._inputs = None
             self._error = DisposalError([("apply", e), *cleanup]) if cleanup else e
             self._transition(FiberState.FAILED)
 
@@ -317,9 +443,11 @@ class Fiber:
         self._disposables = DisposableList()
         if errors:
             self._error = DisposalError(errors)
+            self._inputs = None
             self._transition(FiberState.FAILED)
         else:
             self._missing = ()
+            self._inputs = None
             self._transition(FiberState.PENDING)
 
     def retry(self) -> None:
@@ -327,11 +455,13 @@ class Fiber:
 
         只对 ``FAILED`` 开放：ACTIVE 无需重试，INACTIVE 的迁移由依赖出现自动
         触发。若依赖仍不可得，重试退回 INACTIVE 而不是再次失败——这与
-        「依赖不可得不是异常」的解析语义一致。
+        「依赖不可得不是异常」的解析语义一致。重试成功计入 ``reloads``，
+        使「失败—重试—恢复」在观测上与自动热重载同口径。
         """
         if self.state is not FiberState.FAILED:
             raise FiberTransitionError(self.plugin.name, self.state, FiberState.LOADING)
 
+        self._pending = None
         new_epoch = self._compute_epoch()
         self._epoch = new_epoch
         self._error = None
@@ -340,6 +470,8 @@ class Fiber:
             self._transition(FiberState.INACTIVE)
             return
         self._reload()
+        if self.state is FiberState.ACTIVE:
+            self._reloads += 1
 
     @property
     def error(self) -> Exception | None:
@@ -358,4 +490,5 @@ class Fiber:
         if self.state in (FiberState.ACTIVE, FiberState.FAILED):
             self._unload()
         if self.state is not FiberState.FAILED:
+            self._pending = None
             self._transition(FiberState.DISPOSED)

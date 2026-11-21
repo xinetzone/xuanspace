@@ -46,7 +46,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 ```
 
 - 插件通过 `Plugin.provide` 声明「提供哪些服务」，通过 `Plugin.inject` 声明「依赖哪些服务」。
-- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；快照变化时触发 `_refresh`，实现**响应式重载**。
+- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；快照变化时触发 `_refresh`，实现**响应式热替换**：先撤销旧效应、再应用新实现。成功计入 `Fiber.reloads`，`Fiber.reload_reason` 给出变化的依赖字段（`impl` / `config`）；新实现失败时撤销其已登记的部分效应（零残留），以 `FAILED` + 原始异常暴露，可经 `retry()` 恢复。
 - `INACTIVE` 表示必需依赖暂不可得：不抛错、不持有任何效应，并通过 `Fiber.reason` 给出缺失键；依赖出现后自动迁移到 `LOADING`。
 - 加载成功进入 `ACTIVE`，失败进入 `FAILED`（已登记效应强制撤销）；`retry()` 提供显式重试通道。
 - 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级。
@@ -63,7 +63,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 `Context`（`src/okf/context.py`）同时承载四类职责：
 
 1. **服务注册**：`provide` / `get`，其中 `provide` 后自动 `notify` 依赖方。
-2. **效应追踪**：`effect` 注册可逆效应到根 `DisposableList`。
+2. **效应追踪**：`effect` 注册可逆效应；处于某插件 `apply` 作用域时归属该 Fiber（随卸载/热替换逆序回收），其余归属根 `DisposableList`。
 3. **插件装配**：`plugin` 创建 Fiber 并启动加载。
 4. **事件分发**：五种分发模式。
 

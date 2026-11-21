@@ -889,3 +889,74 @@ Task 1–8 全部完成后，满足：
     「依赖消失」与「dispose 回收失败节点」，均满足「无效应、原因可解释」不变量（V6）；
   - 状态机保持单线程契约（与 `Context` 一致）；并发隔离留给 P2-3 的子进程模式（V7）。
 
+## Task P2-5-1: 插件热更新事务与效应归属（§5.4 第 6–8 步）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-4-1（`f6fd5dd`，七态状态机与静态抑制）
+- **Description**:
+  - `libs/xuan-plugin/src/xuan_plugin/context.py`：
+    - 新增 `Context._apply_scope(fiber)`（栈式上下文管理器）：`apply` 期间经
+      `Context.effect` 登记的效应归属当前 Fiber，作用域外仍归属根 `DisposableList`；
+    - `Context.effect` 的逆函数先从所属句柄清单摘除再执行，避免「手动撤销 +
+      卸载重放」导致同一逆操作执行两次。
+  - `libs/xuan-plugin/src/xuan_plugin/plugin.py`：
+    - 新增 `Fiber._snapshot_inputs` / `_epoch_of` / `_describe_change`：依赖快照
+      `(服务名, 实现摘要, 配置摘要)` 同时用于 epoch 计算与逐字段对账；
+    - 新增 `Fiber._replace`：依赖 epoch 变化时执行「先撤旧效应、再应用新实现」的
+      热替换事务；新实现失败时其部分效应由 `_reload` 回滚为零残留，状态 `FAILED`，
+      `retry()` 可恢复；
+    - 新增只读观测：`reloads`、`rollbacks`、`last_reload_error`、`reload_reason`
+      （`dep:impl` / `dep:config` / `dep:added` / `dep:lost`）、`pending_reload`；
+    - `_unload` 成功后清空输入快照；`dispose` 清理待重试目标；静态插件抑制仍先于
+      替换判定（P2-4 语义不变）。
+  - `libs/xuan-plugin/tests/test_assembly.py`：回滚期撤销失败的标签由 `root:` 改为
+    `fiber:`——apply 期效应归属变化后的预期更新；
+  - `doc/okf/architecture.md`：同步热替换与效应归属语义。
+- **Acceptance Criteria Addressed**: 设计文档 §5.4 第 6–8 步（装/卸/换、逐字段对账、
+  事务回滚）、§5.5 状态表；F11（热替换以备份—恢复实现事务性）
+- **Test Requirements**:
+  - `rule` TR-P2.5-1: `apply` 期效应归属 Fiber，卸载后归零且供应键撤销；
+    证据：`test_apply_effects_belong_to_fiber`
+  - `rule` TR-P2.5-2: 依赖实现变化完成热替换，旧供应撤销、新供应生效，
+    `reloads` 与 `reload_reason` 可观测；证据：`test_hot_reload_undoes_old_and_applies_new`
+  - `rule` TR-P2.5-3: 新实现失败时部分效应回滚为零残留，`FAILED` + `rollbacks` +
+    `last_reload_error`；证据：`test_failed_reload_rolls_back_partial_effects`
+  - `rule` TR-P2.5-4: 仅注入配置变化时重载理由为 `config` 而非 `impl`；
+    证据：`test_config_change_reports_config_field`
+  - `rule` TR-P2.5-5: 依赖消失时效应归零并进入 `INACTIVE`，原因可解释；
+    证据：`test_dependency_loss_retires_fiber_effects`
+  - `rule` TR-P2.5-6: `FAILED` 后显式 `retry()` 恢复并计入 `reloads`；
+    证据：`test_retry_after_failed_reload_recovers`
+  - `rule` TR-P2.5-7: 依赖方热替换后其下游键指向新实现；
+    证据：`test_consumer_hot_swap_preserves_downstream_key`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 联跑 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **175 passed**（基线 168，新增 7，无删减）；
+  - `tools/okf` 独立运行 → **259 passed**；
+  - 门禁：`ruff check` 与 `ruff format --check`（47 文件）通过；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （336 文件）、`check_spec_integrity.py`（任务编号 31）、
+    `check_declaration_consistency.py` 通过；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」；`toolchain check` 无新增告警。
+- **Notes**:
+  - **V1 旧视图不可还原**：依赖实现被 `provide` 覆盖后，Python 进程内无法在原地
+    恢复旧实现与外部副作用（ADR-03）。事务边界因此收敛为「不留半成品」：失败即
+    撤销本次已登记效应并以 `FAILED` + 原始异常暴露，是否重试交给 `retry()`，
+    不伪造「旧实现继续服务」；
+  - **V2 根效应语义**：改道只发生在 `_apply_scope` 内；作用域外 `Context.effect`
+    仍归根，`test_context.py` / `test_context_extra.py` 的根效应断言保持通过；
+  - **V3 嵌套装配**：用栈而非单值，覆盖「apply 内 provide → notify → 依赖方就地
+    装配」，内层 Fiber 独立归属并在退出时 LIFO 还原；
+  - **V4 逆操作重放**：`effect` 返回的 undo 先摘除句柄再执行，卸载不会重放已手动
+    撤销的效应；
+  - **V5 重试风暴**：失败只进入 `FAILED`，同一 epoch 的 notify 不自动重试，
+    `pending_reload` 记录目标 epoch，恢复须显式 `retry()`；
+  - **V6 下游传播**：旧供应撤销时依赖方进入 `INACTIVE`，新供应登记后重新 `ACTIVE`，
+    最终一致；`test_consumer_hot_swap_preserves_downstream_key` 覆盖该链路；
+  - **V7 静态插件**：抑制判定仍在替换之前，`suppressed_reloads` 语义与 P2-4 一致，
+    原生插件不因本次改动获得 `.so` 卸载能力。
+

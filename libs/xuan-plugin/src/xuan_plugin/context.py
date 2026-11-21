@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
@@ -29,22 +29,43 @@ class Context:
     _root_disposables: DisposableList = field(default_factory=DisposableList)
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
     _disposal_errors: list[tuple[str, Exception]] = field(default_factory=list)
+    _apply_stack: list[Fiber] = field(default_factory=list)
+
+    @contextlib.contextmanager
+    def _apply_scope(self, fiber: Fiber) -> Iterator[None]:
+        """进入某 Fiber 的 ``apply`` 作用域：期间登记的效应归属该 Fiber。
+
+        归属决定「谁负责撤销」：应用期效应随 Fiber 卸载而逆序回收，否则热替换
+        只换了代码、旧服务的注册残留仍在，``provide`` 撤销也不会发生。用栈而非
+        单值，覆盖「apply 内提供能力 → notify → 依赖方就地装配」的嵌套场景。
+        """
+        self._apply_stack.append(fiber)
+        try:
+            yield
+        finally:
+            self._apply_stack.pop()
 
     def effect(self, execute: Callable[[], Disposable | list[Disposable]], label: str = "") -> Disposable:
-        """注册可逆效应到根 DisposableList。"""
+        """注册可逆效应，返回逆函数。
+
+        处于 ``apply`` 作用域时归属当前 Fiber，否则归属根 ``DisposableList``。
+        返回的逆函数同时把效应从句柄列表中摘除，避免「手动撤销后再被卸载重放」
+        导致同一逆操作执行两次。
+        """
         disposables = execute()
         if callable(disposables) and not isinstance(disposables, list):
             disposables = [disposables]
 
-        for d in disposables:
-            self._root_disposables.push(d)
+        target = self._apply_stack[-1]._disposables if self._apply_stack else self._root_disposables
+        removers = [target.push(d) for d in disposables]
 
         if label:
             self._effects.append(EffectMeta(label=label))
 
         def undo() -> None:
             errors: list[tuple[str, Exception]] = []
-            for d in disposables:
+            for remove, d in zip(removers, disposables):
+                remove()
                 try:
                     d()
                 except Exception as exc:  # noqa: BLE001 —— 聚合后统一上报，不中断同批撤销
