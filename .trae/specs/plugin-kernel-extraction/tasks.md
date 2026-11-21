@@ -768,3 +768,69 @@ Task 1–8 全部完成后，满足：
   - 未把 `xuan-compose` 纳入 CI 的 mypy 命令范围（CI 现状不含该库），本轮仅在本地
     以 `mypy libs/xuan-compose/src` 验证零告警；扩大 CI 范围属独立治理项。
 
+## Task P2-3-1: FFI 能力键与子进程隔离模式（试点 C）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-1-1（`8e6b427`）、P2-2-1（`46f0e47`）
+- **Description**:
+  - 新增 `libs/xuan-ffi`（发行名 `xuan-ffi`，纯 Python；运行时仅依赖 `xuan-plugin`）：
+    - `keys.py`：能力键语法 `xuan:ffi/<name>#api`、`ffi_key()` / `ffi_name()`；名称正则
+      与 `xuan_plugin.manifest` 的 K2 键校验同一口径；
+    - `api.py`：`FFIAPI` 协议（`describe` / `invoke` / `close`）、`FFIInfo` 快照、
+      `FFIError` / `FFIUnavailableError`；同一条 `invoke` 面同时适配进程内与子进程；
+    - `inprocess.py`：`InProcessFFI` 惰性 import、点分属性解析；`describe()` 以
+      `available=False + error` 表达不可用而不抛错；`close()` 只丢弃引用；
+    - `proxy.py`：`SubprocessFFI` 以 `python -m xuan_ffi.worker` + JSON Lines over stdio
+      调用；请求/响应按 id 匹配；`start()` / `close()` 可反复循环，`close()` 幂等并按
+      wait → terminate → kill 收敛；支持 `extra_paths` 与 `PYTHONIOENCODING/PYTHONUTF8`；
+    - `worker.py`：子进程侧请求循环，复用同一 `resolve()` 语义；加载失败与不可序列化
+      结果均转成结构化错误回传；
+    - `providers.py`：`BUILTIN_FFI = {caffe: caffe_ffi, demo: demo_ffi, npu: npu_ffi}`
+      与 `create_ffi(name, module=..., mode=...)`；
+    - `__init__.py`：`MANIFEST`（`lifecycle="static"`、priority 40、三条 provide）、
+      `apply()`（按 `mode` 登记三条能力键，撤销时先关闭提供者再移除键）、`PLUGIN`；
+  - `libs/xuan-ffi/pyproject.toml` 同步 `[tool.xuan.plugin]` 与
+    `[project.entry-points."xuan.plugins"]`；
+  - `tools/xs`：`plugin_cmd` 的内置插件表加入 `xuan.ffi`，`pyproject.toml` 增加
+    `xuan-ffi>=0.1.0` 运行时依赖；
+  - `.github/workflows/ci.yml`：三处安装块补 `xuan-ffi`，质量门新增
+    `pytest libs/xuan-ffi/tests` 与 mypy 路径；
+  - `scripts/check_declaration_consistency.py` 与根 `README.md` 项目索引补登记，
+    `libs/README.md` 生成块与 `scripts/declaration-snapshot.json` 由 `--generate` 刷新。
+- **Acceptance Criteria Addressed**: 设计文档 §7 P2 试点 C——切换后端不改调用方代码；
+  子进程模式可重复装载；能力句柄可撤销；不承诺 `.so` 卸载（ADR-03）
+- **Test Requirements**:
+  - `rule` TR-P2.3-1: `xuan:ffi/<name>#api` 键通过 `xuan_plugin.manifest` 校验，非法
+    名称被拒绝；证据：`test_keys.py`（6 条参数化拒绝用例 + K2 兼容用例）
+  - `rule` TR-P2.3-2: 同一消费者函数在进程内与子进程两种传输下结果一致；证据：
+    `test_same_consumer_works_across_transports`
+  - `rule` TR-P2.3-3: 子进程模式连续三轮 `start → invoke → close` 得到三个不同 pid，
+    `close()` 后 `pid is None`；证据：`test_repeated_load_uses_fresh_processes`
+  - `rule` TR-P2.3-4: 装配—调用—撤销两轮后能力键清空、effect 清空、worker 结束；证据：
+    `test_apply_registers_and_disposes`、`test_subprocess_mode_is_repeatable`
+  - `rule` TR-P2.3-5: 静态清单与 `MANIFEST` 契约逐字段一致，`xs plugin apply` 对账
+    20 键；证据：`test_manifest_matches_pyproject_declaration` 与 apply 输出
+- **Completion Evidence**（2026-11-21 实测）:
+  - `libs/xuan-ffi`：**34 passed**；
+  - 联跑 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **157 passed**；
+  - 门禁：`ruff check` 与 `ruff format --check`（69 文件）通过；
+    `mypy libs/xuan-plugin/src libs/xuan-build/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 43 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （334 文件）、`check_spec_integrity.py`、`check_declaration_consistency.py` 通过；
+    `xs toolchain check` 无新增异常（仅提示可选 pdm 未安装）；
+  - 实机：`xs plugin list` → 3 个插件 / 20 个能力键（`xuan.ffi` 3 键、static、prio 40）；
+    `xs plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - 设计文档 §7 的 P2-3 与本台账既有编号无冲突，仍沿用「设计阶段号 + 序号」登记为
+    `P2-3-1`；
+  - 未实现「同一键在两种传输间的运行期在线迁移」：切换发生在装配配置层（`mode`），
+    这与 `lifecycle="static"` 的声明一致，也避免把 `.so` 卸载误当成可撤销；
+  - `apply` 默认 `in-process`，`xs plugin apply` 不预启动 worker；子进程在首次
+    `invoke` 时按需拉起，避免 CLI 装配引入后台进程；
+  - 「切换后端不改调用方代码」在本试点中的口径是：同一能力键的提供者可在
+    `in-process` 与 `subprocess` 间替换，调用方只依赖 `FFIAPI`；跨名称替换
+    （如 caffe → npu）仍须换键，因为契约以名称隔离能力域。
+

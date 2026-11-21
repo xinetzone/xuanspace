@@ -111,6 +111,7 @@ x-toml-ref: ".meta/toml/README.toml"
 | xuan-compose | Compose 规范声明式容器编排引擎（podman-compose 重构） | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-compose/README.md) |
 | xuan-core | 核心工具库，提供基础类型、通用函数、错误处理 | Python | lib | 活跃 | 0.1.0 | [README](libs/xuan-core/README.md) |
 | xuan-ext-demo | C/C++ 扩展示例库 | Python/C++ | lib | 孵化中 | 0.1.0 | [README](libs/xuan-ext-demo/README.md) |
+| xuan-ffi | FFI 能力键与子进程隔离代理：切换后端不改调用方代码 | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-ffi/README.md) |
 | xuan-plugin | 插件内核：可逆装配、能力注册与生命周期管理 | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-plugin/README.md) |
 | tvm-ffi | Apache TVM C++ FFI 跨语言绑定库（子模块） | C++ | vendor(submodule) | 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
 | caffe | Caffe 深度学习框架（子模块） | C++ | vendor(submodule) | 上游 | - | [上游仓库](https://github.com/daoflows/caffe) |

@@ -24,7 +24,8 @@ dependencies = [
   "packaging>=24.0",
   "tomlkit>=0.12",
   "xuan-plugin>=0.1.0",
-  "xuan-build>=0.1.0"
+  "xuan-build>=0.1.0",
+  "xuan-ffi>=0.1.0"
 ]
 authors = [
   {name = "xinetzone"}

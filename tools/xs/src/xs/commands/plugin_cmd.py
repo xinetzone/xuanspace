@@ -14,6 +14,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from xuan_build import PLUGIN as BUILD_PLUGIN
+from xuan_ffi import PLUGIN as FFI_PLUGIN
 from xuan_plugin.assembly import assemble
 from xuan_plugin.manifest import (
     PluginManifest,
@@ -308,6 +309,7 @@ def _apply_solution(solution: Solution, json_output: bool) -> None:
     builtin: dict[str, Plugin] = {
         BUILD_PLUGIN.name: BUILD_PLUGIN,
         COMMANDS_PLUGIN.name: COMMANDS_PLUGIN,
+        FFI_PLUGIN.name: FFI_PLUGIN,
     }
     missing = [node for node in solution.order if node not in builtin]
     if missing:

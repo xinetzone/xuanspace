@@ -28,6 +28,7 @@
     "xuan-compose",
     "xuan-core",
     "xuan-ext-demo",
+    "xuan-ffi",
     "xuan-plugin"
   ],
   "submodule_status": {
