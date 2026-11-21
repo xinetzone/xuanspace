@@ -75,12 +75,17 @@ class Context:
             raise KeyError(f"Service '{name}' not registered")
         return self._store[name]
 
-    def plugin(self, plugin: Plugin, config: dict | None = None) -> None:
-        """装配插件，创建 Fiber 并启动加载。"""
+    def registered_keys(self) -> tuple[str, ...]:
+        """已注册的能力键（字典序），用于对账与回滚后的残留断言。"""
+        return tuple(sorted(self._store))
+
+    def plugin(self, plugin: Plugin, config: dict | None = None) -> Fiber:
+        """装配插件，创建 Fiber 并启动加载，返回该 Fiber 供调用方查证状态。"""
         fiber = Fiber(plugin, self, config)
         self._fibers[plugin.name] = fiber
         # 计算初始 epoch 并尝试激活
         fiber._refresh()
+        return fiber
 
     def notify(self, names: list[str]) -> None:
         """响应式通知：遍历所有 Fiber，对 inject 命中者执行 _refresh。"""

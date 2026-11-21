@@ -9,7 +9,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 from xs.cli import app as cli_app
 from xs.commands import plugin_cmd
-from xuan_plugin.manifest import manifest_from_pyproject
+from xuan_plugin.manifest import InjectDecl, PluginManifest, ProvideDecl, manifest_from_pyproject
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 XS_PYPROJECT = REPO_ROOT / "tools" / "xs" / "pyproject.toml"
@@ -114,3 +114,95 @@ def test_broken_entry_point_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(plugin_cmd, "entry_points", lambda group: [_BrokenEntryPoint()])
     manifests = plugin_cmd.collect_manifests(REPO_ROOT)
     assert {manifest.id for manifest in manifests} == {"xs.commands"}
+
+
+# ─── P1-2：apply --dry-run 的求解面 ─────────────────────────────────────
+
+
+def _fake_manifest(plugin_id: str, *, provide: tuple[str, ...] = (), inject: tuple[str, ...] = ()) -> PluginManifest:
+    return PluginManifest(
+        id=plugin_id,
+        version="0.1.0",
+        provide=tuple(ProvideDecl(key=key) for key in provide),
+        inject=tuple(InjectDecl(key=key) for key in inject),
+    )
+
+
+def _patch_manifests(monkeypatch: pytest.MonkeyPatch, manifests: list[PluginManifest]) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(plugin_cmd, "collect_manifests", lambda root: tuple(manifests))
+
+
+def test_apply_dry_run_json_is_byte_identical(monkeypatch: pytest.MonkeyPatch) -> None:
+    """同一工作区两次 dry-run 的输出必须逐字节一致（可复现性）。"""
+    monkeypatch.chdir(REPO_ROOT)
+    first = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    second = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    assert first.exit_code == 0, first.output
+    assert first.output == second.output
+
+    payload = json.loads(first.output)
+    assert payload["status"] == "ok"
+    assert payload["order"] == ["xs.commands"]
+    assert payload["domains"] == [{"labels": [], "nodes": ["xs.commands"]}]
+    assert payload["inactive"] == []
+    assert len(payload["provides"]) == 16
+
+
+def test_apply_refuses_when_not_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    result = runner.invoke(cli_app, ["plugin", "apply"])
+    assert result.exit_code == 1
+    assert "P1-3" in result.output
+
+
+def test_apply_dry_run_text_lists_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(plugin_cmd, "console", Console(width=100))
+    result = runner.invoke(cli_app, ["plugin", "apply", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "装配顺序" in result.output
+    assert "隔离域" in result.output
+    assert "默认域" in result.output
+    assert "可解性" in result.output
+
+
+def test_apply_conflict_is_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "xuan:demo/clash#one"
+    _patch_manifests(monkeypatch, [_fake_manifest("a", provide=(key,)), _fake_manifest("b", provide=(key,))])
+
+    first = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    second = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    assert first.exit_code == 1
+    assert first.output == second.output
+
+    payload = json.loads(first.output)
+    assert payload["status"] == "error"
+    assert payload["kind"] == "conflict"
+    assert payload["details"] == [f"{key}: a, b"]
+
+
+def test_apply_cycle_reports_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_manifests(
+        monkeypatch,
+        [
+            _fake_manifest("a", provide=("xuan:demo/a#key",), inject=("xuan:demo/b#key",)),
+            _fake_manifest("b", provide=("xuan:demo/b#key",), inject=("xuan:demo/a#key",)),
+        ],
+    )
+    result = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["kind"] == "cycle"
+    assert payload["details"] == ["a -> b -> a"]
+
+
+def test_apply_missing_dependency_is_reported_as_inactive(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "xuan:demo/absent#one"
+    _patch_manifests(monkeypatch, [_fake_manifest("a", inject=(key,))])
+
+    result = runner.invoke(cli_app, ["plugin", "apply", "--dry-run", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["order"] == []
+    assert payload["inactive"] == [{"plugin": "a", "missing": [key]}]

@@ -4,6 +4,7 @@
 能力注册与插件生命周期状态机。本包零运行时依赖，仅使用标准库。
 """
 
+from .assembly import AssemblyResult, assemble
 from .context import Context
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .manifest import (
@@ -20,16 +21,29 @@ from .manifest import (
 )
 from .plugin import Fiber, FiberState, InjectSpec, Plugin
 from .service import ServiceDefinition, ServiceProvider, ServiceRegistry
+from .solver import (
+    Domain,
+    InactiveReason,
+    ReconcileReport,
+    Solution,
+    SolveError,
+    SolveErrorKind,
+    reconcile,
+    solve,
+)
 
 __all__ = [
+    "AssemblyResult",
     "Context",
     "Disposable",
     "DisposableList",
     "DisposalError",
+    "Domain",
     "Edge",
     "EffectMeta",
     "Fiber",
     "FiberState",
+    "InactiveReason",
     "InjectDecl",
     "InjectSpec",
     "ManifestError",
@@ -37,11 +51,18 @@ __all__ = [
     "PluginGraph",
     "PluginManifest",
     "ProvideDecl",
+    "ReconcileReport",
     "ServiceDefinition",
     "ServiceProvider",
     "ServiceRegistry",
+    "Solution",
+    "SolveError",
+    "SolveErrorKind",
+    "assemble",
     "build_graph",
     "manifest_from_pyproject",
     "merge_manifests",
     "parse_manifest",
+    "reconcile",
+    "solve",
 ]

@@ -28,7 +28,7 @@
 | `xs affected` | 检测受影响的子项目 |
 | `xs archive` | 子项目归档与恢复 |
 | `xs lfs` | Git LFS 大文件检查与管理 |
-| `xs plugin` | 插件清单与装配图 |
+| `xs plugin` | 插件清单、装配图与求解计划 |
 
 ## xs list
 
@@ -227,15 +227,20 @@ xs lfs patterns                                   # 列出 .gitattributes 中的
 
 ## xs plugin
 
-插件清单与装配图。数据来源为工作区各项目 `pyproject.toml` 的 `[tool.xuan.plugin]`
+插件清单、装配图与求解计划。数据来源为工作区各项目 `pyproject.toml` 的 `[tool.xuan.plugin]`
 静态声明，以及 `xuan.plugins` 入口点；本命令只读取与展示，不激活插件。
 
 ```bash
 xs plugin list [--json|-j]      # 列出插件清单（id/版本/生命周期/优先级/供应与依赖数）
 xs plugin graph [--dot] [--json|-j]   # 候选节点与依赖边，标注未解析依赖与冲突键
+xs plugin apply --dry-run [--json|-j] # 输出确定性求解计划：定序、隔离域、可解性诊断
 ```
+
+`apply` 在未加 `--dry-run` 时显式拒绝——真实装配需要各插件提供 `Plugin` 实现，
+待 P1-3 接线；求解面已可对刻意构造的冲突/环/缺依赖样例给出可复现输出。
 
 | 选项 | 说明 |
 |---|---|
 | `--json` / `-j` | JSON 格式输出 |
 | `--dot` | 输出 Graphviz DOT（仅 `graph`） |
+| `--dry-run` | 只求解不装配（`apply` 必填） |

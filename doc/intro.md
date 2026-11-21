@@ -61,7 +61,7 @@ Xuanspace 目前处于活跃开发阶段，核心 CLI 工具 `xs` 已实现以�
 | `xs lfs` | Git LFS 大文件检查与管理 | ✅ |
 | `xs affected` | 基于 git diff 检测受影响的子项目 | ✅ |
 | `xs update` | 子模块与依赖更新 | ✅ |
-| `xs plugin` | 插件清单与装配图（list/graph） | ✅ |
+| `xs plugin` | 插件清单、装配图与求解计划（list/graph/apply --dry-run） | ✅ |
 
 ## 相关资源
 

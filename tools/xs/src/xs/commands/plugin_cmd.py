@@ -1,8 +1,9 @@
-"""``xs plugin`` 命令：清单解析与装配图展示（P1-1）。
+"""``xs plugin`` 命令：清单解析、装配图与求解计划（P1-1 / P1-2）。
 
 数据来源为「静态声明 ∪ entry points」：前者扫描工作区内各项目 ``pyproject.toml``
 的 ``[tool.xuan.plugin]``，后者读取 ``xuan.plugins`` 入口点。本命令只读取与展示，
-不激活插件；求解与回滚由 P1-2 的装配器负责。
+不激活插件；``apply --dry-run`` 输出求解计划（定序/隔离域/可解性），真实装配
+待 P1-3 提供运行时插件实现后接线。
 """
 
 import json
@@ -18,6 +19,7 @@ from xuan_plugin.manifest import (
     manifest_from_pyproject,
     merge_manifests,
 )
+from xuan_plugin.solver import SolveError, solve
 
 from ..config import find_workspace_root, load_pyproject
 from ..discovery import discover_projects
@@ -207,3 +209,85 @@ def graph(
         console.print("\n[red]能力键冲突（同键多提供者且未声明 multi）：[/red]")
         for key, providers in graph_data.conflicts:
             console.print(f"  {key}：{', '.join(providers)}")
+
+
+@app.command("apply")
+def apply_plugins(
+    dry_run: bool = typer.Option(False, "--dry-run", help="只输出求解计划，不执行装配"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="以 JSON 格式输出"),
+) -> None:
+    """求解装配计划：定序、隔离域、可解性诊断（``--dry-run``）。
+
+    真实装配需要各插件提供 ``Plugin`` 实现，P1-3 接线前只交付求解面；
+    未加 ``--dry-run`` 时显式拒绝，避免把「什么都没做」伪装成装配成功。
+    """
+    if not dry_run:
+        console.print("[red]真实装配尚未接线（P1-3 提供运行时插件实现），请使用 --dry-run。[/red]")
+        raise typer.Exit(1)
+
+    try:
+        manifests = collect_manifests(find_workspace_root())
+        solution = solve(manifests)
+    except SolveError as exc:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "kind": exc.kind.value,
+                        "message": str(exc),
+                        "details": list(exc.details),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            console.print(f"[red]装配计划无解：{exc}[/red]")
+            for detail in exc.details:
+                console.print(f"  {detail}")
+        raise typer.Exit(1) from exc
+    except Exception as exc:  # noqa: BLE001 —— 清单违约须给出可读错误而非栈回溯
+        console.print(f"[red]清单解析失败：{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "order": list(solution.order),
+                    "domains": [
+                        {"labels": list(domain.labels), "nodes": list(domain.nodes)} for domain in solution.domains
+                    ],
+                    "inactive": [
+                        {"plugin": reason.plugin, "missing": list(reason.missing)} for reason in solution.inactive
+                    ],
+                    "provides": [{"key": key, "provider": provider} for key, provider in solution.provides],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    by_id = {manifest.id: manifest for manifest in manifests}
+    console.print(f"[bold]装配顺序[/bold] [dim]{len(solution.order)} 个节点[/dim]")
+    for index, node in enumerate(solution.order, start=1):
+        manifest = by_id[node]
+        console.print(
+            f"  {index:>2}. [cyan]{node}[/cyan] "
+            f"[dim]priority={manifest.priority} provide={len(manifest.provide)} inject={len(manifest.inject)}[/dim]"
+        )
+
+    console.print("\n[bold]隔离域[/bold]")
+    for domain in solution.domains:
+        labels = ", ".join(domain.labels) or "（默认域）"
+        console.print(f"  [magenta]{labels}[/magenta]：{', '.join(domain.nodes)}")
+
+    if solution.inactive:
+        console.print("\n[yellow]未激活（必需依赖不可得）：[/yellow]")
+        for reason in solution.inactive:
+            console.print(f"  {reason.describe()}")
+    else:
+        console.print("\n[dim]可解性：全部必需依赖可满足[/dim]")
