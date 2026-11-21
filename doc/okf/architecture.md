@@ -48,6 +48,8 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 - 插件通过 `Plugin.provide` 声明「提供哪些服务」，通过 `Plugin.inject` 声明「依赖哪些服务」。
 - `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；快照变化时触发 `_refresh`，实现**响应式热替换**：先撤销旧效应、再应用新实现。成功计入 `Fiber.reloads`，`Fiber.reload_reason` 给出变化的依赖字段（`impl` / `config`）；新实现失败时撤销其已登记的部分效应（零残留），以 `FAILED` + 原始异常暴露，可经 `retry()` 恢复。
 - `INACTIVE` 表示必需依赖暂不可得：不抛错、不持有任何效应，并通过 `Fiber.reason` 给出缺失键；依赖出现后自动迁移到 `LOADING`。
+- 依赖方只在**最终视图**上判定：`Fiber._refresh`、`retry`、`Context.plugin` 各自处于一次传播事务内，多键提供方的卸载/装载通知合并排空，依赖方不会看到「键暂时缺失」的中间态；一次逻辑变更只产生一轮替换（度量 M4）。
+- `INACTIVE` 且依赖已全部可解时立即重新装配（含「撤销后重供同一实现」），不会停在可激活而未激活的静默缺口。
 - 加载成功进入 `ACTIVE`，失败进入 `FAILED`（已登记效应强制撤销）；`retry()` 提供显式重试通道。
 - 迁移表之外的调用（如对 `ACTIVE` 调用 `retry()`、对 `DISPOSED` 再次加载）抛 `FiberTransitionError`，不做静默降级。
 - `lifecycle="static"` 的插件在 `ACTIVE` 后抑制热换（ADR-03）；`dispose` 仍执行逻辑退役，撤销能力句柄与效应，但不承诺卸载已映射的 `.so`。
@@ -62,7 +64,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 
 `Context`（`src/okf/context.py`）同时承载四类职责：
 
-1. **服务注册**：`provide` / `get`，其中 `provide` 后自动 `notify` 依赖方。
+1. **服务注册**：`provide` / `get`，其中 `provide` 后自动 `notify` 依赖方；`Context.batch()` 事务内的通知只登记，最外层退出时去重、分轮排空（`dispose` 使用 `flush=False` 丢弃）。事务外保持同步语义。
 2. **效应追踪**：`effect` 注册可逆效应；处于某插件 `apply` 作用域时归属该 Fiber（随卸载/热替换逆序回收），其余归属根 `DisposableList`。
 3. **插件装配**：`plugin` 创建 Fiber 并启动加载。
 4. **事件分发**：五种分发模式。

@@ -2,11 +2,15 @@
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .plugin import Fiber, FiberState, Plugin
+
+# 单次排空的轮次上限：正常级联在 2–3 轮内收敛（提供方 → 依赖方 → 更下游）。
+# 上限用于把「互相提供且摘要每轮都变」的病态环转成可诊断错误，而不是挂死进程。
+_MAX_FLUSH_ROUNDS = 100
 
 
 async def _await_if_needed(value: object) -> object:
@@ -30,6 +34,8 @@ class Context:
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
     _disposal_errors: list[tuple[str, Exception]] = field(default_factory=list)
     _apply_stack: list[Fiber] = field(default_factory=list)
+    _batch_depth: int = 0
+    _deferred: set[str] = field(default_factory=set)
 
     @contextlib.contextmanager
     def _apply_scope(self, fiber: Fiber) -> Iterator[None]:
@@ -104,21 +110,78 @@ class Context:
         """装配插件，创建 Fiber 并启动加载，返回该 Fiber 供调用方查证状态。"""
         fiber = Fiber(plugin, self, config)
         self._fibers[plugin.name] = fiber
-        # 计算初始 epoch 并尝试激活
-        fiber._refresh()
+        # 计算初始 epoch 并尝试激活；装配期多次 provide 合并为一次下游传播。
+        with self.batch():
+            fiber._refresh()
         return fiber
 
-    def notify(self, names: list[str]) -> None:
-        """响应式通知：遍历所有 Fiber，对 inject 命中者执行 _refresh。"""
-        name_set = set(names)
-        for fiber in self._fibers.values():
+    def notify(self, names: Iterable[str]) -> None:
+        """响应式通知：事务内登记待处理键，事务外同步刷新。
+
+        事务边界的意义见 :meth:`batch`——多键提供方卸载/装载时，逐键通知会让
+        注入多键的依赖方在中间视图上反复装/卸；登记后统一排空，依赖方只按
+        最终视图判定一次。
+        """
+        if self._batch_depth:
+            self._deferred.update(names)
+            return
+        self._refresh_dependents(frozenset(names))
+
+    def _refresh_dependents(self, names: frozenset[str]) -> None:
+        """按插入顺序刷新注入命中 ``names`` 的 Fiber（已销毁者跳过）。"""
+        if not names:
+            return
+        # 取元组快照：依赖方的 apply 可能经 Context.plugin 追加新 Fiber，
+        # 直接迭代字典视图会触发「迭代期间尺寸变化」。
+        for fiber in tuple(self._fibers.values()):
             if fiber.state == FiberState.DISPOSED:
                 continue
             inject_names = fiber.inject_names
             if not inject_names:
                 continue  # 无依赖的插件不受通知影响
-            if inject_names & name_set:
+            if inject_names & names:
                 fiber._refresh()
+
+    @contextlib.contextmanager
+    def batch(self, *, flush: bool = True) -> Iterator[None]:
+        """把一组变更合并为一次下游传播（可重入）。
+
+        最外层退出时统一排空待处理通知；``flush=False`` 用于 ``dispose``——终态
+        拆除不需要传播，待处理通知随拆除一起丢弃。即使事务体抛异常也排空：
+        ``store`` 已被修改时，下游不能停留在过期视图（否则会出现「依赖全可解
+        却 INACTIVE」的静默缺口）。
+        """
+        self._batch_depth += 1
+        try:
+            yield
+        finally:
+            self._batch_depth -= 1
+            if self._batch_depth == 0:
+                if flush:
+                    self._flush_notifications()
+                else:
+                    self._deferred.clear()
+
+    def _flush_notifications(self) -> None:
+        """排空待处理通知，直到没有新的依赖变更产生。
+
+        排空期间回填事务态：依赖方装配时产生的新供应继续入队，由下一轮统一
+        处理，而不是递归刷新——这是「一次变更一次传播」的关键。轮次上限把病态
+        环转成可诊断错误。
+        """
+        self._batch_depth += 1
+        try:
+            rounds = 0
+            while self._deferred:
+                rounds += 1
+                if rounds > _MAX_FLUSH_ROUNDS:
+                    pending = ", ".join(sorted(self._deferred))
+                    raise RuntimeError(f"通知排空 {rounds} 轮仍未收敛，待处理键：{pending}")
+                names = frozenset(self._deferred)
+                self._deferred.clear()
+                self._refresh_dependents(names)
+        finally:
+            self._batch_depth -= 1
 
     def get_effects(self) -> list[EffectMeta]:
         """获取效应元信息树（用于调试与可观测性）。"""
@@ -133,18 +196,21 @@ class Context:
         代码块原本的异常。
         """
         errors: list[tuple[str, Exception]] = []
-        for fiber in reversed(list(self._fibers.values())):
-            fiber.dispose()
-            if fiber.error is not None:
-                label = f"fiber:{fiber.name}"
-                errors.append((label, fiber.error))
-                if report is not None:
-                    report(label, fiber.error)
-        self._fibers.clear()
-        for label, exc in self._root_disposables.dispose_all(report):
-            errors.append((f"root:{label}", exc))
-        self._store.clear()
-        self._effects.clear()
+        # 终态拆除：逆序卸载本身会撤销供应并产生通知，但此时传播已无意义，
+        # 以不排空事务丢弃，避免刷新正在被销毁的 Fiber。
+        with self.batch(flush=False):
+            for fiber in reversed(list(self._fibers.values())):
+                fiber.dispose()
+                if fiber.error is not None:
+                    label = f"fiber:{fiber.name}"
+                    errors.append((label, fiber.error))
+                    if report is not None:
+                        report(label, fiber.error)
+            self._fibers.clear()
+            for label, exc in self._root_disposables.dispose_all(report):
+                errors.append((f"root:{label}", exc))
+            self._store.clear()
+            self._effects.clear()
         self._disposal_errors = errors
         return errors
 

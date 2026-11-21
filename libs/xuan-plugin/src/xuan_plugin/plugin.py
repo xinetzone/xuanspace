@@ -320,44 +320,54 @@ class Fiber:
         return tuple(missing)
 
     def _refresh(self) -> None:
-        """重新计算 epoch，并按 §5.5 迁移到 INACTIVE / LOADING / UNLOADING。"""
-        if self.state is FiberState.DISPOSED:
-            raise FiberTransitionError(self.plugin.name, self.state, FiberState.LOADING)
-        if self.state in (FiberState.LOADING, FiberState.UNLOADING):
-            # apply/撤销内部的 provide 会触发 notify 重入；迁移进行中不重算，
-            # 否则会得到 LOADING → LOADING 这类表外迁移。
-            return
+        """重新计算 epoch，并按 §5.5 迁移到 INACTIVE / LOADING / UNLOADING。
 
-        inputs = self._snapshot_inputs()
-        new_epoch = self._epoch_of(inputs)
-        missing = self._missing_keys() if new_epoch == _INACTIVE else ()
+        整体处于一次传播事务内：卸载期撤销的键与新实现供应的键合并到事务结束
+        统一排空，依赖方只在最终视图上判定一次，不会看到「键暂时缺失」的中间态。
+        """
+        with self.ctx.batch():
+            if self.state is FiberState.DISPOSED:
+                raise FiberTransitionError(self.plugin.name, self.state, FiberState.LOADING)
+            if self.state in (FiberState.LOADING, FiberState.UNLOADING):
+                # apply/撤销内部的 provide 会触发 notify 重入；迁移进行中不重算，
+                # 否则会得到 LOADING → LOADING 这类表外迁移。
+                return
 
-        # ADR-03：静态插件 ACTIVE 后不热换。直接抑制而非抛错，避免依赖方一次
-        # 普通的 provide 撤销就把原生插件踢进非法迁移。
-        if self.plugin.lifecycle == "static" and self.state is FiberState.ACTIVE and new_epoch != self._epoch:
-            self._suppressed_reloads += 1
-            return
+            inputs = self._snapshot_inputs()
+            new_epoch = self._epoch_of(inputs)
+            missing = self._missing_keys() if new_epoch == _INACTIVE else ()
 
-        if new_epoch == self._epoch:
+            # ADR-03：静态插件 ACTIVE 后不热换。直接抑制而非抛错，避免依赖方一次
+            # 普通的 provide 撤销就把原生插件踢进非法迁移。
+            if self.plugin.lifecycle == "static" and self.state is FiberState.ACTIVE and new_epoch != self._epoch:
+                self._suppressed_reloads += 1
+                return
+
+            if new_epoch == self._epoch:
+                if new_epoch == _INACTIVE:
+                    # 初次刷新即不可解（PENDING）、或原因集合变化（INACTIVE）：
+                    # 都归一到 _deactivate，避免停在「未尝试」的 PENDING 上。
+                    self._deactivate(missing)
+                elif self.state is FiberState.ACTIVE and self._pending is not None:
+                    # 依赖已回到当前生效身份，此前的失败重载不再有待办意义。
+                    self._pending = None
+                elif self.state is FiberState.INACTIVE:
+                    # 依赖已恢复且身份未变（典型：撤销后重供同一实现）：必须重新
+                    # 装配。否则会停在「依赖全可解却 INACTIVE」，违反 §5.4 第 9 步
+                    # 的静默断言。
+                    self._reload()
+                return
+
             if new_epoch == _INACTIVE:
-                # 初次刷新即不可解（PENDING）、或原因集合变化（INACTIVE）：
-                # 都归一到 _deactivate，避免停在「未尝试」的 PENDING 上。
-                self._deactivate(missing)
-            elif self.state is FiberState.ACTIVE and self._pending is not None:
-                # 依赖已回到当前生效身份，此前的失败重载不再有待办意义。
                 self._pending = None
-            return
+                self._deactivate(missing)
+                return
 
-        if new_epoch == _INACTIVE:
-            self._pending = None
-            self._deactivate(missing)
-            return
-
-        if self.state is FiberState.ACTIVE:
-            self._replace(inputs, new_epoch)
-        else:
-            self._epoch = new_epoch
-            self._reload()
+            if self.state is FiberState.ACTIVE:
+                self._replace(inputs, new_epoch)
+            else:
+                self._epoch = new_epoch
+                self._reload()
 
     def _replace(
         self,
@@ -421,7 +431,13 @@ class Fiber:
             with self.ctx._apply_scope(self):
                 self.plugin.apply(self.ctx, self.config)
             self._missing = ()
-            self._inputs = self._snapshot_inputs()
+            # 以装配后的快照为准：apply 自身可能改写其注入的键（同 id 环/自提供），
+            # 若 epoch 仍停留在 apply 前的身份，下一轮传播会把它判成「身份又变了」，
+            # 造成反复重载甚至排空不收敛。
+            snapshot = self._snapshot_inputs()
+            self._inputs = snapshot
+            if snapshot is not None:
+                self._epoch = self._epoch_of(snapshot)
             self._pending = None
             self._transition(FiberState.ACTIVE)
         except Exception as e:
@@ -461,17 +477,18 @@ class Fiber:
         if self.state is not FiberState.FAILED:
             raise FiberTransitionError(self.plugin.name, self.state, FiberState.LOADING)
 
-        self._pending = None
-        new_epoch = self._compute_epoch()
-        self._epoch = new_epoch
-        self._error = None
-        if new_epoch == _INACTIVE:
-            self._missing = self._missing_keys()
-            self._transition(FiberState.INACTIVE)
-            return
-        self._reload()
-        if self.state is FiberState.ACTIVE:
-            self._reloads += 1
+        with self.ctx.batch():
+            self._pending = None
+            new_epoch = self._compute_epoch()
+            self._epoch = new_epoch
+            self._error = None
+            if new_epoch == _INACTIVE:
+                self._missing = self._missing_keys()
+                self._transition(FiberState.INACTIVE)
+                return
+            self._reload()
+            if self.state is FiberState.ACTIVE:
+                self._reloads += 1
 
     @property
     def error(self) -> Exception | None:

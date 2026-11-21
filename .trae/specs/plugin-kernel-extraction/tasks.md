@@ -960,3 +960,81 @@ Task 1–8 全部完成后，满足：
   - **V7 静态插件**：抑制判定仍在替换之前，`suppressed_reloads` 语义与 P2-4 一致，
     原生插件不因本次改动获得 `.so` 卸载能力。
 
+## Task P2-6-1: 下游传播批处理（事务内汇总 notify，事务结束统一刷新）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-5-1（`8d3b173`，热替换事务与效应归属）
+- **Description**:
+  - 现状缺口（探针实测）：多键提供方卸载时逐键 `notify`，依赖方在中间视图被
+    完全卸下；若重供的实现摘要不变（同类实现、撤销后重供同一对象），依赖方会
+    **永久停在 `INACTIVE`**（`_epoch` 相等且 `_refresh` 直接返回），出现「依赖
+    全可解却未激活」的静默缺口；两位提供方在同一次逻辑变更中先后变更时，下游
+    被拆成两轮装/卸。
+  - `libs/xuan-plugin/src/xuan_plugin/context.py`：
+    - 新增 `Context.batch(flush=True)`（可重入、深度计数）：事务内 `notify` 只
+      并入 `_deferred` 去重集合，最外层退出时统一排空；异常退出同样排空（`store`
+      已变更时下游不能停留在过期视图）；
+    - 新增 `_flush_notifications()`：排空期间回填事务态，依赖方装配产生的新通知
+      由下一轮处理；轮次上限 `_MAX_FLUSH_ROUNDS=100` 把病态环转为可诊断错误；
+    - `_refresh_dependents()` 以元组快照迭代 Fiber，容忍 apply 期间新增 Fiber；
+    - `plugin()` 包在事务内；`dispose()` 使用 `flush=False`，终态拆除丢弃通知。
+  - `libs/xuan-plugin/src/xuan_plugin/plugin.py`：
+    - `_refresh()`、`retry()` 整体包在 `ctx.batch()` 内，使「卸载旧键 + 供应新键」
+    合并为一次下游传播；
+    - `_refresh()` 增加收敛分支：`new_epoch == self._epoch` 且状态为 `INACTIVE`
+    时重新装配（撤销后重供同一实现的场景）；
+    - `_reload()` 成功后以装配后的快照重算 `_epoch`：apply 自身改写注入键（同 id
+    环/自提供）时，避免 epoch 永久滞后导致的反复重载与排空不收敛。
+  - `libs/xuan-plugin/tests/test_notification_batch.py`（新增 9 个测试）；
+    `doc/okf/architecture.md` 同步传播事务与收敛语义。
+- **Acceptance Criteria Addressed**: 设计文档 §5.4 第 5–9 步（按依赖集传播、逐字段
+  对账、静默断言）、度量 M4（变更半径）
+- **Test Requirements**:
+  - `rule` TR-P2.6-1: 事务内只登记、最外层退出才刷新，且可重入；
+    证据：`test_batch_defers_propagation_until_outermost_exit`、
+    `test_batch_is_reentrant_and_flushes_once`
+  - `rule` TR-P2.6-2: 一侧多键热替换只产生一轮下游装/卸，批内无中间态；
+    证据：`test_multi_key_provider_reload_is_single_cycle`
+  - `rule` TR-P2.6-3: 同一批内的多位提供方变更只触发一次依赖方替换（M4）；
+    证据：`test_two_providers_in_one_batch_single_cycle`
+  - `rule` TR-P2.6-4: 依赖恢复且身份未变时 `INACTIVE` 收敛回 `ACTIVE`；
+    证据：`test_resolvable_inactive_fiber_reactivates`
+  - `rule` TR-P2.6-5: 排空期间产生的新通知在下一轮处理（级联收敛）；
+    证据：`test_cascade_flushes_new_notifications_in_next_round`
+  - `rule` TR-P2.6-6: 静态插件抑制计数按逻辑变更计一次；
+    证据：`test_static_plugin_suppression_counts_once_per_batch`
+  - `rule` TR-P2.6-7: `dispose` 丢弃待处理传播，终态无残留；
+    证据：`test_dispose_discards_pending_propagation`
+  - `rule` TR-P2.6-8: 事务体抛异常时仍排空，下游不留下过期视图；
+    证据：`test_batch_flushes_even_if_body_raises`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 联跑 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **184 passed**（基线 175，新增 9，无删减）；
+  - `tools/okf` 独立运行 → **259 passed**；
+  - 门禁：`ruff check` 与 `ruff format --check`（58 文件）通过；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （337 文件）、`check_spec_integrity.py`（任务编号 32）通过；
+    `check_declaration_consistency.py` 仍有 2 项既有失败（`libs/mystx` 子模块指针
+    漂移与清单快照过期，本次改动前 `git status` 即显示 `M libs/mystx`，与本条无关）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 同步语义**：事务外 `provide` 仍逐次同步生效，`test_context.py` /
+    `test_context_extra.py` 的既有断言不变；只有显式 `batch()` 或内核内部边界
+    （`_refresh` / `retry` / `plugin`）才延迟；
+  - **V2 异常传播**：事务体抛异常时仍排空——`store` 已变更，丢弃传播会永久留下
+    「依赖全可解却 INACTIVE」；排空自身仅可能抛非法迁移（编程错误），与现状同口径；
+  - **V3 非收敛保护**：互提供且摘要每轮变化的病态环会触发轮次上限错误，而不是
+    挂死；`_reload` 成功后的 epoch 重算消除了「自提供」这一最常见的振荡源；
+  - **V4 终态拆除**：`dispose` 用 `flush=False` 丢弃通知，避免刷新正在销毁的
+    Fiber；`dispose` 的错误聚合语义不变；
+  - **V5 计数口径**：`reloads` 仍是「成功热替换次数」，批处理后一次逻辑变更只计
+    一次；`suppressed_reloads` 同理从「按键」变为「按变更」；
+  - **V6 遗留风险（不在本条范围）**：`_digest` 对无源码对象回退到 `repr`，其中
+    含内存地址，存在地址复用导致「新实现摘要与旧实现相等」的概率；本条通过
+    「依赖可解即必须 ACTIVE」的收敛分支使其不再产生静默缺口，但摘要身份本身
+    仍不满足 M2 的跨进程可复现要求，留待身份改造任务处理。
+
