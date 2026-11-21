@@ -197,8 +197,10 @@ exclude = [
     "vendor/",
     "libs/tvm-book/",
     "attic/",
-    "build/",
-    "dist/",
+    # 以路径段锚定：mypy 的 exclude 是 re.search 语义，"build/" 会误命中
+    # 形如 libs/xuan-build/src/ 的目录名（目录名以 build 结尾），导致该库被整体跳过
+    "(^|/)build/",
+    "(^|/)dist/",
     "tools/templates/",
     ".test-venv/",
 ]

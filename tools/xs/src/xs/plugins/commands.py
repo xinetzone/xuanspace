@@ -17,8 +17,9 @@ from functools import partial
 from importlib import import_module
 from typing import cast
 
+from xuan_build import DISPATCH_KEY as BUILD_DISPATCH_KEY
 from xuan_plugin.context import Context
-from xuan_plugin.manifest import PluginManifest, ProvideDecl
+from xuan_plugin.manifest import InjectDecl, PluginManifest, ProvideDecl
 from xuan_plugin.plugin import Plugin
 
 from .registry import CommandEntry, CommandRegistry, CommandTarget
@@ -60,6 +61,7 @@ MANIFEST = PluginManifest(
     id="xs.commands",
     version="0.1.0",
     provide=tuple(ProvideDecl(key=spec.key) for spec in COMMAND_SPECS),
+    inject=(InjectDecl(key=BUILD_DISPATCH_KEY),),
     reversible=True,
     priority=100,
     lifecycle="reloadable",

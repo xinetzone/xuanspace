@@ -3,13 +3,13 @@ xs build 命令模块
 构建工作区中的项目
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from xuan_build import dispatch
 
 from ..config import ProjectType, find_workspace_root, load_pyproject
 from ..discovery import ProjectInfo, discover_projects, find_project_by_name
@@ -49,75 +49,6 @@ def _provides_running_cli(project: ProjectInfo) -> bool:
     except Exception:
         return False
     return bool(scripts) and any(name.lower() == running for name in scripts)
-
-
-def _build_python_project(project_path: Path) -> bool:
-    """
-    构建纯 Python 项目
-
-    Args:
-        project_path: 项目目录路径
-
-    Returns:
-        构建是否成功
-    """
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "build", "--wheel"],
-            cwd=project_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return True
-    except subprocess.CalledProcessError as e:
-        console.print("[red]构建失败:[/red]")
-        if e.stdout:
-            console.print(f"[red]{e.stdout}[/red]")
-        if e.stderr:
-            console.print(f"[red]{e.stderr}[/red]")
-        return False
-
-
-def _build_native_project(project_path: Path) -> bool:
-    """
-    构建 C/C++ 原生扩展项目
-
-    Args:
-        project_path: 项目目录路径
-
-    Returns:
-        构建是否成功
-    """
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e", "."],
-            cwd=project_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return True
-    except subprocess.CalledProcessError as first_err:
-        console.print("[yellow]pip install -e 失败，回退 python -m build --wheel[/yellow]")
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "build", "--wheel"],
-                cwd=project_path,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            # ninja/CMake 的 FAILED: 详情写入 stdout，两路输出都必须保留
-            console.print("[red]构建失败:[/red]")
-            for err in (first_err, e):
-                if err.stdout:
-                    console.print(f"[red]{err.stdout}[/red]")
-                if err.stderr:
-                    console.print(f"[red]{err.stderr}[/red]")
-            return False
 
 
 def _get_project_for_build(
@@ -165,6 +96,9 @@ def _build_single_project(project_path: Path, project_type: ProjectType) -> bool
     """
     构建单个项目
 
+    构建方式由 ``xuan:build/backend#dispatch`` 能力按项目类型分派；
+    本函数只负责跳过提示、进度展示与结果汇总。
+
     Args:
         project_path: 项目路径
         project_type: 项目类型
@@ -173,13 +107,11 @@ def _build_single_project(project_path: Path, project_type: ProjectType) -> bool
         构建是否成功
     """
     project_name = project_path.name
+    backend = dispatch(project_type)
 
-    if project_type == "static":
-        console.print(f"[yellow]跳过静态项目: {project_name} (无需构建)[/yellow]")
-        return True
-
-    if project_type == "other":
-        console.print(f"[yellow]跳过未知类型项目: {project_name}[/yellow]")
+    skip_message = backend.skip_message(project_name)
+    if skip_message is not None:
+        console.print(skip_message)
         return True
 
     with Progress(
@@ -188,14 +120,7 @@ def _build_single_project(project_path: Path, project_type: ProjectType) -> bool
         console=console,
     ) as progress:
         task = progress.add_task(f"正在构建 {project_name}...", total=None)
-
-        if project_type == "python":
-            success = _build_python_project(project_path)
-        elif project_type == "native":
-            success = _build_native_project(project_path)
-        else:
-            success = False
-
+        success = backend.build(project_path, console)
         progress.update(task, completed=True)
 
     if success:

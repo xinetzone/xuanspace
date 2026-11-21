@@ -23,7 +23,8 @@ dependencies = [
   "rich>=13.0",
   "packaging>=24.0",
   "tomlkit>=0.12",
-  "xuan-plugin>=0.1.0"
+  "xuan-plugin>=0.1.0",
+  "xuan-build>=0.1.0"
 ]
 authors = [
   {name = "xinetzone"}
@@ -40,7 +41,7 @@ xs = "xs.cli:app"
 
 # 入口点通道（P1-3）：加载模块后读取其 MANIFEST，与静态清单合并去重。
 [project.entry-points."xuan.plugins"]
-xs.commands = "xs.plugins.commands"
+"xs.commands" = "xs.plugins.commands"
 
 # 纯 Python 包：wheel.cmake=false 禁用 CMake（无 CMakeLists.txt），
 # 产出 py3-none-any 通用 wheel，构建无需 cmake/ninja。
@@ -75,6 +76,10 @@ version = "0.1.0"
 lifecycle = "reloadable"
 reversible = true
 priority = 100
+
+# build 子命令的构建方式由该能力分派（P2-1）；xuan.build 提供，本插件注入。
+[[tool.xuan.plugin.inject]]
+key = "xuan:build/backend#dispatch"
 
 [[tool.xuan.plugin.provide]]
 key = "xuan:cli/commands#list"

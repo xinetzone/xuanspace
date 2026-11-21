@@ -168,7 +168,7 @@ def test_broken_entry_point_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(plugin_cmd, "entry_points", lambda group: [_BrokenEntryPoint()])
     manifests = plugin_cmd.collect_manifests(REPO_ROOT)
-    assert {manifest.id for manifest in manifests} == {"xs.commands"}
+    assert {manifest.id for manifest in manifests} == {"xs.commands", "xuan.build"}
 
 
 # ─── P1-2：apply --dry-run 的求解面 ─────────────────────────────────────
@@ -198,10 +198,11 @@ def test_apply_dry_run_json_is_byte_identical(monkeypatch: pytest.MonkeyPatch) -
 
     payload = json.loads(first.output)
     assert payload["status"] == "ok"
-    assert payload["order"] == ["xs.commands"]
-    assert payload["domains"] == [{"labels": [], "nodes": ["xs.commands"]}]
+    assert payload["order"] == ["xuan.build", "xs.commands"]
+    assert len(payload["domains"]) == 1
+    assert set(payload["domains"][0]["nodes"]) == {"xuan.build", "xs.commands"}
     assert payload["inactive"] == []
-    assert len(payload["provides"]) == 16
+    assert len(payload["provides"]) == 17
 
 
 def test_apply_activates_builtin_plugin(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,11 +213,11 @@ def test_apply_activates_builtin_plugin(monkeypatch: pytest.MonkeyPatch) -> None
 
     payload = json.loads(result.output)
     assert payload["status"] == "ok"
-    assert payload["applied"] == ["xs.commands"]
+    assert payload["applied"] == ["xuan.build", "xs.commands"]
     assert payload["commands"] == [spec.name for spec in COMMAND_SPECS]
     assert payload["reconciled"]["missing"] == []
     assert payload["reconciled"]["unexpected"] == []
-    assert len(payload["reconciled"]["matched"]) == 16
+    assert len(payload["reconciled"]["matched"]) == 17
 
 
 def test_apply_reports_missing_implementation(monkeypatch: pytest.MonkeyPatch) -> None:

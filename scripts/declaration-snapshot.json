@@ -23,6 +23,7 @@
     "mystx",
     "npu-ffi",
     "tvm-book",
+    "xuan-build",
     "xuan-cmd",
     "xuan-compose",
     "xuan-core",

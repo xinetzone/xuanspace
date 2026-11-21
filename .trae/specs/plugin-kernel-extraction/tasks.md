@@ -653,3 +653,59 @@ Task 1–8 全部完成后，满足：
   - `Fiber` 卸载后仍保留 `_error` 的问题未在 P1-3 处理，仍由装配器按异常对象去重兜底
     （承接 P1-2 的 A4 待办）。
 
+## Task P2-1-1: 构建后端多提供者（`xuan:build/backend#dispatch`）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P1-3（`29fd63e`）
+- **Description**:
+  - 新增独立能力库 `libs/xuan-build`（包名 `xuan-build`，模块 `xuan_build`）：
+    `backends.py` 定义 `Reporter` / `BuildBackend` 协议与 Python/Native/Static/Other 四种实现，
+    `dispatch.py` 提供 `BuildDispatcher`（未知类型落 `other`）与 `DEFAULT_DISPATCHER`，
+    `__init__.py` 导出 `DISPATCH_KEY = "xuan:build/backend#dispatch"`、`MANIFEST`、`apply`、`PLUGIN`；
+  - `tools/xs/src/xs/commands/build_cmd.py`：删除 `_build_python_project` /
+    `_build_native_project` 与 `subprocess` 直调，`_build_single_project` 改为
+    `backend = dispatch(project_type)` → `skip_message` 命中即打印跳过 → 否则在 Progress 内
+    `backend.build(project_path, console)`；
+  - `tools/xs/pyproject.toml`：新增 `xuan-build>=0.1.0` 依赖、`[[tool.xuan.plugin.inject]]`
+    该键，并把入口点名改为带引号的 `"xs.commands"`；`xs/plugins/commands.py` 的 `MANIFEST`
+    同步声明 inject；
+  - `tools/xs/src/xs/commands/plugin_cmd.py`：内置插件集加入 `xuan.build`，装配顺序由
+    priority 决定（`xuan.build` 50 → `xs.commands` 100）；
+  - `pyproject.toml`：mypy `exclude` 中 `build/`、`dist/` 改为路径段锚定 `(^|/)build/`、
+    `(^|/)dist/`——原写法是 `re.search` 语义，会误命中 `libs/xuan-build/src/`，使新库被整体跳过；
+  - 治理同步：CI 三个 job 均安装 `libs/xuan-build`，quality 新增其测试步骤，mypy 命令加入该库；
+    `scripts/check_declaration_consistency.py` 的 `LIB_PROJECT_META` 登记新库并刷新快照；
+    根 `README.md` 项目索引补 `xuan-build` 行。
+- **Acceptance Criteria Addressed**: 设计文档 §7 P2-1——构建实现由单一能力键分派，
+  `xs build` 对 python/native/static 三类项目的行为与文案不变
+- **Test Requirements**:
+  - `rule` TR-P2.1-1: 四种项目类型分派到对应后端，未知类型落 `other`；
+    证据：`test_dispatch_covers_all_project_types`
+  - `rule` TR-P2.1-2: 跳过文案逐字保留（static / other）；
+    证据：`test_skip_messages_are_stable`
+  - `rule` TR-P2.1-3: Python 后端成功/失败路径与输出保留；
+    证据：`test_python_backend_success`、`test_python_backend_failure_reports_both_streams`
+  - `rule` TR-P2.1-4: Native 后端 `pip install -e` 失败后回退 `python -m build --wheel`；
+    证据：`test_native_backend_falls_back_to_wheel_build`
+  - `rule` TR-P2.1-5: 代码清单与 `pyproject.toml` 静态清单同契约，插件可逆；
+    证据：`test_manifest_matches_pyproject`、`test_plugin_registration_is_reversible`
+  - `rule` TR-P2.1-6: `xs build` 经能力键委派，跳过与失败文案不变；
+    证据：`tests/test_build_dispatch.py` 的三条用例
+- **Completion Evidence**（2026-11-21 实测）:
+  - 根 `tests` + `libs/xuan-build/tests` + `libs/xuan-plugin/tests` → **123 passed**；
+  - 门禁：`ruff check .` All checks passed；`ruff format --check .` 462 files already formatted；
+    `mypy tools/xs libs/xuan-core libs/xuan-ext-demo libs/xuan-build libs/xuan-plugin` →
+    Success: no issues found in 45 source files；
+  - `check_pyproject_style.py`（15 个 pyproject）、`check_dependency_direction.py`（318 文件）、
+    `check_spec_integrity.py`（3 个台账、26 个任务编号）、`check_declaration_consistency.py`
+    全部通过；`xs toolchain check` 无新增异常；
+  - 实机：`xs plugin apply --json` → `applied = ["xuan.build", "xs.commands"]`，
+    `matched` 17 键（`xuan:build/backend#dispatch` + 16 条命令），missing/unexpected 均为空。
+- **Notes**:
+  - 设计文档中的阶段号 P2-1 与本台账既有的 `Task P2-1`（epoch 摘要身份）重号，故本条以
+    任务编号 `P2-1-1` 登记，避免台账门禁判定重复。
+  - 未改动内核的多值查找语义：multi 语义仍停留在 solver/manifest 层，本轮只新增单键单值的
+    分派门面。
+  - `xs build --type` 的取值仍限定 `python/native/all`，未新增 static 批量入口——保持行为不变。
+

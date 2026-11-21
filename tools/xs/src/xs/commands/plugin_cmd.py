@@ -13,6 +13,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.table import Table
+from xuan_build import PLUGIN as BUILD_PLUGIN
 from xuan_plugin.assembly import assemble
 from xuan_plugin.manifest import (
     PluginManifest,
@@ -304,7 +305,10 @@ def _emit_plan(solution: Solution, manifests: tuple[PluginManifest, ...], json_o
 
 def _apply_solution(solution: Solution, json_output: bool) -> None:
     """对内置插件执行真实装配，并输出对账结果。"""
-    builtin: dict[str, Plugin] = {COMMANDS_PLUGIN.name: COMMANDS_PLUGIN}
+    builtin: dict[str, Plugin] = {
+        BUILD_PLUGIN.name: BUILD_PLUGIN,
+        COMMANDS_PLUGIN.name: COMMANDS_PLUGIN,
+    }
     missing = [node for node in solution.order if node not in builtin]
     if missing:
         message = f"缺少运行时实现：{', '.join(missing)}"
