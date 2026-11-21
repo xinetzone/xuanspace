@@ -27,6 +27,7 @@ from ..engine import ComposeEngine
 from ..errors import PodmanComposeError
 from ..logging_utils import log
 from ..runner import DEFAULT_MACHINE_READY_TIMEOUT, CalledProcessError, Podman
+from .command_specs import build_registry
 from .parser import parse_args
 
 __all__ = ["async_main", "main"]
@@ -50,10 +51,13 @@ def _machine_ready_timeout() -> float:
 
 async def async_main(argv: list[str] | None = None) -> None:
     engine = ComposeEngine()
-    install_handlers(engine)
+    registry = build_registry()
+    # 登记即副作用：命令清单只装配一次，parser 与引擎查表共用同一注册表；
+    # 逆函数与进程同寿命，持有引用以便未来热替换/测试显式撤销。
+    _registration = install_handlers(engine, registry)
 
     log.info("podman-compose version: %s", __version__)
-    args = parse_args(engine, argv)
+    args = parse_args(engine, argv, registry)
     podman_path = args.podman_path
     if podman_path != "podman":
         if os.path.isfile(podman_path) and os.access(podman_path, os.X_OK):

@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "xuan-plugin>=0.1.0",
 ]
 
 # 对等上游 [project.scripts] podman-compose = "podman_compose:main"（FR-3）。

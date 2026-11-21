@@ -17,9 +17,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from unittest import IsolatedAsyncioTestCase, mock
 
 from xuan_compose.cli import parser as cli_parser
+from xuan_compose.cli.command_specs import COMMAND_HANDLERS, COMMAND_PARSERS
 from xuan_compose.cli.main import _machine_ready_timeout, async_main, main
-from xuan_compose.cli.parser import COMMAND_PARSERS, build_parser, parse_args
-from xuan_compose.commands import COMMAND_HANDLERS
+from xuan_compose.cli.parser import build_parser, parse_args
 from xuan_compose.engine import ComposeEngine
 from xuan_compose.errors import PodmanEngineNotReadyError
 from xuan_compose.runner import DEFAULT_MACHINE_READY_TIMEOUT, CalledProcessError
@@ -88,7 +88,7 @@ class TestParserRegistry(IsolatedAsyncioTestCase):
         ]
 
     def test_systemd_help_derived_from_handler_docstring(self) -> None:
-        from xuan_compose.cli.parser import COMMAND_HELP
+        from xuan_compose.cli.command_specs import COMMAND_HELP
 
         assert COMMAND_HELP["systemd"] == ("create systemd unit file and register its compose stacks")
 

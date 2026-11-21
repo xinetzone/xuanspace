@@ -12,8 +12,8 @@ import unittest
 from pathlib import Path
 
 from tests.parity_lib import serialize_parser_tree
-from xuan_compose.cli.parser import COMMAND_HELP, COMMAND_PARSERS, SYSTEMD_DESC, build_parser
-from xuan_compose.commands import COMMAND_HANDLERS
+from xuan_compose.cli.command_specs import COMMAND_HANDLERS, COMMAND_HELP, COMMAND_PARSERS
+from xuan_compose.cli.parser import SYSTEMD_DESC, build_parser
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "cli_parity.json"
 

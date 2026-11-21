@@ -709,3 +709,62 @@ Task 1–8 全部完成后，满足：
     分派门面。
   - `xs build --type` 的取值仍限定 `python/native/all`，未新增 static 批量入口——保持行为不变。
 
+## Task P2-2-1: `xuan-compose` 指令登记化（处理器表 → 登记 + Disposable）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-1-1（`8e6b427`）
+- **Description**:
+  - 新增 `libs/xuan-compose/src/xuan_compose/commands/registry.py`：
+    `CommandSpec`（name / handler / parsers / help / description）与
+    `CommandRegistry`。`register()` 返回 `xuan_plugin.Disposable`，撤销即摘除该条；
+    `register_all()` 用 `DisposableList` 栈式逆序回滚；`bind()` 把 handler 灌入
+    `compose.commands` 并在撤销时逐项恢复绑定前取值（原本不存在的键被删除）；
+    重复命令名视为契约冲突，显式 `ValueError` 而非静默覆盖；
+  - 新增 `libs/xuan-compose/src/xuan_compose/cli/command_specs.py`：
+    24 条指令的**单一登记点** `COMMAND_SPECS`，同时携带 handler、parser 挂载序、
+    help/description；`COMMAND_HANDLERS` / `COMMAND_PARSERS` / `COMMAND_HELP`
+    降级为只读派生视图（`MappingProxyType`），仅供断言与快照对拍；
+  - `commands/__init__.py`：删除 `COMMAND_HANDLERS` 静态表，仅保留
+    `install_handlers(compose, registry=None) -> Disposable` 绑定入口；
+  - `cli/parser.py`：删除 `COMMAND_PARSERS` / `COMMAND_HELP` 两张静态表，
+    `build_parser()` / `parse_args()` 增加 `registry` 参数，subparser 由登记序派生；
+    systemd 的 help/description 仍由 handler docstring 派生（`SYSTEMD_HELP`/`SYSTEMD_DESC`）；
+  - `cli/main.py`：装配期只建一次注册表，parser 与引擎查表共用同一实例；
+  - `libs/xuan-compose/pyproject.toml`：新增 `xuan-plugin>=0.1.0` 运行时依赖；
+  - `tests/`：三个文件的表引用改指 `command_specs`，并新增 4 条撤销语义用例；
+  - `README.md`：架构图的 CLI/commands 节点同步为新结构。
+- **Acceptance Criteria Addressed**: 设计文档 §7 P2-2——处理器表 → 登记 + Disposable；
+  现有 compose 测试全绿；新增指令的声明改动集中在单一文件（`command_specs.py`）
+- **Test Requirements**:
+  - `rule` TR-P2.2-1: 24 条指令的 handler/parser/help 三视图键集合与上游 `@cmd_run`
+    一致，登记序不变；证据：`test_registry_matches_upstream_cmd_run_set`、
+    `test_command_set_and_order_equal_to_snapshot`
+  - `rule` TR-P2.2-2: 登记返回的 Disposable 只摘除本条登记；证据：
+    `test_register_returns_undo_that_removes_only_that_entry`
+  - `rule` TR-P2.2-3: 重复登记报错、批量登记失败整体回滚（无半装配状态）；证据：
+    `test_duplicate_registration_is_contract_conflict`、`test_register_all_rolls_back_on_conflict`
+  - `rule` TR-P2.2-4: `bind` 的逆函数恢复 `compose.commands` 绑定前状态；证据：
+    `test_bind_disposable_restores_previous_lookup`
+  - `rule` TR-P2.2-5: 顶层 help 文本逐字不变（4688 字符，
+    sha256 `d27cf8b0…b3742729`，改造前后同值）
+- **Completion Evidence**（2026-11-21 实测）:
+  - `libs/xuan-compose` 全量：**1015 passed, 79 subtests passed**（改造前基线
+    1011 passed / 79 subtests，新增 4 条撤销语义用例）；
+  - 门禁：`ruff check` / `ruff format --check`（129 文件）通过；
+    `mypy libs/xuan-compose/src` → Success: no issues found in 41 source files；
+    `check_pyproject_style.py`（15 个 pyproject）、`check_dependency_direction.py`
+    （320 文件，libs 未依赖 apps/scripts/attic/vendor）通过；
+  - 仓库级：`pytest -q tests libs/xuan-build/tests libs/xuan-plugin/tests` → 123 passed；
+    `check_spec_integrity.py`（3 个台账、28 个任务编号）、
+    `check_declaration_consistency.py`、`xs toolchain check` 全部通过。
+- **Notes**:
+  - 设计文档 §7 的 P2-2 与本台账既有的 epoch 任务 `Task P2-2` 同号风险：本轮以
+    `P2-2-1` 登记；本台账中 epoch 摘要身份实际登记为 `Task P2-1`，未出现 `P2-2`，
+    但沿用「设计阶段号 + 序号」的既有约定以避免后续重号。
+  - 「新增指令只改一个文件」的度量口径：清单是唯一声明点，新增一条指令只需在
+    `command_specs.py` 追加一条 `CommandSpec`；若 handler 尚不存在，需另加其实现
+    模块（2 个文件），与 P1-3 的「1–2 个文件」口径一致。
+  - 未把 `xuan-compose` 纳入 CI 的 mypy 命令范围（CI 现状不含该库），本轮仅在本地
+    以 `mypy libs/xuan-compose/src` 验证零告警；扩大 CI 范围属独立治理项。
+

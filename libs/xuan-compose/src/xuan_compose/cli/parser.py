@@ -4,39 +4,38 @@
 
 上游用 ``@cmd_parse`` 装饰器在 import 期向模块级单例的
 ``commands[name]._parse_args`` 列表**追加** parser 函数（第 3305-3316 行）；
-分层后改为无状态显式注册表：
+分层后改为无状态函数：
 
-- ``PARSER_FUNCTIONS``：23 个 parser 函数本体（含 ``PullPolicyAction``），
-  签名统一为 ``fn(parser) -> None``，与上游逐行对等（option strings、
-  action、default、nargs、choices、help 文本、注册顺序全部保留）；
-- ``COMMAND_PARSERS``：24 个命令名 → parser 函数元组的显式映射，
-  挂载顺序精确复刻装饰器 append 顺序（``wait`` 上游无 parser，为空元组）；
-- ``build_parser()``：纯函数构造全局 parser，不触碰引擎/argv（prog 由
-  argparse 内部按调用进程推导，属 FR-4 允许的唯一 prog 差异）；
-- ``parse_args(engine, argv)``：解析后的回填/分流逻辑（COMPOSE_ENV_FILES、
-  --version、无子命令 help 退出、日志级别），并把结果写入
-  ``engine.global_args`` 供引擎运行时读取。
-
-``wait`` 子命令在上游没有任何 ``@cmd_parse``（handler 不使用解析结果），
-注册表保留空元组以保证 24 个 subparser 均被创建。
+- 本模块保留 23 个 parser 函数本体（含 ``PullPolicyAction``），签名统一为
+  ``fn(parser) -> None``，与上游逐行对等（option strings、action、default、
+  nargs、choices、help 文本、注册顺序全部保留）；
+- 命令名到 parser 函数元组的映射（挂载顺序精确复刻 append 顺序，
+  ``wait`` 为空元组）由 P2-2 收敛到单一清单
+  :data:`xuan_compose.cli.command_specs.COMMAND_SPECS`；
+- ``build_parser(registry=...)``：纯函数构造全局 parser，不触碰引擎/argv
+  （prog 由 argparse 内部按调用进程推导，属 FR-4 允许的唯一 prog 差异）；
+- ``parse_args(engine, argv, registry=...)``：解析后的回填/分流逻辑
+  （COMPOSE_ENV_FILES、--version、无子命令 help 退出、日志级别），并把
+  结果写入 ``engine.global_args`` 供引擎运行时读取。
 """
 
 import argparse
 import os
 import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
+from ..commands.registry import CommandRegistry
 from ..commands.systemd import compose_systemd
 from ..errors import PodmanComposeError
 from ..logging_utils import configure_logging
 
 __all__ = [
-    "COMMAND_HELP",
-    "COMMAND_PARSERS",
     "PODMAN_CMDS",
     "PullPolicyAction",
+    "SYSTEMD_DESC",
+    "SYSTEMD_HELP",
     "build_parser",
     "parse_args",
 ]
@@ -53,9 +52,6 @@ PODMAN_CMDS = (
     "rm",
     "volume",
 )
-
-#: parser 函数统一签名。
-ParserFn = Callable[[argparse.ArgumentParser], None]
 
 #: 环境变量布尔开关的真值集合（大小写不敏感）。
 _ENV_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -714,71 +710,6 @@ def compose_ls_parse(parser: argparse.ArgumentParser) -> None:
     )
 
 
-#: 24 命令 → parser 函数元组。挂载顺序逐字复刻上游 ``@cmd_parse`` 对
-#: ``commands[name]._parse_args`` 的 append 顺序（先按装饰器行号，
-#: 共享 parser 同时挂多个命令）；``wait`` 上游无 parser，为空元组。
-COMMAND_PARSERS: dict[str, tuple[ParserFn, ...]] = {
-    "ls": (compose_ls_parse,),
-    "version": (compose_version_parse,),
-    "wait": (),
-    "systemd": (compose_systemd_parse,),
-    "pull": (compose_pull_parse,),
-    "push": (compose_push_parse,),
-    "build": (compose_build_up_parse, compose_build_parse),
-    "up": (
-        compose_up_parse,
-        compose_build_up_parse,
-        compose_build_parse,
-        compose_up_start_parse,
-    ),
-    "down": (compose_down_parse, compose_parse_timeout, compose_build_parse),
-    "ps": (compose_ps_parse, compose_format_parse),
-    "run": (compose_run_parse,),
-    "cp": (compose_parse_cp,),
-    "exec": (compose_exec_parse,),
-    "start": (compose_build_parse, compose_up_start_parse),
-    "stop": (compose_parse_timeout, compose_build_parse),
-    "restart": (compose_parse_timeout, compose_build_parse),
-    "logs": (compose_logs_parse,),
-    "config": (compose_config_parse,),
-    "port": (compose_port_parse,),
-    "pause": (compose_pause_unpause_parse,),
-    "unpause": (compose_pause_unpause_parse,),
-    "kill": (compose_kill_parse,),
-    "stats": (compose_stats_parse, compose_format_parse),
-    "images": (compose_images_parse,),
-}
-
-#: 23 条单行命令的 subparser help（= 上游 ``@cmd_run`` 的 cmd_desc，
-#: argparse help 与 description 同源；单行 desc 时上游 description=None）。
-COMMAND_HELP: dict[str, str] = {
-    "ls": "List running compose projects",
-    "version": "show version",
-    "wait": "wait running containers to stop",
-    "systemd": "",  # 占位，下方从 handler docstring 派生（与装饰器算法一致）
-    "pull": "pull stack images",
-    "push": "push stack images",
-    "build": "build stack images",
-    "up": "Create and start the entire stack or some of its services",
-    "down": "tear down entire stack",
-    "ps": "show status of containers",
-    "run": "create a container similar to a service to run a one-off command",
-    "cp": "copy files/folders between a service container and the local filesystem",
-    "exec": "execute a command in a running container",
-    "start": "start specific services",
-    "stop": "stop specific services",
-    "restart": "restart specific services",
-    "logs": "show logs from services",
-    "config": "displays the compose file",
-    "port": "Prints the public port for a port binding.",
-    "pause": "Pause all running containers",
-    "unpause": "Unpause all running containers",
-    "kill": "Kill one or more running containers with a specific signal",
-    "stats": "Display percentage of CPU, memory, network I/O, block I/O and PIDs for services.",
-    "images": "List images used by the created containers",
-}
-
-
 def _help_desc_from_docstring(doc: str) -> tuple[str, str | None]:
     """复刻上游 ``cmd_run`` 装饰器的 help/desc 切分（第 3293-3299 行）。
 
@@ -794,42 +725,54 @@ def _help_desc_from_docstring(doc: str) -> tuple[str, str | None]:
 
 # systemd 是唯一未在 ``@cmd_run`` 传 cmd_desc 的命令：help/desc 来自
 # handler docstring，此处复用同一算法，保证与上游逐字对等。
-COMMAND_HELP["systemd"], SYSTEMD_DESC = _help_desc_from_docstring(compose_systemd.__doc__ or "")
+SYSTEMD_HELP, SYSTEMD_DESC = _help_desc_from_docstring(compose_systemd.__doc__ or "")
 
 
-def build_parser(command_descriptions: dict[str, str | None] | None = None) -> argparse.ArgumentParser:
+def build_parser(
+    command_descriptions: dict[str, str | None] | None = None,
+    registry: CommandRegistry | None = None,
+) -> argparse.ArgumentParser:
     """构造全局 argparse parser（翻译自 ``_parse_args`` 的前半段）。
 
-    纯函数：不读 argv、不触碰引擎。subparser 顺序与
-    :data:`COMMAND_PARSERS` 插入顺序一致（即上游 ``@cmd_run`` 出现序），
-    另在首个位置插入上游的 ``help`` 伪子命令。
+    纯函数：不读 argv、不触碰引擎。subparser 顺序与登记序一致（即上游
+    ``@cmd_run`` 出现序），另在首个位置插入上游的 ``help`` 伪子命令。
+    ``registry`` 省略时按唯一清单
+    :func:`~xuan_compose.cli.command_specs.build_registry` 装配；显式传入
+    ``command_descriptions`` 时以该映射覆盖清单中的 description。
     """
+    if registry is None:
+        from .command_specs import build_registry
+
+        registry = build_registry()
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     init_global_parser(parser)
     subparsers = parser.add_subparsers(title="command", dest="command")
     _ = subparsers.add_parser("help", help="show help")
-    descriptions = command_descriptions or {}
-    for cmd_name, parser_fns in COMMAND_PARSERS.items():
+    descriptions = (
+        command_descriptions if command_descriptions is not None else {spec.name: spec.description for spec in registry}
+    )
+    for spec in registry:
         subparser = subparsers.add_parser(
-            cmd_name,
-            help=COMMAND_HELP[cmd_name],
-            description=descriptions.get(cmd_name),
+            spec.name,
+            help=spec.help,
+            description=descriptions.get(spec.name),
         )
-        for cmd_parser in parser_fns:
+        for cmd_parser in spec.parsers:
             cmd_parser(subparser)
     return parser
 
 
-def parse_args(engine: Any, argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(
+    engine: Any,
+    argv: list[str] | None = None,
+    registry: CommandRegistry | None = None,
+) -> argparse.Namespace:
     """解析 argv 并完成上游 ``_parse_args`` 的全部回填/分流副作用。
 
     解析结果同时写入 ``engine.global_args``（引擎运行时经
     ``get_podman_args``/``resolve_pod_name`` 等读取），返回同一 Namespace。
     """
-    parser = build_parser(
-        # 仅 systemd 有多行 description（上游 cmd_run 装饰器切出的 desc）
-        {"systemd": SYSTEMD_DESC}
-    )
+    parser = build_parser(registry=registry)
     global_args = parser.parse_args(argv)
 
     if global_args.command in ("up", "start"):

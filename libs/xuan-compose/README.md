@@ -98,8 +98,8 @@ python -m xuan_compose -f compose.yaml up -d
 
 ```mermaid
 flowchart TD
-    CLI["cli/<br/>parser.py · main.py · __main__.py"]
-    CMD["commands/<br/>24 个 handler + COMMAND_HANDLERS/COMMAND_PARSERS 注册表"]
+    CLI["cli/<br/>parser.py · command_specs.py · main.py · __main__.py"]
+    CMD["commands/<br/>24 个 handler + registry.py（登记返回 Disposable）"]
     ENG["engine.py<br/>ComposeEngine：compose 解析与状态装配"]
     EXE["执行层 runner.py · dependencies.py · pull.py · logs.py"]
     TR["translate/<br/>container_args · mounts · networks · build · run_args · ports · resources · secrets"]

@@ -6,15 +6,9 @@ argv → Namespace → 装配 Engine/Runner → 查表分发 handler。
 包内模块是 ``sys.argv`` 的唯一合法读取处（TR-8.3）。
 """
 
+from .command_specs import COMMAND_HELP, COMMAND_PARSERS
 from .main import async_main, main
-from .parser import (
-    COMMAND_HELP,
-    COMMAND_PARSERS,
-    PODMAN_CMDS,
-    PullPolicyAction,
-    build_parser,
-    parse_args,
-)
+from .parser import PODMAN_CMDS, PullPolicyAction, build_parser, parse_args
 
 __all__ = [
     "COMMAND_HELP",
