@@ -1036,5 +1036,72 @@ Task 1–8 全部完成后，满足：
   - **V6 遗留风险（不在本条范围）**：`_digest` 对无源码对象回退到 `repr`，其中
     含内存地址，存在地址复用导致「新实现摘要与旧实现相等」的概率；本条通过
     「依赖可解即必须 ACTIVE」的收敛分支使其不再产生静默缺口，但摘要身份本身
-    仍不满足 M2 的跨进程可复现要求，留待身份改造任务处理。
+    仍不满足 M2 的跨进程可复现要求，留待身份改造任务处理（已由 Task P2-7-1 处置）。
+
+## Task P2-7-1: 身份摘要去地址化（无源码对象跨进程可复现）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-6-1（`beb5fbb`，批处理传播；本条处置其 V6 遗留风险）
+- **Description**:
+  - 现状缺口：`_digest` 对源码不可得的对象回退 `sha256(repr(value))`，而默认
+    `repr` 内嵌堆地址（`<object object at 0x…>`），由此产生两个后果——同一装配
+    在两次独立进程中算出不同 epoch（不满足设计 §8 M2）；旧对象回收后新对象
+    复用同一地址时，新实现被误判成旧实现而跳过重载（地址复用伪相等）。
+  - `libs/xuan-plugin/src/xuan_plugin/plugin.py`：
+    - 新增 `_stable_repr()`：把 `repr` 中形如 `0x` 加至少 8 位十六进制的堆地址
+      折叠为固定占位符 `0xADDR`；位数下限取 8，避免把 24 位色值等短字面量
+      误判为地址，同时覆盖 32/64 位指针；
+    - `_digest` 的无源码分支改用 `_stable_repr`；`_config_digest` 的
+      `json.dumps(default=…)` 由 `repr` 改为 `_stable_repr`，配置内嵌的不可
+      序列化对象同样不再把地址带入摘要；
+    - 身份契约明确为「实现契约而非某次分配」：同类型、同内容的实例摘要相同，
+      与有源码实现的实例判等方式一致。
+  - 测试口径同步：`test_digest.py` 以新契约替换旧的「同类型实例必须可区分」
+    断言并新增 6 个用例；`test_hot_reload.py`、`test_lifecycle.py`、
+    `tools/okf/tests/test_plugin_extra.py` 中以 `object()` 充当「另一版实现」
+    的写法改为源码可见的 `ImplV1`/`ImplV2` 类，保持「实现切换触发重载」的
+    原始验证意图；`doc/okf/architecture.md` 同步摘要构成与 M2 口径。
+- **Acceptance Criteria Addressed**: 设计 §7 P0-2「摘要函数同输入同输出、
+  跨进程一致」；§8 M2「两次独立进程装配摘要相等」
+- **Test Requirements**:
+  - `rule` TR-P2.7-1: 无源码对象摘要跨进程相等；证据：
+    `test_digest_source_less_reproducible_across_processes`
+  - `rule` TR-P2.7-2: 摘要不含堆地址且折叠可观测；证据：
+    `test_stable_repr_collapses_address`、`test_digest_contains_no_memory_address`
+  - `rule` TR-P2.7-3: 短十六进制字面量不被误折叠；证据：
+    `test_stable_repr_keeps_short_hex_literal`
+  - `rule` TR-P2.7-4: 无源码但类型不同仍可区分；证据：
+    `test_digest_source_less_types_are_distinguished`
+  - `rule` TR-P2.7-5: 配置内嵌对象不泄漏地址；证据：
+    `test_config_digest_normalizes_addresses`
+  - `rule` TR-P2.7-6: 实现切换仍触发热替换；证据：
+    `test_hot_reload_undoes_old_and_applies_new`、
+    `test_static_plugin_suppresses_hot_reload`、`test_epoch_change_unload_then_reload`
+- **Completion Evidence**（2026-11-21 实测）:
+  - 联跑 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests`
+    → **189 passed**（基线 184，净增 5：新增 6 项、按新契约删除 1 项）；
+  - `tools/okf` 独立运行 → **259 passed**（与基线一致）；
+  - 门禁：`ruff check` 与 `ruff format --check`（58 文件）通过；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src tools/xs/src`
+    → `Success: no issues found in 40 source files`；
+    `check_pyproject_style.py`（16 个 pyproject）、`check_dependency_direction.py`
+    （337 文件）、`check_spec_integrity.py`（任务编号 32）通过；
+    `check_declaration_consistency.py` 仍为既有 2 项失败（`libs/mystx` 指针漂移
+    与清单快照过期，改动前即存在）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 身份语义变化**：同类型、无源码、无状态的两个实例（如两个 `object()`）
+    不再被区分。这是刻意取舍——地址不是语义身份；且既有实现对「有源码类」
+    的实例本就按类身份判等，本条只是把兜底路径拉齐；
+  - **V2 折叠粒度**：仅折叠「`0x` + ≥8 位十六进制」，32/64 位指针全覆盖，
+    24 位色值不受影响；若出现十进制形式的自引用 id，需另行扩展（当前
+    可达路径中 `Mock` 一类对象因类源码可得而不走兜底分支）；
+  - **V3 自定义 repr 边界**：若作者在 `__repr__` 中打印非 `0x` 形式的地址，
+    摘要仍不可跨进程复现；此类对象应提供源码可见的类型，或在
+    `InjectSpec.config` 中显式声明版本；
+  - **V4 性能**：无源码分支本就依赖 `repr`，折叠只增加一次线性正则扫描，
+    相对 `inspect.getsource` 与 sha256 可忽略；
+  - **V5 截断长度**：`_DIGEST_LEN=16`（64 bit）未变，碰撞概率与既有口径一致。
 

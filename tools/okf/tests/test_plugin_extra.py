@@ -6,6 +6,14 @@ from xuan_plugin.disposable import DisposalError
 from xuan_plugin.plugin import _INACTIVE, Fiber, FiberState, InjectSpec, Plugin, _config_digest, _digest
 
 
+class ImplV1:
+    """依赖实现 V1：类身份参与摘要。"""
+
+
+class ImplV2:
+    """依赖实现 V2：与 V1 摘要不同，用于触发 epoch 变更。"""
+
+
 def _mk_plugin(name="p", inject=None, provide=None, apply=None):
     def default_apply(ctx, config):
         return None
@@ -53,7 +61,7 @@ def test_effect_undo_aggregates_exception() -> None:
 def test_epoch_change_unload_then_reload() -> None:
     """依赖实现切换触发 _unload 后 _reload（epoch 变更）。"""
     ctx = Context()
-    impl1 = object()
+    impl1 = ImplV1()
     ctx.provide("dep", impl1)
 
     loaded: list[object] = []
@@ -66,7 +74,7 @@ def test_epoch_change_unload_then_reload() -> None:
     assert fiber.state == FiberState.ACTIVE
     assert loaded == [impl1]
 
-    impl2 = object()
+    impl2 = ImplV2()
     ctx.provide("dep", impl2)  # 替换实现
     fiber._refresh()
     assert fiber.state == FiberState.ACTIVE
@@ -141,14 +149,14 @@ def test_failed_recovery_and_epoch_change() -> None:
     assert fiber.reason == ("dep",)
 
     # 提供依赖 → 激活成功（首次 apply 失败）
-    impl = object()
+    impl = ImplV1()
     ctx.provide("dep", impl)
     fiber._refresh()
     assert fiber.state == FiberState.FAILED
     assert isinstance(fiber._error, RuntimeError)
 
     # 重新提供新的实现变更 epoch，_refresh 后重新 apply 成功
-    impl2 = object()
+    impl2 = ImplV2()
     ctx.provide("dep", impl2)
     fiber._refresh()
     assert fiber.state == FiberState.ACTIVE

@@ -46,7 +46,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 ```
 
 - 插件通过 `Plugin.provide` 声明「提供哪些服务」，通过 `Plugin.inject` 声明「依赖哪些服务」。
-- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；快照变化时触发 `_refresh`，实现**响应式热替换**：先撤销旧效应、再应用新实现。成功计入 `Fiber.reloads`，`Fiber.reload_reason` 给出变化的依赖字段（`impl` / `config`）；新实现失败时撤销其已登记的部分效应（零残留），以 `FAILED` + 原始异常暴露，可经 `retry()` 恢复。
+- `Fiber._compute_epoch` 计算依赖快照（依赖服务实现的摘要拼接）；摘要由「模块 + 限定名 + 源码哈希」构成，源码不可得时以「类型身份 + 归一化 `repr`」兜底，repr 中的堆地址一律折叠为固定占位符，故同一装配在两次独立进程中摘要相等（度量 M2）。快照变化时触发 `_refresh`，实现**响应式热替换**：先撤销旧效应、再应用新实现。成功计入 `Fiber.reloads`，`Fiber.reload_reason` 给出变化的依赖字段（`impl` / `config`）；新实现失败时撤销其已登记的部分效应（零残留），以 `FAILED` + 原始异常暴露，可经 `retry()` 恢复。
 - `INACTIVE` 表示必需依赖暂不可得：不抛错、不持有任何效应，并通过 `Fiber.reason` 给出缺失键；依赖出现后自动迁移到 `LOADING`。
 - 依赖方只在**最终视图**上判定：`Fiber._refresh`、`retry`、`Context.plugin` 各自处于一次传播事务内，多键提供方的卸载/装载通知合并排空，依赖方不会看到「键暂时缺失」的中间态；一次逻辑变更只产生一轮替换（度量 M4）。
 - `INACTIVE` 且依赖已全部可解时立即重新装配（含「撤销后重供同一实现」），不会停在可激活而未激活的静默缺口。

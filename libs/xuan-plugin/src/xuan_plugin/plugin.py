@@ -4,6 +4,7 @@ import enum
 import hashlib
 import inspect
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -66,6 +67,22 @@ _INACTIVE = "__INACTIVE__"
 # 摘要截断长度：16 位十六进制（64 bit），足以区分实现差异且便于日志阅读
 _DIGEST_LEN = 16
 
+# repr 中的堆地址：``0x`` 后至少 8 位十六进制。下限取 8，使 24 位色值等
+# 短字面量（如 ``0xff00ff``）不被误判为地址，同时覆盖 32/64 位指针。
+_ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]{8,}")
+
+_ADDRESS_TOKEN = "0xADDR"
+
+
+def _stable_repr(value: object) -> str:
+    """把 ``repr`` 中的堆地址归一化为固定占位符。
+
+    对象地址既跨进程不可比，又会在旧对象回收后被新对象复用：留在摘要里会
+    让同一装配在两次独立进程中算出不同身份（违反 M2），也会让复用同一地址
+    的新实现被误判成旧实现（伪相等）。地址不是对象的语义身份，故统一折叠。
+    """
+    return _ADDRESS_RE.sub(_ADDRESS_TOKEN, repr(value))
+
 
 def _digest(value: object) -> str:
     """计算实现对象的稳定摘要，作为 epoch 身份。
@@ -74,8 +91,9 @@ def _digest(value: object) -> str:
     得到不同的 epoch，从而无法复现装配结果。
 
     优先以「模块 + 限定名 + 源码摘要」构成结构身份——源码相同则身份相同，
-    源码变更则身份变更，与对象地址无关。当源码不可得（内建对象、动态生成
-    的实例）时回退到 ``repr`` 摘要：可区分同类型的不同实例，但不跨进程。
+    源码变更则身份变更，与对象地址无关。源码不可得时（内建类型、动态创建
+    的类）改用「类型身份 + 归一化 repr」：repr 中的堆地址被折叠为固定
+    占位符，摘要因此不随进程或地址分配而变化。
     """
     if isinstance(value, (str, bytes, int, float, bool, type(None))):
         return f"{type(value).__name__}:{value!r}"
@@ -99,7 +117,11 @@ def _digest(value: object) -> str:
     if source:
         fingerprint = hashlib.sha256(source.encode("utf-8")).hexdigest()[:_DIGEST_LEN]
     else:
-        fingerprint = hashlib.sha256(repr(value).encode("utf-8")).hexdigest()[:_DIGEST_LEN]
+        # 无源码时以「类型身份 + 归一化 repr」兜底：地址被折叠，故同类型、
+        # 同内容的实例在任意进程中同摘要。反过来说，同类型的无状态实例
+        # （如两个 ``object()``）不再被区分——身份属于实现契约，而不是
+        # 某一次分配，与有源码实现的实例行为保持一致。
+        fingerprint = hashlib.sha256(_stable_repr(value).encode("utf-8")).hexdigest()[:_DIGEST_LEN]
     return f"{module}:{qualname}:{fingerprint}"
 
 
@@ -107,11 +129,12 @@ def _config_digest(config: dict | None) -> str:
     """计算注入配置的稳定摘要，键序无关。
 
     ``sort_keys=True`` 保证 ``{"a": 1, "b": 2}`` 与 ``{"b": 2, "a": 1}``
-    得到同一摘要，使 epoch 不因字典构造顺序而变化。
+    得到同一摘要，使 epoch 不因字典构造顺序而变化。不可 JSON 序列化的
+    值以 :func:`_stable_repr` 表示，避免其 ``repr`` 中的堆地址泄入摘要。
     """
     if not config:
         return "none"
-    payload = json.dumps(config, sort_keys=True, ensure_ascii=False, default=repr)
+    payload = json.dumps(config, sort_keys=True, ensure_ascii=False, default=_stable_repr)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:_DIGEST_LEN]
 
 

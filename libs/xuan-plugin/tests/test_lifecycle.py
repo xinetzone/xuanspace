@@ -10,6 +10,14 @@ from xuan_plugin.context import Context
 from xuan_plugin.plugin import FiberState, FiberTransitionError, InjectSpec, Plugin
 
 
+class DepV1:
+    """依赖实现 V1：类身份参与摘要。"""
+
+
+class DepV2:
+    """依赖实现 V2：与 V1 摘要不同，用于触发 epoch 变更。"""
+
+
 def _plugin(
     name: str = "p",
     *,
@@ -120,12 +128,12 @@ def test_static_plugin_suppresses_hot_reload() -> None:
     fiber = ctx.plugin(_plugin("native", inject=("dep",), lifecycle="static", calls=calls))
     assert fiber.state is FiberState.INACTIVE
 
-    ctx.provide("dep", object())
+    ctx.provide("dep", DepV1())
     assert fiber.state is FiberState.ACTIVE
     assert calls == ["native"]
 
     # 依赖实现变更：静态插件拒绝先卸后载，保持 ACTIVE 且不再 apply
-    ctx.provide("dep", object())
+    ctx.provide("dep", DepV2())
     assert fiber.state is FiberState.ACTIVE
     assert calls == ["native"]
     assert fiber.suppressed_reloads == 1
@@ -154,10 +162,10 @@ def test_unknown_lifecycle_is_rejected() -> None:
 def test_refresh_during_apply_does_not_reenter_state_machine() -> None:
     """apply 内部 provide 触发的 notify 不得把 LOADING 再迁一次。"""
     ctx = Context()
-    ctx.provide("dep", object())
+    ctx.provide("dep", DepV1())
 
     def apply(ctx, config) -> None:
-        ctx.provide("dep", object())  # 自依赖写入会触发对本 fiber 的 notify
+        ctx.provide("dep", DepV2())  # 自依赖写入会触发对本 fiber 的 notify
 
     fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
     assert fiber.state is FiberState.ACTIVE

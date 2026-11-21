@@ -9,9 +9,21 @@ import sys
 from pathlib import Path
 
 from xuan_plugin.context import Context
-from xuan_plugin.plugin import Fiber, InjectSpec, Plugin, _config_digest, _digest
+from xuan_plugin.plugin import Fiber, InjectSpec, Plugin, _config_digest, _digest, _stable_repr
 
 TESTS_DIR = Path(__file__).resolve().parent
+
+
+class HexTag:
+    """自定义 repr，内含短十六进制字面量（非堆地址）。"""
+
+    def __repr__(self) -> str:
+        return "<HexTag 0xff00ff>"
+
+
+def _no_source_type(name: str) -> type:
+    """构造无源码类型：``type()`` 生成的类没有可读取的源文件。"""
+    return type(name, (), {})
 
 
 def sample_impl() -> str:
@@ -41,10 +53,46 @@ def test_digest_contains_no_memory_address() -> None:
     assert str(id(sample_impl)) not in text
 
 
-def test_digest_distinguishes_instances() -> None:
-    """源码不可得时回退 repr 摘要，同类型不同实例仍可区分。"""
-    first, second = object(), object()
-    assert _digest(first) != _digest(second)
+def test_stable_repr_collapses_address() -> None:
+    """默认 repr 中的堆地址被折叠为固定占位符。"""
+    text = _stable_repr(object())
+    assert "0xADDR" in text
+    assert _stable_repr(object()) == text
+
+
+def test_stable_repr_keeps_short_hex_literal() -> None:
+    """短十六进制字面量（<8 位）是内容而非地址，必须原样保留。"""
+    assert _stable_repr(HexTag()) == "<HexTag 0xff00ff>"
+
+
+def test_digest_source_less_same_type_instances_share_identity() -> None:
+    """无源码类型：同类型实例共享身份——身份属于实现而非某次分配。"""
+    assert _digest(object()) == _digest(object())
+
+
+def test_digest_source_less_types_are_distinguished() -> None:
+    """无源码但类型不同，摘要必须不同。"""
+    first = _no_source_type("DynamicA")
+    second = _no_source_type("DynamicB")
+    assert _digest(first()) != _digest(second())
+
+
+def test_digest_source_less_reproducible_across_processes() -> None:
+    """M2：无源码对象的摘要跨进程一致。"""
+    code = "from xuan_plugin.plugin import _digest;print(_digest(object()))"
+    outputs = [
+        subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=TESTS_DIR,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout.strip()
+        for _ in range(2)
+    ]
+    assert outputs[0] == outputs[1]
+    assert outputs[0] == _digest(object())
 
 
 def test_digest_scalars() -> None:
@@ -68,6 +116,11 @@ def test_config_digest_none_and_empty_equal() -> None:
 def test_config_digest_detects_value_change() -> None:
     """配置值变化则摘要变化。"""
     assert _config_digest({"a": 1}) != _config_digest({"a": 2})
+
+
+def test_config_digest_normalizes_addresses() -> None:
+    """配置中的不可序列化对象不把堆地址带入摘要。"""
+    assert _config_digest({"impl": object()}) == _config_digest({"impl": object()})
 
 
 def _epoch_for(ctx: Context, config: dict | None) -> str:

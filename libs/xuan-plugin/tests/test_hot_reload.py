@@ -11,6 +11,14 @@ from xuan_plugin.context import Context
 from xuan_plugin.plugin import FiberState, InjectSpec, Plugin
 
 
+class ImplV1:
+    """依赖实现 V1：类身份参与摘要。"""
+
+
+class ImplV2:
+    """依赖实现 V2：与 V1 摘要不同，用于触发热替换。"""
+
+
 def test_apply_effects_belong_to_fiber() -> None:
     """apply 内的效应归属当前 Fiber，不再沉淀到根上下文。"""
     undone: list[str] = []
@@ -43,12 +51,12 @@ def test_hot_reload_undoes_old_and_applies_new() -> None:
         ctx.effect(lambda: ctx.provide("own", impl))
 
     ctx = Context()
-    ctx.provide("dep", object())
+    ctx.provide("dep", ImplV1())
     fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
     first = current["impl"]
     assert ctx.get("own") is first
 
-    ctx.provide("dep", object())  # notify → 热替换
+    ctx.provide("dep", ImplV2())  # notify → 热替换
 
     assert fiber.state is FiberState.ACTIVE
     assert ctx.get("own") is current["impl"]
@@ -67,12 +75,12 @@ def test_failed_reload_rolls_back_partial_effects() -> None:
             raise RuntimeError("new impl broken")
 
     ctx = Context()
-    ctx.provide("dep", object())
+    ctx.provide("dep", ImplV1())
     fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
     assert ctx.get("own") is not None
 
     fail["on"] = True
-    ctx.provide("dep", object())
+    ctx.provide("dep", ImplV2())
 
     assert fiber.state is FiberState.FAILED
     assert ctx.registered_keys() == ("dep",)  # own 已随失败回滚
