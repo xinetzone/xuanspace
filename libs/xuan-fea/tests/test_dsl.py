@@ -49,6 +49,7 @@ class TestNodes:
     def test_clazz_converts_sequence_to_tuple(self):
         glyphs = ["a", "b"]
         assert Clazz("X", glyphs).glyphs == ("a", "b")
+        assert Clazz("Y", None).glyphs == ()
 
     def test_lookup_with_desc(self):
         lookup = Lookup("feature_x", "demo", [Line("sub a by b;")])
@@ -104,9 +105,7 @@ class TestNodes:
 
 class TestCharacterVariant:
     def test_tag_and_name_lines(self):
-        cv = CharacterVariant(
-            1, "Slashed `zero` (alt)", [Line("sub a by b;")], "7.9", "0"
-        )
+        cv = CharacterVariant(1, "Slashed `zero` (alt)", [Line("sub a by b;")], "7.9", "0")
         assert cv.tag == "cv01"
         assert _texts(cv.get_name_lines()) == [
             "cvParameters {",
@@ -246,6 +245,9 @@ class TestRules:
         clazz = Clazz("Digit", ["zero"])
         assert subst(None, "a", clazz, "b").text == "sub a' @Digit by b;"
 
+    def test_subst_accepts_tuple_context(self):
+        assert subst(("(", ")"), "b", ("-", "_"), "d").text == "sub parenleft parenright b' hyphen underscore by d;"
+
     def test_subst_map(self):
         assert _texts(subst_map(["Q", "all", gly("{{")], target_suffix=".cv01")) == [
             "sub Q by Q.cv01;",
@@ -254,9 +256,7 @@ class TestRules:
         ]
 
     def test_subst_map_accepts_single_string(self):
-        assert _texts(subst_map("a", source_suffix=".src", target_suffix=".dst")) == [
-            "sub a.src by a.dst;"
-        ]
+        assert _texts(subst_map("a", source_suffix=".src", target_suffix=".dst")) == ["sub a.src by a.dst;"]
 
     def test_ign(self):
         assert ign("{", "b", ["c", "d"]).text == "ignore sub braceleft b' c d;"

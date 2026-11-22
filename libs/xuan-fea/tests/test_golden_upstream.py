@@ -1,4 +1,4 @@
-"""与上游 Maple Mono ``source/py/feature/ast.py`` 的逐字节对照。
+"""与上游 Maple Mono ``scripts/feature/ast.py`` 的逐字节对照。
 
 做法：把同一棵节点树分别交给上游实现与本库，比较 ``create()`` 结果、
 各辅助函数输出与缩进层级。上游源码不在工作区时自动跳过。
@@ -13,20 +13,9 @@ import pytest
 
 import xuan_fea
 
-_UPSTREAM = (
-    Path(__file__).resolve().parents[9]
-    / "notebook"
-    / "libs"
-    / "maple-font"
-    / "source"
-    / "py"
-    / "feature"
-    / "ast.py"
-)
+_UPSTREAM = Path(__file__).resolve().parents[9] / "notebook" / "libs" / "maple-font" / "scripts" / "feature" / "ast.py"
 
-pytestmark = pytest.mark.skipif(
-    not _UPSTREAM.exists(), reason=f"上游源码不存在：{_UPSTREAM}"
-)
+pytestmark = pytest.mark.skipif(not _UPSTREAM.exists(), reason=f"上游源码不存在：{_UPSTREAM}")
 
 
 def _load_upstream() -> ModuleType:
@@ -70,9 +59,7 @@ def _snapshot(m: ModuleType) -> dict:
         "7.9",
         '"',
     )
-    feature = m.Feature(
-        "calt", [lookup, m.Line("sub one two by one_two.liga;")], "7.9"
-    )
+    feature = m.Feature("calt", [lookup, m.Line("sub one two by one_two.liga;")], "7.9")
 
     return {
         "gly": [
@@ -83,6 +70,7 @@ def _snapshot(m: ModuleType) -> dict:
             m.gly("--", ".suffix", True),
             m.gly(digit),
         ],
+        "gly_sequence": [m.gly(("+", "+")), m.subst(("(", ")"), "b", ("-", "_"), "d").text],
         "gly_seq": [m.gly_seq("{", "sta"), m.gly_seq("->", "end")],
         "cls": m.cls(["a", "@", "++"], digit, pair),
         "cls_states": [line.text for line in m.cls_states(digit, pair)],
@@ -107,9 +95,7 @@ def _snapshot(m: ModuleType) -> dict:
         "create_indent4": m.create([digit, feature], indent=4),
         "empty_content": m.create(m.EMPTY_FEAT_CONTENT),
         "clone_empty": m.create([m.clone_empty(cv, "OFF: ")]),
-        "filter_empty": [
-            item.tag for item in m.filter_empty([cv, m.clone_empty(ss)], False)
-        ],
+        "filter_empty": [item.tag for item in m.filter_empty([cv, m.clone_empty(ss)], False)],
         "flatten": [line.text for line in m.flatten_to_lines([digit, m.Line("x")])],
         "lang": [m.langsys("DFLT", "dflt").text, m.lang("ZHS ").text, m.script("hani").text],
     }

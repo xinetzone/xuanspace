@@ -10,10 +10,10 @@
 2. 类、查找块、特征块之间的空行由 ``create()`` 集中处理，调用方无需关心格式；
 3. 每个节点自带名称与描述，渲染结果同时就是可读的注释与文档。
 
-来源：Maple Mono v7.9 ``source/py/feature/ast.py``（OFL-1.1）的等价萃取，
+来源：Maple Mono ``scripts/feature/ast.py``（OFL-1.1）的等价萃取，
 渲染输出与原实现逐字节一致。实现上以 ``dataclasses``（``frozen`` + ``slots``）
-承载节点，自动获得初始化、值相等与内存布局；另修正了原实现中两处不影响输出的
-细节（可变默认参数、一处拼写）。因 ``frozen`` 生效，节点属性不再允许赋值。
+承载节点，自动获得初始化、值相等与内存布局；另修正了原实现中一处不影响输出的
+异常消息拼写。因 ``frozen`` 生效，节点属性不再允许赋值。
 """
 
 import re
@@ -28,7 +28,9 @@ __all__ = [
     "CharacterVariant",
     "Clazz",
     "Feature",
+    "FeatureContent",
     "FeatureWithDocs",
+    "GlyphContext",
     "Line",
     "Lookup",
     "StylisticSet",
@@ -72,10 +74,11 @@ class Clazz:
 
     name: str
     # 引号不可去：类体内 Clazz 尚未绑定，去引号后注解会在类创建期求值并 NameError
-    glyphs: "Sequence[str | Clazz]" = ()  # noqa: UP037
+    glyphs: "Sequence[str | Clazz] | None" = None  # noqa: UP037
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "glyphs", tuple(self.glyphs))
+        glyphs = () if self.glyphs is None else self.glyphs
+        object.__setattr__(self, "glyphs", tuple(glyphs))
 
     def use(self) -> str:
         """在规则中引用本类的写法：``@Name``。"""
@@ -83,6 +86,10 @@ class Clazz:
 
     def state(self) -> Line:
         return Line(f"{self.use()} = {cls(self.glyphs)};")
+
+
+# 可出现在规则上下文位置的字形描述：单个字形名、字形类、序列或空
+type GlyphContext = str | Clazz | Sequence[str | Clazz] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +116,10 @@ class Lookup:
 
         arr.append(Line(f"}} {self.name};"))
         return arr
+
+
+# 特征块可承载的内容，允许任意深度的序列嵌套
+type FeatureContent = Clazz | Lookup | Line | Sequence[FeatureContent] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,9 +214,7 @@ class CharacterVariant(FeatureWithDocs):
         example: str,
     ) -> None:
         if id < 1 or id > 99:
-            raise TypeError(
-                f"id should > 0 and < 100 in Character Variants, current is {id}"
-            )
+            raise TypeError(f"id should > 0 and < 100 in Character Variants, current is {id}")
         FeatureWithDocs.__init__(
             self,
             id=id,
@@ -217,9 +226,7 @@ class CharacterVariant(FeatureWithDocs):
         )
 
     def get_name_lines(self) -> list[Line]:
-        _name = re.sub(
-            REGEXP, "", self.desc.replace("`", "").replace(EMPTY_FEAT_SYMBOL, " ")
-        ).strip()
+        _name = re.sub(REGEXP, "", self.desc.replace("`", "").replace(EMPTY_FEAT_SYMBOL, " ")).strip()
         return [
             Line("cvParameters {"),
             Line("FeatUILabelNameID {", 1),
@@ -313,30 +320,30 @@ _PUNCTUATION_CN_MAP = {
 }
 
 
-def _gly_name(g: str | Clazz | Sequence[str | Clazz] | None) -> str:
+def _gly_name(g: GlyphContext) -> str:
     """把单个字形（或字形序列）转换为 ``.fea`` 中的字形名。"""
     if not g:
         return ""
-    if isinstance(g, list):
-        return " ".join([_gly_name(_) for _ in g])
     if isinstance(g, Clazz):
         return g.use()
-    if not isinstance(g, str):
-        raise TypeError(f"{g}({type(g)}) is invalid for glyph name")
-    if g in _PUNCTUATION_MAP:
-        return _PUNCTUATION_MAP[g]
-    if g in _PUNCTUATION_CN_MAP:
-        return _PUNCTUATION_CN_MAP[g]
-    return g
+    if isinstance(g, str):
+        if g in _PUNCTUATION_MAP:
+            return _PUNCTUATION_MAP[g]
+        if g in _PUNCTUATION_CN_MAP:
+            return _PUNCTUATION_CN_MAP[g]
+        return g
+    if isinstance(g, Sequence):
+        return " ".join(_gly_name(item) for item in g)
+    raise TypeError(f"{g}({type(g)}) is invalid for glyph name")
 
 
-def _prefix(data: str | Clazz | Sequence[str | Clazz] | None) -> str:
+def _prefix(data: GlyphContext) -> str:
     if data:
         return _gly_name(data) + " "
     return ""
 
 
-def _suffix(data: str | Clazz | Sequence[str | Clazz] | None) -> str:
+def _suffix(data: GlyphContext) -> str:
     if data:
         return " " + _gly_name(data)
     return ""
@@ -349,8 +356,7 @@ def _subst(source: str, target: str) -> Line:
 def _parse_glyph(g: str | Clazz) -> str:
     if isinstance(g, str) and len(g) > 1 and g[0] in _PUNCTUATION_MAP:
         return "_".join(map(_gly_name, list(g))) + ".liga"
-    else:
-        return _gly_name(g)
+    return _gly_name(g)
 
 
 SPC = "SPC"
@@ -441,9 +447,9 @@ def script(script_name: str) -> Line:
 
 
 def subst(
-    prefix: str | Clazz | Sequence[str | Clazz] | None,
+    prefix: GlyphContext,
     glyph: str | Clazz,
-    suffix: str | Clazz | Sequence[str | Clazz] | None,
+    suffix: GlyphContext,
     replace: str | Clazz,
 ) -> Line:
     """生成单条替换规则。
@@ -490,7 +496,7 @@ def subst_liga(
     target: str | None = None,
     lookup_name: str | None = None,
     desc: str | None = None,
-    surround: list[tuple[Sequence[str | Clazz] | None, Sequence[str | Clazz] | None]] | None = None,
+    surround: list[tuple[GlyphContext, GlyphContext]] | None = None,
     ign_prefix: str | Clazz | None = None,
     ign_suffix: str | Clazz | None = None,
     extra_rules: list[Line] | None = None,
@@ -531,18 +537,15 @@ def subst_liga(
     def to_list(item):
         if item is None:
             return []
-        elif isinstance(item, (str, Clazz)):
+        if isinstance(item, (str, Clazz)):
             return [item]
-        else:
-            return list(item)
+        return list(item)
 
     generated_ignores = []
     if ign_prefix:
         generated_ignores.append(ign(ign_prefix, source_arr[0], source_arr[1:]))
     if ign_suffix:
-        generated_ignores.append(
-            ign(None, source_arr[0], source_arr[1:] + [ign_suffix])
-        )
+        generated_ignores.append(ign(None, source_arr[0], source_arr[1:] + [ign_suffix]))
 
     subst_rules = []
     if not surround:
@@ -569,9 +572,9 @@ def subst_liga(
 
 
 def ign(
-    prefix: str | Clazz | Sequence[str | Clazz] | None,
+    prefix: GlyphContext,
     glyph: str | Clazz,
-    suffix: str | Clazz | Sequence[str | Clazz] | None,
+    suffix: GlyphContext,
 ) -> Line:
     """生成排除规则 ``ignore sub ...``。
 

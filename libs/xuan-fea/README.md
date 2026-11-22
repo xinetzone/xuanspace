@@ -1,7 +1,7 @@
 # xuan-fea
 
-OpenType Feature（`.fea`）AST 构建原语，萃取自 [Maple Mono](https://github.com/subframe7536/maple-font) v7.9
-的 `source/py/feature/ast.py`，面向「用 Python 对象描述特征文件、由渲染器统一处理缩进与空行」这一类需求。
+OpenType Feature（`.fea`）AST 构建原语，萃取自 [Maple Mono](https://github.com/subframe7536/maple-font)
+的 `scripts/feature/ast.py`，面向「用 Python 对象描述特征文件、由渲染器统一处理缩进与空行」这一类需求。
 
 ## 功能
 
@@ -55,10 +55,11 @@ print(create([lookup]))
 
 ## 与上游的关系
 
-- 提取范围：仅 `source/py/feature/ast.py`，不包含构建流水线、字体合并与特征冻结。
+- 提取范围：仅 `scripts/feature/ast.py`，不包含构建流水线、字体合并与特征冻结。
 - 行为基线：`tests/test_golden_upstream.py` 用同一棵节点树分别驱动上游实现与本库，
   对 `create()` 结果及全部辅助函数输出做逐字节比对；上游路径不存在时该用例自动跳过。
-- 有意偏差：可变默认参数改为不可变默认值；`clone_empty` 的异常消息修正拼写。两者均不影响输出。
+- 实现差异：节点以 `dataclasses` 承载（上游为手写类），`clone_empty` 的异常消息修正了拼写。
+  两者均不影响渲染输出。
 
 ## 来源与许可
 

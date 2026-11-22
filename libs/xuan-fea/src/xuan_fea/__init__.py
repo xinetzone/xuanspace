@@ -1,6 +1,6 @@
 """Xuan-Fea：OpenType Feature（``.fea``）AST 构建原语。
 
-从 Maple Mono v7.9 构建系统萃取，零第三方依赖；对外行为与原实现逐字节一致。
+从 Maple Mono 构建系统萃取，零第三方依赖；对外行为与原实现逐字节一致。
 """
 
 from .dsl import (
@@ -10,7 +10,9 @@ from .dsl import (
     CharacterVariant,
     Clazz,
     Feature,
+    FeatureContent,
     FeatureWithDocs,
+    GlyphContext,
     Line,
     Lookup,
     StylisticSet,
@@ -41,7 +43,9 @@ __all__ = [
     "CharacterVariant",
     "Clazz",
     "Feature",
+    "FeatureContent",
     "FeatureWithDocs",
+    "GlyphContext",
     "Line",
     "Lookup",
     "StylisticSet",
