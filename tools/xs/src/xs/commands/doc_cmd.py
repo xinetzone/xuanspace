@@ -7,6 +7,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -27,8 +28,8 @@ def _get_docs_dir(workspace_root: Path) -> Path:
 
 
 def doc_build(
-    builder: str = typer.Option("html", "--builder", "-b", help="构建器类型: html, linkcheck"),
-    output_dir: str | None = typer.Option(None, "--output", "-o", help="输出目录"),
+    builder: Annotated[str, typer.Option("--builder", "-b", help="构建器类型: html, linkcheck")] = "html",
+    output_dir: Annotated[str | None, typer.Option("--output", "-o", help="输出目录")] = None,
 ) -> None:
     """构建 Sphinx 文档"""
     workspace_root = find_workspace_root()
