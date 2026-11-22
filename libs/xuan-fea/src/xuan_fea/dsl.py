@@ -11,11 +11,14 @@
 3. 每个节点自带名称与描述，渲染结果同时就是可读的注释与文档。
 
 来源：Maple Mono v7.9 ``source/py/feature/ast.py``（OFL-1.1）的等价萃取，
-对外行为与原实现一致；仅修正了两处不影响输出的细节（可变默认参数、拼写）。
+渲染输出与原实现逐字节一致。实现上以 ``dataclasses``（``frozen`` + ``slots``）
+承载节点，自动获得初始化、值相等与内存布局；另修正了原实现中两处不影响输出的
+细节（可变默认参数、一处拼写）。因 ``frozen`` 生效，节点属性不再允许赋值。
 """
 
 import re
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field
 from typing import Literal
 
 __all__ = [
@@ -48,14 +51,12 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, slots=True)
 class Line:
     """渲染叶子节点：一行待输出文本及其缩进层级。"""
 
-    __slots__ = ("text", "level")
-
-    def __init__(self, text: str, level: int = 0) -> None:
-        self.text = text
-        self.level = level
+    text: str
+    level: int = 0
 
     def indent(self) -> Line:
         """返回缩进一级的副本；空行不缩进。"""
@@ -65,14 +66,16 @@ class Line:
         return f"Line({self.text!r}, {self.level})"
 
 
+@dataclass(frozen=True, slots=True)
 class Clazz:
     """字形类节点，渲染为 ``@Name = [g1 g2 ...];``。"""
 
-    __slots__ = ("name", "glyphs")
+    name: str
+    # 引号不可去：类体内 Clazz 尚未绑定，去引号后注解会在类创建期求值并 NameError
+    glyphs: "Sequence[str | Clazz]" = ()  # noqa: UP037
 
-    def __init__(self, name: str, glyphs: Sequence[str | Clazz] = ()) -> None:
-        self.name = name
-        self.glyphs = tuple(glyphs)
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "glyphs", tuple(self.glyphs))
 
     def use(self) -> str:
         """在规则中引用本类的写法：``@Name``。"""
@@ -82,15 +85,13 @@ class Clazz:
         return Line(f"{self.use()} = {cls(self.glyphs)};")
 
 
+@dataclass(frozen=True, slots=True)
 class Lookup:
     """查找块节点，渲染为带注释的 ``lookup Name { ... } Name;``。"""
 
-    __slots__ = ("name", "desc", "content")
-
-    def __init__(self, name: str, desc: str | None, content: list) -> None:
-        self.name = name
-        self.desc = desc
-        self.content = content
+    name: str
+    desc: str | None
+    content: list
 
     def use(self) -> Line:
         return Line(f"lookup {self.name};")
@@ -110,26 +111,31 @@ class Lookup:
         return arr
 
 
+@dataclass(frozen=True, slots=True)
 class Feature:
     """特征块节点，渲染为 ``feature tag { ... } tag;``。"""
 
-    __slots__ = ("tag", "content", "has_lookup", "version")
+    tag: str
+    content: Clazz | Lookup | Line | list
+    version: str
+    # 由 content 推导，不进入构造签名；置于末位以保持 (tag, content, version) 的位置参数
+    has_lookup: bool = field(init=False, default=False)
 
-    def __init__(self, tag: str, content: Clazz | Lookup | Line | list, version) -> None:
-        self.tag = tag
-        self.content = []
-        self.has_lookup = False
-        self.version = version
-        if isinstance(content, Lookup):
-            self.has_lookup = True
-            self.content.append(content)
-        elif isinstance(content, list):
-            for item in recursive_iterate(content):
+    def __post_init__(self) -> None:
+        """把 content 归一化为 list，并标记是否含有查找块。"""
+        raw = self.content
+        if isinstance(raw, Lookup):
+            normalized, has_lookup = [raw], True
+        elif isinstance(raw, list):
+            normalized, has_lookup = [], False
+            for item in recursive_iterate(raw):
                 if isinstance(item, Lookup):
-                    self.has_lookup = True
-                self.content.append(item)
+                    has_lookup = True
+                normalized.append(item)
         else:
-            self.content.append(content)
+            normalized, has_lookup = [raw], False
+        object.__setattr__(self, "content", normalized)
+        object.__setattr__(self, "has_lookup", has_lookup)
 
     def use(self) -> Line:
         return Line(f"feature {self.tag};")
@@ -155,11 +161,17 @@ class Feature:
 REGEXP = r"\(.*\)"
 
 
+@dataclass(frozen=True, slots=True, init=False)
 class FeatureWithDocs(Feature):
     """带版本号、描述与示例的特征，供文档表与版本清单复用。"""
 
-    __slots__ = ("id", "desc", "example")
+    id: int
+    desc: str
+    example: str
 
+    # init=False：dataclass 会先排基类字段再排子类字段，自动签名将变成
+    # (tag, content, version, id, desc, example)，破坏与原实现一致的位置参数，
+    # 因此保留手写签名并在调用基类后显式赋值。
     def __init__(
         self,
         id: int,
@@ -168,16 +180,17 @@ class FeatureWithDocs(Feature):
         content: Clazz | Lookup | Line | list,
         version: str,
         example: str,
-    ):
-        self.id = id
-        self.desc = desc
-        self.example = example
+    ) -> None:
         Feature.__init__(self, tag, content, version)
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "desc", desc)
+        object.__setattr__(self, "example", example)
 
     def desc_item(self):
         return f"- [v{self.version}] {self.tag}: {self.desc}"
 
 
+@dataclass(frozen=True, slots=True, init=False)
 class CharacterVariant(FeatureWithDocs):
     """字符变体（``cv01``–``cv99``），自动补 ``cvParameters`` 标签名。"""
 
@@ -188,7 +201,7 @@ class CharacterVariant(FeatureWithDocs):
         content: Clazz | Lookup | Line | list,
         version: str,
         example: str,
-    ):
+    ) -> None:
         if id < 1 or id > 99:
             raise TypeError(
                 f"id should > 0 and < 100 in Character Variants, current is {id}"
@@ -217,6 +230,7 @@ class CharacterVariant(FeatureWithDocs):
         ]
 
 
+@dataclass(frozen=True, slots=True, init=False)
 class StylisticSet(FeatureWithDocs):
     """样式集（``ss01``–``ss20``），自动补 ``featureNames`` 标签名。"""
 
@@ -227,7 +241,7 @@ class StylisticSet(FeatureWithDocs):
         content: Clazz | Lookup | Line | list,
         version: str,
         example: str,
-    ):
+    ) -> None:
         if id < 1 or id > 20:
             raise TypeError(f"id should > 0 and < 20 in Stylistic Sets, current is {id}")
 
