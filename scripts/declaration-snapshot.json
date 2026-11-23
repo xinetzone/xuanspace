@@ -35,7 +35,7 @@
     "xuan-project"
   ],
   "submodule_status": {
-    "libs/mystx": "a5ab4d4d12895d75008a5b8a3bf52dd94e56cea3",
+    "libs/mystx": "ffc39026184eff3b6ee6202e71594ec6008e6e77",
     "libs/tao": "8c5a0bafbb821b3d51957c2b3472abc5faa13902",
     "libs/tvm-book": "103bea7e5e600099187959e3b066bb07260d9cea",
     "vendor/caffe": "f938d88b2f76613c5aa23f8f9146bc338b9215f4",
