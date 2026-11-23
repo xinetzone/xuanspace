@@ -36,7 +36,7 @@
   ],
   "submodule_status": {
     "libs/mystx": "a5ab4d4d12895d75008a5b8a3bf52dd94e56cea3",
-    "libs/tao": "658bba6c759933bfb682f669327a38e87a828cd8",
+    "libs/tao": "8c5a0bafbb821b3d51957c2b3472abc5faa13902",
     "libs/tvm-book": "103bea7e5e600099187959e3b066bb07260d9cea",
     "vendor/caffe": "f938d88b2f76613c5aa23f8f9146bc338b9215f4",
     "vendor/tvm-ffi": "e9fdc58fa4bf2e60ed701dacac48a01e41a3dc1f"
