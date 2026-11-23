@@ -1,0 +1,18 @@
+# {{source_name}} 实施台账
+
+> 本文件为索引：正文已按语义增量原子化为 {{volume_count}} 个分卷，共 {{task_count}} 个 `## Task` 块。
+> 逐字节保真：各卷去掉页首横幅后顺序拼接，与冻结原件在「链接改指归一化」后 SHA-256 一致
+> （`{{source_sha256}}`，{{source_bytes}} 字节 / {{source_lines}} 行）。
+> 改指记录：{{rewrites_note}}。
+> 冻结原件：[{{archive_rel}}]({{archive_rel}})（`volumize.py check` 可复验）。
+> 正文权威值在各分卷；本表由 `volumize.py check` 机检，**请勿手改**。
+
+## 分卷索引
+
+{{volume_table}}
+
+## 任务总表（派生视图）
+
+> 状态列由各卷的 `- **Status**:` 行派生；改状态请改分卷，再跑 `volumize.py check` 复验。
+
+{{task_table}}
