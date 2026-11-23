@@ -403,3 +403,118 @@ def test_apply_missing_dependency_is_reported_as_inactive(monkeypatch: pytest.Mo
     payload = json.loads(result.output)
     assert payload["order"] == []
     assert payload["inactive"] == [{"plugin": "a", "missing": [key]}]
+
+
+# ─── P2-18：why 子命令 ─────────────────────────────────────────────────
+
+
+def test_plugin_why_active_reports_position(monkeypatch: pytest.MonkeyPatch) -> None:
+    """已生效插件：给出装配位置与已解析的依赖，退出码 0。"""
+    monkeypatch.chdir(REPO_ROOT)
+
+    result = runner.invoke(cli_app, ["plugin", "why", "xs.commands"])
+
+    assert result.exit_code == 0, result.output
+    assert "已生效" in result.output
+    assert "装配顺序第 2" in result.output
+    assert "xuan:build/backend#dispatch" in result.output
+
+
+def test_plugin_why_unknown_id_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """未知 id 必须显式失败，并列出工作区内可用插件。"""
+    monkeypatch.chdir(REPO_ROOT)
+
+    result = runner.invoke(cli_app, ["plugin", "why", "nope"])
+
+    assert result.exit_code == 1, result.output
+    assert "未找到插件" in result.output
+    assert "xs.commands" in result.output
+
+
+def test_plugin_why_inactive_names_disabled_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """缺失键的唯一声明者被 disabled 排除时，必须点名该来源而不是只说“缺失”。"""
+    key = "xuan:demo/ext#one"
+    consumer = _fake_manifest("consumer", inject=(key,))
+    provider = PluginManifest(
+        id="provider",
+        version="0.1.0",
+        provide=(ProvideDecl(key=key),),
+        disabled=True,
+        source="tools/provider/pyproject.toml",
+    )
+    _patch_manifests(monkeypatch, [consumer, provider])
+
+    result = runner.invoke(cli_app, ["plugin", "why", "consumer"])
+
+    assert result.exit_code == 1, result.output
+    assert "未生效" in result.output
+    assert key in result.output
+    assert "已禁用来源：provider" in result.output
+
+
+def test_plugin_why_chain_reaches_root_cause(monkeypatch: pytest.MonkeyPatch) -> None:
+    """提供者自身失活时，因果链必须下钻到真正缺键的那一层。"""
+    upstream = "xuan:demo/a#b"
+    root_key = "xuan:demo/x#y"
+    consumer = _fake_manifest("a", inject=(upstream,))
+    provider = _fake_manifest("b", provide=(upstream,), inject=(root_key,))
+    _patch_manifests(monkeypatch, [consumer, provider])
+
+    result = runner.invoke(cli_app, ["plugin", "why", "a"])
+
+    assert result.exit_code == 1, result.output
+    assert upstream in result.output
+    assert f"b 缺少 {root_key}" in result.output
+    assert "无提供者" in result.output
+
+
+def test_plugin_why_json_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSON 形态：状态、缺失键、候选提供者与因果链结构化输出。"""
+    upstream = "xuan:demo/a#b"
+    root_key = "xuan:demo/x#y"
+    consumer = _fake_manifest("a", inject=(upstream,))
+    provider = _fake_manifest("b", provide=(upstream,), inject=(root_key,))
+    _patch_manifests(monkeypatch, [consumer, provider])
+
+    result = runner.invoke(cli_app, ["plugin", "why", "a", "--json"])
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "inactive"
+    assert payload["id"] == "a"
+    missing = payload["missing"][0]
+    assert missing["key"] == upstream
+    assert missing["providers"] == [{"id": "b", "state": "inactive"}]
+    assert missing["chain"][0]["plugin"] == "b"
+    assert missing["chain"][0]["key"] == root_key
+
+
+def test_plugin_why_optional_missing_is_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """可选依赖未提供不构成失活：状态仍为 ACTIVE，退出码 0。"""
+    optional_key = "xuan:demo/opt#one"
+    manifest = PluginManifest(
+        id="solo",
+        version="0.1.0",
+        inject=(InjectDecl(key=optional_key, optional=True),),
+    )
+    _patch_manifests(monkeypatch, [manifest])
+
+    result = runner.invoke(cli_app, ["plugin", "why", "solo"])
+
+    assert result.exit_code == 0, result.output
+    assert "已生效" in result.output
+    assert optional_key in result.output
+    assert "可选" in result.output
+
+
+def test_plugin_why_reports_unsolvable_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """求解无解（冲突/环）时无法给出单插件因果链，须以 blocked 收口。"""
+    key = "xuan:demo/clash#one"
+    _patch_manifests(monkeypatch, [_fake_manifest("a", provide=(key,)), _fake_manifest("b", provide=(key,))])
+
+    result = runner.invoke(cli_app, ["plugin", "why", "a", "--json"])
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "blocked"
+    assert payload["kind"] == "conflict"

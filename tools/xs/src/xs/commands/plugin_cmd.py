@@ -3,12 +3,16 @@
 数据来源为「静态声明 ∪ entry points」：前者扫描工作区内各项目 ``pyproject.toml``
 的 ``[tool.xuan.plugin]``，后者读取 ``xuan.plugins`` 入口点。``apply --dry-run``
 输出求解计划（定序/隔离域/可解性）；不加 ``--dry-run`` 时对内置插件执行真实
-装配，并以「声明 / 实际注册」逐键对账收尾。
+装配，并以「声明 / 实际注册」逐键对账收尾。``why`` 回答单个插件为何生效或
+未生效——缺哪个键、谁可能提供、失活沿哪条依赖链传播（设计文档 V4）。
 """
 
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -403,3 +407,265 @@ def _apply_solution(solution: Solution, json_output: bool) -> None:
     )
     if not report.ok:
         raise typer.Exit(1)
+
+
+def _key_owners(active: tuple[PluginManifest, ...]) -> dict[str, tuple[str, ...]]:
+    """键 → 提供者 id（按 ``-priority``、id 定序）；与求解器选定胜出者同口径。"""
+    ordered: dict[str, list[tuple[int, str]]] = {}
+    for manifest in active:
+        for decl in manifest.provide:
+            ordered.setdefault(decl.key, []).append((-manifest.priority, manifest.id))
+    return {key: tuple(plugin_id for _, plugin_id in sorted(items)) for key, items in ordered.items()}
+
+
+@dataclass(frozen=True, slots=True)
+class MissingKey:
+    """一个不可得的键：候选提供者、被禁用来源，以及提供者失活时的下钻链。
+
+    ``plugin`` 是「谁在缺这个键」——顶层为被查询插件，链上每一层为其提供者；
+    这样同一条链既能渲染成人类可读的因果句，也能原样序列化为 JSON。
+    """
+
+    plugin: str
+    key: str
+    providers: tuple[tuple[str, str], ...]
+    disabled_sources: tuple[str, ...]
+    chain: tuple[MissingKey, ...] = ()
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "plugin": self.plugin,
+            "key": self.key,
+            "providers": [{"id": plugin_id, "state": state} for plugin_id, state in self.providers],
+            "disabled_sources": list(self.disabled_sources),
+            "chain": [item.to_json() for item in self.chain],
+        }
+
+
+def _missing_key(
+    plugin: str,
+    key: str,
+    *,
+    manifests: tuple[PluginManifest, ...],
+    owners: Mapping[str, tuple[str, ...]],
+    inactive: Mapping[str, tuple[str, ...]],
+    depth: int = 0,
+) -> MissingKey:
+    """解释单个缺失键；提供者自身失活时继续下钻，直到找到根因。
+
+    ``depth`` 是纯防御：``_inactive_nodes`` 的标记顺序本身保证失活链无环，
+    但外部传入的 ``inactive`` 映射未必可信，故限深 8 层避免无限递归。
+    """
+    providers = owners.get(key, ())
+    disabled_sources = tuple(
+        manifest.id for manifest in manifests if manifest.disabled and any(decl.key == key for decl in manifest.provide)
+    )
+    provider = providers[0] if providers else ""
+    chain: tuple[MissingKey, ...] = ()
+    if provider and provider in inactive and depth < 8:
+        chain = tuple(
+            _missing_key(
+                provider,
+                nested,
+                manifests=manifests,
+                owners=owners,
+                inactive=inactive,
+                depth=depth + 1,
+            )
+            for nested in inactive[provider]
+        )
+    return MissingKey(
+        plugin=plugin,
+        key=key,
+        providers=tuple((plugin_id, "inactive" if plugin_id in inactive else "active") for plugin_id in providers),
+        disabled_sources=disabled_sources,
+        chain=chain,
+    )
+
+
+def _provider_text(providers: tuple[tuple[str, str], ...]) -> str:
+    """提供者列表的可读文案；空表示工作区内无任何声明。"""
+    if not providers:
+        return "无提供者"
+    return "、".join(
+        f"{plugin_id}（{'未生效' if state == 'inactive' else '已生效'}）" for plugin_id, state in providers
+    )
+
+
+def _render_chain(entry: MissingKey, indent: int) -> list[str]:
+    """把下钻链渲染成逐层因果句（每层一行，缩进递增）。"""
+    pad = " " * indent
+    lines: list[str] = []
+    for step in entry.chain:
+        lines.append(f"{pad}[dim]因果：{step.plugin} 缺少 {step.key} → {_provider_text(step.providers)}[/dim]")
+        if step.disabled_sources:
+            lines.append(f"{pad}  [yellow]已禁用来源：{'、'.join(step.disabled_sources)}[/yellow]")
+        lines.extend(_render_chain(step, indent + 2))
+    return lines
+
+
+def _render_missing(entry: MissingKey) -> list[str]:
+    """渲染一个顶层缺失键：键与候选、禁用来源、下钻链与修复建议。"""
+    lines = [f"  [red]{entry.key}[/red] [dim]→ {_provider_text(entry.providers)}[/dim]"]
+    if entry.disabled_sources:
+        lines.append(f"    [yellow]已禁用来源：{'、'.join(entry.disabled_sources)}[/yellow]")
+        lines.append("    [dim]建议：把上述来源的 disabled 置为 false，或新增其它提供者[/dim]")
+    elif not entry.providers:
+        lines.append("    [dim]建议：新增提供该键的插件，或把该 inject 声明为 optional[/dim]")
+    elif entry.chain:
+        lines.append(f"    [dim]建议：先修复提供者 {entry.chain[0].plugin} 的缺失依赖[/dim]")
+    lines.extend(_render_chain(entry, 4))
+    return lines
+
+
+@app.command("why")
+def why(
+    plugin_id: str = typer.Argument(..., metavar="PLUGIN_ID", help="要解释的插件 id"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="以 JSON 格式输出"),
+) -> None:
+    """解释插件为何生效/未生效：缺失键、可能提供者与失活因果链（V4）。
+
+    退出码 0 仅表示「被查询插件已生效」；未生效（INACTIVE）、被禁用、未知 id
+    与装配计划无解均为 1。这是「该插件当前能否生效」的问答语义，与 ``graph``/
+    ``apply`` 的「装配计划是否可解」不同——INACTIVE 在求解层面是合法结果，
+    ``apply --dry-run`` 遇到它仍返回 0。
+    """
+    try:
+        manifests = collect_manifests(find_workspace_root())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]清单解析失败：{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    target = next((manifest for manifest in manifests if manifest.id == plugin_id), None)
+    if target is None:
+        available = [manifest.id for manifest in manifests]
+        if json_output:
+            typer.echo(
+                json.dumps({"status": "unknown", "id": plugin_id, "available": available}, ensure_ascii=False, indent=2)
+            )
+        else:
+            console.print(f"[red]未找到插件 {plugin_id!r}[/red]")
+            console.print(f"[dim]工作区内的插件：{', '.join(available) or '（无）'}[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        solution = solve(manifests)
+    except SolveError as exc:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "id": plugin_id,
+                        "kind": exc.kind.value,
+                        "message": str(exc),
+                        "details": list(exc.details),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            console.print(f"[red]装配计划无解，无法解释 {plugin_id}：{exc}[/red]")
+            console.print(f"[dim]修复上述冲突/环后可重试：xs plugin why {plugin_id}[/dim]")
+        raise typer.Exit(1)
+
+    active = tuple(manifest for manifest in manifests if not manifest.disabled)
+    owners = _key_owners(active)
+    inactive = {reason.plugin: reason.missing for reason in solution.inactive}
+
+    if target.disabled:
+        status = "disabled"
+    elif target.id in solution.order:
+        status = "active"
+    else:
+        status = "inactive"
+
+    missing = (
+        tuple(
+            _missing_key(target.id, key, manifests=manifests, owners=owners, inactive=inactive)
+            for key in inactive.get(target.id, ())
+        )
+        if status == "inactive"
+        else ()
+    )
+    position = solution.order.index(target.id) + 1 if status == "active" else None
+
+    injects: list[dict[str, Any]] = []
+    for decl in target.inject:
+        providers = owners.get(decl.key, ())
+        if not providers:
+            state = "optional-missing" if decl.optional else "missing"
+        elif providers[0] in inactive:
+            state = "inactive-provider"
+        else:
+            state = "ok"
+        injects.append(
+            {
+                "key": decl.key,
+                "optional": decl.optional,
+                "provider": providers[0] if providers else None,
+                "state": state,
+            }
+        )
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "status": status,
+                    "id": target.id,
+                    "manifest": {
+                        "version": target.version,
+                        "lifecycle": target.lifecycle,
+                        "priority": target.priority,
+                        "reversible": target.reversible,
+                        "source": target.source,
+                    },
+                    "position": position,
+                    "order": list(solution.order),
+                    "provides": list(target.provide_keys()),
+                    "injects": injects,
+                    "missing": [entry.to_json() for entry in missing],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        raise typer.Exit(0 if status == "active" else 1)
+
+    console.print(
+        f"[bold cyan]{target.id}[/bold cyan] [dim]（{target.version}, {target.lifecycle},"
+        f" priority={target.priority}, 来源 {target.source or '未知'}）[/dim]"
+    )
+    if status == "active":
+        console.print(
+            f"[green]状态：已生效（ACTIVE）[/green] [dim]装配顺序第 {position} / {len(solution.order)} 位[/dim]"
+        )
+    elif status == "disabled":
+        console.print("[yellow]状态：已禁用（disabled）[/yellow] [dim]清单声明 disabled=true，装配时被排除[/dim]")
+    else:
+        console.print(f"[red]状态：未生效（INACTIVE）[/red] [dim]缺少 {len(missing)} 个必需依赖[/dim]")
+
+    if target.inject:
+        # 失活原因已在下文「缺失必需依赖」逐键展开，此处不重复列同一批键
+        explained = {"missing", "inactive-provider"} if status == "inactive" else set()
+        shown = [item for item in injects if item["state"] not in explained]
+        if shown:
+            console.print("[bold]依赖[/bold]")
+            for item in shown:
+                key = item["key"]
+                if item["state"] == "ok":
+                    console.print(f"  [green]{key}[/green] [dim]← {item['provider']}[/dim]")
+                elif item["state"] == "optional-missing":
+                    console.print(f"  [yellow]{key}[/yellow] [dim]← 未提供，按可选依赖降级[/dim]")
+                else:
+                    console.print(f"  [red]{key}[/red] [dim]← 无提供者[/dim]")
+
+    if missing:
+        console.print("[bold]缺失必需依赖[/bold]")
+        for entry in missing:
+            for line in _render_missing(entry):
+                console.print(line)
+
+    raise typer.Exit(0 if status == "active" else 1)

@@ -234,6 +234,7 @@ xs lfs patterns                                   # 列出 .gitattributes 中的
 xs plugin list [--json|-j]      # 列出插件清单（id/版本/生命周期/优先级/供应与依赖数）
 xs plugin graph [--dot] [--json|-j]   # 候选节点与依赖边，标注未解析依赖与冲突键
 xs plugin apply [--dry-run] [--json|-j] # 求解计划；不加 --dry-run 时对内置插件执行真实装配
+xs plugin why <id> [--json|-j]  # 单个插件的生效/失活因果链（缺哪个键、谁可能提供）
 ```
 
 `apply` 默认执行真实装配：按解序装配内置插件，以 `FiberState.ACTIVE` 为生效判据逐节点校验，
@@ -245,8 +246,15 @@ xs plugin apply [--dry-run] [--json|-j] # 求解计划；不加 --dry-run 时对
 脚本拦截；三种输出都会附带同一份诊断摘要（DOT 以 `//` 注释追加），因此退出码非零时诊断图
 仍完整可读。可选依赖缺失不计入错误。
 
+`why` 回答「某个插件为什么没生效」：输出当前状态（已生效 / 未生效 / 已禁用 / 未知 /
+装配计划无解）、缺失的能力键、可能的提供者（含被 `disabled` 排除的来源），并在提供者自身
+失活时沿依赖链逐层下钻到根因。退出码 0 仅表示该插件已生效；未生效、被禁用、未知 id 与计划
+无解均为 1——这是「该插件能否生效」的问答语义，与 `graph`/`apply` 的「装配计划是否可解」
+不同：INACTIVE 在求解层面是合法结果，`apply --dry-run` 遇到它仍返回 0。
+
 | 选项 | 说明 |
 |---|---|
 | `--json` / `-j` | JSON 格式输出 |
 | `--dot` | 输出 Graphviz DOT（仅 `graph`） |
 | `--dry-run` | 只求解不装配（仅 `apply`） |
+| `PLUGIN_ID` | 要解释的插件 id（仅 `why`，必填位置参数） |
