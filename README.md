@@ -32,6 +32,7 @@ x-toml-ref: ".meta/toml/README.toml"
 - ⚡ **C++ 原生扩展**：集成 CMake + Ninja + scikit-build-core 构建链，跨平台一致
 - 📚 **Sphinx 文档**：MyST Markdown 语法，支持 Mermaid 图表，美观的文档主题
 - 🤖 **AI Agent 就绪**：内置 AGENTS.md 和 `.agents/` 规范目录，支持 AI 协作开发
+- 🧩 **插件化装配**：`xuan-plugin` 内核按能力键（provide/inject）求解并可逆装配，`xs` 的命令面、构建与 FFI 能力均以插件形式接入，装配结果由 `xuan.plugins.lock` 锁定
 - 🔄 **版本管理**：`xs` CLI 提供统一版本 bump 和 CHANGELOG 生成
 - 🏗️ **跨平台构建**：Windows/macOS/Linux 一致性保证
 
@@ -152,21 +153,39 @@ graph TD
     道 --> 法 --> 术 --> 器
 ```
 
+### 插件装配视图
+
+运行时装配自下而上分四层，依赖方向单向（下层不感知上层）：
+
+| 层 | 组成 | 职责 |
+|----|------|------|
+| 内核层 | `libs/xuan-plugin` | 清单解析、provide/inject 求解、冲突检测、可逆装配与生命周期 |
+| 能力层 | `libs/xuan-build`、`libs/xuan-ffi` | 按项目类型分派构建实现；以能力键隔离后端子进程 |
+| 命令面 | `tools/xs` 的 `xs.commands` 插件 | 把 16 个子命令登记为插件，由内核装配为 CLI |
+| 工作区层 | `libs/xuan-project`、`libs/xuan-cmd` | 项目发现、pyproject 解析、路径解析与命令执行通用件 |
+
+`scripts/check_plugin_contract.py` 对 H1–H5 不变量做 CI 断言（可解性、无冲突、可撤销、lock 一致、结构兼容）；清单变更后用 `--write-lock` 重算 `xuan.plugins.lock`。
+
 ## 目录结构
 
 ```
 xuanspace/
-├── apps/          # 可执行应用程序（CLI 工具、服务等）
-├── libs/          # 共享库（Python 库、C++ 扩展）
-├── vendor/        # 第三方依赖（作为 Git 子模块管理）
-├── tools/         # 独立工具集（构建脚本、代码生成器等）
-├── doc/           # Sphinx 文档源文件
-├── scripts/       # 项目运维脚本
-├── attic/         # 归档内容（不活跃但有参考价值的项目）
-├── .agents/       # AI Agent 配置与脚本
-├── .meta/         # 项目元数据
-├── AGENTS.md      # AI 智能体协作指南
-└── pyproject.toml # 根项目配置（纯 Python 枢纽包）
+├── apps/              # 可执行应用（预留，当前仅有说明）
+├── libs/              # 共享库：领域库、能力层与插件内核
+├── vendor/            # 第三方依赖（Git 子模块）
+├── tools/             # 独立工具集（xs CLI、okf、项目模板）
+├── src/               # 根枢纽包 xuanspace（仅版本与元信息）
+├── tests/             # 根级契约测试（CLI 快照、装配与文档断言）
+├── doc/               # Sphinx 文档源文件
+├── scripts/           # 运维与一致性门禁脚本（声明、依赖方向、插件契约）
+├── attic/             # 归档内容（不活跃但有参考价值）
+├── .agents/           # AI Agent 配置与规范
+├── .github/           # CI 与发布工作流
+├── .meta/             # 项目元数据（TOML 单源）
+├── .trae/             # Spec 资产（specs/）
+├── AGENTS.md          # AI 智能体协作指南
+├── xuan.plugins.lock  # 插件装配锁（由清单派生的规范 JSON）
+└── pyproject.toml     # 根项目配置（纯 Python 枢纽包）
 ```
 
 ## 文档与资源

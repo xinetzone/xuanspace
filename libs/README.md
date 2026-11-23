@@ -10,9 +10,11 @@
 
 纯 Python 共享库，无原生扩展：
 
-- 使用 `setuptools` 或 `hatchling` 作为构建后端
+- 同样使用统一的 `scikit-build-core` 构建后端（`wheel.cmake = false` + `wheel.packages`），产出 `py3-none-any` 通用 wheel，构建无需 cmake/ninja
 - 无需额外编译工具链，跨平台兼容性好
 - 对外提供 importable API，无独立运行入口
+
+> 构建后端的唯一事实来源是 [doc/build-system.md](../doc/build-system.md)：全部子项目统一 `scikit-build-core`，不再使用 `setuptools`/`hatchling`。
 
 ### 2. C/C++ 扩展库
 
@@ -78,13 +80,21 @@ xs new --type native <library-name>
 name = "xuan-core"
 version = "0.1.0"
 description = "Xuanspace 核心工具库"
+requires-python = ">=3.14.6"
 dependencies = [
     "pydantic>=2.0",
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "0.11"
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/xuan_core"]
 ```
 
 ### pyproject.toml 配置示例（含 C/C++ 扩展）

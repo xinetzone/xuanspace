@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 文档
+- 入口文档对齐插件化装配现状：`README.md` 新增「插件装配视图」并补齐顶层骨架（`src/`、`tests/`、`.github/`、`.trae/`、`xuan.plugins.lock`）
+- `doc/architecture.md` 重写目录树（15 个库按层次归位），新增「插件装配架构」与「为什么采用插件内核装配」，修正不存在的 `projects/` 提法
+- `.agents/ONBOARDING.md` 结构速览补齐 15 个库，能力速查表扩展为全部 16 个子命令；`AGENTS.md` 类型检查范围同步 CI 的 8 个目标
+- `libs/README.md` 纯 Python 构建示例由 `hatchling` 改为统一 `scikit-build-core`（`wheel.cmake=false`），与 `doc/build-system.md` 对齐
+
 ### Changed
 - **BREAKING**：`xs` 包不再声明 `__version__`（`from xs import __version__` 失效），版本号以 `pyproject.toml` 的 `[project].version` 为单一事实来源，运行时经 `importlib.metadata` 读取
 - **BREAKING**：`xs docs` 子命令改名为 `xs doc`，按裁定不保留 `docs` 别名

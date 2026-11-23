@@ -59,15 +59,20 @@ x-toml-ref: ".meta/toml/AGENTS.toml"
 
 ```
 xuanspace/
-├── apps/              # 可执行应用和CLI工具
-├── libs/              # 可复用Python库和C++原生扩展
+├── apps/              # 可执行应用和CLI工具（预留）
+├── libs/              # 可复用Python库、C++原生扩展、插件内核与能力层
 ├── vendor/            # 第三方依赖和外部项目（只读）
-├── tools/             # 项目工具链（xs CLI、模板）
+├── tools/             # 项目工具链（xs CLI、okf、模板）
+├── src/               # 根枢纽包 xuanspace（仅版本与元信息）
+├── tests/             # 根级契约测试（CLI 快照、装配与文档断言）
 ├── doc/               # 文档目录（Sphinx+MyST）
-├── scripts/           # 构建和维护脚本
+├── scripts/           # 构建、维护与一致性门禁脚本
 ├── attic/             # 归档/废弃内容
 ├── .agents/           # AI智能体规范目录（本规范所在目录）
+├── .github/           # CI/发布工作流
 ├── .meta/toml/        # TOML元数据镜像目录
+├── .trae/             # Spec 资产（specs/）
+├── xuan.plugins.lock  # 插件装配锁（由清单派生的规范 JSON）
 └── AGENTS.md          # 本文件 - 智能体入口
 ```
 
@@ -106,7 +111,7 @@ AI agent 完成的每一次提交，除满足 Conventional Commits 与上节规�
 | 测试覆盖率 | 核心模块 ≥ 90%，一般模块 ≥ 80% | 以 `pytest --cov` 报告为准 |
 | 防回归用例 | 每个 Bug 修复 ≥ 1 个 | 修复前先提交可复现该 Bug 的测试用例 |
 | 新功能测试 | 每个新功能 ≥ 1 个测试 | 覆盖主路径与关键边界 |
-| 类型检查 | `mypy` 零新增告警 | 与提交前基线对比；**检查范围以 CI 为准**（当前为 `tools/xs libs/xuan-core libs/xuan-ext-demo`，见 `.github/workflows/ci.yml`） |
+| 类型检查 | `mypy` 零新增告警 | 与提交前基线对比；**检查范围以 CI 为准**（当前为 `tools/xs`、`libs/xuan-core`、`libs/xuan-ext-demo`、`libs/xuan-cmd`、`libs/xuan-build`、`libs/xuan-ffi`、`libs/xuan-plugin`、`libs/xuan-project`，见 `.github/workflows/ci.yml`） |
 | Lint | `ruff check` 零错误 | 不得新增告警 |
 
 > **验收原则**：以上指标作为 agent 提交是否合入的**必要**依据；指标不达标时需补齐测试或说明豁免理由后重提。覆盖率数字不可仅在提交说明中声称，须提供可复现的测量命令与结果。
