@@ -1,0 +1,95 @@
+{
+  "source_sha256": "52922177540a3f035f3fe8f221f5b2dc090460738400dc2a585e8703661ec105",
+  "source_bytes": 121183,
+  "source_lines": 1599,
+  "volumes": [
+    {
+      "file": "00-overview.md",
+      "topic": "总览：范围、不变量、前置事实",
+      "start": 0,
+      "end": 55,
+      "banner_lines": 3,
+      "body_bytes": 3038,
+      "body_sha256": "1bc846f54cb17bc4e54052863c19331f3f59a681cc75fdc15bddc6767be63100",
+      "file_bytes": 3311,
+      "file_sha256": "893aea0f7eacc20ab3e814667dfa8373f859875b06263cce475df0703d6fec14"
+    },
+    {
+      "file": "01-plan-p0-1.md",
+      "topic": "计划本体 P0-1（Task 1–8 + 风险 + 完成判据）",
+      "start": 55,
+      "end": 361,
+      "banner_lines": 3,
+      "body_bytes": 21088,
+      "body_sha256": "152b8976cd706c3333d7f67950fb613d9e012ca74efa0421f67a7bf590b743af",
+      "file_bytes": 21387,
+      "file_sha256": "eee0d19d05570948d795dcc75c59c92c5e5a8cbb2de64893994fbf3d8f6468e8"
+    },
+    {
+      "file": "02-p0-2-identity.md",
+      "topic": "增量一 P0-2：epoch 摘要身份",
+      "start": 361,
+      "end": 411,
+      "banner_lines": 3,
+      "body_bytes": 3562,
+      "body_sha256": "2cd76d357653992c13c415c6fec781699671ab9edb6908109488fcd4d4cd45a4",
+      "file_bytes": 3841,
+      "file_sha256": "972985f538174191e00d7172133048c0ac3a2e71c560c3535d634d6f759d8852"
+    },
+    {
+      "file": "03-p0-3-disposal.md",
+      "topic": "增量二 P0-3：卸载异常聚合",
+      "start": 411,
+      "end": 465,
+      "banner_lines": 3,
+      "body_bytes": 4201,
+      "body_sha256": "a8a57232f5c3f4ff310865a23c5b3c8f9596c8456cd7ebb2a67c5b1bfa96df23",
+      "file_bytes": 4484,
+      "file_sha256": "a4797e1d0f16be8570bc5c77c1dc0ec187a5f141b5e46cc1fe5b21cdef06101d"
+    },
+    {
+      "file": "04-p1-kernel-cli.md",
+      "topic": "增量三 P1：清单、求解器、CLI 插件化",
+      "start": 465,
+      "end": 659,
+      "banner_lines": 3,
+      "body_bytes": 16480,
+      "body_sha256": "c645935de92a60a2dc7f27a36a5caa8437de4008c86f916050d73d0fa15e09de",
+      "file_bytes": 16778,
+      "file_sha256": "3aee9530626c01b238aaf15d704c191ee3a297b0cc89173c2fd60ad334223ecc"
+    },
+    {
+      "file": "05-p2-a-build-ffi.md",
+      "topic": "P2-A：构建后端、compose、FFI 试点",
+      "start": 659,
+      "end": 840,
+      "banner_lines": 3,
+      "body_bytes": 13818,
+      "body_sha256": "1c363a81ae2b0ad2af84000b3ef08367301f79826ba972807d96473231da99f4",
+      "file_bytes": 14109,
+      "file_sha256": "64b3eeba347f7150c3c54cc0f74032abc8cc27167fc55dc0b39f4a892981c6db"
+    },
+    {
+      "file": "06-p2-b-lifecycle.md",
+      "topic": "P2-B：生命周期、热替换、传播、摘要",
+      "start": 840,
+      "end": 1111,
+      "banner_lines": 3,
+      "body_bytes": 20273,
+      "body_sha256": "14f5f9aa5691cc61357c7b4cd2e466df67a9f17136546571697a4b80c4250285",
+      "file_bytes": 20574,
+      "file_sha256": "1c6762842a1ce1710921f57083a952720fb0ee504f35006e45d9cf8414b633f8"
+    },
+    {
+      "file": "07-p2-c-invariants.md",
+      "topic": "P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径",
+      "start": 1111,
+      "end": 1599,
+      "banner_lines": 3,
+      "body_bytes": 38716,
+      "body_sha256": "5d22e8789fac2167197d583bf3fe49df870da06f9361048d7b6e3165d6700526",
+      "file_bytes": 39051,
+      "file_sha256": "d5fc1ada6955bdfcb1e4a09a2abd4305512c175f24748e1cd54cd89a6c829b0e"
+    }
+  ]
+}
