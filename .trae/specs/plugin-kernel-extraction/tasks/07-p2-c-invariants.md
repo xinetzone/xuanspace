@@ -1,5 +1,5 @@
-> 分卷来源：`tasks.md` 原文 L1112–L1779（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
-> 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：（无）
+> 分卷来源：`tasks.md` 原文 L1112–L1774（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
+> 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：08-p2-d-doc-grouping.md
 > 主题：P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径
 ## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
 
@@ -185,7 +185,7 @@
   - **落地口径边界**：清单侧规则 2 的 `provider=` 覆盖字段仍属 lock/P5 范围，本轮只落地运行时
     参数 `lookup(..., provider="<id>")`；`build_graph`（诊断图）保留 `(-priority, id)` 过渡
     定序，不以它作为装配裁决依据。`retrospective-20261121.md`（已并入
-    [doc 第二部 · C 阶段](../../../../libs/xuan-plugin/doc/15-retro-delivery.md)）中「ADR-05 未落地」是 P2-9
+    [doc 第二部 · C 阶段](../../../../libs/xuan-plugin/doc/retro/14-retro-delivery.md)）中「ADR-05 未落地」是 P2-9
     时点记录，不改写历史复盘。
 
 ## Task P2-11-1: 同名插件装配的确定性
@@ -663,9 +663,4 @@
   - **V7 并行任务协调**：本轮开工时 HEAD 为 `f43939d`（并行会话刷新声明快照），
     工作树干净；本任务只改 `plugin_cmd.py`、`test_plugin_cmd.py`、`doc/cli/index.md`
     与本台账，未纳入他人改动。
-
----
-
-> 复盘报告（P2-4～P2-11 全链，R → I → E → C，G1–G4 通过）：
-> 已原子化并入 [libs/xuan-plugin/doc/README.md（第二部）](../../../../libs/xuan-plugin/doc/README.md)，原独立文件已删除。
 

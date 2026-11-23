@@ -1,5 +1,5 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §四（L128–L140）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 四、V 阶段（可选）：对抗审查
 
@@ -16,4 +16,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[E — 可复用模式与反模式（G3）](13-retro-patterns.md) · 下一篇：[C — 交付与未决项（G4）](15-retro-delivery.md)
+相关页面：[文档索引](../README.md) · 上一篇：[E — 可复用模式与反模式（G3）](12-retro-patterns.md) · 下一篇：[C — 交付与未决项（G4）](14-retro-delivery.md)

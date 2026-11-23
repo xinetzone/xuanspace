@@ -1,5 +1,5 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §一（L11–L58）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 一、R 阶段：客观事实（G1）
 
@@ -51,4 +51,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 下一篇：[I — 洞察（G2）](12-retro-insights.md)
+相关页面：[文档索引](../README.md) · 上一篇：[度量与止损](09-metrics.md) · 下一篇：[I — 洞察（G2）](11-retro-insights.md)

@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §10（L649–L759）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 10. 附录
 
@@ -115,4 +115,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[度量与止损](09-metrics.md)
+相关页面：[文档索引](../README.md) · 上一篇：[更新记录与复核方式](../retro/15-retro-changelog.md) · 下一篇：[附录 A — 设计基线原子化合并（A0–A12）](17-retro-appendix-a.md)

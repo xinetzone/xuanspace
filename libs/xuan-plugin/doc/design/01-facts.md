@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §1（L39–L104）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 1. R — 事实基线
 
@@ -67,4 +67,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[结论摘要（TL;DR）](00-tldr.md) · 下一篇：[I — 洞察（四元组）](02-insights.md)
+相关页面：[文档索引](../README.md) · 上一篇：[结论摘要（TL;DR）](00-tldr.md) · 下一篇：[I — 洞察（四元组）](02-insights.md)

@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §0（L13–L38）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 0. 结论摘要（TL;DR）
 
@@ -27,4 +27,4 @@ xuanspace 当前的"管理"是**声明期治理**（目录约定 + pyproject 声
 
 ---
 
-相关页面：[文档索引](README.md) · 下一篇：[R — 事实基线](01-facts.md)
+相关页面：[文档索引](../README.md) · 下一篇：[R — 事实基线](01-facts.md)

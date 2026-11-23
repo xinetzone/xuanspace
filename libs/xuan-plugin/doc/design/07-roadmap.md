@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §7（L414–L451）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 7. C — 落地计划（原子任务）
 
@@ -39,4 +39,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[V — 对抗审查（4 视角）](06-adversarial-review.md) · 下一篇：[P1-2 里程碑复盘（2026-11-21）](08-retrospective-p1-2.md)
+相关页面：[文档索引](../README.md) · 上一篇：[V — 对抗审查（4 视角）](06-adversarial-review.md) · 下一篇：[P1-2 里程碑复盘（2026-11-21）](../retro/08-retrospective-p1-2.md)

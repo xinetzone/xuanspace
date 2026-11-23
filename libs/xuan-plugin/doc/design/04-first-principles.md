@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §4（L209–L234）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 4. F — 第一性原理
 
@@ -27,4 +27,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[E — 模式萃取（可跨场景迁移）](03-patterns.md) · 下一篇：[方案：Xuan Plugin Contract（XPC）](05-solution.md)
+相关页面：[文档索引](../README.md) · 上一篇：[E — 模式萃取（可跨场景迁移）](03-patterns.md) · 下一篇：[方案：Xuan Plugin Contract（XPC）](05-solution.md)

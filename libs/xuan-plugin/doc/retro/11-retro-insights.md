@@ -1,5 +1,5 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §二（L61–L94）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 二、I 阶段：洞察（G2）
 
@@ -37,4 +37,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[R — 客观事实（G1）](11-retro-facts.md) · 下一篇：[E — 可复用模式与反模式（G3）](13-retro-patterns.md)
+相关页面：[文档索引](../README.md) · 上一篇：[R — 客观事实（G1）](10-retro-facts.md) · 下一篇：[E — 可复用模式与反模式（G3）](12-retro-patterns.md)

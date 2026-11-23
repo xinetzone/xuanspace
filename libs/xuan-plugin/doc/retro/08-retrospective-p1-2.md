@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §8（L452–L631）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 8. P1-2 里程碑复盘（2026-11-21）
 
@@ -181,4 +181,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[C — 落地计划（原子任务）](07-roadmap.md) · 下一篇：[度量与止损](09-metrics.md)
+相关页面：[文档索引](../README.md) · 上一篇：[C — 落地计划（原子任务）](../design/07-roadmap.md) · 下一篇：[度量与止损](09-metrics.md)

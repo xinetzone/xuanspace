@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §9（L632–L648）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 9. 度量与止损
 
@@ -18,4 +18,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[P1-2 里程碑复盘（2026-11-21）](08-retrospective-p1-2.md) · 下一篇：[附录](10-appendix.md)
+相关页面：[文档索引](../README.md) · 上一篇：[P1-2 里程碑复盘（2026-11-21）](08-retrospective-p1-2.md) · 下一篇：[R — 客观事实（G1）](10-retro-facts.md)

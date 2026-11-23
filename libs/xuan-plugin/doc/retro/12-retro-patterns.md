@@ -1,5 +1,5 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §三（L97–L125）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 三、E 阶段：可复用模式（G3）
 
@@ -32,4 +32,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[I — 洞察（G2）](12-retro-insights.md) · 下一篇：[V — 对抗审查（6 条异议）](14-retro-adversarial.md)
+相关页面：[文档索引](../README.md) · 上一篇：[I — 洞察（G2）](11-retro-insights.md) · 下一篇：[V — 对抗审查（6 条异议）](13-retro-adversarial.md)

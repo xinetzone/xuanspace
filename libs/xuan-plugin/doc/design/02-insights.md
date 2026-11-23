@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §2（L105–L143）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 2. I — 洞察（四元组）
 
@@ -40,4 +40,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[R — 事实基线](01-facts.md) · 下一篇：[E — 模式萃取（可跨场景迁移）](03-patterns.md)
+相关页面：[文档索引](../README.md) · 上一篇：[R — 事实基线](01-facts.md) · 下一篇：[E — 模式萃取（可跨场景迁移）](03-patterns.md)

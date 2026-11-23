@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §6（L397–L413）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 6. V — 对抗审查（4 视角）
 
@@ -18,4 +18,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[方案：Xuan Plugin Contract（XPC）](05-solution.md) · 下一篇：[C — 落地计划（原子任务）](07-roadmap.md)
+相关页面：[文档索引](../README.md) · 上一篇：[方案：Xuan Plugin Contract（XPC）](05-solution.md) · 下一篇：[C — 落地计划（原子任务）](07-roadmap.md)

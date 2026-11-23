@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §3（L144–L208）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 3. E — 模式萃取（可跨场景迁移）
 
@@ -66,4 +66,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[I — 洞察（四元组）](02-insights.md) · 下一篇：[F — 第一性原理](04-first-principles.md)
+相关页面：[文档索引](../README.md) · 上一篇：[I — 洞察（四元组）](02-insights.md) · 下一篇：[F — 第一性原理](04-first-principles.md)

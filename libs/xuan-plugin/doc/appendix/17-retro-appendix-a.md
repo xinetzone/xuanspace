@@ -1,6 +1,6 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §七（L195–L320）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 时点声明：本页为 2026-11-21 时点记录（截至提交 `f42c37d`）。此后清单已变化——设计文档于 2026-11-23 原子化为本目录（原件归档后删除），ADR-05 由 P2-10（`13c6127`）落地，同名装配由 P2-11（`eada0de`）收口；文中「547 行 / md5」「ADR-05 未落地」均属当时事实，现行口径以 [README.md](README.md) 与 [tasks.md](../../../.trae/specs/plugin-kernel-extraction/tasks.md) 为准
-> 文档索引：[README.md](README.md)
+> 时点声明：本页为 2026-11-21 时点记录（截至提交 `f42c37d`）。此后清单已变化——设计文档于 2026-11-23 原子化为本目录（原件归档后删除），ADR-05 由 P2-10（`13c6127`）落地，同名装配由 P2-11（`eada0de`）收口；文中「547 行 / md5」「ADR-05 未落地」均属当时事实，现行口径以 [README.md](../README.md) 与 [tasks.md](../../../../.trae/specs/plugin-kernel-extraction/tasks.md) 为准
+> 文档索引：[README.md](../README.md)
 
 ## 七、附录 A：设计基线原子化合并
 
@@ -131,4 +131,4 @@ ADR-01 新建 `libs/xuan-plugin`（Accepted，已落地）；ADR-02 默认关闭
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[更新记录与复核方式](16-retro-changelog.md)
+相关页面：[文档索引](../README.md) · 上一篇：[附录](16-appendix.md)

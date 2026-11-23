@@ -1,5 +1,5 @@
 > 原子化来源：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md) · 原文 §5（L235–L396）
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 5. 方案：Xuan Plugin Contract（XPC）
 
@@ -163,4 +163,4 @@ stateDiagram-v2
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[F — 第一性原理](04-first-principles.md) · 下一篇：[V — 对抗审查（4 视角）](06-adversarial-review.md)
+相关页面：[文档索引](../README.md) · 上一篇：[F — 第一性原理](04-first-principles.md) · 下一篇：[V — 对抗审查（4 视角）](06-adversarial-review.md)

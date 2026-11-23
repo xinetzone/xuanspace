@@ -1,12 +1,12 @@
 > 原子化来源：`retrospective-20261121.md` 原文 §五（L143–L170）；该独立文件已于 2026-11-23 并入本目录并删除，唯一权威为本目录
-> 文档索引：[README.md](README.md)
+> 文档索引：[README.md](../README.md)
 
 ## 五、C 阶段：交付与未决项（G4）
 
 ### 已完成交付（单一职责，可独立验证）
 
 - 代码与测试：`f42c37d`（5 文件，+148 / −3），对应 P2-9 单条不变量。
-- 文档：[architecture.md](../../../doc/okf/architecture.md) 状态机小节新增「ACTIVE 与可解性互锁」；[tasks.md](../../../.trae/specs/plugin-kernel-extraction/tasks.md) 回填 Task P2-9-1（含 TR 与实测证据）。
+- 文档：[architecture.md](../../../../doc/okf/architecture.md) 状态机小节新增「ACTIVE 与可解性互锁」；[tasks.md](../../../../.trae/specs/plugin-kernel-extraction/tasks.md) 回填 Task P2-9-1（含 TR 与实测证据）。
 - 本复盘报告：单文件交付，事实可逐条复核，不修改被测代码。
 
 ### 验收标准
@@ -31,4 +31,4 @@
 
 ---
 
-相关页面：[文档索引](README.md) · 上一篇：[V — 对抗审查（6 条异议）](14-retro-adversarial.md) · 下一篇：[更新记录与复核方式](16-retro-changelog.md)
+相关页面：[文档索引](../README.md) · 上一篇：[V — 对抗审查（6 条异议）](13-retro-adversarial.md) · 下一篇：[更新记录与复核方式](15-retro-changelog.md)
