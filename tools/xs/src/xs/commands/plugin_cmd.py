@@ -191,6 +191,8 @@ def graph(
     )
 
     by_id = {m.id: m for m in manifests}
+    conflicted_keys = {key for key, _ in graph_data.conflicts}
+    unresolved_keys = {key for _, key in graph_data.unresolved}
     for node in graph_data.nodes:
         manifest = by_id[node]
         console.print(
@@ -201,8 +203,11 @@ def graph(
             console.print(f"  [green]provide[/green] {provide.key} [dim]({provide.mode})[/dim]")
         for edge in (e for e in graph_data.edges if e.consumer == node):
             if edge.provider is None:
-                style = "yellow" if edge.key not in {k for _, k in graph_data.unresolved} else "red"
-                console.print(f"  [{style}]inject[/{style}] {edge.key} [dim]→ 未解析[/dim]")
+                if edge.key in conflicted_keys:
+                    console.print(f"  [red]inject[/red] {edge.key} [dim]→ 冲突（无唯一胜出者）[/dim]")
+                else:
+                    style = "red" if edge.key in unresolved_keys else "yellow"
+                    console.print(f"  [{style}]inject[/{style}] {edge.key} [dim]→ 未解析[/dim]")
             else:
                 console.print(f"  inject {edge.key} [dim]→ {edge.provider}[/dim]")
 
@@ -211,7 +216,7 @@ def graph(
         for consumer, key in graph_data.unresolved:
             console.print(f"  {consumer} 需要 {key}")
     if graph_data.conflicts:
-        console.print("\n[red]能力键冲突（同键多提供者且未声明 multi）：[/red]")
+        console.print("\n[red]能力键冲突（无唯一胜出者：全 single 多提供者，或 multi 优先级并列）：[/red]")
         for key, providers in graph_data.conflicts:
             console.print(f"  {key}：{', '.join(providers)}")
 

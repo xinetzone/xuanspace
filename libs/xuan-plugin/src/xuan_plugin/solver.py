@@ -18,7 +18,7 @@ import heapq
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from .manifest import PluginManifest
+from .manifest import PluginManifest, find_conflicts
 
 
 class SolveErrorKind(enum.Enum):
@@ -107,27 +107,6 @@ def _provider_index(active: tuple[PluginManifest, ...]) -> dict[str, tuple[tuple
     for providers in index.values():
         providers.sort(key=lambda item: (-item[2], item[0]))
     return {key: tuple(providers) for key, providers in index.items()}
-
-
-def _find_conflicts(index: Mapping[str, tuple[tuple[str, str, int], ...]]) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """同键多提供者的冲突判定（H2）。
-
-    全部 ``single`` 且多于一个提供者即冲突；存在 ``multi`` 时按多重绑定处理，
-    但要求 ``priority`` 两两不同——同值且无显式选择即无法确定胜出者。
-    """
-    conflicts: list[tuple[str, tuple[str, ...]]] = []
-    for key in sorted(index):
-        providers = index[key]
-        if len(providers) < 2:
-            continue
-        ids = tuple(provider_id for provider_id, _, _ in providers)
-        if all(mode == "single" for _, mode, _ in providers):
-            conflicts.append((key, ids))
-            continue
-        priorities = [priority for _, _, priority in providers]
-        if len(set(priorities)) != len(priorities):
-            conflicts.append((key, ids))
-    return tuple(conflicts)
 
 
 def _inactive_nodes(active: tuple[PluginManifest, ...], owner: Mapping[str, str]) -> dict[str, tuple[str, ...]]:
@@ -276,7 +255,7 @@ def solve(manifests: Iterable[PluginManifest], *, allow_inactive: bool = True) -
     active = tuple(sorted((m for m in manifests if not m.disabled), key=lambda m: m.id))
     index = _provider_index(active)
 
-    conflicts = _find_conflicts(index)
+    conflicts = find_conflicts(index)
     if conflicts:
         raise SolveError(
             SolveErrorKind.CONFLICT,

@@ -13,7 +13,14 @@ from xs.commands import plugin_cmd
 from xs.plugins.commands import COMMAND_SPECS, MANIFEST, PLUGIN
 from xs.plugins.registry import CommandRegistry
 from xuan_plugin.context import Context
-from xuan_plugin.manifest import InjectDecl, PluginManifest, ProvideDecl, manifest_from_pyproject, merge_manifests
+from xuan_plugin.manifest import (
+    InjectDecl,
+    PluginManifest,
+    ProvideDecl,
+    manifest_from_pyproject,
+    merge_manifests,
+    parse_manifest,
+)
 from xuan_plugin.plugin import FiberState
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +132,31 @@ def test_plugin_graph_dot(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0, result.output
     assert result.output.startswith("digraph xuan {")
     assert '"xs.commands";' in result.output
+
+
+def test_plugin_graph_text_marks_ambiguous_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """同优先级并列的键在文本图中标为冲突，不再静默指向某个提供者。"""
+    key = "xuan:cli/commands#list"
+    producers = [
+        parse_manifest(
+            {
+                "id": plugin_id,
+                "version": "0.1.0",
+                "priority": 100,
+                "provide": [{"key": key, "mode": "multi"}],
+            }
+        )
+        for plugin_id in ("a", "b")
+    ]
+    consumer = parse_manifest({"id": "consumer", "version": "0.1.0", "inject": [{"key": key}]})
+    monkeypatch.setattr(plugin_cmd, "collect_manifests", lambda root: [*producers, consumer])
+    monkeypatch.chdir(REPO_ROOT)
+
+    result = runner.invoke(cli_app, ["plugin", "graph"])
+
+    assert result.exit_code == 0, result.output
+    assert "→ 冲突" in result.output
+    assert "→ 未解析" not in result.output
 
 
 def test_plugin_list_text(monkeypatch: pytest.MonkeyPatch) -> None:

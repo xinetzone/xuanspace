@@ -8,7 +8,7 @@
 """
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 # 能力键语法：xuan:<domain>/<owner>#<api>
@@ -113,7 +113,12 @@ class Edge:
 
 @dataclass(frozen=True, slots=True)
 class PluginGraph:
-    """候选节点集与依赖边（求解前的形态）。"""
+    """候选节点集与依赖边（求解前的形态）。
+
+    ``unresolved`` 记录**没有任何提供者**的必需依赖，冲突键不计入；``conflicts``
+    记录无唯一胜出者的能力键（全 ``single`` 多提供者，或含 ``multi`` 但 ``priority``
+    并列），与求解器同口径。
+    """
 
     nodes: tuple[str, ...]
     edges: tuple[Edge, ...]
@@ -121,14 +126,16 @@ class PluginGraph:
     conflicts: tuple[tuple[str, tuple[str, ...]], ...]
 
     def to_dot(self) -> str:
-        """输出 Graphviz DOT；缺失依赖以虚线指向 ``MISSING`` 汇聚节点。"""
+        """输出 Graphviz DOT；未解析依赖以虚线指向 ``MISSING``，冲突键指向 ``AMBIGUOUS``。"""
         lines = ["digraph xuan {", '  rankdir="LR";']
         for node in self.nodes:
             lines.append(f'  "{node}";')
+        conflicted = {key for key, _ in self.conflicts}
         for edge in self.edges:
             if edge.provider is None:
-                lines.append('  "MISSING" [shape=box, style=dashed];')
-                lines.append(f'  "{edge.consumer}" -> "MISSING" [style=dashed, label="{edge.key}"];')
+                target = "AMBIGUOUS" if edge.key in conflicted else "MISSING"
+                lines.append(f'  "{target}" [shape=box, style=dashed];')
+                lines.append(f'  "{edge.consumer}" -> "{target}" [style=dashed, label="{edge.key}"];')
             else:
                 lines.append(f'  "{edge.provider}" -> "{edge.consumer}" [label="{edge.key}"];')
         lines.append("}")
@@ -308,37 +315,61 @@ def _providers_by_key(manifests: Iterable[PluginManifest]) -> dict[str, list[tup
     return index
 
 
+def find_conflicts(
+    index: Mapping[str, Sequence[tuple[str, str, int]]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """同键多提供者的冲突判定（ADR-05），``solve`` 与 ``build_graph`` 共用同一口径。
+
+    * 全部 ``single`` 且多于一个提供者 → 冲突；
+    * 含 ``multi`` 时按多重绑定处理，但 ``priority`` 必须两两不同——同值且无
+      显式选择即无法裁决胜出者，同样计为冲突；
+    * 结果按键排序，提供者保持 ``(-priority, id)`` 定序，输出可复现。
+
+    冲突键没有唯一胜出者，因此诊断图不为它指向任何提供者。
+    """
+    conflicts: list[tuple[str, tuple[str, ...]]] = []
+    for key in sorted(index):
+        providers = index[key]
+        if len(providers) < 2:
+            continue
+        ids = tuple(plugin_id for plugin_id, _, _ in providers)
+        if all(mode == "single" for _, mode, _ in providers):
+            conflicts.append((key, ids))
+            continue
+        priorities = [priority for _, _, priority in providers]
+        if len(set(priorities)) != len(priorities):
+            conflicts.append((key, ids))
+    return tuple(conflicts)
+
+
 def build_graph(manifests: Iterable[PluginManifest]) -> PluginGraph:
     """把清单集合展开为节点、依赖边、未解析依赖与冲突键。
 
     * 节点 = 未被 ``disabled`` 的插件 id（字典序）；
-    * 边 = 每个 inject 指向该键的提供者（多提供者时取 priority 最高者，见 ADR-05）；
-    * 冲突 = 同一键被多个插件声明为 ``single``（``multi`` 显式声明者免冲突，K5）。
+    * 边 = 每个 inject 指向该键的**唯一**提供者（多提供者取 priority 最高者，
+      见 ADR-05）；冲突键无唯一胜出者，其边的 ``provider`` 为 ``None``，
+      不静默择一；
+    * 未解析 = 必需依赖在候选集合内**没有任何**提供者（冲突键不计入缺失）；
+    * 冲突 = 与求解器共用 :func:`find_conflicts`，保证诊断图与运行期裁决同口径。
     """
     active = [m for m in manifests if not m.disabled]
     index = _providers_by_key(active)
-
-    conflicts: list[tuple[str, tuple[str, ...]]] = []
-    for key, providers in sorted(index.items()):
-        if len(providers) < 2:
-            continue
-        if any(mode == "multi" for _, mode, _ in providers):
-            continue
-        conflicts.append((key, tuple(plugin_id for plugin_id, _, _ in providers)))
+    conflicts = find_conflicts(index)
+    blocked = {key for key, _ in conflicts}
 
     edges: list[Edge] = []
     unresolved: list[tuple[str, str]] = []
     for manifest in sorted(active, key=lambda m: m.id):
         for decl in manifest.inject:
             providers = index.get(decl.key, [])
-            provider = providers[0][0] if providers else None
+            provider = None if decl.key in blocked or not providers else providers[0][0]
             edges.append(Edge(consumer=manifest.id, key=decl.key, provider=provider))
-            if provider is None and not decl.optional:
+            if not providers and not decl.optional:
                 unresolved.append((manifest.id, decl.key))
 
     return PluginGraph(
         nodes=tuple(sorted(m.id for m in active)),
         edges=tuple(edges),
         unresolved=tuple(unresolved),
-        conflicts=tuple(conflicts),
+        conflicts=conflicts,
     )

@@ -11,6 +11,7 @@ from xuan_plugin.manifest import (
     merge_manifests,
     parse_manifest,
 )
+from xuan_plugin.solver import SolveError, SolveErrorKind, solve
 
 
 def _minimal(**overrides) -> dict:
@@ -167,15 +168,54 @@ def test_build_graph_required_inject_unresolved() -> None:
     assert graph.unresolved == (("demo", "xuan:doc/render#html"),)
 
 
-def test_build_graph_single_conflict_and_multi_exempt() -> None:
+def test_build_graph_single_conflict_and_multi_with_distinct_priorities() -> None:
     a = _provider("a", "xuan:cli/commands#list")
     b = _provider("b", "xuan:cli/commands#list")
     graph = build_graph([a, b])
     assert graph.conflicts == (("xuan:cli/commands#list", ("a", "b")),)
 
-    a_multi = _provider("a", "xuan:cli/commands#list", mode="multi")
-    multi_graph = build_graph([a_multi, b])
+    a_multi = _provider("a", "xuan:cli/commands#list", mode="multi", priority=100)
+    b_high = _provider("b", "xuan:cli/commands#list", mode="multi", priority=200)
+    multi_graph = build_graph([a_multi, b_high])
     assert multi_graph.conflicts == ()
+
+
+def test_build_graph_multi_tie_is_conflict_without_winner() -> None:
+    """multi 提供者 priority 并列时不得静默取 id 最小者（与 solve 同口径）。"""
+    a = _provider("a", "xuan:cli/commands#list", mode="multi", priority=100)
+    b = _provider("b", "xuan:cli/commands#list", mode="multi", priority=100)
+    consumer = parse_manifest(_minimal(id="consumer", inject=[{"key": "xuan:cli/commands#list"}]))
+    graph = build_graph([a, b, consumer])
+
+    assert graph.conflicts == (("xuan:cli/commands#list", ("a", "b")),)
+    assert graph.edges == (Edge(consumer="consumer", key="xuan:cli/commands#list", provider=None),)
+    assert graph.unresolved == ()  # 有提供者，只是无法裁决——不算缺失
+    assert "AMBIGUOUS" in graph.to_dot()
+
+
+def test_build_graph_single_conflict_edge_has_no_provider() -> None:
+    """全 single 多提供者同样没有胜出者，边不得指向任一提供者。"""
+    a = _provider("a", "xuan:cli/commands#list")
+    b = _provider("b", "xuan:cli/commands#list")
+    consumer = parse_manifest(_minimal(id="consumer", inject=[{"key": "xuan:cli/commands#list"}]))
+    graph = build_graph([a, b, consumer])
+
+    assert graph.conflicts == (("xuan:cli/commands#list", ("a", "b")),)
+    assert graph.edges[0].provider is None
+    assert graph.unresolved == ()
+
+
+def test_build_graph_and_solve_agree_on_conflicts() -> None:
+    """诊断图与求解器对同一清单给出同一组冲突键。"""
+    a = _provider("a", "xuan:cli/commands#list", mode="multi", priority=100)
+    b = _provider("b", "xuan:cli/commands#list", mode="multi", priority=100)
+    graph = build_graph([a, b])
+
+    with pytest.raises(SolveError) as excinfo:
+        solve([a, b])
+
+    assert excinfo.value.kind is SolveErrorKind.CONFLICT
+    assert {key for key, _ in graph.conflicts} == {"xuan:cli/commands#list"}
 
 
 def test_build_graph_skips_disabled_nodes() -> None:

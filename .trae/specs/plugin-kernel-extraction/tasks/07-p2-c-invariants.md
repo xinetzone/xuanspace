@@ -307,6 +307,68 @@
     与 ADR-05「同优先级必须显式选择」的口径尚未收口；`okf` 插件中为挂标签而存在的空效应
     （`ctx.effect(lambda: [lambda: None], label=...)`）亦未改动。
 
+## Task P2-13-1: 诊断图与求解器冲突同口径（`build_graph` 不再静默择一）
+
+- **Status**: `completed`
+- **Priority**: medium
+- **Depends On**: P2-12-1
+- **Description**:
+  - 缺口：`manifest.build_graph` 只把「全 `single` 多提供者」记为冲突，对「含 `multi`
+    但 `priority` 并列」仍按 `(-priority, id)` 取首个提供者作为依赖边终点；而
+    `solver._find_conflicts` 对后一类判 `CONFLICT`。结果是同一份清单，`xs plugin graph`
+    显示 `inject K → a`，`xs plugin apply` 却报冲突——诊断图给出了运行期不存在的裁决。
+  - 改动：
+    - `manifest.py` 新增 `find_conflicts(index)`（ADR-05 口径）：全 `single` 多提供者，
+      或含 `multi` 但 `priority` 不两两不同，均判冲突；结果按键排序、提供者保持
+      `(-priority, id)` 定序。`solver._find_conflicts` 改为委托它，两个入口不再各写一份。
+    - `build_graph`：`conflicts = find_conflicts(index)`；冲突键的依赖边 `provider` 置
+      `None`（不指向任何提供者）；`unresolved` 改为「该键在候选集合内没有任何提供者」，
+      冲突键不再被误报为缺失。
+    - `to_dot`：`provider is None` 时区分 `AMBIGUOUS`（冲突）与 `MISSING`（缺失）。
+    - `plugin_cmd.graph`：文本输出为冲突键单独打印「→ 冲突（无唯一胜出者）」，并修正
+      冲突小标题的口径（不再写「未声明 multi」）。
+- **Acceptance Criteria Addressed**: 诊断图与运行期裁决对同一清单给出同一组冲突键；
+  冲突键不得被渲染为「已解析到某提供者」，也不得被计为「缺失」
+- **Test Requirements**:
+  - `rule` TR-P2.13-1: `multi` 同优先级并列进 `conflicts`，依赖边 `provider is None`，
+    `unresolved` 为空，DOT 含 `AMBIGUOUS`；证据：
+    `test_build_graph_multi_tie_is_conflict_without_winner`
+  - `rule` TR-P2.13-2: 全 `single` 多提供者的依赖边同样不指向任何提供者；证据：
+    `test_build_graph_single_conflict_edge_has_no_provider`
+  - `rule` TR-P2.13-3: 同一清单下 `solve` 抛 `CONFLICT` 且 `build_graph.conflicts` 非空，
+    两组冲突键相同；证据：`test_build_graph_and_solve_agree_on_conflicts`
+  - `rule` TR-P2.13-4: `multi` 但 `priority` 不同时不判冲突（免冲突条件收窄为「可裁决」）；
+    证据：`test_build_graph_single_conflict_and_multi_with_distinct_priorities`
+  - `rule` TR-P2.13-5: `xs plugin graph` 文本对冲突键输出「→ 冲突」，且不输出「→ 未解析」；
+    证据：`test_plugin_graph_text_marks_ambiguous_key`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **126 passed**（P2-12 基线 123，新增 3）；
+  - 根 `tests/` → **45 passed**（基线 44，新增 1）；
+  - 第一批 → **247 passed**（45 + 126 + 7 + 34 + 35）；
+  - `tools/okf` → **259 passed**（无回归）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check libs/xuan-plugin tools/xs libs/xuan-ffi
+    libs/xuan-build tests` → 89 文件已格式化；`mypy` → 41 源文件无问题；
+    `check_pyproject_style.py`（18）、`check_dependency_direction.py`（347）、
+    `check_spec_integrity.py`（本轮后 **39** 个任务编号）通过；`check_declaration_consistency.py`
+    既有 1 项失败（清单快照过期，与本轮无关）；
+  - 实机：`xs plugin graph` → 「插件 3 个，能力键 20 个，依赖边 1 条，未解析 0，冲突 0」；
+    `xs plugin apply` → 3 节点 ACTIVE、16 条命令、20 键对账一致。
+- **Notes**:
+  - **V1 为什么不在 `build_graph` 抛错**：`graph` 是诊断命令，抛错会让排障者连图都看不到；
+    冲突已是 `PluginGraph` 的一等数据（`conflicts`），与 `apply` 的 `kind=conflict` 同义。
+    本轮选择「如实标注」，而非「拒绝渲染」。
+  - **V2 `unresolved` 语义变更的影响面**：全仓只有 `plugin_cmd.graph`（文本与 JSON）消费它；
+    冲突键被计为缺失本就是错误事实，故改为「键无任何提供者」后才算缺失，并新增用例锁定。
+  - **V3 共享函数为何放在 `manifest.py`**：冲突规则由「声明形态」决定，与拓扑算法无关；
+    `build_graph` 与 `solver` 都要用，放在两者共同的下层可避免循环导入；未加入
+    `xuan_plugin.__init__` 导出，避免扩大公开 API。
+  - **V4 免冲突条件被收窄**：旧文档口径是「显式声明 multi 即免冲突」，但它与 §5.4 的
+    「priority 两两不同」相冲突；本轮以运行期实现为准，multi 仅在同优先级可裁决时免冲突，
+    并在测试名中显式写出 `distinct_priorities`。
+  - **V5 未纳入本轮的相邻项**：`provider="<id>"` 显式选择尚未出现在清单的 inject 声明中，
+    因此诊断图目前只需与 priority 裁决对齐；若后续引入声明级显式选择，`build_graph` 与
+    `solve` 必须同步扩展，届时以本轮的「同口径」用例为回归基线。
+
 ---
 
 > 复盘报告（P2-4～P2-11 全链，R → I → E → C，G1–G4 通过）：
