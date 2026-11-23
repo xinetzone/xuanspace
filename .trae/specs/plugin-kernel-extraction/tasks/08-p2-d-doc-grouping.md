@@ -1,5 +1,5 @@
 > 分卷来源：`tasks.md` 原文 L1775–L1816（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
-> 上册：[../tasks.md](../tasks.md) · 上一卷：07-p2-c-invariants.md · 下一卷：（无）
+> 上册：[../tasks.md](../tasks.md) · 上一卷：07-p2-c-invariants.md · 下一卷：09-p3-a-contract-gate.md
 > 主题：P2-D：设计文档按主题分组
 ## Task P2-19-1: 文档按主题分组（三目录 + 重编号 + 改链）
 

@@ -156,6 +156,7 @@ scripts/ 中的脚本**不应该**依赖 `libs/` 或 `apps/` 中的内部包（�
 | `check_declaration_consistency.py` | 校验类 | 校验声明—实现一致性六类 + G 类子模块指针对账：CLI 命令清单 / 子项目清单（`libs/README.md` 生成块）/ 目录名口径 / vendor 清单 / 子模块声明 / 项目索引 / G1 状态可解析 / G2 指针=快照（拦截 `+` 漂移与裸 `modified: vendor`）/ G3 文档版本引用对账（`--generate` 刷新快照与清单生成块；存在指针漂移时拒绝刷新，CI quality job） | 是 |
 | `check_dependency_direction.py` | 校验类 | 校验分区依赖方向：扫描 `libs/` 源码 import，断言不依赖 `apps/`、`scripts/`、`attic/`、`vendor/`（规则同源 `libs/README.md`「依赖规则」，CI quality job） | 是 |
 | `check_spec_integrity.py` | 校验类 | 校验 `.trae/specs/*/tasks.md` 台账完整性：`## Task` 编号唯一、任务块内 `Status` 单条、无 NUL 字节（拦截并发写入导致的章节重复与半截合并，CI quality job） | 是 |
+| `check_plugin_contract.py` | 校验类 | 插件契约 H 类断言（设计 §5.7）：H1 可解性 / H2 隔离性 / H3 可撤销性 / H4 视图一致性（`xuan.plugins.lock`，未落地时跳过）/ H5 结构兼容；判定复用 `libs/xuan-plugin` 清单 API（CI quality job） | 是 |
 | `build_lib_dist.py` | 发布类 | 构建 `libs/` 指定子项目的 wheel，并在 `dist/libs/<库名>/` 生成 sha256 `CHECKSUMS`，供内网索引或离线分发（重复执行覆盖同名 wheel 并重算校验和） | 是 |
 
 ## 脚本目录结构

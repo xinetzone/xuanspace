@@ -1,7 +1,7 @@
 {
-  "source_sha256": "7195d22c945984d71ac8ce82c8d7fc84a6cbe594513db3ba8ba55d4630ed18ec",
-  "source_bytes": 138146,
-  "source_lines": 1816,
+  "source_sha256": "af0546dca6b7e4f935b6a93a4035290db8aae2c2aa2d3025fcc1a2d833a4b3dc",
+  "source_bytes": 140655,
+  "source_lines": 1852,
   "volumes": [
     {
       "file": "00-overview.md",
@@ -145,10 +145,24 @@
       "banner_lines": 3,
       "body_bytes": 2858,
       "body_sha256": "4ec7d11d10d0697f1128080d0b278470663a25147622aff11965655c8c0e42d9",
-      "file_bytes": 3134,
-      "file_sha256": "e0e2629d035dbd7da8c8dd7c6f9f4766de4f69a875e54e8cb70417330990b5ec",
+      "file_bytes": 3149,
+      "file_sha256": "756509070e1f5a3db0c2fa1f457c1f3685e9362127bb9c7ddaec94b313363541",
       "task_ids": [
         "P2-19-1"
+      ]
+    },
+    {
+      "file": "09-p3-a-contract-gate.md",
+      "topic": "P3-A：H 类插件契约断言接入 CI",
+      "start": 1816,
+      "end": 1852,
+      "banner_lines": 3,
+      "body_bytes": 2508,
+      "body_sha256": "9bd5f3e602e085aa2a9d04a0bee9cd36c75b351dc42d253186cf2f276c842d0f",
+      "file_bytes": 2791,
+      "file_sha256": "0227617dfdfc018905cb73411574cc6488fb08a5b7ea8cf3894c4f828ec0b85a",
+      "task_ids": [
+        "P3-2-1"
       ]
     }
   ]

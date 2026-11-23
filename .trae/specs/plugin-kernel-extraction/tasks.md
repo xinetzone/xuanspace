@@ -1,8 +1,8 @@
 # tasks.md 实施台账
 
-> 本文件为索引：正文已按语义增量原子化为 9 个分卷，共 32 个 `## Task` 块。
+> 本文件为索引：正文已按语义增量原子化为 10 个分卷，共 33 个 `## Task` 块。
 > 逐字节保真：各卷去掉页首横幅后顺序拼接，与冻结原件在「链接改指归一化」后 SHA-256 一致
-> （`7195d22c945984d71ac8ce82c8d7fc84a6cbe594513db3ba8ba55d4630ed18ec`，138146 字节 / 1816 行）。
+> （`af0546dca6b7e4f935b6a93a4035290db8aae2c2aa2d3025fcc1a2d833a4b3dc`，140655 字节 / 1852 行）。
 > 改指记录：无。
 > 冻结原件：[../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r3/raw/tasks.md](../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r3/raw/tasks.md)（`volumize.py check` 可复验）。
 > 正文权威值在各分卷；本表由 `volumize.py check` 机检，**请勿手改**。
@@ -19,7 +19,8 @@
 | 05-p2-a-build-ffi.md | P2-A：构建后端、compose、FFI 试点 | L660–L840 | 14109 | 3 | `1c363a81ae2b…` | `64b3eeba347f…` |
 | 06-p2-b-lifecycle.md | P2-B：生命周期、热替换、传播、摘要 | L841–L1111 | 20574 | 4 | `14f5f9aa5691…` | `1c6762842a1c…` |
 | 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径 | L1112–L1774 | 53169 | 11 | `1149660e7715…` | `3c99abcec859…` |
-| 08-p2-d-doc-grouping.md | P2-D：设计文档按主题分组 | L1775–L1816 | 3134 | 1 | `4ec7d11d10d0…` | `e0e2629d035d…` |
+| 08-p2-d-doc-grouping.md | P2-D：设计文档按主题分组 | L1775–L1816 | 3149 | 1 | `4ec7d11d10d0…` | `756509070e1f…` |
+| 09-p3-a-contract-gate.md | P3-A：H 类插件契约断言接入 CI | L1817–L1852 | 2791 | 1 | `9bd5f3e602e0…` | `0227617dfdfc…` |
 
 ## 任务总表（派生视图）
 
@@ -59,3 +60,4 @@
 | `P2-17-1` | `xs plugin graph` 冲突与必需未解析以非零退出码收口 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-18-1` | `xs plugin why <id>` 输出失活因果链（设计 V4 / 度量 M5） | `未标注` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-19-1` | 文档按主题分组（三目录 + 重编号 + 改链） | `completed` | [08-p2-d-doc-grouping.md](tasks/08-p2-d-doc-grouping.md) |
+| `P3-2-1` | H 类插件契约断言接入 CI（设计 §5.7） | `completed` | [09-p3-a-contract-gate.md](tasks/09-p3-a-contract-gate.md) |

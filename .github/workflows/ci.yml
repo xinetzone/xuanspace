@@ -187,7 +187,7 @@ jobs:
         run: xs doc linkcheck
 
   # ============================================
-  # 质量门禁：七项自动化检查（pyproject/declaration/dependency/doctor/meta/lfs/docs）
+  # 质量门禁：八项自动化检查（pyproject/declaration/dependency/plugin-contract/doctor/meta/lfs/docs）
   # + 子项目测试（xuan-cmd / xuan-compose）
   # ============================================
   quality:
@@ -284,6 +284,10 @@ jobs:
       # --- 1c. spec 任务台账完整性（防并发写入导致的章节重复与半截合并） ---
       - name: Check spec integrity
         run: python scripts/check_spec_integrity.py
+
+      # --- 1d. 插件契约 H 类断言（设计 §5.7：H1 可解性 / H2 隔离性 / H3 可撤销性 / H4 视图一致性 / H5 结构兼容） ---
+      - name: Check plugin contract
+        run: python scripts/check_plugin_contract.py
 
       # --- 2. 环境诊断 ---
       - name: xs doctor
