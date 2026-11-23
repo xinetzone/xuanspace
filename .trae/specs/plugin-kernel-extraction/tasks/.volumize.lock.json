@@ -1,7 +1,7 @@
 {
-  "source_sha256": "52922177540a3f035f3fe8f221f5b2dc090460738400dc2a585e8703661ec105",
-  "source_bytes": 121183,
-  "source_lines": 1599,
+  "source_sha256": "f4e5a44e4f1cf96d12de4e48e1f927b845a613772cf5e18068da29970a7f8072",
+  "source_bytes": 125416,
+  "source_lines": 1655,
   "volumes": [
     {
       "file": "00-overview.md",
@@ -84,12 +84,12 @@
       "file": "07-p2-c-invariants.md",
       "topic": "P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径",
       "start": 1111,
-      "end": 1599,
+      "end": 1655,
       "banner_lines": 3,
-      "body_bytes": 38716,
-      "body_sha256": "5d22e8789fac2167197d583bf3fe49df870da06f9361048d7b6e3165d6700526",
-      "file_bytes": 39051,
-      "file_sha256": "d5fc1ada6955bdfcb1e4a09a2abd4305512c175f24748e1cd54cd89a6c829b0e"
+      "body_bytes": 42949,
+      "body_sha256": "17eaaec545537117ffadaa85e967223d3d6179adb4d59460088558faea8f66e6",
+      "file_bytes": 43284,
+      "file_sha256": "fc2fb722539def0dfc3d326718467496aeddc22dcc70cc8693be84d7983901e4"
     }
   ]
 }

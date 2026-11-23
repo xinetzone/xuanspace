@@ -287,6 +287,32 @@ def test_dispose_after_flush_overflow_is_safe() -> None:
     assert ctx._batch_depth == 0
 
 
+def test_plugin_raises_without_leaving_half_registered_fiber() -> None:
+    """装配在排空阶段失败时不得留下半注册 Fiber。"""
+    ctx, _clock = _oscillating_context()
+    seed = Plugin("C", lambda ctx, config: ctx.provide("y", 0), provide=["y"])
+
+    with pytest.raises(RuntimeError, match="未收敛"):
+        ctx.plugin(seed)
+
+    assert "C" not in ctx._fibers  # 失败的装配必须整体回滚
+
+
+def test_failed_plugin_does_not_block_same_name_registration() -> None:
+    """装配失败后同名插件仍可重新装配，不被半注册占位拒绝。"""
+    ctx, clock = _oscillating_context()
+    seed = Plugin("C", lambda ctx, config: ctx.provide("y", 0), provide=["y"])
+    with pytest.raises(RuntimeError, match="未收敛"):
+        ctx.plugin(seed)
+
+    clock["oscillate"] = False  # 停止振荡，恢复可收敛
+    again = Plugin("C", lambda ctx, config: ctx.provide("y", "stable"), provide=["y"])
+    fiber = ctx.plugin(again)
+
+    assert fiber.state is FiberState.ACTIVE
+    assert ctx._fibers["C"] is fiber
+
+
 def _chain_plugin(level: int) -> Plugin:
     """第 ``level`` 级链式插件：只注入上一级键、提供本级键。"""
 

@@ -158,6 +158,12 @@ class Context:
         同名插件只允许在旧实例已 ``DISPOSED`` 后重新装配；其余状态一律抛
         :class:`PluginNameConflictError`，不做静默覆写（否则旧实例的供应与效应
         会在 ``dispose`` 遍历中缺席，成为孤儿）。
+
+        装配是原子的：启动加载或其后的通知排空抛异常时，本次登记的 Fiber 与
+        其已产生的效应被撤销，``_fibers`` 恢复为装配前的内容（同名旧实例为
+        ``DISPOSED`` 时恢复该旧引用，否则移除该键）。失败的装配因此不留半注册
+        占位，调用方可直接用同名插件重试，而不会被
+        :class:`PluginNameConflictError` 永久拒绝。
         """
         existing = self._fibers.get(plugin.name)
         if existing is not None and existing.state is not FiberState.DISPOSED:
@@ -165,8 +171,23 @@ class Context:
         fiber = Fiber(plugin, self, config)
         self._fibers[plugin.name] = fiber
         # 计算初始 epoch 并尝试激活；装配期多次 provide 合并为一次下游传播。
-        with self.batch():
-            fiber._refresh()
+        try:
+            with self.batch():
+                fiber._refresh()
+        except BaseException:
+            # 先撤销登记，再在不传播的事务里拆除 Fiber：排空已经失败，若清理
+            # 期的通知再次排空，会在同一病态图上二次抛错并掩盖原始异常。
+            # ``flush=False`` 与 ``dispose`` 同口径，遗留的待处理键随拆除丢弃。
+            if existing is None:
+                self._fibers.pop(plugin.name, None)
+            else:
+                self._fibers[plugin.name] = existing
+            with self.batch(flush=False):
+                try:
+                    fiber.dispose()
+                except Exception:  # noqa: BLE001 —— 拆除失败不掩盖原始异常
+                    pass
+            raise
         return fiber
 
     def notify(self, names: Iterable[str]) -> None:

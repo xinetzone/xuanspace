@@ -1,4 +1,4 @@
-> 分卷来源：`tasks.md` 原文 L1112–L1599（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
+> 分卷来源：`tasks.md` 原文 L1112–L1655（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
 > 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：（无）
 > 主题：P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径
 ## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
@@ -483,6 +483,121 @@
   - **V6 异步 apply 的复核点**：上界依赖「每轮推进一层」；若将来 apply 支持 await
     交错，需重新论证。`_flush_round_limit()` 每轮按当前 Fiber 数重算，动态装配场景
     已自动适配。
+
+## Task P2-16-1: 装配失败回滚半注册 Fiber，允许同名重装
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-15-1（`3016e09`）；P2-15 收口时建议单独处理的装配原子性缺口
+- **Description**:
+  - 缺口：`Context.plugin()` 先把新 Fiber 写入 `_fibers`，再在 `with self.batch()`
+    中执行 `fiber._refresh()`；若事务退出时的 `_flush_notifications()` 抛错
+    （如病态环超出轮次上界），Fiber 已登记且已产生供应与效应，却既未返回也未
+    撤销——成为「半注册」。后续同名 `plugin()` 因 `existing.state is not
+    DISPOSED` 抛 `PluginNameConflictError`，该名称被永久占用而无法重装。
+  - 改动：把登记与启动加载包进 `try`；异常时先撤销 `_fibers` 登记（装配前无旧
+    实例则删除该键，旧实例为 `DISPOSED` 则恢复其引用），再在
+    `with self.batch(flush=False)` 内 `fiber.dispose()` 撤销本次已登记的效应。
+    `flush=False` 与 `dispose` 同口径：排空已失败，清理期的通知不得再次排空同一
+    病态图，避免二次抛错掩盖原始异常；遗留的待处理键随拆除丢弃。
+  - docstring 明确「装配是原子的」契约。
+- **Acceptance Criteria Addressed**: 装配失败不得留下半注册 Fiber；同名插件在失败后
+  仍可重装；成功装配路径语义不变
+- **Test Requirements**:
+  - `rule` TR-P2.16-1: 排空阶段失败的装配不得留下 `_fibers` 占位；证据：
+    `test_plugin_raises_without_leaving_half_registered_fiber`
+  - `rule` TR-P2.16-2: 装配失败后同名插件可重新装配并达到 ACTIVE；证据：
+    `test_failed_plugin_does_not_block_same_name_registration`
+  - `rule` TR-P2.16-3: 既有装配、传播与拆除用例不回归；证据：
+    `libs/xuan-plugin/tests` 132 passed
+- **Completion Evidence**（2026-11-23 实测）:
+  - 修复前：两条新用例均失败（C 残留为 ACTIVE；同名重装抛
+    `PluginNameConflictError`）；
+  - 修复后：`libs/xuan-plugin/tests` → **132 passed**（P2-15 基线 130，新增 2）；
+    根与三库 → **223 passed**；`tools/okf` → **259 passed**；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 38 文件已格式化；
+    `mypy` → 41 源文件无问题；`check_pyproject_style.py`（18）、
+    `check_dependency_direction.py`（347）、`check_spec_integrity.py`
+    （本轮后 **42** 个任务编号）通过；
+  - 实机：`xs plugin apply` → 3 节点 ACTIVE、16 条命令、20 键对账一致；
+    `xs plugin graph` → 3 插件 / 20 键。
+- **Notes**:
+  - **V1 清理为何用 `flush=False`**：失败发生在排空内部；若清理期
+    `fiber.dispose()` 撤销供应时触发的 `notify` 再次排空，会在同一振荡图上二次
+    抛错并掩盖原始异常。`batch(flush=False)` 让通知只积压、退出时丢弃，与
+    `Context.dispose()` 同口径。
+  - **V2 被否方案一：先 dispose 再回滚登记**——若 dispose 抛错，登记将残留；
+    先撤销登记可保证即使拆除失败也不留半注册占位。
+  - **V3 被否方案二：只删除 `_fibers` 键、不撤销效应**——供应与效应会成为孤儿，
+    正是 P2-11 禁止的形态；必须同时 `dispose` 本次 Fiber。
+  - **V4 被否方案三：把 `plugin()` 拆成两阶段（先构造后提交）**——会改变公开 API
+    与全部调用点的语义，超出本缺口范围；当前 try/except 已满足原子性。
+  - **V5 回滚边界**：只撤销本次装配的 Fiber 自身；振荡中被激活的既有 Fiber 保持
+    其自洽快照（输入快照与已供应键一致），不回溯到装配前——Python 进程内无法
+    回滚外部副作用（ADR-03），强制回溯会破坏既有热替换语义。
+  - **V6 `except BaseException` 的必要性**：`Ctrl-C`/`SystemExit` 同样应走回滚，
+    否则中断后留下半注册；清理完成后以裸 `raise` 原样重抛，不吞异常。
+  - **V7 测试对私有字段的依赖**：`_fibers` 是「是否残留登记」的唯一可观测口径
+    （公开 API 不暴露）；对外契约由第二用例（同名重装成功、状态 ACTIVE）覆盖。
+
+## Task P2-17-1: `xs plugin graph` 冲突与必需未解析以非零退出码收口
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-15-1（`3016e09`）
+- **Description**:
+  - 缺口：`xs plugin graph` 的文本/JSON/DOT 三种输出在存在「能力键冲突」或「必需依赖
+    未解析」时仍以退出码 0 结束——诊断只对人可见，CI 与脚本无法据此拦截；同一份清单下
+    `xs plugin apply` 会以退出码 1 报不可解，两个命令的口径不一致。
+  - 判据：退出码表达「装配是否可解」。冲突键无唯一胜出者、必需依赖无任何提供者，均为
+    不可解；可选依赖缺失不影响可解性。故仅当前两者非空时退出 1，其余维持 0。
+  - 改动：
+    - `plugin_cmd.py`：新增 `_graph_diagnostics()` 统一生成诊断摘要（冲突在前、未解析在
+      后）；文本输出「诊断摘要（N 项，退出码 1）」；JSON 增加 `status`（`ok`/`error`）与
+      `diagnostics`，既有 nodes/edges/unresolved/conflicts 不变；DOT 在图后用 `//` 注释
+      追加同一摘要；三种模式结束后统一 `Exit(1)`。
+    - `test_plugin_cmd.py`：新增 5 条用例（冲突退出 1、必需未解析退出 1、可选缺失仍 0、
+      JSON 字段、DOT 注释、三模式同源摘要），并同步既有成功路径断言。
+    - `doc/cli/index.md`：补充退出码与共享摘要说明。
+- **Acceptance Criteria Addressed**: 冲突/必需未解析 → 非零退出码；文本/JSON/DOT 共用
+  一份错误摘要；诊断图仍完整可查看；可选依赖缺失不误判为失败
+- **Test Requirements**:
+  - `rule` TR-P2.17-1: 冲突或必需未解析时三种输出退出码均为 1，摘要逐行一致；证据：
+    `test_plugin_graph_text_marks_ambiguous_key`、
+    `test_plugin_graph_unresolved_required_exits_nonzero`、
+    `test_plugin_graph_json_carries_status_and_diagnostics`、
+    `test_plugin_graph_dot_appends_diagnostics_as_comments`、
+    `test_plugin_graph_three_modes_share_diagnostics`
+  - `rule` TR-P2.17-2: 可选依赖未解析与正常清单维持退出码 0；证据：
+    `test_plugin_graph_optional_unresolved_keeps_zero`、`test_plugin_graph_json`、
+    `test_plugin_graph_dot`
+  - `rule` TR-P2.17-3: 含诊断的 DOT 仍可被 Graphviz 渲染；证据：实机 `dot -Tsvg` 输出成功
+- **Completion Evidence**（2026-11-23 实测）:
+  - `tests/test_plugin_cmd.py` → **23 passed**（原 18，新增 5）；根与三库 →
+    **223 passed**（45 + 132 + 7 + 34；其中 132 含并行任务 P2-16-1 新增的 2 条）；
+    `tools/okf` → **259 passed**；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 518 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src libs/xuan-build/src tools/xs/src`
+    → 41 源文件无问题；`check_pyproject_style.py`（18）、
+    `check_dependency_direction.py`（347）、`check_spec_integrity.py`（本轮后 43 个
+    任务编号）通过；`check_declaration_consistency.py` 既有 1 项失败（清单快照过期，
+    与本轮无关）；
+  - 实机：`python -m xs.cli plugin graph` → 退出码 0（未解析 0 / 冲突 0）；
+    `--json` → `status=ok`；`plugin apply` → 3 节点 ACTIVE、16 条命令、20 键对账一致。
+- **Notes**:
+  - **V1 被否方案一：新增 `--strict` 开关**——本轮目标就是默认收口；开关会让默认路径
+    继续静默通过，需调用方额外记得打开，反而扩大配置面。
+  - **V2 被否方案二：冲突/未解析分别用退出码 2/3**——仓库约定 2 表示脚本自身错误
+    （三个治理脚本均如此），工具命令沿用 0/1；区分信息交由 `diagnostics` 与 JSON 字段。
+  - **V3 被否方案三：摘要只写 stderr**——JSON 消费方会混入非 JSON 文本，DOT 消费方
+    以重渲染为主而不读 stderr；三种输出各带同一份摘要才满足「共用」。
+  - **V4 被否方案四：文本保留原两段标题、仅 JSON/DOT 新增摘要**——同源摘要才能保证
+    三模式逐字一致（TR-P2.17-1），否则文案漂移无门禁可查。
+  - **V5 口径说明**：可选依赖缺失不计入错误，与 `build_graph` 的 `unresolved` 定义及
+    solver 可解性一致；若将来需要「可选也必须存在」的严格模式，应作为独立选项评估。
+  - **V6 并行任务协调**：本轮开工时工作区另有装配原子性任务在改 `context.py` 与
+    `test_notification_batch.py`，其先占用 P2-16-1，本任务顺延为 P2-17-1；上述文件不属
+    本任务，未纳入本次变更与提交。
 
 ---
 
