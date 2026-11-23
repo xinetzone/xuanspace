@@ -1,7 +1,7 @@
 {
-  "source_sha256": "f4e5a44e4f1cf96d12de4e48e1f927b845a613772cf5e18068da29970a7f8072",
-  "source_bytes": 125416,
-  "source_lines": 1655,
+  "source_sha256": "0cd7c1f9750eb3eab1681cb406556a4d4d79752bca7fea03a3226bd5fa605d85",
+  "source_bytes": 130068,
+  "source_lines": 1714,
   "volumes": [
     {
       "file": "00-overview.md",
@@ -12,7 +12,8 @@
       "body_bytes": 3038,
       "body_sha256": "1bc846f54cb17bc4e54052863c19331f3f59a681cc75fdc15bddc6767be63100",
       "file_bytes": 3311,
-      "file_sha256": "893aea0f7eacc20ab3e814667dfa8373f859875b06263cce475df0703d6fec14"
+      "file_sha256": "893aea0f7eacc20ab3e814667dfa8373f859875b06263cce475df0703d6fec14",
+      "task_ids": []
     },
     {
       "file": "01-plan-p0-1.md",
@@ -23,7 +24,17 @@
       "body_bytes": 21088,
       "body_sha256": "152b8976cd706c3333d7f67950fb613d9e012ca74efa0421f67a7bf590b743af",
       "file_bytes": 21387,
-      "file_sha256": "eee0d19d05570948d795dcc75c59c92c5e5a8cbb2de64893994fbf3d8f6468e8"
+      "file_sha256": "eee0d19d05570948d795dcc75c59c92c5e5a8cbb2de64893994fbf3d8f6468e8",
+      "task_ids": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ]
     },
     {
       "file": "02-p0-2-identity.md",
@@ -34,7 +45,10 @@
       "body_bytes": 3562,
       "body_sha256": "2cd76d357653992c13c415c6fec781699671ab9edb6908109488fcd4d4cd45a4",
       "file_bytes": 3841,
-      "file_sha256": "972985f538174191e00d7172133048c0ac3a2e71c560c3535d634d6f759d8852"
+      "file_sha256": "972985f538174191e00d7172133048c0ac3a2e71c560c3535d634d6f759d8852",
+      "task_ids": [
+        "P2-1"
+      ]
     },
     {
       "file": "03-p0-3-disposal.md",
@@ -45,7 +59,10 @@
       "body_bytes": 4201,
       "body_sha256": "a8a57232f5c3f4ff310865a23c5b3c8f9596c8456cd7ebb2a67c5b1bfa96df23",
       "file_bytes": 4484,
-      "file_sha256": "a4797e1d0f16be8570bc5c77c1dc0ec187a5f141b5e46cc1fe5b21cdef06101d"
+      "file_sha256": "a4797e1d0f16be8570bc5c77c1dc0ec187a5f141b5e46cc1fe5b21cdef06101d",
+      "task_ids": [
+        "P3-1"
+      ]
     },
     {
       "file": "04-p1-kernel-cli.md",
@@ -56,7 +73,12 @@
       "body_bytes": 16480,
       "body_sha256": "c645935de92a60a2dc7f27a36a5caa8437de4008c86f916050d73d0fa15e09de",
       "file_bytes": 16778,
-      "file_sha256": "3aee9530626c01b238aaf15d704c191ee3a297b0cc89173c2fd60ad334223ecc"
+      "file_sha256": "3aee9530626c01b238aaf15d704c191ee3a297b0cc89173c2fd60ad334223ecc",
+      "task_ids": [
+        "P1-1-1",
+        "P1-2-1",
+        "P1-3-1"
+      ]
     },
     {
       "file": "05-p2-a-build-ffi.md",
@@ -67,7 +89,12 @@
       "body_bytes": 13818,
       "body_sha256": "1c363a81ae2b0ad2af84000b3ef08367301f79826ba972807d96473231da99f4",
       "file_bytes": 14109,
-      "file_sha256": "64b3eeba347f7150c3c54cc0f74032abc8cc27167fc55dc0b39f4a892981c6db"
+      "file_sha256": "64b3eeba347f7150c3c54cc0f74032abc8cc27167fc55dc0b39f4a892981c6db",
+      "task_ids": [
+        "P2-1-1",
+        "P2-2-1",
+        "P2-3-1"
+      ]
     },
     {
       "file": "06-p2-b-lifecycle.md",
@@ -78,18 +105,36 @@
       "body_bytes": 20273,
       "body_sha256": "14f5f9aa5691cc61357c7b4cd2e466df67a9f17136546571697a4b80c4250285",
       "file_bytes": 20574,
-      "file_sha256": "1c6762842a1ce1710921f57083a952720fb0ee504f35006e45d9cf8414b633f8"
+      "file_sha256": "1c6762842a1ce1710921f57083a952720fb0ee504f35006e45d9cf8414b633f8",
+      "task_ids": [
+        "P2-4-1",
+        "P2-5-1",
+        "P2-6-1",
+        "P2-7-1"
+      ]
     },
     {
       "file": "07-p2-c-invariants.md",
       "topic": "P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径",
       "start": 1111,
-      "end": 1655,
+      "end": 1714,
       "banner_lines": 3,
-      "body_bytes": 42949,
-      "body_sha256": "17eaaec545537117ffadaa85e967223d3d6179adb4d59460088558faea8f66e6",
-      "file_bytes": 43284,
-      "file_sha256": "fc2fb722539def0dfc3d326718467496aeddc22dcc70cc8693be84d7983901e4"
+      "body_bytes": 47601,
+      "body_sha256": "8fa5ea819da2e4bf87fe560eef33f85b2d137e3c45e5a703239d3a6346051969",
+      "file_bytes": 47936,
+      "file_sha256": "5861004c067ea73f2606dc8feb4d4bf69c5f209c0b26e380bdad7cc89ca32fea",
+      "task_ids": [
+        "P2-8-1",
+        "P2-9-1",
+        "P2-10-1",
+        "P2-11-1",
+        "P2-12-1",
+        "P2-13-1",
+        "P2-14-1",
+        "P2-15-1",
+        "P2-16-1",
+        "P2-17-1"
+      ]
     }
   ]
 }
