@@ -34,8 +34,8 @@ def test_registry_register_and_get_providers():
     assert reg.get_providers("missing") == []
 
 
-def test_registry_lookup_instantiates_first_provider():
-    """ServiceRegistry.lookup 用第一个 provider 实例化。"""
+def test_registry_lookup_instantiates_selected_provider():
+    """ServiceRegistry.lookup 用裁决出的 provider 实例化（此处仅一个候选）。"""
     reg = ServiceRegistry()
     d = ServiceDefinition("svc", int)
     reg.register(ServiceProvider(d, lambda ctx, cfg: 42))
@@ -56,14 +56,15 @@ def test_lookup_uses_provider_config_when_no_explicit_config():
 
 
 def test_consumer_transparent_replacement():
-    """Consumer 透明替换：切换 provider 后 lookup 返回新实现。"""
+    """Consumer 透明替换：新 provider 以更高 priority 成为默认，旧实现仍可显式指定。"""
     reg = ServiceRegistry()
     d = ServiceDefinition("svc", object)
-    reg.register(ServiceProvider(d, lambda ctx, cfg: "v1"))
+    reg.register(ServiceProvider(d, lambda ctx, cfg: "v1", id="legacy"))
     ctx = Context()
     assert reg.lookup("svc", ctx) == "v1"
 
-    # 切换为新 provider（插入到最前，lookup 取第一个）
-    providers = reg.get_providers("svc")
-    providers.insert(0, ServiceProvider(d, lambda ctx, cfg: "v2"))
+    # 追加新 provider 并抬高优先级：默认裁决透明切到新实现（ADR-05 规则 1）
+    reg.register(ServiceProvider(d, lambda ctx, cfg: "v2", priority=1, id="next"))
     assert reg.lookup("svc", ctx) == "v2"
+    # 消费者仍可回退到旧实现（ADR-05 规则 2）
+    assert reg.lookup("svc", ctx, provider="legacy") == "v1"

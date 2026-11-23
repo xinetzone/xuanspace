@@ -93,10 +93,16 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 | 角色 | 职责 |
 |------|------|
 | `ServiceDefinition` | 声明「能做什么」（name + interface） |
-| `ServiceProvider` | `ServiceDefinition` 的具体实现（factory + config） |
+| `ServiceProvider` | `ServiceDefinition` 的具体实现（factory + config + `priority` + `id`） |
 | `ServiceRegistry` | 注册与查找 `definition` / `provider` |
 
-`lookup` 使用首个 Provider 的 factory 实例化服务。
+多个 Provider 并存时，`lookup` 按 ADR-05 三段规则裁决，不做隐式「取首个」：
+
+1. 默认取 `priority` 最大者，结果与注册顺序无关；
+2. 调用方可传 `provider="<id>"` 显式指定，覆盖 `priority` 结果；`id` 不存在时抛 `LookupError`；
+3. 最高 `priority` 并列且未显式指定时抛 `AmbiguousProviderError`——不猜、不取注册顺序首个。
+
+无任何 Provider 时 `lookup` 返回 `None`（「依赖不可得不是异常」的既有语义）。
 
 ## 数据模型
 

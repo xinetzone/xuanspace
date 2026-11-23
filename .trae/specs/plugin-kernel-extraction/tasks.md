@@ -1219,6 +1219,78 @@ Task 1–8 全部完成后，满足：
     「装配嵌套在既有传播事务内」的真实调用形态；断言在事务未排空时成立，正好证明
     收敛不依赖通知补救。
 
+## Task P2-10-1: 落地 ADR-05 多提供者定序
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-9-1（`f42c37d`）
+- **Description**:
+  - 缺口：ADR-05 三段规则在运行时侧零落地——`ServiceRegistry.lookup` 直接取 `providers[0]`，
+    注册顺序成了语义身份；`ServiceProvider` 无 `priority` / `id` 字段，消费者无从显式指定，
+    并列时既不报错也无法覆盖。清单/求解侧已部分落地（`_provider_index` 按 `(-priority, id)`
+    定序；`_find_conflicts` 对最高优先级并列报 `SolveError(CONFLICT)`），唯独运行时与 ADR-05
+    直接冲突。
+  - 改动：
+    - `service.py`：新增 `AmbiguousProviderError(RuntimeError)`（携带 `name` 与候选 id 元组）；
+      `ServiceProvider` 追加 `priority: int = 0`、`id: str = ""`（`config` 保持第三位，
+      兼容既有位置参数调用）；
+    - `service.py::lookup`：新增仅关键字参数 `provider`，委托 `_select` 按三段规则裁决；
+      无任何提供者仍返回 `None`；
+    - `service.py::_select`：显式 id 优先（未知 id → `LookupError`；同 id 重复 →
+      `AmbiguousProviderError`）；否则取最高 `priority`，并列即 `AmbiguousProviderError`
+      （缺省 id 以 `priority=<n>` 标注候选）；
+    - `xuan_plugin/__init__.py` 导出 `AmbiguousProviderError`；
+    - 新建 `libs/xuan-plugin/tests/test_service.py`（13 条用例）；
+      `tools/okf/tests/test_service.py` 的「插入到最前」用例改为「抬优先级透明切换 +
+      显式回退」；
+    - `doc/okf/architecture.md`：Capability Seam 小节改写为 ADR-05 三段规则。
+- **Acceptance Criteria Addressed**: ADR-05 三条规则在运行时全部可机检；「最终配置与插入
+  顺序无关」得以成立
+- **Test Requirements**:
+  - `rule` TR-P2.10-1: 多提供者按 `priority` 取最高，正序/逆序注册结果一致；证据：
+    `test_highest_priority_wins_regardless_of_registration_order`（2 参数）
+  - `rule` TR-P2.10-2: 最高 `priority` 并列且未显式指定 → `AmbiguousProviderError`，
+    候选 id 全量列出，绝不返回首个；证据：`test_tied_priority_raises_instead_of_taking_first`、
+    `test_tied_priority_lower_levels_do_not_matter`、`test_blank_id_falls_back_to_priority_label_in_error`
+  - `rule` TR-P2.10-3: 显式 `provider` 覆盖 priority；并列可被显式指定解除；未知 id →
+    `LookupError`；同 id 重复 → `AmbiguousProviderError`；证据：
+    `test_explicit_provider_overrides_lower_priority`、`test_explicit_provider_resolves_tie`、
+    `test_explicit_provider_unknown_raises_lookup_error`、`test_explicit_provider_duplicate_id_raises_ambiguous`
+  - `rule` TR-P2.10-4: 无提供者返回 `None`；显式 config 优先于 Provider config；证据：
+    `test_lookup_without_provider_returns_none`、`test_explicit_config_overrides_provider_config`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **114 passed**（HEAD 基线 101，新增 13）；
+  - 第一批 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests
+    libs/xuan-project/tests` → **234 passed**（44 + 114 + 7 + 34 + 35）；
+  - `tools/okf` 独立运行 → **259 passed**；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 103 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src libs/xuan-build/src tools/xs/src`
+    → `Success: no issues found in 41 source files`；
+    `check_pyproject_style.py`（18 个 pyproject）、`check_dependency_direction.py`
+    （347 文件）、`check_spec_integrity.py`（P2-9 后 35 个任务编号）通过；
+    `check_declaration_consistency.py` 仍为既有 2 项失败（`libs/tao` 指针漂移与快照过期）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 破坏性**：同值直接报错会否把原本能跑的装配变砖？`ServiceRegistry` 当前无生产消费者
+    （全仓检索仅 `__init__` 导出与文档提及），且求解侧 `_find_conflicts` 早已对同值 `multi`
+    报 `SolveError(CONFLICT)`；运行时与求解侧对齐后口径唯一，不新增线上风险。
+  - **V2 为何不按 id 字典序兜底**：ADR-05 的「未标注者按 id 字典序过渡」是清单静态图的迁移
+    口（`build_graph`），不是运行时终态；运行时按名字猜会让「改个 id」静默换实现，规则 3
+    明确要求报错。装配期权威判定在 `solve`，它已对同值报错。
+  - **V3 端到端**：实机 `xs plugin apply` 三节点 ACTIVE、16 条命令、20 键对账一致；
+    `tools/okf` 259 条测试全绿。
+  - **V4 兼容性**：`ServiceProvider` 的 `config` 保持第三位，`priority` / `id` 追加在尾部且
+    带默认值，位置参数与关键字参数调用均不变；`tools/okf` 既有用例仅一处「插入到最前」
+    按新语义改写，其余原样通过。
+  - **V5 同 id 重复的提示信息**：候选元组会出现 `("dup", "dup")`，信息量偏低；该状态是注册方
+    违约（id 应唯一），错误已阻断而非静默取首个；把唯一性校验前移到 `register` 属新增约束，
+    超出本轮范围，留待需要时评估。
+  - **落地口径边界**：清单侧规则 2 的 `provider=` 覆盖字段仍属 lock/P5 范围，本轮只落地运行时
+    参数 `lookup(..., provider="<id>")`；`build_graph`（诊断图）保留 `(-priority, id)` 过渡
+    定序，不以它作为装配裁决依据。`retrospective-20261121.md` 中「ADR-05 未落地」是 P2-9
+    时点记录，不改写历史复盘。
+
 ---
 
 > 复盘报告（P2-4～P2-9 全链，R → I → E → C，G1–G4 通过）：

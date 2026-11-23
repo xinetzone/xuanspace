@@ -20,7 +20,7 @@ from .manifest import (
     parse_manifest,
 )
 from .plugin import Fiber, FiberState, FiberTransitionError, InjectSpec, Plugin
-from .service import ServiceDefinition, ServiceProvider, ServiceRegistry
+from .service import AmbiguousProviderError, ServiceDefinition, ServiceProvider, ServiceRegistry
 from .solver import (
     Domain,
     InactiveReason,
@@ -33,6 +33,7 @@ from .solver import (
 )
 
 __all__ = [
+    "AmbiguousProviderError",
     "AssemblyResult",
     "Context",
     "Disposable",
