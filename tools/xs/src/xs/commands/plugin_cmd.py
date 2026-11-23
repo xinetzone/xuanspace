@@ -17,6 +17,7 @@ from xuan_build import PLUGIN as BUILD_PLUGIN
 from xuan_ffi import PLUGIN as FFI_PLUGIN
 from xuan_plugin.assembly import assemble
 from xuan_plugin.manifest import (
+    PluginGraph,
     PluginManifest,
     build_graph,
     manifest_from_pyproject,
@@ -151,12 +152,27 @@ def list_plugins(
     console.print(f"[dim]共 {len(manifests)} 个插件，{len(keys)} 个能力键[/dim]")
 
 
+def _graph_diagnostics(graph_data: PluginGraph) -> tuple[str, ...]:
+    """图诊断摘要：冲突与必需未解析共用一份文案，供文本/JSON/DOT 三种输出复用。
+
+    只收「会让装配不可解」的问题——冲突键无唯一胜出者、必需依赖无任何提供者；
+    可选依赖缺失不计入，避免把合法的可选降级当成错误。
+    """
+    lines: list[str] = [f"能力键冲突：{key}（{', '.join(providers)}）" for key, providers in graph_data.conflicts]
+    lines.extend(f"未解析的必需依赖：{consumer} 需要 {key}" for consumer, key in graph_data.unresolved)
+    return tuple(lines)
+
+
 @app.command("graph")
 def graph(
     dot: bool = typer.Option(False, "--dot", help="输出 Graphviz DOT"),
     json_output: bool = typer.Option(False, "--json", "-j", help="以 JSON 格式输出"),
 ) -> None:
-    """输出候选节点与依赖边，并标注未解析依赖与冲突键。"""
+    """输出候选节点与依赖边，并标注未解析依赖与冲突键。
+
+    存在「能力键冲突」或「必需依赖未解析」时以退出码 1 结束：诊断图照常输出，
+    便于 CI 与脚本拦截；文本/JSON/DOT 三种输出携带同一份诊断摘要。
+    """
     try:
         manifests = collect_manifests(find_workspace_root())
     except Exception as exc:  # noqa: BLE001
@@ -164,61 +180,66 @@ def graph(
         raise typer.Exit(1) from exc
 
     graph_data = build_graph(manifests)
+    diagnostics = _graph_diagnostics(graph_data)
 
     if dot:
         typer.echo(graph_data.to_dot())
-        return
-    if json_output:
+        if diagnostics:
+            # DOT 支持 ``//`` 注释：摘要追加在图后，图仍可被 Graphviz 正常渲染
+            typer.echo(f"// 诊断摘要（{len(diagnostics)} 项，退出码 1）")
+            for line in diagnostics:
+                typer.echo(f"// {line}")
+    elif json_output:
         typer.echo(
             json.dumps(
                 {
+                    "status": "error" if diagnostics else "ok",
                     "nodes": list(graph_data.nodes),
                     "edges": [{"consumer": e.consumer, "key": e.key, "provider": e.provider} for e in graph_data.edges],
                     "unresolved": [{"consumer": c, "key": k} for c, k in graph_data.unresolved],
                     "conflicts": [{"key": k, "providers": list(p)} for k, p in graph_data.conflicts],
+                    "diagnostics": list(diagnostics),
                 },
                 ensure_ascii=False,
                 indent=2,
             )
         )
-        return
-
-    key_count = len({p.key for m in manifests for p in m.provide})
-    console.print(
-        f"[dim]插件 {len(graph_data.nodes)} 个，能力键 {key_count} 个，"
-        f"依赖边 {len(graph_data.edges)} 条，未解析 {len(graph_data.unresolved)}，"
-        f"冲突 {len(graph_data.conflicts)}[/dim]"
-    )
-
-    by_id = {m.id: m for m in manifests}
-    conflicted_keys = {key for key, _ in graph_data.conflicts}
-    unresolved_keys = {key for _, key in graph_data.unresolved}
-    for node in graph_data.nodes:
-        manifest = by_id[node]
+    else:
+        key_count = len({p.key for m in manifests for p in m.provide})
         console.print(
-            f"\n[bold cyan]{node}[/bold cyan] [dim]({manifest.lifecycle}, priority={manifest.priority},"
-            f" 来源 {manifest.source or '未知'})[/dim]"
+            f"[dim]插件 {len(graph_data.nodes)} 个，能力键 {key_count} 个，"
+            f"依赖边 {len(graph_data.edges)} 条，未解析 {len(graph_data.unresolved)}，"
+            f"冲突 {len(graph_data.conflicts)}[/dim]"
         )
-        for provide in manifest.provide:
-            console.print(f"  [green]provide[/green] {provide.key} [dim]({provide.mode})[/dim]")
-        for edge in (e for e in graph_data.edges if e.consumer == node):
-            if edge.provider is None:
-                if edge.key in conflicted_keys:
-                    console.print(f"  [red]inject[/red] {edge.key} [dim]→ 冲突（无唯一胜出者）[/dim]")
-                else:
-                    style = "red" if edge.key in unresolved_keys else "yellow"
-                    console.print(f"  [{style}]inject[/{style}] {edge.key} [dim]→ 未解析[/dim]")
-            else:
-                console.print(f"  inject {edge.key} [dim]→ {edge.provider}[/dim]")
 
-    if graph_data.unresolved:
-        console.print("\n[red]未解析的必需依赖：[/red]")
-        for consumer, key in graph_data.unresolved:
-            console.print(f"  {consumer} 需要 {key}")
-    if graph_data.conflicts:
-        console.print("\n[red]能力键冲突（无唯一胜出者：全 single 多提供者，或 multi 优先级并列）：[/red]")
-        for key, providers in graph_data.conflicts:
-            console.print(f"  {key}：{', '.join(providers)}")
+        by_id = {m.id: m for m in manifests}
+        conflicted_keys = {key for key, _ in graph_data.conflicts}
+        unresolved_keys = {key for _, key in graph_data.unresolved}
+        for node in graph_data.nodes:
+            manifest = by_id[node]
+            console.print(
+                f"\n[bold cyan]{node}[/bold cyan] [dim]({manifest.lifecycle}, priority={manifest.priority},"
+                f" 来源 {manifest.source or '未知'})[/dim]"
+            )
+            for provide in manifest.provide:
+                console.print(f"  [green]provide[/green] {provide.key} [dim]({provide.mode})[/dim]")
+            for edge in (e for e in graph_data.edges if e.consumer == node):
+                if edge.provider is None:
+                    if edge.key in conflicted_keys:
+                        console.print(f"  [red]inject[/red] {edge.key} [dim]→ 冲突（无唯一胜出者）[/dim]")
+                    else:
+                        style = "red" if edge.key in unresolved_keys else "yellow"
+                        console.print(f"  [{style}]inject[/{style}] {edge.key} [dim]→ 未解析[/dim]")
+                else:
+                    console.print(f"  inject {edge.key} [dim]→ {edge.provider}[/dim]")
+
+        if diagnostics:
+            console.print(f"\n[red]诊断摘要（{len(diagnostics)} 项，退出码 1）：[/red]")
+            for line in diagnostics:
+                console.print(f"  [red]{line}[/red]")
+
+    if diagnostics:
+        raise typer.Exit(1)
 
 
 @app.command("apply")

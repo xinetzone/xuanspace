@@ -122,6 +122,8 @@ def test_plugin_graph_json(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(cli_app, ["plugin", "graph", "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
+    assert payload["status"] == "ok"
+    assert payload["diagnostics"] == []
     assert "xs.commands" in payload["nodes"]
     assert payload["conflicts"] == []
 
@@ -132,6 +134,7 @@ def test_plugin_graph_dot(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0, result.output
     assert result.output.startswith("digraph xuan {")
     assert '"xs.commands";' in result.output
+    assert "// 诊断摘要" not in result.output
 
 
 def test_plugin_graph_text_marks_ambiguous_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,9 +157,98 @@ def test_plugin_graph_text_marks_ambiguous_key(monkeypatch: pytest.MonkeyPatch) 
 
     result = runner.invoke(cli_app, ["plugin", "graph"])
 
-    assert result.exit_code == 0, result.output
+    # P2-16：冲突没有唯一胜出者，诊断图照常输出，但退出码必须非零
+    assert result.exit_code == 1, result.output
     assert "→ 冲突" in result.output
     assert "→ 未解析" not in result.output
+
+
+def _conflict_and_missing_manifests() -> list[PluginManifest]:
+    """同时含「能力键冲突」（全 single 多提供者）与「必需依赖未解析」的清单集合。"""
+    key = "xuan:cli/commands#list"
+    return [
+        _fake_manifest("a", provide=(key,)),
+        _fake_manifest("b", provide=(key,)),
+        _fake_manifest("consumer", inject=(key, "xuan:cli/commands#missing")),
+    ]
+
+
+def _expected_diagnostics() -> list[str]:
+    return [
+        "能力键冲突：xuan:cli/commands#list（a, b）",
+        "未解析的必需依赖：consumer 需要 xuan:cli/commands#missing",
+    ]
+
+
+def test_plugin_graph_unresolved_required_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """必需依赖无任何提供者时，文本诊断照常输出且退出码为 1。"""
+    _patch_manifests(monkeypatch, [_fake_manifest("consumer", inject=("xuan:demo/ext#missing",))])
+
+    result = runner.invoke(cli_app, ["plugin", "graph"])
+
+    assert result.exit_code == 1, result.output
+    assert "未解析" in result.output
+    assert "consumer 需要 xuan:demo/ext#missing" in result.output
+
+
+def test_plugin_graph_optional_unresolved_keeps_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """可选依赖未解析不构成错误，退出码仍为 0（避免把可选缺失当成装配失败）。"""
+    consumer = parse_manifest(
+        {
+            "id": "consumer",
+            "version": "0.1.0",
+            "inject": [{"key": "xuan:demo/ext#missing", "optional": True}],
+        }
+    )
+    _patch_manifests(monkeypatch, [consumer])
+
+    result = runner.invoke(cli_app, ["plugin", "graph"])
+
+    assert result.exit_code == 0, result.output
+    assert "诊断摘要" not in result.output
+
+
+def test_plugin_graph_json_carries_status_and_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSON 模式：冲突与未解析进入 status/diagnostics，同时保留结构化数组。"""
+    _patch_manifests(monkeypatch, _conflict_and_missing_manifests())
+
+    result = runner.invoke(cli_app, ["plugin", "graph", "--json"])
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "error"
+    assert payload["diagnostics"] == _expected_diagnostics()
+    assert len(payload["conflicts"]) == 1
+    assert payload["unresolved"] == [{"consumer": "consumer", "key": "xuan:cli/commands#missing"}]
+
+
+def test_plugin_graph_dot_appends_diagnostics_as_comments(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DOT 模式：诊断图仍是合法 DOT，摘要以 ``//`` 注释追加在末尾。"""
+    _patch_manifests(monkeypatch, _conflict_and_missing_manifests())
+
+    result = runner.invoke(cli_app, ["plugin", "graph", "--dot"])
+
+    assert result.exit_code == 1, result.output
+    assert result.output.startswith("digraph xuan {")
+    assert "// 诊断摘要（2 项，退出码 1）" in result.output
+    for line in _expected_diagnostics():
+        assert f"// {line}" in result.output
+
+
+def test_plugin_graph_three_modes_share_diagnostics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """文本/JSON/DOT 三种输出必须携带同一份诊断摘要，且退出码一致。"""
+    _patch_manifests(monkeypatch, _conflict_and_missing_manifests())
+
+    text = runner.invoke(cli_app, ["plugin", "graph"])
+    json_result = runner.invoke(cli_app, ["plugin", "graph", "--json"])
+    dot_result = runner.invoke(cli_app, ["plugin", "graph", "--dot"])
+
+    assert [text.exit_code, json_result.exit_code, dot_result.exit_code] == [1, 1, 1]
+    payload = json.loads(json_result.output)
+    assert payload["diagnostics"] == _expected_diagnostics()
+    for line in payload["diagnostics"]:
+        assert line in text.output
+        assert f"// {line}" in dot_result.output
 
 
 def test_plugin_list_text(monkeypatch: pytest.MonkeyPatch) -> None:
