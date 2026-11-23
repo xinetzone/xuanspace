@@ -232,7 +232,7 @@ def test_non_active_states_hold_no_effects() -> None:
     assert len(inactive._disposables) == 0
 
     def boom(ctx: Context, config: dict) -> None:
-        ctx.effect(lambda: None)
+        ctx.effect(lambda: lambda: None)
         raise RuntimeError("boom")
 
     failed = Fiber(Plugin(name="failed", apply=boom), Context())

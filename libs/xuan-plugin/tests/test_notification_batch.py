@@ -100,7 +100,7 @@ def test_batch_flushes_even_if_body_raises() -> None:
 def test_multi_key_provider_reload_is_single_cycle() -> None:
     """一个提供方提供 2 键：热替换后依赖方只卸一次、装一次。"""
     log: list[str] = []
-    holder = {"impl": ImplV1}
+    holder: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
     ctx = Context()
     ctx.provide("dep", DepA1())
 
@@ -123,8 +123,8 @@ def test_multi_key_provider_reload_is_single_cycle() -> None:
 def test_two_providers_in_one_batch_single_cycle() -> None:
     """两位提供方在同一批内变更：依赖方只经历一次替换（M4）。"""
     log: list[str] = []
-    holder_a = {"impl": ImplV1}
-    holder_b = {"impl": ImplV1}
+    holder_a: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
+    holder_b: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
     ctx = Context()
     ctx.provide("dep_a", DepA1())
     ctx.provide("dep_b", DepA1())
@@ -166,8 +166,8 @@ def test_resolvable_inactive_fiber_reactivates() -> None:
 def test_cascade_flushes_new_notifications_in_next_round() -> None:
     """级联：排空期间依赖方新供应的键由下一轮处理。"""
     log: list[str] = []
-    p_holder = {"impl": ImplV1}
-    holder = {"impl": ImplV1}
+    p_holder: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
+    holder: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
     ctx = Context()
     ctx.provide("dep", DepA1())
     ctx.plugin(_provider("P", "k1", "dep", p_holder))
@@ -186,8 +186,8 @@ def test_cascade_flushes_new_notifications_in_next_round() -> None:
 
 def test_static_plugin_suppression_counts_once_per_batch() -> None:
     """静态插件的抑制计数按逻辑变更计一次，而非按每个键各计一次。"""
-    holder_a = {"impl": ImplV1}
-    holder_b = {"impl": ImplV1}
+    holder_a: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
+    holder_b: dict[str, type[ImplV1] | type[ImplV2]] = {"impl": ImplV1}
     ctx = Context()
     ctx.provide("dep_a", DepA1())
     ctx.provide("dep_b", DepA1())
