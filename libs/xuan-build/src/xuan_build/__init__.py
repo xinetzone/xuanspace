@@ -26,7 +26,7 @@ MANIFEST = PluginManifest(
 
 def apply(ctx: Context, config: dict) -> None:
     """登记分派器；撤销时移除能力键。"""
-    ctx.effect(lambda: ctx.provide(DISPATCH_KEY, DEFAULT_DISPATCHER), label=f"provide:{DISPATCH_KEY}")
+    ctx.provide(DISPATCH_KEY, DEFAULT_DISPATCHER, label=f"provide:{DISPATCH_KEY}")
 
 
 PLUGIN = Plugin(

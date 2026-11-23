@@ -1,8 +1,9 @@
 # 插件内核抽取（P0-1）— 实施台账
 
-> 本文件为索引：正文已按增量原子化为 8 个分卷，共 24 个 `## Task` 块。
-> 逐字节保真：各卷去掉页首 3 行横幅后顺序拼接，与冻结原件在「4 处相对链接改指」归一化后 SHA-256 一致
-> （`39b4c9e99f05d688b296b36821b3100c5e343d6c446f98a142d0652ec3ececf3`，101461 字节 / 1359 行）。
+> 本文件为索引：正文已按增量原子化为 8 个分卷，共 25 个 `## Task` 块。
+> 逐字节保真（截至分卷时刻 P2-11）：各卷去掉页首 3 行横幅后顺序拼接，与冻结原件在「4 处相对链接改指」归一化后 SHA-256 一致
+> （`39b4c9e99f05d688b296b36821b3100c5e343d6c446f98a142d0652ec3ececf3`，101461 字节 / 1359 行）；
+> 其后新增任务只追加到对应分卷末尾（P2-12-1 追加于 07 卷），不再与冻结原件逐字节相等。
 > 链接改指：00 与 07 卷各 2 处 `../../../libs/...` → `../../../../libs/...`（目录下移一层，等价改写）。
 > 冻结原件：`/media/pc/data/ai/.agents/archive/plugin-kernel-tasks-20261123/raw/tasks.md`。
 > 文档位置：设计文档与复盘见 [libs/xuan-plugin/doc/README.md](../../../libs/xuan-plugin/doc/README.md)。
@@ -18,7 +19,7 @@
 | 04-p1-kernel-cli.md | 增量三 P1：清单、求解器、CLI 插件化 | L466–L659 | 16778 | 3 | `3aee9530626c…` |
 | 05-p2-a-build-ffi.md | P2-A：构建后端、compose、FFI 试点 | L660–L840 | 14109 | 3 | `64b3eeba347f…` |
 | 06-p2-b-lifecycle.md | P2-B：生命周期、热替换、传播、摘要 | L841–L1111 | 20574 | 4 | `1c6762842a1c…` |
-| 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配 | L1112–L1359 | 19301 | 4 | `e1f89d31ce4a…` |
+| 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销 | L1112–L1359 | 24483 | 5 | `de2ee6c565f9…` |
 
 ## 任务总表（派生视图）
 
@@ -50,6 +51,7 @@
 | `P2-9-1` | ACTIVE 与可解性互锁 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-10-1` | 落地 ADR-05 多提供者定序 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-11-1` | 同名插件装配的确定性 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
+| `P2-12-1` | 供应即撤销（`provide` 自动登记效应） | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 
 ---
 

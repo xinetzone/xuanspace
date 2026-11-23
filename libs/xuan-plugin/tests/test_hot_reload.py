@@ -24,7 +24,7 @@ def test_apply_effects_belong_to_fiber() -> None:
     undone: list[str] = []
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("own", 1))
+        ctx.provide("own", 1)
         ctx.effect(lambda: [lambda: undone.append("undo")])
 
     ctx = Context()
@@ -48,7 +48,7 @@ def test_hot_reload_undoes_old_and_applies_new() -> None:
     def apply(ctx, config) -> None:
         impl = object()
         current["impl"] = impl
-        ctx.effect(lambda: ctx.provide("own", impl))
+        ctx.provide("own", impl)
 
     ctx = Context()
     ctx.provide("dep", ImplV1())
@@ -70,7 +70,7 @@ def test_failed_reload_rolls_back_partial_effects() -> None:
     fail = {"on": False}
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("own", object()))
+        ctx.provide("own", object())
         if fail["on"]:
             raise RuntimeError("new impl broken")
 
@@ -95,7 +95,7 @@ def test_retry_after_failed_reload_recovers() -> None:
     fail = {"on": True}
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("own", object()))
+        ctx.provide("own", object())
         if fail["on"]:
             raise RuntimeError("transient")
 
@@ -117,7 +117,7 @@ def test_config_change_reports_config_field() -> None:
     spec = InjectSpec("dep", config={"mode": "a"})
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("own", ctx.get("dep")))
+        ctx.provide("own", ctx.get("dep"))
 
     ctx = Context()
     ctx.provide("dep", object())
@@ -135,7 +135,7 @@ def test_dependency_loss_retires_fiber_effects() -> None:
     """依赖消失：撤销 Fiber 效应并进入 INACTIVE，原因可解释。"""
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("own", 1))
+        ctx.provide("own", 1)
 
     ctx = Context()
     undo = ctx.provide("dep", object())
@@ -157,7 +157,7 @@ def test_consumer_hot_swap_preserves_downstream_key() -> None:
     def apply(ctx, config) -> None:
         value = ctx.get("k")
         produced.append(value)  # type: ignore[arg-type]
-        ctx.effect(lambda: ctx.provide("c", value))
+        ctx.provide("c", value)
 
     ctx = Context()
     ctx.provide("k", "v1")
@@ -222,3 +222,82 @@ def test_hot_reload_with_vanishing_dependency_is_neither_reload_nor_rollback() -
         assert undone == ["undo", "undo"]
 
     assert fiber.state is FiberState.INACTIVE
+
+
+def test_bare_provide_is_registered_as_fiber_effect() -> None:
+    """apply 中直接 provide（不再包 effect）也应归属 Fiber，卸载后键被回收（P2-12）。"""
+
+    def apply(ctx, config) -> None:
+        ctx.provide("own", 1)
+
+    ctx = Context()
+    fiber = ctx.plugin(Plugin("p", apply))
+    assert fiber.state is FiberState.ACTIVE
+    assert ctx.get("own") == 1
+    assert len(fiber._disposables) == 1
+    assert len(ctx._root_disposables) == 0
+
+    fiber._unload()
+
+    assert "own" not in ctx.registered_keys()
+    assert len(fiber._disposables) == 0
+
+
+def test_bare_provide_is_rolled_back_when_apply_fails() -> None:
+    """apply 中途失败：裸 provide 写入的键必须随 Fiber 回滚，不留半成品。"""
+
+    def apply(ctx, config) -> None:
+        ctx.provide("own", 1)
+        raise RuntimeError("boom")
+
+    ctx = Context()
+    fiber = ctx.plugin(Plugin("p", apply))
+
+    assert fiber.state is FiberState.FAILED
+    assert ctx.registered_keys() == ()
+    assert len(fiber._disposables) == 0
+
+
+def test_bare_provide_follows_hot_swap() -> None:
+    """热替换：旧值随旧效应撤销，新装配写入新值，下游读到的是当前实现。"""
+    versions: list[object] = []
+
+    def apply(ctx, config) -> None:
+        value = ctx.get("dep")
+        versions.append(value)
+        ctx.provide("own", value)
+
+    ctx = Context()
+    ctx.provide("dep", ImplV1())
+    fiber = ctx.plugin(Plugin("p", apply, inject=[InjectSpec("dep")]))
+    first = versions[0]
+    assert ctx.get("own") is first
+
+    ctx.provide("dep", ImplV2())
+
+    assert fiber.reloads == 1
+    assert ctx.get("own") is versions[1]
+    assert ctx.get("own") is not first
+
+
+def test_repeated_provide_keeps_one_registration_per_key() -> None:
+    """同名重复供应只保留最后一次撤销登记，避免长期运行下登记数线性增长。"""
+    ctx = Context()
+    ctx.provide("k", "v1")
+    ctx.provide("k", "v2")
+
+    assert ctx.get("k") == "v2"
+    assert len(ctx._root_disposables) == 1
+
+    ctx.dispose()
+
+    assert ctx.registered_keys() == ()
+    assert len(ctx._root_disposables) == 0
+
+
+def test_provide_label_is_recorded_as_effect_meta() -> None:
+    """provide 的 label 进入效应观测树，与 effect(label=...) 同口径。"""
+    ctx = Context()
+    ctx.provide("k", "v", label="provide:k")
+
+    assert [meta.label for meta in ctx.get_effects()] == ["provide:k"]

@@ -9,7 +9,6 @@
 """
 
 from xuan_plugin.context import Context
-from xuan_plugin.disposable import Disposable
 from xuan_plugin.manifest import PluginManifest, ProvideDecl
 from xuan_plugin.plugin import Plugin
 
@@ -49,12 +48,9 @@ def apply(ctx: Context, config: dict) -> None:
 
 
 def _provide(ctx: Context, name: str, provider: FFIAPI) -> None:
-    """登记一条能力键，撤销时先关闭提供者再移除键。"""
-
-    def execute() -> list[Disposable]:
-        return [ctx.provide(ffi_key(name), provider), provider.close]
-
-    ctx.effect(execute, label=f"provide:{ffi_key(name)}")
+    """登记一条能力键，撤销时先关闭提供者再移除键（逆序回收）。"""
+    ctx.provide(ffi_key(name), provider, label=f"provide:{ffi_key(name)}")
+    ctx.effect(lambda: provider.close)
 
 
 PLUGIN = Plugin(

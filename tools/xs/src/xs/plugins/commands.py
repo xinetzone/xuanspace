@@ -85,7 +85,7 @@ def apply(ctx: Context, config: dict) -> None:
         target = _load_target(spec)
         entry = CommandEntry(name=spec.name, target=target, kind=spec.kind)
         ctx.effect(partial(registry.register, entry), label=f"command:{spec.name}")
-        ctx.effect(partial(ctx.provide, spec.key, target), label=f"provide:{spec.key}")
+        ctx.provide(spec.key, target, label=f"provide:{spec.key}")
 
 
 PLUGIN = Plugin(

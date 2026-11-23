@@ -244,6 +244,69 @@
   - **V5 报错时机**：检查位于 Fiber 构造与 `batch` 之前，拒绝路径不产生任何键、效应或
     Fiber 实例；异常携带旧状态，便于区分 ACTIVE（需先卸载）与 INACTIVE（需先补依赖）。
 
+## Task P2-12-1: 供应即撤销（`provide` 自动登记效应）
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-11-1（`eada0de`）
+- **Description**:
+  - 缺口：`Context.provide` 只写 `_store` 并返回一个**游离**的 undo——它不被任何
+    `DisposableList` 持有。插件若在 `apply` 里直接 `ctx.provide(...)`（`tools/okf` 的 7 个
+    插件即如此），Fiber 卸载/热替换后键仍留在 `_store`：新版本若少供该键，依赖方会读到
+    上一代实现，形成「已卸载仍可供」的隐式后门。此前只能靠作者记得写
+    `ctx.effect(lambda: ctx.provide(...))` 维持，属纪律而非内核保证（P2-11 V4 已记录）。
+  - 改动：
+    - `context.py`：`provide` 自行登记撤销——处于 `apply` 作用域时 `push` 到当前 Fiber 的
+      `_disposables`，否则推入根 `DisposableList`；新增 `_provide_removers` 记录每个键的
+      「登记摘除器」，同名重复供应先摘除旧登记再登记新撤销，保证**每键恰好一条有效登记**；
+      新增 keyword-only 参数 `label`，非空时写入效应观测树（与原 `effect(label=...)` 同口径）；
+      `dispose` 末尾清空该映射。
+    - 调用点去重：`xuan_ffi._provide`、`xuan_build.apply`、`xs/plugins/commands.py` 由
+      「`effect` 包 `provide`」改为「`provide(label=...)` + 必要的 `effect`」；测试中 11 处
+      同样改写，避免双重登记。
+    - `doc/okf/architecture.md`：Context 职责第 1、2 条改写为「供应自带撤销登记」。
+- **Acceptance Criteria Addressed**: apply 期供应键的注销责任与效应归属同源；卸载、apply
+  失败、热替换三条路径均不残留键；同名重复供应不累积登记
+- **Test Requirements**:
+  - `rule` TR-P2.12-1: apply 中直接 `provide`（不包 effect）归属当前 Fiber，`_unload` 后
+    `registered_keys()` 不含该键且 `_disposables` 归零；证据：
+    `test_bare_provide_is_registered_as_fiber_effect`
+  - `rule` TR-P2.12-2: apply 中途抛错时，已写入的供应随 Fiber 回滚撤销；证据：
+    `test_bare_provide_is_rolled_back_when_apply_fails`
+  - `rule` TR-P2.12-3: 热替换后下游读到的是新装配写入的实现；证据：
+    `test_bare_provide_follows_hot_swap`
+  - `rule` TR-P2.12-4: 同名重复供应只保留最后一次登记（根层 2 次 → 1 条），`dispose` 后键与
+    登记均归零；证据：`test_repeated_provide_keeps_one_registration_per_key`
+  - `rule` TR-P2.12-5: `provide(label=...)` 的 label 进入 `get_effects()`；证据：
+    `test_provide_label_is_recorded_as_effect_meta`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **123 passed**（P2-11 基线 118，新增 5）；
+  - 第一批 → **243 passed**（44 + 123 + 7 + 34 + 35）；
+  - `tools/okf` 独立运行 → **259 passed**（okf 源码未改，其 7 个插件现在真正随 Fiber 回收）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check libs/xuan-plugin tools/xs libs/xuan-ffi
+    libs/xuan-build` → 82 文件已格式化；`mypy libs/xuan-plugin/src libs/xuan-ffi/src
+    libs/xuan-build/src tools/xs/src` → `Success: no issues found in 41 source files`；
+    `check_pyproject_style.py`（18 个 pyproject）、`check_dependency_direction.py`（347 文件）、
+    `check_spec_integrity.py`（本轮后 **38** 个任务编号）通过；`check_declaration_consistency.py`
+    既有 1 项失败（清单快照过期，与本轮无关）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 双重包装怎么办**：旧写法 `ctx.effect(lambda: ctx.provide(...))` 仍能工作——提供撤销
+    与 effect 句柄都会被登记，逆序执行时第二次是幂等空操作；但登记数会多一条，故本轮把仓库内
+    11 处测试与 3 处生产代码一并改写，并在 `provide` 文档串写明「勿再包 effect」。
+  - **V2 为何跨 Fiber 摘除旧登记**：键的归属本来就遵循「最后一次写入」，注销责任跟随同一归属
+    才有唯一答案；摘除只移除旧 `DisposableList` 中的一条元素，而 `DisposableList.clear()` 先
+    快照后清空，卸载途中的摘除不会跳项。
+  - **V3 根层登记的增量**：根层 `provide` 现在也占一条 `_root_disposables`；`dispose` 会逐键
+    撤销并 `notify`（`flush=False` 丢弃），规模与键数同阶，未见性能风险。
+  - **V4 为什么提供 `label` 而不是丢掉标签**：`xuan_build` / `xuan_ffi` / `xs commands` 原本用
+    `effect(label="provide:<key>")` 让供应显形于效应观测树；`provide(label=...)` 让标签跟随
+    动作本身，`get_effects()` 内容与改动前逐项一致。
+  - **V5 未纳入本轮的相邻项**：`build_graph`（诊断图）仍按 `(-priority, id)` 取首个提供者，
+    与 ADR-05「同优先级必须显式选择」的口径尚未收口；`okf` 插件中为挂标签而存在的空效应
+    （`ctx.effect(lambda: [lambda: None], label=...)`）亦未改动。
+
 ---
 
 > 复盘报告（P2-4～P2-11 全链，R → I → E → C，G1–G4 通过）：

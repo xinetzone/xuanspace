@@ -53,6 +53,7 @@ class Context:
     _apply_stack: list[Fiber] = field(default_factory=list)
     _batch_depth: int = 0
     _deferred: set[str] = field(default_factory=set)
+    _provide_removers: dict[str, Disposable] = field(default_factory=dict)
 
     @contextlib.contextmanager
     def _apply_scope(self, fiber: Fiber) -> Iterator[None]:
@@ -98,11 +99,22 @@ class Context:
 
         return undo
 
-    def provide(self, name: str, impl: object) -> Disposable:
+    def provide(self, name: str, impl: object, *, label: str = "") -> Disposable:
         """供应服务实现，返回逆函数（撤销供应）。
 
-        供应后自动调用 notify 通知所有依赖该服务的插件。
+        供应即隐含撤销：撤销函数**自动登记为效应**——处于 ``apply`` 作用域时
+        归属当前 Fiber，否则归属根 ``DisposableList``。调用方无需再包一层
+        ``ctx.effect(lambda: ctx.provide(...))``；否则热替换只换了代码，旧供应
+        仍在 ``_store`` 里成为孤儿。
+
+        同名重复供应只保留最后一次的撤销登记（旧登记被摘除），使登记数不随
+        供应次数线性增长；键的归属仍遵循「最后一次写入」，因此由最后一次
+        供应的持有者负责撤销。``label`` 非空时写入效应观测树。
         """
+        previous = self._provide_removers.pop(name, None)
+        if previous is not None:
+            previous()  # 只摘除旧登记，不执行旧的撤销
+
         self._store[name] = impl
 
         def undo() -> None:
@@ -110,8 +122,21 @@ class Context:
                 del self._store[name]
                 self.notify([name])
 
+        target = self._apply_stack[-1]._disposables if self._apply_stack else self._root_disposables
+        remove = target.push(undo)
+        self._provide_removers[name] = remove
+
+        if label:
+            self._effects.append(EffectMeta(label=label))
+
+        def handle() -> None:
+            remove()
+            if self._provide_removers.get(name) is remove:
+                del self._provide_removers[name]
+            undo()
+
         self.notify([name])
-        return undo
+        return handle
 
     def get(self, name: str) -> object:
         """获取服务实现。KeyError 表示未注册。"""
@@ -236,6 +261,7 @@ class Context:
                 errors.append((f"root:{label}", exc))
             self._store.clear()
             self._effects.clear()
+            self._provide_removers.clear()
         self._disposal_errors = errors
         return errors
 

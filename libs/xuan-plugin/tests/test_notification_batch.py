@@ -32,7 +32,7 @@ def _provider(name: str, key: str, dep: str, holder: dict) -> Plugin:
     """提供 ``key`` 的插件；``holder["impl"]`` 决定提供哪一版实现。"""
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide(key, holder["impl"]()))
+        ctx.provide(key, holder["impl"]())
 
     return Plugin(name, apply, inject=[InjectSpec(dep)])
 
@@ -49,7 +49,7 @@ def _consumer(
     def apply(ctx, config) -> None:
         events.append(f"{name}:apply")
         for key, holder in provide:
-            ctx.effect(lambda k=key, h=holder: ctx.provide(k, h["impl"]()))
+            ctx.provide(key, holder["impl"]())
         ctx.effect(lambda: [lambda: events.append(f"{name}:undo")])
 
     return Plugin(name, apply, inject=[InjectSpec(k) for k in inject])
@@ -105,8 +105,8 @@ def test_multi_key_provider_reload_is_single_cycle() -> None:
     ctx.provide("dep", DepA1())
 
     def apply(ctx, config) -> None:
-        ctx.effect(lambda: ctx.provide("k1", holder["impl"]()))
-        ctx.effect(lambda: ctx.provide("k2", holder["impl"]()))
+        ctx.provide("k1", holder["impl"]())
+        ctx.provide("k2", holder["impl"]())
 
     ctx.plugin(Plugin("P", apply, inject=[InjectSpec("dep")]))
     fiber_c = ctx.plugin(_consumer("C", ["k1", "k2"], log=log))

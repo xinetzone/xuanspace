@@ -66,8 +66,8 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 
 `Context`（`src/okf/context.py`）同时承载四类职责：
 
-1. **服务注册**：`provide` / `get`，其中 `provide` 后自动 `notify` 依赖方；`Context.batch()` 事务内的通知只登记，最外层退出时去重、分轮排空（`dispose` 使用 `flush=False` 丢弃）。事务外保持同步语义。
-2. **效应追踪**：`effect` 注册可逆效应；处于某插件 `apply` 作用域时归属该 Fiber（随卸载/热替换逆序回收），其余归属根 `DisposableList`。
+1. **服务注册**：`provide` / `get`。`provide` 自带撤销登记——它返回的逆函数同时登记为效应（`apply` 作用域内归属当前 Fiber，否则归属根 `DisposableList`），因此调用方无需再包 `effect(lambda: ctx.provide(...))`；同名重复供应只保留最后一次登记，注销责任随「最后写入」的持有者。`provide` 后自动 `notify` 依赖方；`Context.batch()` 事务内的通知只登记，最外层退出时去重、分轮排空（`dispose` 使用 `flush=False` 丢弃）。事务外保持同步语义。
+2. **效应追踪**：`effect` 注册可逆效应；处于某插件 `apply` 作用域时归属该 Fiber（随卸载/热替换逆序回收），其余归属根 `DisposableList`。`provide` 与 `effect` 共用同一套归属规则，故热替换或 apply 失败时供应键随效应一并撤销，不会残留孤儿。
 3. **插件装配**：`plugin` 创建 Fiber 并启动加载；名称在旧实例 `DISPOSED` 之前被独占，同名重复装配抛 `PluginNameConflictError` 而非静默覆写——覆写会让旧实例在 `dispose` 遍历中缺席，其供应与效应成为孤儿。
 4. **事件分发**：五种分发模式。
 
