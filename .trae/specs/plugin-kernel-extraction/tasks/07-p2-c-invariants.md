@@ -306,6 +306,9 @@
   - **V5 未纳入本轮的相邻项**：`build_graph`（诊断图）仍按 `(-priority, id)` 取首个提供者，
     与 ADR-05「同优先级必须显式选择」的口径尚未收口；`okf` 插件中为挂标签而存在的空效应
     （`ctx.effect(lambda: [lambda: None], label=...)`）亦未改动。
+  - **后续（2026-11-23）**：`okf` 6 个插件中的 7 处空效应已删除，标签改由
+    `ctx.provide(..., label=...)` 承载；`get_effects()` 内容与改动前一致，`tools/okf`
+    仍为 259 passed。
 
 ## Task P2-13-1: 诊断图与求解器冲突同口径（`build_graph` 不再静默择一）
 

@@ -16,8 +16,7 @@ class IndexSynthesizer:
             concepts = list(bundle.concepts.values())
             return generate_index(bundle.root, concepts)
 
-        ctx.effect(lambda: [lambda: None], label="index_synthesizer")
-        ctx.provide("index_generator", generate)
+        ctx.provide("index_generator", generate, label="index_synthesizer")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)
@@ -42,8 +41,7 @@ class LogSynthesizer:
                 return parse_log(log_path)
             return {}
 
-        ctx.effect(lambda: [lambda: None], label="log_synthesizer")
-        ctx.provide("log_generator", generate)
+        ctx.provide("log_generator", generate, label="log_synthesizer")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)

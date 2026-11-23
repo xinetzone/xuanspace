@@ -21,8 +21,7 @@ class CLIAdapter:
             except KeyError:
                 services[name] = None
 
-        ctx.effect(lambda: [lambda: None], label="cli_adapter")
-        ctx.provide("cli_services", services)
+        ctx.provide("cli_services", services, label="cli_adapter")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)

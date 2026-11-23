@@ -12,8 +12,7 @@ class ConformanceChecker:
         except KeyError:
             return
         report = check_bundle(bundle)
-        ctx.effect(lambda: [lambda: None], label="conformance_checker")
-        ctx.provide("conformance_report", report)
+        ctx.provide("conformance_report", report, label="conformance_checker")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)

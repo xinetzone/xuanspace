@@ -29,8 +29,7 @@ class TrustDeriver:
                 for cid, c in bundle.concepts.items()
             }
 
-        ctx.effect(lambda: [lambda: None], label="trust_deriver")
-        ctx.provide("trust_analyzer", analyze)
+        ctx.provide("trust_analyzer", analyze, label="trust_deriver")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)

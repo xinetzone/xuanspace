@@ -13,8 +13,7 @@ class BundleLoader:
     def __call__(self, ctx, config: dict) -> None:
         bundle_root = Path(config.get("path", "."))
         bundle = load_bundle(bundle_root)
-        ctx.effect(lambda: [lambda: None], label="bundle_loader")
-        ctx.provide("bundle_accessor", bundle)
+        ctx.provide("bundle_accessor", bundle, label="bundle_loader")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)

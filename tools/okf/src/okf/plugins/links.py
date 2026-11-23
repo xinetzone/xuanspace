@@ -20,8 +20,7 @@ class LinkResolver:
             broken = check_broken_links(all_links, bundle)
             return {"links": all_links, "broken": broken}
 
-        ctx.effect(lambda: [lambda: None], label="link_resolver")
-        ctx.provide("link_analyzer", analyze)
+        ctx.provide("link_analyzer", analyze, label="link_resolver")
 
     def __new__(cls) -> Plugin:
         instance = object.__new__(cls)
