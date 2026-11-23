@@ -1,9 +1,9 @@
-# Xuan Plugin Contract 设计文档（分卷）
+# Xuan Plugin Contract 设计文档与复盘（分卷）
 
 - 冻结原件（逐字节）：[xuanspace-pluginization-design.md](file:///media/pc/data/ai/.agents/archive/xuanspace-pluginization-design-20261123/raw/xuanspace-pluginization-design.md)
 - 原位置：`/media/pc/data/ai/xuanspace-pluginization-design.md` 已于 2026-11-23 删除，正文由本目录承载
 - 原文指纹：SHA-256 `21c021fdda1ef2d5c1758495cbe643b75f83acf49f8887138e673e1c9a8a0419`｜60,008 字节｜759 行
-- 原子化：2026-11-23，共 11 篇 + 本索引；正文多重集守恒（missing 0 / extra 0）
+- 原子化：2026-11-23，设计 11 篇 + 复盘 7 篇 + 本索引；两次原子化的正文多重集均守恒（missing 0 / extra 0）
 - 权威顺序：本目录为唯一权威；归档件只用于回滚，逐页行区间见 [MANIFEST.md](MANIFEST.md)
 
 ## 阅读路径
@@ -12,7 +12,7 @@
 |---|---|
 | 决策者 | 00 摘要 → 07 落地计划 → 09 度量 |
 | 实现者 | 00 摘要 → 05 方案 → 06 对抗审查 |
-| 复盘者 | 01 事实 → 08 P1-2 复盘 |
+| 复盘者 | 01 事实 → 08 P1-2 复盘 → 11–17 P2-4～P2-9 加固链复盘 |
 
 ## 分卷索引
 
@@ -30,7 +30,23 @@
 | 9 | [度量与止损](09-metrics.md) | L632–L648 |
 | 10 | [附录](10-appendix.md) | L649–L759 |
 
-## 原文导言
+## 第二部：P2-4～P2-9 加固链复盘（2026-11-21）
+
+> **来源**：`.trae/specs/plugin-kernel-extraction/retrospective-20261121.md`（23,651 字节 / 320 行），已于 2026-11-23 原子化并入本目录并删除。
+> **时点**：事实截至提交 `f42c37d`（P2-9）。其后 P2-10（`13c6127`）落地 ADR-05 多提供者定序、P2-11（`eada0de`）收口同名装配，故文中「未决项 2」与 A11 的「ADR-05 未落地」属当时事实；现行口径见 [07-roadmap.md](07-roadmap.md) 与 [tasks.md](../../../.trae/specs/plugin-kernel-extraction/tasks.md)。
+> **质量门**：G1 事实 28 条｜G2 四元组洞察 4 条｜G3 模式 1 个 + 反模式 4 条｜G4 交付与未决项齐备；V 门 4 视角 6 条异议。
+
+| 篇 | 主题 | 原文区间 |
+|---|---|---|
+| 11 | [R — 客观事实（G1，28 条）](11-retro-facts.md) | L11–L58 |
+| 12 | [I — 洞察（G2，4 条四元组）](12-retro-insights.md) | L61–L94 |
+| 13 | [E — 可复用模式与反模式（G3）](13-retro-patterns.md) | L97–L125 |
+| 14 | [V — 对抗审查（6 条异议）](14-retro-adversarial.md) | L128–L140 |
+| 15 | [C — 交付与未决项（G4）](15-retro-delivery.md) | L143–L170 |
+| 16 | [更新记录与复核方式](16-retro-changelog.md) | L173–L192 |
+| 17 | [附录 A — 设计基线原子化合并（A0–A12）](17-retro-appendix-a.md) | L195–L320 |
+
+## 原文导言（设计文档）
 
 > **文档性质**：设计说明（Design Note），非代码变更
 > **方法论链路**：R（事实采集）→ I（洞察）→ E（模式萃取）→ F（第一性原理）→ V（对抗审查）→ C（原子化行动）

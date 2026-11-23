@@ -1350,5 +1350,5 @@ Task 1–8 全部完成后，满足：
 ---
 
 > 复盘报告（P2-4～P2-11 全链，R → I → E → C，G1–G4 通过）：
-> [retrospective-20261121.md](retrospective-20261121.md)。
+> 已原子化并入 [libs/xuan-plugin/doc/README.md（第二部）](../../../libs/xuan-plugin/doc/README.md)，原独立文件已删除。
 
