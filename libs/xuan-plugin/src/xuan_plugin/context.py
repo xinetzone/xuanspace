@@ -8,9 +8,13 @@ from dataclasses import dataclass, field
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .plugin import Fiber, FiberState, Plugin
 
-# 单次排空的轮次上限：正常级联在 2–3 轮内收敛（提供方 → 依赖方 → 更下游）。
-# 上限用于把「互相提供且摘要每轮都变」的病态环转成可诊断错误，而不是挂死进程。
-_MAX_FLUSH_ROUNDS = 100
+# 单次排空的轮次上界按依赖图推导（见 ``Context._flush_round_limit``），不写死常量：
+# 合法级联每轮至多推进一层，链路长度不超过 Fiber 数，故上界随 Fiber 数增长，
+# 任意深的合法链都不会被误伤；固定的 100 轮会把 101 级以上的合法深链误判成
+# 病态环（P2-15）。病态环每轮都在改写实现摘要、永不收敛，必然越过该上界。
+# 下面的常量只是资源护栏：防「每轮新装 Fiber」使上界随之无限抬高的发散形态，
+# 不是语义上限。
+_FLUSH_ROUNDS_CEILING = 10_000
 
 
 class PluginNameConflictError(RuntimeError):
@@ -223,25 +227,45 @@ class Context:
                 else:
                     self._deferred.clear()
 
+    def _flush_round_limit(self) -> int:
+        """单次排空的轮次上界：``2 × Fiber 数 + 2``，另设资源护栏。
+
+        合法级联每一轮至少把变更推进一层——本轮处理的键必然是上一轮某次装配
+        产生的，因此变更沿依赖边走一步；DAG 中路径长度不超过 Fiber 数，故
+        轮次不超过 ``Fiber 数``。收敛的环状图（如 P2-14 的恢复路径：上游停止
+        振荡后，环上每个 Fiber 的输入还会再变一次）至多再绕一圈，故取 ``2 ×
+        Fiber 数 + 2`` 作为「环上二次收敛 + 收尾一轮」的余量。上界随 Fiber 数
+        增长，任意深的合法链都不会被误伤（P2-15：固定 100 轮会误伤 101 级
+        以上的合法深链）。
+
+        病态环每轮都改写实现摘要、永不收敛，必然越过该上界。动态装配——
+        ``apply`` 内调用 ``ctx.plugin``——会让 Fiber 数在排空期间增长，上界随之
+        抬高；``_FLUSH_ROUNDS_CEILING`` 只防「每轮新装 Fiber」导致的资源型发散。
+        """
+        return min(2 * len(self._fibers) + 2, _FLUSH_ROUNDS_CEILING)
+
     def _flush_notifications(self) -> None:
         """排空待处理通知，直到没有新的依赖变更产生。
 
         排空期间回填事务态：依赖方装配时产生的新供应继续入队，由下一轮统一
-        处理，而不是递归刷新——这是「一次变更一次传播」的关键。轮次上限把病态
-        环转成可诊断错误：超过 ``_MAX_FLUSH_ROUNDS`` 轮时**不修改** ``_deferred``
-        （保留当前待处理键），由下一次 :meth:`notify` 或 :meth:`batch` 重试；
-        ``dispose`` 以 ``flush=False`` 显式丢弃。``_batch_depth`` 由 ``finally``
-        复位，故失败后上下文仍可继续使用。
+        处理，而不是递归刷新——这是「一次变更一次传播」的关键。轮次上界由
+        :meth:`_flush_round_limit` 按 Fiber 数推导，把病态环转成可诊断错误：
+        超过上界时**不修改** ``_deferred``（保留当前待处理键），由下一次
+        :meth:`notify` 或 :meth:`batch` 重试；``dispose`` 以 ``flush=False``
+        显式丢弃。``_batch_depth`` 由 ``finally`` 复位，故失败后上下文仍可
+        继续使用。
         """
         self._batch_depth += 1
         try:
             rounds = 0
             while self._deferred:
                 rounds += 1
-                if rounds > _MAX_FLUSH_ROUNDS:
+                limit = self._flush_round_limit()
+                if rounds > limit:
                     pending = ", ".join(sorted(self._deferred))
                     raise RuntimeError(
-                        f"通知排空 {rounds} 轮仍未收敛（上限 {_MAX_FLUSH_ROUNDS} 轮），待处理键：{pending}"
+                        f"通知排空 {limit} 轮仍未收敛"
+                        f"（轮次上界 {limit} 轮，当前 Fiber 数 {len(self._fibers)}），待处理键：{pending}"
                     )
                 names = frozenset(self._deferred)
                 self._deferred.clear()

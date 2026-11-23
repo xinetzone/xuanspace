@@ -1,8 +1,8 @@
 # tasks.md 实施台账
 
-> 本文件为索引：正文已按语义增量原子化为 8 个分卷，共 27 个 `## Task` 块。
+> 本文件为索引：正文已按语义增量原子化为 8 个分卷，共 28 个 `## Task` 块。
 > 逐字节保真：各卷去掉页首横幅后顺序拼接，与冻结原件在「链接改指归一化」后 SHA-256 一致
-> （`65bfbf9735d9f06e60e6c5f5e9acde28e7bb0ffc1920ef39adfd010d5f859eb0`，116968 字节 / 1544 行）。
+> （`52922177540a3f035f3fe8f221f5b2dc090460738400dc2a585e8703661ec105`，121183 字节 / 1599 行）。
 > 改指记录：无。
 > 冻结原件：[../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r2/raw/tasks.md](../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r2/raw/tasks.md)（`volumize.py check` 可复验）。
 > 正文权威值在各分卷；本表由 `volumize.py check` 机检，**请勿手改**。
@@ -18,7 +18,7 @@
 | 04-p1-kernel-cli.md | 增量三 P1：清单、求解器、CLI 插件化 | L466–L659 | 16778 | 3 | `c645935de92a…` | `3aee9530626c…` |
 | 05-p2-a-build-ffi.md | P2-A：构建后端、compose、FFI 试点 | L660–L840 | 14109 | 3 | `1c363a81ae2b…` | `64b3eeba347f…` |
 | 06-p2-b-lifecycle.md | P2-B：生命周期、热替换、传播、摘要 | L841–L1111 | 20574 | 4 | `14f5f9aa5691…` | `1c6762842a1c…` |
-| 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径 | L1112–L1544 | 34836 | 7 | `f88a4985022d…` | `fb84f93d6756…` |
+| 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径 | L1112–L1599 | 39051 | 8 | `5d22e8789fac…` | `d5fc1ada6955…` |
 
 ## 任务总表（派生视图）
 
@@ -53,3 +53,4 @@
 | `P2-12-1` | 供应即撤销（`provide` 自动登记效应） | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-13-1` | 诊断图与求解器冲突同口径（`build_graph` 不再静默择一） | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-14-1` | 通知排空失败保留待处理集合并可重试 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
+| `P2-15-1` | 排空轮次上界改为按 Fiber 数推导，消除对合法深链的误伤 | `completed` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |

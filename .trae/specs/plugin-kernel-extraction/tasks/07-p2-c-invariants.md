@@ -1,4 +1,4 @@
-> 分卷来源：`tasks.md` 原文 L1112–L1544（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
+> 分卷来源：`tasks.md` 原文 L1112–L1599（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
 > 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：（无）
 > 主题：P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径
 ## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
@@ -428,6 +428,61 @@
     变化 → 继续重载」。若 `_digest` 改为按类型取摘要，用例会因不再振荡而在
     `pytest.raises(..., match="未收敛")` 处失败，不会静默「通过」；当前 `_digest` 对基础类型
     走 `f"{type(value).__name__}:{value!r}"`，契约明确。
+
+## Task P2-15-1: 排空轮次上界改为按 Fiber 数推导，消除对合法深链的误伤
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-14-1（`5b9a900`）；处置 P2-14 Notes V4 遗留
+- **Description**:
+  - 缺口：`_MAX_FLUSH_ROUNDS = 100` 是固定常量，而合法依赖链的排空轮次随链深线性
+    增长——101 级以上的合法级联会在第 101 轮被误判为病态环，抛「通知排空 … 轮仍未
+    收敛」，把正常装配变成不可用。
+  - 判据：合法图每一轮至少把变更推进一层（本轮处理的键必然由上一轮某次装配产生），
+    DAG 的路径长度不超过 Fiber 数，故合法 DAG 的轮次不超过 Fiber 数；收敛的环状图
+    （上游停止振荡后的恢复路径）至多再绕一圈。据此把上界改为 `2 × Fiber 数 + 2`，
+    并与 `_FLUSH_ROUNDS_CEILING = 10_000`（资源护栏，非语义上限）取小。
+  - 改动：
+    - `context.py`：删除 `_MAX_FLUSH_ROUNDS`，新增 `_flush_round_limit()`（每轮按当前
+      Fiber 数重算，动态装配时上界自动抬高）与护栏常量；超限错误信息改为
+      「轮次上界 N 轮，当前 Fiber 数 M」；
+    - `test_notification_batch.py`：新增 120 级合法深链收敛用例、病态环按 Fiber 数
+      上界失败的用例。
+- **Acceptance Criteria Addressed**: 合法深链不得被轮次上限误伤；病态环仍在有限轮次内
+  转成可诊断错误；P2-14 的「残留保留 + 下次通知重试」语义不变
+- **Test Requirements**:
+  - `rule` TR-P2.15-1: 120 级链式 inject/provide 在单次通知后全部 ACTIVE、`_deferred`
+    清空、注册键数 = 121；证据：`test_deep_legal_chain_needs_one_round_per_level`
+  - `rule` TR-P2.15-2: 2 个 Fiber 的振荡环在「上界由 Fiber 数推导」处抛错且残留键保留；
+    证据：`test_pathological_cycle_hits_fiber_count_bound`
+  - `rule` TR-P2.15-3: 既有 P2-14 残留重试与拆除安全用例不回归；证据：
+    `test_flush_overflow_keeps_pending_and_next_notify_drains`、
+    `test_dispose_after_flush_overflow_is_safe`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **130 passed**（P2-14 基线 128，新增 2）；
+    第一批 → **216 passed**（45 + 130 + 7 + 34）；
+  - `tools/okf` → **259 passed**（无回归）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 89 文件已格式化；
+    `mypy` → 41 源文件无问题；`check_pyproject_style.py`（18）、
+    `check_dependency_direction.py`（347）、`check_spec_integrity.py`
+    （本轮后 **41** 个任务编号）通过；`check_declaration_consistency.py` 既有 1 项
+    失败（清单快照过期，与本轮无关）；
+  - 实机：`xs plugin apply` → 3 节点 ACTIVE、16 条命令、20 键对账一致；
+    `xs plugin graph` → 3 插件 / 20 键 / 未解析 0 / 冲突 0。
+- **Notes**:
+  - **V1 为什么是 2 × Fiber 数 + 2**：DAG 上界为 Fiber 数；P2-14 的恢复路径实测需要
+    「链深 + 环上再绕一圈」，故留一倍余量并加一轮收尾。
+  - **V2 被否方案一：直接调大常量**（1000/10000）——仍会误伤更深合法链，且病态环的
+    失败时延线性上升，治标不治本。
+  - **V3 被否方案二：同态重复检测**——P2-14 的振荡环每轮键集恒为 `{x, y}`，但实现摘要
+    每轮都变，按「键集是否重复」判定会漏检；合法深链每轮键集也不同，该判据无理论边界。
+  - **V4 被否方案三：每 Fiber 重载次数上限**——合法 DAG 中同一 Fiber 可因多条上游路径
+    多次重载（菱形依赖），次数上限难取，且需额外状态，复杂度高于轮次上界。
+  - **V5 被否方案四：一次性拓扑排序求解**——会改变「一次变更一次传播」的观测语义
+    （apply/undo 顺序、静态插件抑制计数），破坏既有 11 条传播用例。
+  - **V6 异步 apply 的复核点**：上界依赖「每轮推进一层」；若将来 apply 支持 await
+    交错，需重新论证。`_flush_round_limit()` 每轮按当前 Fiber 数重算，动态装配场景
+    已自动适配。
 
 ---
 

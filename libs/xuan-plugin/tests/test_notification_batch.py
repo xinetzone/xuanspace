@@ -285,3 +285,41 @@ def test_dispose_after_flush_overflow_is_safe() -> None:
     assert ctx.registered_keys() == ()
     assert ctx._deferred == set()
     assert ctx._batch_depth == 0
+
+
+def _chain_plugin(level: int) -> Plugin:
+    """第 ``level`` 级链式插件：只注入上一级键、提供本级键。"""
+
+    def apply(ctx, config) -> None:
+        ctx.provide(f"k{level}", object())
+
+    return Plugin(f"P{level}", apply, inject=[InjectSpec(f"k{level - 1}")])
+
+
+def test_deep_legal_chain_needs_one_round_per_level() -> None:
+    """合法深链每轮只推进一层：深度 120 必须收敛，不得被固定轮次上限误判为病态环。
+
+    合法 DAG 的排空轮次不超过链路深度（每轮至多推进一层），而深度不超过
+    Fiber 数——故上界必须由 Fiber 数推导，不能写成固定常量。
+    """
+    depth = 120
+    ctx = Context()
+    fibers = [ctx.plugin(_chain_plugin(level)) for level in range(1, depth + 1)]
+    assert all(fiber.state is FiberState.INACTIVE for fiber in fibers)
+
+    ctx.provide("k0", object())
+
+    assert all(fiber.state is FiberState.ACTIVE for fiber in fibers)
+    assert ctx._deferred == set()
+    assert len(ctx.registered_keys()) == depth + 1
+
+
+def test_pathological_cycle_hits_fiber_count_bound() -> None:
+    """病态环的失败上界由 Fiber 数推导，而不是写死的固定轮次。"""
+    ctx, _clock = _oscillating_context()
+
+    with pytest.raises(RuntimeError, match="当前 Fiber 数 2"):
+        with ctx.batch():
+            ctx.provide("y", 0)
+
+    assert ctx._deferred != set()
