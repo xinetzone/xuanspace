@@ -9,7 +9,7 @@ Xuanspace 插件内核：可逆装配、能力注册与生命周期管理。
 - **可撤销效果**：每个副作用在注册时返回逆操作，退役即回滚；
 - **反应式协效应**：组件声明依赖集合，依赖实现变化时仅受影响组件退役重插；
 - **能力注册**：服务按能力键注册与查找，同装配内提供集合两两不交；
-- **生命周期状态机**：`PENDING` / `LOADING` / `ACTIVE` / `UNLOADING` / `DISPOSED` / `FAILED` 六态；
+- **生命周期状态机**：`PENDING` / `INACTIVE` / `LOADING` / `ACTIVE` / `UNLOADING` / `FAILED` / `DISPOSED` 七态；
 - **装配求解**：清单解析（K2）、确定性拓扑定序、隔离域、声明/实际对账与失败回滚。
 
 ## 边界
@@ -32,3 +32,7 @@ from xuan_plugin import Context, Plugin
 ctx = Context()
 ctx.plugin(Plugin(name="demo", apply=lambda c, cfg: None))
 ```
+
+## 设计文档
+
+设计说明按章节分卷存放于 [doc/README.md](doc/README.md)：事实基线、洞察、七模式、XPC 方案、对抗审查、落地计划、P1-2 复盘与 ADR；逐页行区间与源文指纹见 [doc/MANIFEST.md](doc/MANIFEST.md)。
