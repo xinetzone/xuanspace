@@ -25,6 +25,10 @@
 > **执行进度**：
 >
 > - P1-2 已于 2026-11-21 落地（提交 `a8be022`、`da39463`），事实、根因与后续行动见 §8；P1-3 为下一阶段。
+> - P3-2（H 类断言入 CI）已于 2026-11-23 落地（提交 `e4f393e`）。
+> - P3-1（lock 与快照合并）已于 2026-11-23 落地生成器与 H4 断言：`xuan.plugins.lock`
+>   由当前清单重算（`check_plugin_contract.py --write-lock`），H4 在 CI 生效；
+>   既有 `scripts/declaration-snapshot.json` 作为派生快照保留，退役与否待定。
 > - P2-4 起为本方案落地期按真实缺口顺延的编号（设计表官方 P2 编号只到 P2-3），均已落地，并逐条回填 `.trae/specs/plugin-kernel-extraction/tasks.md`：
 >
 > | 顺延编号 | 缺口 / 主题 | 提交 |

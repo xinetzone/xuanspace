@@ -1,5 +1,5 @@
 > 分卷来源：`tasks.md` 原文 L1817–L1852（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
-> 上册：[../tasks.md](../tasks.md) · 上一卷：08-p2-d-doc-grouping.md · 下一卷：（无）
+> 上册：[../tasks.md](../tasks.md) · 上一卷：08-p2-d-doc-grouping.md · 下一卷：10-p3-b-lock.md
 > 主题：P3-A：H 类插件契约断言接入 CI
 ## Task P3-2-1: H 类插件契约断言接入 CI（设计 §5.7）
 

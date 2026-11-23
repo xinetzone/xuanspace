@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "id": "xs.commands",
+      "digest": "sha256:9df2d885ffa7dd5e8492d9f9b24d8b536ba9bd6ef9d7ac582a4f1c2e95266a1a"
+    },
+    {
+      "id": "xuan.build",
+      "digest": "sha256:2ca3efb3a4f5a426e80dd531fab68545eec785dd2f0793aaa76a441fc190774d"
+    },
+    {
+      "id": "xuan.ffi",
+      "digest": "sha256:dd2928a6d18459f526bbea51547bc6f6b294bef6668fe1eb7714a0b11c135009"
+    }
+  ]
+}

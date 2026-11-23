@@ -21,8 +21,8 @@
 | D1 kernel 下沉 `libs/xuan-plugin` | `tools → libs` 为允许方向；okf 反向依赖 | **已落地**：库存在，六次提交在其上加固（F1–F6） |
 | D2 能力键 `xuan:<domain>/<owner>#<api>` | 键稳定、命名空间隔离 | **部分**：`ServiceDefinition.name` 为自由字符串，命名空间语法未在 kernel 强制 |
 | D3 登记返回 `Disposable` | 禁止裸副作用 | **已落地**：`Fiber.effect` 返回 undo，`_unload` 逆序撤销、异常聚合 |
-| D4 `xuan.plugins.lock` 单一权威视图 | 快照由系统派生 | **未落地**：现为 `scripts/declaration-snapshot.json`，`check_declaration_consistency.py` 2 项失败（F18） |
-| D5 H 类断言入 CI | 可解/隔离/撤销/视图一致 | **未落地**：现行门禁为 A–G 类 + ruff/mypy（F12–F17） |
+| D4 `xuan.plugins.lock` 单一权威视图 | 快照由系统派生 | **部分落地**：`xuan.plugins.lock` 由清单重算（`--write-lock`）并被 H4 断言（P3-1）；既有 `declaration-snapshot.json` 仍作派生快照保留，退役待定 |
+| D5 H 类断言入 CI | 可解/隔离/撤销/视图一致 | **已落地**：`scripts/check_plugin_contract.py` H1–H5 接入 CI quality job（`e4f393e`，P3-2） |
 | D6 默认关闭自动发现 | 集合发现须显式 | 本轮未核验 |
 | D7 原生 `lifecycle="static"` | `.so` 不可卸载 | **已落地**：`test_static_plugin_suppresses_hot_reload`、`test_static_plugin_still_retires_handles_on_dispose` |
 
@@ -103,8 +103,8 @@ P1 能力键（5 步）｜P2 可撤销装配（5 步）｜P3 版本化上下文�
 | P2-1 构建后端 multi | 台账 P2-1-1 已登记完成 |
 | P2-2 compose 指令登记化 | 已完成（`46f0e47`） |
 | P2-3 FFI 能力键 | 已完成（`ea2fc0e`） |
-| P3-1 lock 与快照合并 | 未开始（D4 未落地） |
-| P3-2 H 类断言入 CI | 未开始（D5 未落地） |
+| P3-1 lock 与快照合并 | 部分落地：`xuan.plugins.lock` 生成器与 H4 断言生效（P3-1）；快照退役待定 |
+| P3-2 H 类断言入 CI | 已完成（`e4f393e`） |
 | P3-3 `xs plugin new/verify/why` | 本轮未核验 |
 
 ### A10 度量与止损（源 §8）
@@ -121,7 +121,7 @@ P1 能力键（5 步）｜P2 可撤销装配（5 步）｜P3 版本化上下文�
 
 ### A11 决策记录 ADR-01～05（源 §9.4）
 
-ADR-01 新建 `libs/xuan-plugin`（Accepted，已落地）；ADR-02 默认关闭动态发现（Accepted，本轮未核验）；ADR-03 原生静态生命周期（Accepted，已落地，回退条件为「无」）；ADR-04 锁单向派生、不做双写（Accepted，未落地）；ADR-05 多提供者「priority 定序 + 显式覆盖 + 同值报错」（Accepted，**未落地**：`ServiceRegistry.lookup` 仍取 `providers[0]`，与 ADR-05 直接冲突，见未决项 2）。
+ADR-01 新建 `libs/xuan-plugin`（Accepted，已落地）；ADR-02 默认关闭动态发现（Accepted，本轮未核验）；ADR-03 原生静态生命周期（Accepted，已落地，回退条件为「无」）；ADR-04 锁单向派生、不做双写（Accepted，已落地生成器与 H4 断言，P3-1；`declaration-snapshot.json` 退役待定）；ADR-05 多提供者「priority 定序 + 显式覆盖 + 同值报错」（Accepted，**未落地**：`ServiceRegistry.lookup` 仍取 `providers[0]`，与 ADR-05 直接冲突，见未决项 2）。
 
 ### A12 边界（源 §0.3）
 

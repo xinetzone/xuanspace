@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+from xuan_plugin.lock import plugin_digest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "check_plugin_contract.py"
@@ -184,7 +185,7 @@ def test_lock_consistent_with_declarations_passes(checker, tmp_path, capsys) -> 
     assert issues == []
     lock = {
         "schema": 1,
-        "plugins": [{"id": p.manifest.id, "digest": checker.plugin_digest(p.manifest)} for p in plugins],
+        "plugins": [{"id": p.manifest.id, "digest": plugin_digest(p.manifest)} for p in plugins],
     }
     _write(tmp_path / "xuan.plugins.lock", json.dumps(lock, ensure_ascii=False, indent=2))
 
@@ -192,3 +193,41 @@ def test_lock_consistent_with_declarations_passes(checker, tmp_path, capsys) -> 
 
     assert code == 0
     assert "与清单重算一致" in out
+
+
+def test_write_lock_generates_consistent_lock(checker, tmp_path, capsys) -> None:
+    make_plugin(tmp_path, "provider", "p.provider", provide=PROVIDE)
+    make_plugin(tmp_path, "consumer", "c.consumer", inject=INJECT)
+
+    assert checker.main(["--root", str(tmp_path), "--write-lock"]) == 0
+    capsys.readouterr()
+    lock = json.loads((tmp_path / "xuan.plugins.lock").read_text(encoding="utf-8"))
+
+    assert lock["schema"] == 1
+    assert [item["id"] for item in lock["plugins"]] == ["c.consumer", "p.provider"]
+
+    code, out = _run(checker, tmp_path, capsys)
+    assert code == 0
+    assert "与清单重算一致（2 个插件）" in out
+
+
+def test_write_lock_is_idempotent(checker, tmp_path, capsys) -> None:
+    make_plugin(tmp_path, "solo", "a.solo", provide=PROVIDE)
+    assert checker.main(["--root", str(tmp_path), "--write-lock"]) == 0
+    capsys.readouterr()
+
+    assert checker.main(["--root", str(tmp_path), "--write-lock"]) == 0
+
+    assert "已是目标状态" in capsys.readouterr().out
+
+
+def test_lock_stale_after_manifest_change_is_reported(checker, tmp_path, capsys) -> None:
+    make_plugin(tmp_path, "solo", "a.solo", provide=PROVIDE)
+    assert checker.main(["--root", str(tmp_path), "--write-lock"]) == 0
+    capsys.readouterr()
+    make_plugin(tmp_path, "solo", "a.solo", priority=5, provide=PROVIDE)
+
+    code, out = _run(checker, tmp_path, capsys)
+
+    assert code == 1
+    assert "H4 视图一致性" in out and "a.solo" in out

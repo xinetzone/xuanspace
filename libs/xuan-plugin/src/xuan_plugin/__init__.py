@@ -7,6 +7,7 @@
 from .assembly import AssemblyResult, assemble
 from .context import Context, PluginNameConflictError
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
+from .lock import LOCK_SCHEMA, build_lock, lock_diff, plugin_digest, render_lock
 from .manifest import (
     Edge,
     InjectDecl,
@@ -48,6 +49,7 @@ __all__ = [
     "InactiveReason",
     "InjectDecl",
     "InjectSpec",
+    "LOCK_SCHEMA",
     "ManifestError",
     "Plugin",
     "PluginGraph",
@@ -63,9 +65,13 @@ __all__ = [
     "SolveErrorKind",
     "assemble",
     "build_graph",
+    "build_lock",
+    "lock_diff",
     "manifest_from_pyproject",
     "merge_manifests",
     "parse_manifest",
+    "plugin_digest",
     "reconcile",
+    "render_lock",
     "solve",
 ]

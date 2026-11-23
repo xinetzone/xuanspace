@@ -1,7 +1,7 @@
 {
-  "source_sha256": "af0546dca6b7e4f935b6a93a4035290db8aae2c2aa2d3025fcc1a2d833a4b3dc",
-  "source_bytes": 140655,
-  "source_lines": 1852,
+  "source_sha256": "28e0c1e77ab6707b2ec24b9a71a2a542afe17c1981a183a03eca52f380265dba",
+  "source_bytes": 143421,
+  "source_lines": 1891,
   "volumes": [
     {
       "file": "00-overview.md",
@@ -159,10 +159,24 @@
       "banner_lines": 3,
       "body_bytes": 2508,
       "body_sha256": "9bd5f3e602e085aa2a9d04a0bee9cd36c75b351dc42d253186cf2f276c842d0f",
-      "file_bytes": 2791,
-      "file_sha256": "0227617dfdfc018905cb73411574cc6488fb08a5b7ea8cf3894c4f828ec0b85a",
+      "file_bytes": 2797,
+      "file_sha256": "a7e09c7a41d288c401f1f11fc53247f4589f646d5e5aef7fb0230e2860415f19",
       "task_ids": [
         "P3-2-1"
+      ]
+    },
+    {
+      "file": "10-p3-b-lock.md",
+      "topic": "P3-B：xuan.plugins.lock 生成器与 H4 生效",
+      "start": 1852,
+      "end": 1891,
+      "banner_lines": 3,
+      "body_bytes": 2765,
+      "body_sha256": "c702db065f9b0dfb25b22bdda7a7dd1ef3243736bc3fca63ef5b3c80478adc98",
+      "file_bytes": 3057,
+      "file_sha256": "3f2494a1dce529ecb2c0b107dc5c89228ceaf5e527616fec46a6cbe0fcc8f7d1",
+      "task_ids": [
+        "P3-1-2"
       ]
     }
   ]

@@ -17,7 +17,7 @@
       H4 视图一致性：``xuan.plugins.lock`` 存在时，须等于由当前清单重算的规范
                  JSON（``schema``=1，``plugins`` 按 id 排序，``digest`` 为清单契约
                  的 sha256）；不一致时逐 id 给出期望/实际差异。lock 不存在时
-                 跳过（lock 尚未落地，不判失败）。
+                 跳过并在输出中提示（lock 为派生产物，可用 ``--write-lock`` 生成）。
       H5 结构兼容：``inject.constraint`` 的 ``methods:<m1,m2>`` 中每个方法须存在
                  于提供者入口模块（函数/类/模块级名字）；列出消费者的缺失方法。
                  其他约束语法无法静态校验，判失败并提示支持的语法。
@@ -26,14 +26,14 @@
       （CI quality job 在此步骤前已安装该包）；入口模块解析与 AST 扫描为本地实现。
 
 用法：python scripts/check_plugin_contract.py [--root PATH]
+      python scripts/check_plugin_contract.py --write-lock   # 生成模式：写入 lock
 退出码：0 全部通过；1 存在契约违规；2 仓库结构异常（未扫描到任何插件清单）。
 
-幂等性：只读检查，无副作用，重复执行结果一致。
+幂等性：检查模式只读；``--write-lock`` 仅在内容变化时写盘，重复执行无副作用。
 """
 
 import argparse
 import ast
-import hashlib
 import json
 import re
 import sys
@@ -42,6 +42,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from xuan_plugin.lock import build_lock, lock_diff, render_lock
 from xuan_plugin.manifest import (
     ManifestError,
     PluginManifest,
@@ -72,7 +73,6 @@ IGNORED_DIR_NAMES = {
 }
 
 LOCK_FILENAME = "xuan.plugins.lock"
-LOCK_SCHEMA = 1
 ENTRY_POINT_GROUP = "xuan.plugins"
 CONSTRAINT_PREFIX = "methods:"
 
@@ -296,76 +296,31 @@ def check_h3(root: Path, plugins: Sequence[DeclaredPlugin]) -> list[str]:
     return issues
 
 
-def plugin_digest(manifest: PluginManifest) -> str:
-    """清单契约摘要：去除 ``source`` 后的规范 JSON 的 sha256。"""
-    payload = {
-        "id": manifest.id,
-        "version": manifest.version,
-        "provide": [[decl.key, decl.mode] for decl in manifest.provide],
-        "inject": [[decl.key, decl.optional, decl.constraint] for decl in manifest.inject],
-        "isolate": list(manifest.isolate),
-        "reversible": manifest.reversible,
-        "priority": manifest.priority,
-        "disabled": manifest.disabled,
-        "lifecycle": manifest.lifecycle,
-    }
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def expected_lock(manifests: Iterable[PluginManifest]) -> dict:
-    """由当前清单重算的规范 lock 视图。"""
-    return {
-        "schema": LOCK_SCHEMA,
-        "plugins": [
-            {"id": manifest.id, "digest": plugin_digest(manifest)} for manifest in sorted(manifests, key=lambda m: m.id)
-        ],
-    }
-
-
-def _lock_diff(expected: dict, actual: object) -> str:
-    """逐 id 比对 lock 与重算视图，返回可读差异。"""
-    if not isinstance(actual, dict):
-        return f"期望 JSON 对象，实际为 {type(actual).__name__}"
-    parts: list[str] = []
-    if actual.get("schema") != expected["schema"]:
-        parts.append(f"schema 期望 {expected['schema']}、实际 {actual.get('schema')!r}")
-    actual_plugins = actual.get("plugins")
-    if not isinstance(actual_plugins, list):
-        parts.append("plugins 字段缺失或不是数组")
-        return "；".join(parts)
-    actual_digests: dict[str, object] = {}
-    for item in actual_plugins:
-        if isinstance(item, dict) and isinstance(item.get("id"), str):
-            actual_digests[item["id"]] = item.get("digest")
-    expected_digests = {item["id"]: item["digest"] for item in expected["plugins"]}
-    for plugin_id in sorted(expected_digests):
-        if plugin_id not in actual_digests:
-            parts.append(f"缺少插件 {plugin_id}")
-        elif actual_digests[plugin_id] != expected_digests[plugin_id]:
-            parts.append(
-                f"{plugin_id} digest 期望 {expected_digests[plugin_id][:19]}…、实际 {str(actual_digests[plugin_id])[:19]}…"
-            )
-    for plugin_id in sorted(set(actual_digests) - set(expected_digests)):
-        parts.append(f"多出插件 {plugin_id}（当前声明中不存在）")
-    if not parts:
-        parts.append("plugins 顺序或字段不规范（期望按 id 排序、仅含 id 与 digest）")
-    return "；".join(parts)
-
-
 def check_h4(root: Path, manifests: Sequence[PluginManifest]) -> tuple[list[str], str]:
     """H4：lock 必须可由当前清单重算得到。返回（问题列表, 状态描述）。"""
     lock_path = root / LOCK_FILENAME
     if not lock_path.is_file():
-        return [], f"H4 视图一致性：未发现 {LOCK_FILENAME}，跳过（lock 尚未落地）"
+        return [], f"H4 视图一致性：未发现 {LOCK_FILENAME}，跳过（可用 --write-lock 生成）"
     try:
         actual = json.loads(lock_path.read_text(encoding="utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return [f"H4 视图一致性：{LOCK_FILENAME} 不可解析（{exc}）"], ""
-    expected = expected_lock(manifests)
+    expected = build_lock(manifests)
     if actual == expected:
         return [], f"H4 视图一致性：{LOCK_FILENAME} 与清单重算一致（{len(expected['plugins'])} 个插件）"
-    return [f"H4 视图一致性：{LOCK_FILENAME} 与清单重算不一致：{_lock_diff(expected, actual)}"], ""
+    return [f"H4 视图一致性：{LOCK_FILENAME} 与清单重算不一致：{lock_diff(expected, actual)}"], ""
+
+
+def write_lock(root: Path, manifests: Sequence[PluginManifest]) -> int:
+    """生成模式：把当前清单的规范 lock 写入仓库根（幂等）。"""
+    path = root / LOCK_FILENAME
+    content = render_lock(manifests)
+    if path.is_file() and path.read_text(encoding="utf-8") == content:
+        print(f"{LOCK_FILENAME} 已是目标状态，跳过（{len(manifests)} 个插件）")
+        return 0
+    path.write_text(content, encoding="utf-8", newline="\n")
+    print(f"已写入 {LOCK_FILENAME}：{len(manifests)} 个插件")
+    return 0
 
 
 def _defined_names(path: Path) -> set[str]:
@@ -434,8 +389,9 @@ def check_h5(plugins: Sequence[DeclaredPlugin]) -> list[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="插件契约 H 类断言（H1–H5，只读）")
+    parser = argparse.ArgumentParser(description="插件契约 H 类断言（H1–H5）与 lock 生成")
     parser.add_argument("--root", type=Path, default=None, help="仓库根目录（默认按脚本位置推断）")
+    parser.add_argument("--write-lock", action="store_true", help="生成模式：把当前清单的规范 lock 写入仓库根")
     args = parser.parse_args(argv)
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
 
@@ -452,6 +408,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ManifestError as exc:
         issues.append(f"清单合并失败：{exc}")
         merged = tuple(sorted({manifest.id: manifest for manifest in manifests}.values(), key=lambda m: m.id))
+
+    if args.write_lock:
+        return write_lock(root, merged)
 
     print(f"扫描到 {len(merged)} 份插件清单：{', '.join(manifest.id for manifest in merged)}")
 

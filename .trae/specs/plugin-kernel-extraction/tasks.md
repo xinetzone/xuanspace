@@ -1,10 +1,10 @@
 # tasks.md 实施台账
 
-> 本文件为索引：正文已按语义增量原子化为 10 个分卷，共 33 个 `## Task` 块。
+> 本文件为索引：正文已按语义增量原子化为 11 个分卷，共 34 个 `## Task` 块。
 > 逐字节保真：各卷去掉页首横幅后顺序拼接，与冻结原件在「链接改指归一化」后 SHA-256 一致
-> （`af0546dca6b7e4f935b6a93a4035290db8aae2c2aa2d3025fcc1a2d833a4b3dc`，140655 字节 / 1852 行）。
+> （`28e0c1e77ab6707b2ec24b9a71a2a542afe17c1981a183a03eca52f380265dba`，143421 字节 / 1891 行）。
 > 改指记录：无。
-> 冻结原件：[../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r3/raw/tasks.md](../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r3/raw/tasks.md)（`volumize.py check` 可复验）。
+> 冻结原件：[../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r4/raw/tasks.md](../../../../../../../../../.agents/archive/plugin-kernel-tasks-20261123-r4/raw/tasks.md)（`volumize.py check` 可复验）。
 > 正文权威值在各分卷；本表由 `volumize.py check` 机检，**请勿手改**。
 
 ## 分卷索引
@@ -20,7 +20,8 @@
 | 06-p2-b-lifecycle.md | P2-B：生命周期、热替换、传播、摘要 | L841–L1111 | 20574 | 4 | `14f5f9aa5691…` | `1c6762842a1c…` |
 | 07-p2-c-invariants.md | P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径 | L1112–L1774 | 53169 | 11 | `1149660e7715…` | `3c99abcec859…` |
 | 08-p2-d-doc-grouping.md | P2-D：设计文档按主题分组 | L1775–L1816 | 3149 | 1 | `4ec7d11d10d0…` | `756509070e1f…` |
-| 09-p3-a-contract-gate.md | P3-A：H 类插件契约断言接入 CI | L1817–L1852 | 2791 | 1 | `9bd5f3e602e0…` | `0227617dfdfc…` |
+| 09-p3-a-contract-gate.md | P3-A：H 类插件契约断言接入 CI | L1817–L1852 | 2797 | 1 | `9bd5f3e602e0…` | `a7e09c7a41d2…` |
+| 10-p3-b-lock.md | P3-B：xuan.plugins.lock 生成器与 H4 生效 | L1853–L1891 | 3057 | 1 | `c702db065f9b…` | `3f2494a1dce5…` |
 
 ## 任务总表（派生视图）
 
@@ -61,3 +62,4 @@
 | `P2-18-1` | `xs plugin why <id>` 输出失活因果链（设计 V4 / 度量 M5） | `未标注` | [07-p2-c-invariants.md](tasks/07-p2-c-invariants.md) |
 | `P2-19-1` | 文档按主题分组（三目录 + 重编号 + 改链） | `completed` | [08-p2-d-doc-grouping.md](tasks/08-p2-d-doc-grouping.md) |
 | `P3-2-1` | H 类插件契约断言接入 CI（设计 §5.7） | `completed` | [09-p3-a-contract-gate.md](tasks/09-p3-a-contract-gate.md) |
+| `P3-1-2` | `xuan.plugins.lock` 生成器与 H4 视图一致性生效（设计 §7 P3-1） | `completed` | [10-p3-b-lock.md](tasks/10-p3-b-lock.md) |
