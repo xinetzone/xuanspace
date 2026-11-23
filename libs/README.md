@@ -163,6 +163,87 @@ build-backend = "scikit_build_core.build"
 把根发行版聚合为携带本目录业务代码的大包（与根 `pyproject.toml` 中“各独立发行版”的设计相悖，
 且放大对方依赖面）。
 
+### 消费方三通道（按形态选择）
+
+跨仓消费方先判定形态，再按对应通道接入。三种形态的共同前提：
+
+1. 本目录全部库声明 `requires-python = ">=3.14.6"`；消费方基线低于此值时，只能在「下调上游基线」与「源码复制」之间选择，不能用路径注入绕过。
+2. 发行名与 import 名不同（`xuan-cmd` → `xuan_cmd`）：安装用发行名，代码用 import 名。
+3. 制品必须钉死版本（如 `==0.1.0`），交付场景不使用版本范围。
+
+#### 形态 A：使用 Python API
+
+适用于将 `xuan-plugin`（插件内核）、`xuan-project`（项目发现与 pyproject 解析）、`xuan-cmd`（命令装配与路径解析）、`xuan-ffi`、`xuan-build` 作为库导入。
+
+在仓库根构建制品（默认输出到 `dist/libs/<库名>/`，含 `CHECKSUMS`）：
+
+```bash
+python scripts/build_lib_dist.py --lib xuan-cmd --outdir /srv/wheels
+```
+
+消费方校验并安装：
+
+```bash
+cd /srv/wheels && sha256sum -c CHECKSUMS
+pip install --no-index --find-links /srv/wheels "xuan-cmd==0.1.0"
+python -c "import xuan_cmd"
+```
+
+依赖连带关系决定需要一并分发的 wheel：
+
+| 库 | 运行时依赖 | 分发方式 |
+|---|---|---|
+| `xuan-plugin`、`xuan-project`、`xuan-cmd` | 无 | 可单独分发 |
+| `xuan-build`、`xuan-ffi` | `xuan-plugin>=0.1.0` | 须连带内核 |
+
+`xuan-core` 目前仍是占位库（见 [`libs/xuan-plugin/doc/appendix/16-appendix.md`](../libs/xuan-plugin/doc/appendix/16-appendix.md) 的 ADR-01），不作为对外 API 依赖。
+
+#### 形态 B：使用 `xs` CLI
+
+`xs-cli` 是命令行发行版（`[project.scripts] xs = "xs.cli:app"`），不是可导入的库；离线或内网安装须连带其四个依赖。
+
+```bash
+# 离线/内网安装
+pip install --no-index --find-links /srv/wheels \
+  "xs-cli==0.1.0" "xuan-plugin==0.1.0" "xuan-build==0.1.0" \
+  "xuan-ffi==0.1.0" "xuan-project==0.1.0"
+xs --help && xs doctor
+
+# 本仓内开发
+pip install -e tools/xs
+```
+
+#### 形态 C：把自有插件接入 `xs` 装配
+
+消费方在自己的 `pyproject.toml` 中声明能力与入口点，并在入口模块导出 `MANIFEST`（`PluginManifest` 实例）。缺少 `MANIFEST` 时，该入口点只能在 `xs plugin list` 的图中以最小清单出现，无法参与真实装配。
+
+```toml
+dependencies = ["xuan-plugin>=0.1.0"]
+
+[project.entry-points."xuan.plugins"]
+"acme.build" = "acme_build"
+
+[tool.xuan.plugin]
+id = "acme.build"
+version = "0.1.0"
+lifecycle = "reloadable"
+reversible = true
+priority = 60
+
+[[tool.xuan.plugin.provide]]
+key = "acme:build/backend#dispatch"
+```
+
+核验顺序：
+
+```bash
+xs plugin list               # 确认可见；source 字段区分静态声明与 entry-point
+xs plugin graph              # 检查能力键与冲突消解
+xs plugin apply --dry-run    # 取求解计划，确认可解性
+```
+
+边界：当前 `xs plugin` 只提供 `list` / `graph` / `apply` / `why`，尚无 `add` / `remove`（ADR-02 规划的显式登记未实现）。`xs plugin list` 的可见集合由「工作区内静态声明 ∪ 已安装包的 `xuan.plugins` 入口点」组成，会随当前环境变化，故不宜仅凭 `list` 判定"已接入"；`xuan.plugins.lock` 则由 `scripts/check_plugin_contract.py` 只扫描工作区 `pyproject.toml` 重算，不受已安装的第三方包影响。
+
 ### 跨仓发布流程（以 `xuan-cmd` 为例）
 
 1. **核对对方基线**：确认消费方的 `requires-python`。本库声明 `>=3.14.6`，若对方达不到，
