@@ -1,4 +1,4 @@
-> 分卷来源：`tasks.md` 原文 L1112–L1714（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
+> 分卷来源：`tasks.md` 原文 L1112–L1779（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
 > 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：（无）
 > 主题：P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径
 ## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
@@ -598,6 +598,71 @@
   - **V6 并行任务协调**：本轮开工时工作区另有装配原子性任务在改 `context.py` 与
     `test_notification_batch.py`，其先占用 P2-16-1，本任务顺延为 P2-17-1；上述文件不属
     本任务，未纳入本次变更与提交。
+
+## Task P2-18-1: `xs plugin why <id>` 输出失活因果链（设计 V4 / 度量 M5）
+
+- **Depends On**: P2-17-1（`85a4c31`）
+- **Description**:
+  - 缺口：设计文档 V4 要求 INACTIVE 携带「差哪个键、谁可能提供」，M5 要求定位根因
+    小于 1 分钟；此前只能靠 `graph` 与 `apply --dry-run` 人工串联，缺少单插件的
+    因果解释入口。
+  - 语义：`xs plugin why PLUGIN_ID` 区分五种状态——已生效（ACTIVE）、未生效
+    （INACTIVE）、已禁用（disabled）、未知 id（unknown）、装配计划无解（blocked）。
+  - 信息项：当前状态与装配位次；每条 inject 的提供者与状态；缺失键的全部候选提供者
+    （标注已生效/未生效）、被 `disabled` 排除的来源；提供者自身失活时逐层下钻到根因，
+    每层给出可执行的修复建议。失活原因只在下钻段展示一次，不与「依赖」段重复。
+  - 退出码：0 仅当被查询插件已生效；INACTIVE / disabled / unknown / blocked 均为 1。
+    这是「该插件能否生效」的问答语义，与 `graph`/`apply` 的「装配计划是否可解」区分——
+    INACTIVE 在求解层面是合法结果（`apply --dry-run` 仍返回 0），已在 CLI 文档写明。
+  - 改动：
+    - `plugin_cmd.py`：新增 `why` 子命令与 `_key_owners`、`MissingKey`、`_missing_key`、
+      `_provider_text`、`_render_chain`、`_render_missing`；候选提供者沿用求解器的
+      `(-priority, id)` 定序，等优先级并列已由 `solve` 以冲突拦截，不会出现双胜出者。
+    - `test_plugin_cmd.py`：新增 7 条用例（ACTIVE 位次、未知 id、禁用来源、因果链、
+      JSON 形态、可选降级、无解 blocked），本文件 23 → 30 条。
+    - `doc/cli/index.md`：补充 `why` 用法、状态集、退出码语义与 `PLUGIN_ID` 参数。
+- **Acceptance Criteria Addressed**: V4「INACTIVE 必须携带 reason 与差哪个键、谁可能
+  提供」；M5「`xs plugin why` 小于 1 分钟定位根因」
+- **Test Requirements**:
+  - `rule` TR-P2.18-1: 已生效插件给出装配位次与已解析依赖，退出码 0；证据：
+    `test_plugin_why_active_reports_position`、`test_plugin_why_optional_missing_is_degraded`
+  - `rule` TR-P2.18-2: INACTIVE 逐键给出候选提供者、禁用来源与下钻因果链；证据：
+    `test_plugin_why_inactive_names_disabled_source`、`test_plugin_why_chain_reaches_root_cause`、
+    `test_plugin_why_json_payload`
+  - `rule` TR-P2.18-3: 未知 id 与无解计划显式收口为 1，不伪装成可解释；证据：
+    `test_plugin_why_unknown_id_exits_nonzero`、`test_plugin_why_reports_unsolvable_plan`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `tests/test_plugin_cmd.py` → **30 passed**（原 23，新增 7）；根与三库 →
+    **230 passed**（`tests` 57 + `xuan-plugin` 132 + `xuan-build` 7 + `xuan-ffi` 34）；
+    `tools/okf` → **259 passed**；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 518 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src libs/xuan-build/src tools/xs/src`
+    → 41 源文件无问题；`check_pyproject_style.py`（18）、
+    `check_dependency_direction.py`（347）、`check_spec_integrity.py`（本轮后 44 个
+    任务编号）、`check_declaration_consistency.py`（G1-G3 全部通过）；
+  - 实机：`python -m xs.cli plugin why xs.commands` → 退出码 0，输出
+    「状态：已生效（ACTIVE）装配顺序第 2 / 3 位」与 `xuan:build/backend#dispatch
+    ← xuan.build`；`--json` → `status=active`、`position=2`、`order` 三节点；
+    `why nope` → 退出码 1 并列出 `xs.commands, xuan.build, xuan.ffi`；
+  - 失活场景（构造清单）：`a → b → 缺 xuan:demo/x#y` 输出「因果：b 缺少
+    xuan:demo/x#y → 无提供者」，并建议先修 b；`disabled` 插件输出「已禁用（disabled）」。
+- **Notes**:
+  - **V1 被否方案一：只做 `why --explain` 布尔开关**——默认路径仍需人读 `graph`；
+    诊断命令本身应当默认给全，开关只会让新人多查一次帮助。
+  - **V2 被否方案二：复用 `apply --dry-run` 的退出码（INACTIVE 返回 0）**——那会
+    把「询问某插件为何没生效」的答案伪装成成功；`why` 的退出码表达被查询插件状态，
+    与计划可解性是两个问题，已在文档与 docstring 双处写明。
+  - **V3 被否方案三：未知 id 时用编辑距离猜相似 id**——引入阈值调参与误猜风险；
+    直接列出全部插件 id（当前 3 个）已足够。
+  - **V4 被否方案四：blocked 时仍强行给出单插件链**——冲突/环下 `owner` 无定义，
+    任何链都会是编造；改为输出 `kind`/`details` 并提示修复后重试。
+  - **V5 边界：JSON 无 schema 版本字段**——只增字段、不改既有语义；若将来需要
+    稳定契约，另立任务引入显式版本。
+  - **V6 口径说明**：`_missing_key` 的深度上限 8 是纯防御；`_inactive_nodes` 的标记
+    顺序（提供者先于消费者）保证失活链无环，正常清单不会触达上限。
+  - **V7 并行任务协调**：本轮开工时 HEAD 为 `f43939d`（并行会话刷新声明快照），
+    工作树干净；本任务只改 `plugin_cmd.py`、`test_plugin_cmd.py`、`doc/cli/index.md`
+    与本台账，未纳入他人改动。
 
 ---
 

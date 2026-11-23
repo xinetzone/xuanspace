@@ -1,7 +1,7 @@
 {
-  "source_sha256": "0cd7c1f9750eb3eab1681cb406556a4d4d79752bca7fea03a3226bd5fa605d85",
-  "source_bytes": 130068,
-  "source_lines": 1714,
+  "source_sha256": "b6731e8a3f8ea96040b9be00bf73d027be308f306ca49fc7f6aa17c4e55779f0",
+  "source_bytes": 135512,
+  "source_lines": 1779,
   "volumes": [
     {
       "file": "00-overview.md",
@@ -117,12 +117,12 @@
       "file": "07-p2-c-invariants.md",
       "topic": "P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径",
       "start": 1111,
-      "end": 1714,
+      "end": 1779,
       "banner_lines": 3,
-      "body_bytes": 47601,
-      "body_sha256": "8fa5ea819da2e4bf87fe560eef33f85b2d137e3c45e5a703239d3a6346051969",
-      "file_bytes": 47936,
-      "file_sha256": "5861004c067ea73f2606dc8feb4d4bf69c5f209c0b26e380bdad7cc89ca32fea",
+      "body_bytes": 53045,
+      "body_sha256": "836201552c14a4f7b5b67340376046e488270046b61d43a47699dee272b5667c",
+      "file_bytes": 53380,
+      "file_sha256": "244eb2338b3b64ca6d8ffa3aa83bf51526835be2b1dd5bb45ede5e4425382b44",
       "task_ids": [
         "P2-8-1",
         "P2-9-1",
@@ -133,7 +133,8 @@
         "P2-14-1",
         "P2-15-1",
         "P2-16-1",
-        "P2-17-1"
+        "P2-17-1",
+        "P2-18-1"
       ]
     }
   ]
