@@ -171,11 +171,22 @@ class Context:
         事务边界的意义见 :meth:`batch`——多键提供方卸载/装载时，逐键通知会让
         注入多键的依赖方在中间视图上反复装/卸；登记后统一排空，依赖方只按
         最终视图判定一次。
+
+        若上一次排空因超出轮次上限而失败，``_deferred`` 会保留未处理的键（见
+        :meth:`_flush_notifications`）。此时事务外的任何通知都不能走「只刷新
+        新键」的快路径——否则残留键会因后续通知与任何 Fiber 无关而被永久搁置，
+        依赖方停在过期视图上。故先合并再重新排空；若仍不收敛则继续抛错，让
+        病态环持续可见，而不是静默吞掉。
         """
+        pending = set(names)
         if self._batch_depth:
-            self._deferred.update(names)
+            self._deferred.update(pending)
             return
-        self._refresh_dependents(frozenset(names))
+        if self._deferred:
+            self._deferred.update(pending)
+            self._flush_notifications()
+            return
+        self._refresh_dependents(frozenset(pending))
 
     def _refresh_dependents(self, names: frozenset[str]) -> None:
         """按插入顺序刷新注入命中 ``names`` 的 Fiber（已销毁者跳过）。"""
@@ -217,7 +228,10 @@ class Context:
 
         排空期间回填事务态：依赖方装配时产生的新供应继续入队，由下一轮统一
         处理，而不是递归刷新——这是「一次变更一次传播」的关键。轮次上限把病态
-        环转成可诊断错误。
+        环转成可诊断错误：超过 ``_MAX_FLUSH_ROUNDS`` 轮时**不修改** ``_deferred``
+        （保留当前待处理键），由下一次 :meth:`notify` 或 :meth:`batch` 重试；
+        ``dispose`` 以 ``flush=False`` 显式丢弃。``_batch_depth`` 由 ``finally``
+        复位，故失败后上下文仍可继续使用。
         """
         self._batch_depth += 1
         try:
@@ -226,7 +240,9 @@ class Context:
                 rounds += 1
                 if rounds > _MAX_FLUSH_ROUNDS:
                     pending = ", ".join(sorted(self._deferred))
-                    raise RuntimeError(f"通知排空 {rounds} 轮仍未收敛，待处理键：{pending}")
+                    raise RuntimeError(
+                        f"通知排空 {rounds} 轮仍未收敛（上限 {_MAX_FLUSH_ROUNDS} 轮），待处理键：{pending}"
+                    )
                 names = frozenset(self._deferred)
                 self._deferred.clear()
                 self._refresh_dependents(names)

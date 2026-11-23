@@ -225,3 +225,63 @@ def test_dispose_discards_pending_propagation() -> None:
     assert errors == []
     assert fiber.state is FiberState.DISPOSED
     assert ctx._deferred == set()
+
+
+def _oscillating_plugin(name: str, inject: str, provide: str, clock: dict) -> Plugin:
+    """每次装配供应「递增」实现，使依赖方 epoch 恒变，制造排空不收敛。
+
+    实现身份由 :func:`xuan_plugin.plugin._digest` 计算：整数实现按值取摘要，
+    故每轮供应不同值都会让注入方的 ``new_epoch != self._epoch``，从而继续重载，
+    排空永远无法清零 ``_deferred``。
+    """
+
+    def apply(ctx, config) -> None:
+        clock["seq"] += 1
+        value = clock["seq"] if clock["oscillate"] else f"stable:{provide}"
+        ctx.provide(provide, value)
+
+    return Plugin(name, apply, inject=[InjectSpec(inject)], provide=[provide])
+
+
+def _oscillating_context() -> tuple[Context, dict]:
+    """构造成环且不收敛的上下文：A 供 x 依赖 y，B 供 y 依赖 x。"""
+    clock: dict = {"seq": 0, "oscillate": True}
+    ctx = Context()
+    ctx.plugin(_oscillating_plugin("A", "y", "x", clock))
+    ctx.plugin(_oscillating_plugin("B", "x", "y", clock))
+    return ctx, clock
+
+
+def test_flush_overflow_keeps_pending_and_next_notify_drains() -> None:
+    """排空超出轮次上限后残留待处理键必须保留，并在下次通知时被排空。"""
+    ctx, clock = _oscillating_context()
+
+    with pytest.raises(RuntimeError, match="未收敛"):
+        with ctx.batch():
+            ctx.provide("y", 0)
+
+    assert ctx._deferred != set()  # 残留可见，而不是被静默吞掉
+    assert ctx._batch_depth == 0  # 事务深度已由 finally 复位
+
+    clock["oscillate"] = False  # 停止振荡，恢复可收敛
+    ctx.provide("unrelated", object())  # 后续变更与任何 Fiber 都无关
+
+    assert ctx._deferred == set()  # 残留已在本次通知中被重新排空
+    assert {"x", "y"} <= set(ctx.registered_keys())
+    assert all(f.state is FiberState.ACTIVE for f in ctx._fibers.values())
+
+
+def test_dispose_after_flush_overflow_is_safe() -> None:
+    """排空失败后仍可安全拆除：不抛错、键归零、残留清空。"""
+    ctx, _clock = _oscillating_context()
+
+    with pytest.raises(RuntimeError, match="未收敛"):
+        with ctx.batch():
+            ctx.provide("y", 0)
+
+    errors = ctx.dispose()
+
+    assert errors == []
+    assert ctx.registered_keys() == ()
+    assert ctx._deferred == set()
+    assert ctx._batch_depth == 0

@@ -1,6 +1,6 @@
-> 分卷来源：`tasks.md` 原文 L1112–L1359（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
+> 分卷来源：`tasks.md` 原文 L1112–L1544（2026-11-23 切分，逐字节保真；本行与下两行横幅不属原文）
 > 上册：[../tasks.md](../tasks.md) · 上一卷：06-p2-b-lifecycle.md · 下一卷：（无）
-> 主题：P2-C：不变量收口、互锁、ADR-05、同名装配
+> 主题：P2-C：不变量收口、互锁、ADR-05、同名装配、供应即撤销、诊断图同口径
 ## Task P2-8-1: 状态机不变量收口（error 语义与迁移表机检）
 
 - **Status**: `completed`
@@ -371,6 +371,63 @@
   - **V5 未纳入本轮的相邻项**：`provider="<id>"` 显式选择尚未出现在清单的 inject 声明中，
     因此诊断图目前只需与 priority 裁决对齐；若后续引入声明级显式选择，`build_graph` 与
     `solve` 必须同步扩展，届时以本轮的「同口径」用例为回归基线。
+
+## Task P2-14-1: 通知排空失败保留待处理集合并可重试
+
+- **Status**: `completed`
+- **Priority**: medium
+- **Depends On**: P2-12-1
+- **Description**:
+  - 缺口：`_flush_notifications` 在排空 100 轮仍未收敛时于 `_deferred.clear()` **之前**抛
+    `RuntimeError`，残留待处理键被保留；但事务外 `notify` 只刷新「本次新键」，完全忽略残留
+    `_deferred`。若后续通知的键与任何 Fiber 都无关（如向无消费者的能力键 `provide`），
+    `_refresh_dependents` 不会命中任何 Fiber，也就不会触发嵌套排空——残留键被永久搁置，
+    依赖方停在过期视图上，且没有任何观测口提示「还有未处理的通知」。
+  - 改动：
+    - `Context.notify`：事务外先判 `_deferred` 是否非空。非空时把本次键并入 `_deferred` 并
+      调用 `_flush_notifications()` 重试；为空时保留原 `_refresh_dependents` 快路径。批次内
+      分支与快路径语义均不变。若残留仍未收敛则继续抛错，使病态环持续可见，而非静默吞掉。
+    - `_flush_notifications`：docstring 写明「超限时不修改 `_deferred`、由下一次 `notify`/
+      `batch` 重试、`dispose` 以 `flush=False` 显式丢弃、`_batch_depth` 由 `finally` 复位」；
+      错误信息补上「上限 N 轮」。
+- **Acceptance Criteria Addressed**: 排空失败后 `_deferred` 保留可见；事务深度复位；后续任一
+  通知都能把残留键重新排空；失败后的上下文可安全 `dispose`
+- **Test Requirements**:
+  - `rule` TR-P2.14-1: 构造双向振荡（A 供 x 依赖 y、B 供 y 依赖 x，且每轮供应递增值）触发
+    超限错误后，`_deferred` 非空且 `_batch_depth == 0`；停止振荡后一次「与任何 Fiber 无关」
+    的 `provide` 能把残留排空，且 A/B 均 ACTIVE、x/y 均注册；证据：
+    `test_flush_overflow_keeps_pending_and_next_notify_drains`
+  - `rule` TR-P2.14-2: 排空失败后 `dispose()` 不抛错、`registered_keys()` 为空、`_deferred`
+    清空、`_batch_depth == 0`；证据：`test_dispose_after_flush_overflow_is_safe`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **128 passed**（P2-13 基线 126，新增 2）；
+  - 根 `tests/` → **45 passed**；第一批 → **249 passed**（45 + 128 + 7 + 34 + 35）；
+  - `tools/okf` → **259 passed**（无回归）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` → 518 文件已格式化（全仓无参扫描）；
+    `mypy` → 41 源文件无问题；`check_pyproject_style.py`（18）、
+    `check_dependency_direction.py`（347）、`check_spec_integrity.py`（本轮后 **40** 个任务编号）
+    通过；`check_declaration_consistency.py` 既有 1 项失败（清单快照过期，与本轮无关）；
+  - 实机：`xs plugin graph` → 「插件 3 个，能力键 20 个，依赖边 1 条，未解析 0，冲突 0」；
+    `xs plugin apply` → 3 节点 ACTIVE、16 条命令、20 键对账一致。
+- **Notes**:
+  - **V1 为什么不在失败时直接丢弃残留**：丢弃会制造「静默过期视图」，违反 §5.4 第 9 步「依赖
+    全可解却 INACTIVE 不可接受」的同一判据。保留 + 重试是本任务的第一性目标；病态未消除时再次
+    抛错是期望的「持续可见」，一旦消除（如振荡停止）残留即被正常排空。
+  - **V2 是否改变事务外同步语义**：仅在「上一次排空异常退出」时 `_deferred` 才非空；正常
+    batch 退出总会清空它。因此无残留时的快路径与原实现逐字节等价，既有 126 用例回归验证。
+  - **V3 为什么留在 `notify` 而不新开公开方法**：残留重试是 `notify` 的既有契约（「通知必须
+    被处理」）的自然补齐，不需要调用方额外感知；不新增 API，避免扩大公开表面。
+  - **V4 轮次上限对合法深链的误伤（未纳入本轮）**：100 轮对「101 级合法依赖深链」同样会触发
+    错误。该上限是 P2-6 的既有设计，本任务不改变其语义，仅改变失败后的残留处理；若未来出现
+    真实深链需求，再评估改为「宽度上限 + 深度上限」或可配置。
+  - **V5 `plugin()` 内 flush 抛错留下半注册 Fiber（未纳入本轮）**：`_fibers` 已写入但
+    `_refresh` 未完成，属装配原子性缺陷，与残留状态正交。本轮以
+    `test_dispose_after_flush_overflow_is_safe` 保证「可安全回收」，半注册问题留待下一任务，
+    避免单提交混多职责。
+  - **V6 振荡用例是否依赖 `_digest` 的实现细节**：用例依赖「同一整数键每次供应不同值 → epoch
+    变化 → 继续重载」。若 `_digest` 改为按类型取摘要，用例会因不再振荡而在
+    `pytest.raises(..., match="未收敛")` 处失败，不会静默「通过」；当前 `_digest` 对基础类型
+    走 `f"{type(value).__name__}:{value!r}"`，契约明确。
 
 ---
 
