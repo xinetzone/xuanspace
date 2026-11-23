@@ -5,7 +5,7 @@
 """
 
 from .assembly import AssemblyResult, assemble
-from .context import Context
+from .context import Context, PluginNameConflictError
 from .disposable import Disposable, DisposableList, DisposalError, EffectMeta
 from .manifest import (
     Edge,
@@ -52,6 +52,7 @@ __all__ = [
     "Plugin",
     "PluginGraph",
     "PluginManifest",
+    "PluginNameConflictError",
     "ProvideDecl",
     "ReconcileReport",
     "ServiceDefinition",

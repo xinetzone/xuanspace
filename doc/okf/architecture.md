@@ -68,7 +68,7 @@ LOADING ──apply 异常──→ FAILED ──retry()──→ LOADING
 
 1. **服务注册**：`provide` / `get`，其中 `provide` 后自动 `notify` 依赖方；`Context.batch()` 事务内的通知只登记，最外层退出时去重、分轮排空（`dispose` 使用 `flush=False` 丢弃）。事务外保持同步语义。
 2. **效应追踪**：`effect` 注册可逆效应；处于某插件 `apply` 作用域时归属该 Fiber（随卸载/热替换逆序回收），其余归属根 `DisposableList`。
-3. **插件装配**：`plugin` 创建 Fiber 并启动加载。
+3. **插件装配**：`plugin` 创建 Fiber 并启动加载；名称在旧实例 `DISPOSED` 之前被独占，同名重复装配抛 `PluginNameConflictError` 而非静默覆写——覆写会让旧实例在 `dispose` 遍历中缺席，其供应与效应成为孤儿。
 4. **事件分发**：五种分发模式。
 
 `Context` 实现了上下文管理器协议，`with` 退出时自动回收资源。

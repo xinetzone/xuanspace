@@ -1291,8 +1291,64 @@ Task 1–8 全部完成后，满足：
     定序，不以它作为装配裁决依据。`retrospective-20261121.md` 中「ADR-05 未落地」是 P2-9
     时点记录，不改写历史复盘。
 
+## Task P2-11-1: 同名插件装配的确定性
+
+- **Status**: `completed`
+- **Priority**: high
+- **Depends On**: P2-10-1（`13c6127`）
+- **Description**:
+  - 缺口：`Context.plugin` 以 `self._fibers[plugin.name] = fiber` 直接覆写。同名旧 Fiber
+    若仍处于 ACTIVE / INACTIVE / FAILED 等非终态，其键与效应仍挂在旧实例上，而
+    `dispose` 只遍历字典现值——旧实例既不卸载也不上报，成为孤儿：键留在 `_store`、
+    效应永不撤销。原实现无任何冲突检测，装配顺序决定谁在册。
+  - 改动：
+    - `context.py`：新增 `PluginNameConflictError(RuntimeError)`（携带 `name` 与旧实例
+      `state`，消息给出处置建议）；`Context.plugin` 在构造 Fiber 之前检查同名实例，
+      非 `DISPOSED` 即拒绝覆写，已 `DISPOSED` 的名称可重新占用；
+    - `xuan_plugin/__init__.py` 导出 `PluginNameConflictError`；
+    - `libs/xuan-plugin/tests/test_assembly.py` 追加 4 条用例（ACTIVE 冲突、INACTIVE 冲突、
+      DISPOSED 后复用、被拒装配零残留）；
+    - `doc/okf/architecture.md`：Context 职责第 3 条补「名称独占与冲突异常」。
+- **Acceptance Criteria Addressed**: 同名装配不再产生孤儿 Fiber 与键残留；冲突在写入任何
+  状态之前抛出，失败路径零副作用
+- **Test Requirements**:
+  - `rule` TR-P2.11-1: 同名且未销毁 → `PluginNameConflictError`，首个实例状态与键不受影响；
+    证据：`test_duplicate_plugin_name_is_rejected`
+  - `rule` TR-P2.11-2: `DISPOSED` 为惰性终态，名称可被新实例重新占用；证据：
+    `test_duplicate_name_reusable_after_dispose`
+  - `rule` TR-P2.11-3: `INACTIVE` 同样占名，不得被覆写；证据：
+    `test_conflict_also_applies_to_inactive_fiber`
+  - `rule` TR-P2.11-4: 被拒绝的第二次装配不写入键或效应，整体 `dispose` 无失败项；证据：
+    `test_rejected_conflict_leaves_no_orphan_effects`
+- **Completion Evidence**（2026-11-23 实测）:
+  - `libs/xuan-plugin/tests` → **118 passed**（P2-10 基线 114，新增 4）；
+  - 第一批 `pytest -q tests libs/xuan-plugin/tests libs/xuan-build/tests libs/xuan-ffi/tests
+    libs/xuan-project/tests` → **238 passed**（44 + 118 + 7 + 34 + 35）；
+  - `tools/okf` 独立运行 → **259 passed**（未改动 okf，与 P2-10 持平）；
+  - 门禁：`ruff check` 全部通过；`ruff format --check` 77 文件已格式化；
+    `mypy libs/xuan-plugin/src libs/xuan-ffi/src libs/xuan-build/src tools/xs/src`
+    → `Success: no issues found in 41 source files`；
+    `check_pyproject_style.py`（18 个 pyproject）、`check_dependency_direction.py`
+    （347 文件）通过；`check_spec_integrity.py`（本轮后 **37** 个任务编号）通过；
+    `check_declaration_consistency.py` 既有 1 项失败（清单快照过期，与本轮无关）；
+  - 实机：`python -m xs.cli plugin apply` → 「3 个节点 ACTIVE，16 条命令已登记；
+    对账：一致 20 键，缺 0，多 0」。
+- **Notes**:
+  - **V1 为何不自动「先卸旧再装新」**：自动替换会让调用方持有的 Fiber 句柄与状态引用
+    全部过期，且旧实例卸载失败时无法回滚已建的新实例；报错把决策交还调用方，与 P2-10
+    「不猜、不静默兜底」一致。
+  - **V2 为何放行 DISPOSED**：终态实例无键、无效应、无待重试目标，`_refresh_dependents`
+    也不会再传播到它；继续封锁名称只会让「重装同一插件」永远失败。
+  - **V3 实机影响**：装配器按清单 `id` 唯一构造节点，正常路径不触发；冲突仅出现在手工
+    重装与测试中，故不构成线上行为变更。
+  - **V4 相邻问题（测试暴露，未修）**：`Context.provide` 返回的 undo 若不显式登记为
+    effect，Fiber 卸载不会回收该键（本轮用例一度按「dispose 后键消失」断言而失败，已
+    改为按真实语义断言）。是否让 `provide` 自动登记效应，留作后续候选。
+  - **V5 报错时机**：检查位于 Fiber 构造与 `batch` 之前，拒绝路径不产生任何键、效应或
+    Fiber 实例；异常携带旧状态，便于区分 ACTIVE（需先卸载）与 INACTIVE（需先补依赖）。
+
 ---
 
-> 复盘报告（P2-4～P2-9 全链，R → I → E → C，G1–G4 通过）：
+> 复盘报告（P2-4～P2-11 全链，R → I → E → C，G1–G4 通过）：
 > [retrospective-20261121.md](retrospective-20261121.md)。
 

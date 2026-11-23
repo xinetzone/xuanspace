@@ -2,8 +2,9 @@
 
 import pytest
 from xuan_plugin.assembly import assemble
+from xuan_plugin.context import Context, PluginNameConflictError
 from xuan_plugin.manifest import InjectDecl, PluginManifest, ProvideDecl
-from xuan_plugin.plugin import InjectSpec, Plugin
+from xuan_plugin.plugin import FiberState, InjectSpec, Plugin
 from xuan_plugin.solver import solve
 
 KEY_A = "xuan:demo/a#one"
@@ -125,3 +126,58 @@ def test_declared_but_unregistered_keys_are_reported_not_fatal() -> None:
 def test_missing_implementation_is_a_caller_error() -> None:
     with pytest.raises(KeyError, match="缺少插件实现"):
         assemble(solve([_manifest("a")]), {})
+
+
+def test_duplicate_plugin_name_is_rejected() -> None:
+    """同名且未销毁的 Fiber 占用名称：拒绝覆写，首个实例不被扰动（P2-11）。"""
+    ctx = Context()
+    first = ctx.plugin(_plugin("dup", (KEY_A,)))
+    assert first.state is FiberState.ACTIVE
+
+    with pytest.raises(PluginNameConflictError, match="dup") as excinfo:
+        ctx.plugin(_plugin("dup", (KEY_B,)))
+
+    assert excinfo.value.state is FiberState.ACTIVE
+    assert first.state is FiberState.ACTIVE
+    assert ctx.registered_keys() == (KEY_A,)
+    assert ctx.get(KEY_A) == f"dup:{KEY_A}"
+
+
+def test_duplicate_name_reusable_after_dispose() -> None:
+    """DISPOSED 为惰性终态，名称可被新实例重新占用。"""
+    ctx = Context()
+    first = ctx.plugin(_plugin("dup", (KEY_A,)))
+    first.dispose()
+    assert first.state is FiberState.DISPOSED
+
+    second = ctx.plugin(_plugin("dup", (KEY_B,)))
+
+    assert second is not first
+    assert second.state is FiberState.ACTIVE
+    assert KEY_B in ctx.registered_keys()
+    assert ctx.get(KEY_B) == f"dup:{KEY_B}"
+
+
+def test_conflict_also_applies_to_inactive_fiber() -> None:
+    """INACTIVE 虽无效应，仍是占名的活动实例，不得被覆写。"""
+    ctx = Context()
+    fiber = ctx.plugin(Plugin("dup", lambda c, cfg: None, inject=[InjectSpec("absent")]))
+    assert fiber.state is FiberState.INACTIVE
+
+    with pytest.raises(PluginNameConflictError) as excinfo:
+        ctx.plugin(Plugin("dup", lambda c, cfg: None))
+
+    assert excinfo.value.state is FiberState.INACTIVE
+    assert fiber.state is FiberState.INACTIVE
+
+
+def test_rejected_conflict_leaves_no_orphan_effects() -> None:
+    """被拒绝的第二次装配不得写入任何键或效应；整体 dispose 后无残留失败。"""
+    ctx = Context()
+    ctx.plugin(_plugin("dup", (KEY_A,)))
+
+    with pytest.raises(PluginNameConflictError):
+        ctx.plugin(_plugin("dup", (KEY_B,), fail=True))
+
+    assert ctx.registered_keys() == (KEY_A,)
+    assert ctx.dispose() == []

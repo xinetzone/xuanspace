@@ -13,6 +13,23 @@ from .plugin import Fiber, FiberState, Plugin
 _MAX_FLUSH_ROUNDS = 100
 
 
+class PluginNameConflictError(RuntimeError):
+    """同名插件重复装配：已有 Fiber 仍在生命周期内（P2-11）。
+
+    直接覆写 ``_fibers`` 会让旧实例的供应与效应失去持有者——``dispose`` 按字典
+    遍历，旧 Fiber 不会被回收，键也留在 ``_store`` 里成为孤儿。故默认拒绝覆写，
+    要求调用方先显式 ``dispose`` 旧实例；已 ``DISPOSED`` 的名称可重新占用。
+    """
+
+    def __init__(self, name: str, state: FiberState) -> None:
+        self.name = name
+        self.state = state
+        super().__init__(
+            f"插件 {name} 已装配且状态为 {state.name}，拒绝同名覆写；"
+            f"请先 dispose 旧 Fiber 再重新装配，避免其供应与效应成为孤儿"
+        )
+
+
 async def _await_if_needed(value: object) -> object:
     """等待可等待对象，否则原样返回。"""
     if isinstance(value, Awaitable):
@@ -107,7 +124,15 @@ class Context:
         return tuple(sorted(self._store))
 
     def plugin(self, plugin: Plugin, config: dict | None = None) -> Fiber:
-        """装配插件，创建 Fiber 并启动加载，返回该 Fiber 供调用方查证状态。"""
+        """装配插件，创建 Fiber 并启动加载，返回该 Fiber 供调用方查证状态。
+
+        同名插件只允许在旧实例已 ``DISPOSED`` 后重新装配；其余状态一律抛
+        :class:`PluginNameConflictError`，不做静默覆写（否则旧实例的供应与效应
+        会在 ``dispose`` 遍历中缺席，成为孤儿）。
+        """
+        existing = self._fibers.get(plugin.name)
+        if existing is not None and existing.state is not FiberState.DISPOSED:
+            raise PluginNameConflictError(plugin.name, existing.state)
         fiber = Fiber(plugin, self, config)
         self._fibers[plugin.name] = fiber
         # 计算初始 epoch 并尝试激活；装配期多次 provide 合并为一次下游传播。
