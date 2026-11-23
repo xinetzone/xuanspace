@@ -13,8 +13,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-
-from ..config import (
+from xuan_project import (
     check_python_version,
     find_workspace_root,
     get_python_version,

@@ -9,8 +9,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.panel import Panel
-
-from ..config import check_python_version, find_workspace_root, get_python_version
+from xuan_project import check_python_version, find_workspace_root, get_python_version
 
 console = Console()
 

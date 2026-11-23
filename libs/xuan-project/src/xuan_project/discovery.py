@@ -1,6 +1,6 @@
-"""
-项目发现模块
-负责扫描工作区中的项目、检测项目类型、构建依赖图等功能
+"""工作区项目发现：类型检测、依赖图与受影响项目计算。
+
+本模块只做无状态纯函数，目录扫描结果由调用方持有。
 """
 
 import re
@@ -16,20 +16,14 @@ from .config import (
 
 
 def detect_project_type(path: Path) -> ProjectType:
-    """
-    检测指定目录的项目类型
+    """检测指定目录的项目类型。
 
     检测规则：
-    - native：pyproject.toml 中 build-backend 包含 "scikit-build"
-    - python：有 pyproject.toml，build-backend 包含 "setuptools"、"hatch" 或 "flit"
-    - static：有 index.html 但无 pyproject.toml
-    - other：其他情况
 
-    Args:
-        path: 项目目录路径
-
-    Returns:
-        项目类型字符串
+    - native：``build-backend`` 包含 ``scikit-build``；
+    - python：有 ``pyproject.toml``，其余构建后端或解析失败；
+    - static：有 ``index.html`` 但无 ``pyproject.toml``；
+    - other：其他情况。
     """
     pyproject_path = path / "pyproject.toml"
     index_html_path = path / "index.html"
@@ -58,19 +52,7 @@ def detect_project_type(path: Path) -> ProjectType:
 
 
 def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str, str, list[str]]:
-    """
-    从 pyproject.toml 中提取项目名称、版本和依赖
-
-    支持动态版本：当 [project] 未声明静态 version（dynamic = ["version"]）时，
-    交由 resolve_dynamic_version() 按构建后端解析。
-
-    Args:
-        path: pyproject.toml 文件路径
-        fallback: 如果提取失败时使用的名称
-
-    Returns:
-        (name, version, dependencies) 元组
-    """
+    """从 ``pyproject.toml`` 提取项目名称、版本与依赖名。"""
     try:
         data = load_pyproject(path)
         project = data.get("project", {})
@@ -87,21 +69,14 @@ def _extract_project_name_from_pyproject(path: Path, fallback: str) -> tuple[str
 
 
 def resolve_dynamic_version(pyproject_path: Path, data: dict) -> str:
-    """
-    解析动态版本号
+    """解析 ``dynamic = ["version"]`` 的版本号。
 
-    当 pyproject 使用 dynamic = ["version"] 时，按构建后端分支解析：
-    - scikit-build-core + setuptools-scm：读取 [tool.setuptools_scm] 的
-      version_file/write_to 生成文件（如 src/xuanspace/_version.py）的 __version__。
-    - setuptools：[tool.setuptools.dynamic].version.attr（如 "xs.__version__"）
-      指向的模块文件中的 __version__。
+    - scikit-build-core + setuptools-scm：读取 ``[tool.setuptools_scm]`` 的
+      ``version_file``/``write_to`` 生成文件中的 ``__version__``；
+    - setuptools：读取 ``[tool.setuptools.dynamic].version.attr``
+      指向模块文件中的 ``__version__``。
 
-    Args:
-        pyproject_path: pyproject.toml 文件路径
-        data: 已加载的 pyproject 数据
-
-    Returns:
-        解析出的版本字符串，解析失败返回 "0.0.0"
+    解析失败返回 ``"0.0.0"``。
     """
     try:
         tool_cfg = data.get("tool", {})
@@ -152,15 +127,7 @@ def _scan_directory(
     max_depth: int = 2,
     current_depth: int = 0,
 ) -> None:
-    """
-    递归扫描目录中的项目
-
-    Args:
-        base_dir: 要扫描的基础目录
-        projects: 用于存储发现的项目的列表
-        max_depth: 最大递归深度
-        current_depth: 当前递归深度
-    """
+    """递归扫描目录中的项目。"""
     if not base_dir.is_dir() or current_depth > max_depth:
         return
 
@@ -203,16 +170,10 @@ def _scan_directory(
 
 
 def discover_projects(workspace_root: Path) -> list[ProjectInfo]:
-    """
-    发现工作区中的所有项目
+    """发现工作区中的所有项目。
 
-    扫描 apps/*/ 和 libs/*/ 目录（支持一层子目录分组如 apps/culture/）
-
-    Args:
-        workspace_root: 工作区根目录
-
-    Returns:
-        发现的项目信息列表
+    扫描 ``apps/*/``、``libs/*/`` 与 ``tools/*/``（支持一层子目录分组如
+    ``apps/culture/``）。
     """
     projects: list[ProjectInfo] = []
 
@@ -233,17 +194,7 @@ def discover_projects(workspace_root: Path) -> list[ProjectInfo]:
 
 
 def build_dependency_graph(projects: list[ProjectInfo]) -> dict[str, list[str]]:
-    """
-    构建项目依赖图
-
-    建立项目名称到其依赖的项目名称列表的映射
-
-    Args:
-        projects: 项目信息列表
-
-    Returns:
-        依赖图字典，key 为项目名称，value 为该项目依赖的项目名称列表
-    """
+    """构建项目名称到其依赖项目名称列表的映射。"""
     project_names = {p.name for p in projects}
     graph: dict[str, list[str]] = {}
 
@@ -261,16 +212,7 @@ def build_dependency_graph(projects: list[ProjectInfo]) -> dict[str, list[str]]:
 
 
 def _get_project_by_path(path: Path, projects: list[ProjectInfo]) -> ProjectInfo | None:
-    """
-    根据路径查找项目
-
-    Args:
-        path: 文件或目录路径
-        projects: 项目列表
-
-    Returns:
-        匹配的项目，如果未找到返回 None
-    """
+    """根据路径查找所属项目。"""
     resolved_path = path.resolve()
     for project in projects:
         try:
@@ -285,20 +227,7 @@ def find_affected_projects(
     workspace_root: Path,
     changed_files: list[Path],
 ) -> list[ProjectInfo]:
-    """
-    查找受变更文件影响的项目
-
-    简单实现逻辑：
-    - 如果文件在子项目 X 目录下，则 X 受影响
-    - 如果 X 的依赖 Y 发生变化，则 X 也受影响（反向依赖传播）
-
-    Args:
-        workspace_root: 工作区根目录
-        changed_files: 变更的文件路径列表
-
-    Returns:
-        受影响的项目列表
-    """
+    """查找受变更文件影响的项目（含反向依赖传播）。"""
     projects = discover_projects(workspace_root)
     dep_graph = build_dependency_graph(projects)
 
@@ -335,16 +264,7 @@ def find_project_by_name(
     projects: list[ProjectInfo],
     name: str,
 ) -> ProjectInfo | None:
-    """
-    根据名称查找项目
-
-    Args:
-        projects: 项目列表
-        name: 项目名称
-
-    Returns:
-        匹配的项目，如果未找到返回 None
-    """
+    """根据名称查找项目（大小写与下划线/连字符不敏感）。"""
     normalized = name.lower().replace("_", "-")
     for project in projects:
         if project.name.lower().replace("_", "-") == normalized:
@@ -357,17 +277,7 @@ def filter_projects(
     project_type: ProjectType | None = None,
     directory: str | None = None,
 ) -> list[ProjectInfo]:
-    """
-    按类型和目录过滤项目
-
-    Args:
-        projects: 项目列表
-        project_type: 项目类型过滤条件
-        directory: 目录过滤条件（"apps" 或 "libs"）
-
-    Returns:
-        过滤后的项目列表
-    """
+    """按类型和目录过滤项目。"""
     filtered = projects
 
     if project_type is not None:

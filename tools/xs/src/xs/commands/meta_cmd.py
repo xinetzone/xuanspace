@@ -161,7 +161,7 @@ def _read_toml_meta(toml_path: Path) -> dict:
 
 
 def _collect_doc_files(path: Path) -> list[Path]:
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     if path.is_file():
@@ -185,7 +185,7 @@ def meta_init(
     force: bool = typer.Option(False, "--force", "-f", help="覆盖已存在的 README"),
 ) -> None:
     """初始化文档元数据目录结构"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     meta_root = workspace_root / META_DIRNAME
@@ -213,7 +213,7 @@ def meta_validate(
     fix: bool = typer.Option(False, "--fix", help="自动修复不合规的 frontmatter"),
 ) -> None:
     """验证文档 frontmatter 是否符合二分法规范"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     target = path or workspace_root
@@ -262,7 +262,7 @@ def meta_scan(
     directory: Path | None = typer.Argument(None, help="要扫描的目录，默认为工作区根目录"),
 ) -> None:
     """扫描工作区文档元数据状态"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     scan_dir = directory or workspace_root
@@ -312,7 +312,7 @@ def meta_sync(
     path: Path = typer.Argument(None, help="要同步的文件或目录，默认为工作区根目录"),
 ) -> None:
     """同步 YAML frontmatter 与 TOML 元数据，确保两者一致"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     target = path or workspace_root

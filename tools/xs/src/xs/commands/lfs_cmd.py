@@ -103,7 +103,7 @@ def lfs_check(
     ),
 ) -> None:
     """检查是否有应使用 LFS 但未跟踪的大文件"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     lfs_patterns = _parse_lfs_patterns(root)
@@ -171,7 +171,7 @@ def _get_suggestion(rel_path: str, lfs_patterns: list[str], size_mb: float) -> s
 @app.command("patterns")
 def lfs_patterns() -> None:
     """列出当前 .gitattributes 中的 LFS 跟踪模式"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     patterns = _parse_lfs_patterns(root)

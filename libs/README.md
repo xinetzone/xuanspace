@@ -125,6 +125,7 @@ build-backend = "scikit_build_core.build"
 | `xuan-fea/` | 纯 Python | OpenType Feature（.fea）AST 构建原语（Maple Mono 构建系统萃取） |
 | `xuan-ffi/` | 纯 Python | FFI 能力键与子进程隔离代理：切换后端不改调用方代码 |
 | `xuan-plugin/` | 纯 Python | 插件内核：可逆装配、能力注册与生命周期管理 |
+| `xuan-project/` | 纯 Python | 工作区项目发现与 pyproject 解析工具库（xs CLI 萃取） |
 
 <!-- END GENERATED: libs-projects -->
 

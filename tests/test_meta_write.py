@@ -163,7 +163,7 @@ def test_meta_validate_fix_moves_forbidden_fields_to_toml(tmp_path, monkeypatch)
     doc = root / "doc" / "guide.md"
     doc.parent.mkdir()
     doc.write_text("---\nid: guide\ntitle: 指南\ntags: [a, b]\n---\n\n正文\n", encoding="utf-8")
-    monkeypatch.setattr("xs.config.find_workspace_root", lambda *a, **k: root)
+    monkeypatch.setattr("xuan_project.find_workspace_root", lambda *a, **k: root)
 
     meta_validate(doc, fix=True)
 
@@ -187,7 +187,7 @@ def test_meta_sync_links_existing_toml(tmp_path, monkeypatch):
     doc.write_text("---\nid: guide\n---\n\n正文\n", encoding="utf-8")
 
     _write_toml_meta(root / ".meta" / "toml" / "doc" / "guide.toml", {"title": "指南"})
-    monkeypatch.setattr("xs.config.find_workspace_root", lambda *a, **k: root)
+    monkeypatch.setattr("xuan_project.find_workspace_root", lambda *a, **k: root)
 
     meta_sync(doc)
 
@@ -207,7 +207,7 @@ def test_meta_validate_without_fix_does_not_write(tmp_path, monkeypatch):
     doc.parent.mkdir()
     original = "---\nid: guide\ntitle: 指南\n---\n\n正文\n"
     doc.write_text(original, encoding="utf-8")
-    monkeypatch.setattr("xs.config.find_workspace_root", lambda *a, **k: root)
+    monkeypatch.setattr("xuan_project.find_workspace_root", lambda *a, **k: root)
 
     meta_validate(doc, fix=False)
 
@@ -221,7 +221,7 @@ def test_meta_sync_moves_forbidden_fields_to_toml(tmp_path, monkeypatch):
     doc = root / "doc" / "guide.md"
     doc.parent.mkdir()
     doc.write_text("---\nid: guide\ntitle: 指南\n---\n\n正文\n", encoding="utf-8")
-    monkeypatch.setattr("xs.config.find_workspace_root", lambda *a, **k: root)
+    monkeypatch.setattr("xuan_project.find_workspace_root", lambda *a, **k: root)
 
     meta_sync(doc)
 

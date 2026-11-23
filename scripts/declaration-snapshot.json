@@ -31,7 +31,8 @@
     "xuan-ext-demo",
     "xuan-fea",
     "xuan-ffi",
-    "xuan-plugin"
+    "xuan-plugin",
+    "xuan-project"
   ],
   "submodule_status": {
     "libs/mystx": "a5ab4d4d12895d75008a5b8a3bf52dd94e56cea3",

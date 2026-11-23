@@ -18,7 +18,7 @@ app = typer.Typer(help="项目归档命令", add_completion=False)
 
 def _find_project(name: str) -> Path | None:
     """在 apps/ 和 libs/ 中查找指定项目"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     for base in ("apps", "libs", "tools"):
@@ -41,7 +41,7 @@ def _get_project_type(project_path: Path) -> str:
 
 def _find_project_in_attic(name: str) -> Path | None:
     """在 attic/ 中查找项目"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     attic = root / "attic" / name
@@ -64,7 +64,7 @@ def archive(
         console.print("[dim]使用 'xs list' 查看所有项目[/dim]")
         raise typer.Exit(1)
 
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     attic_path = root / "attic" / name
@@ -138,7 +138,7 @@ def unarchive(
         console.print(f"[red]错误: attic/ 中未找到 '{name}'[/red]")
         raise typer.Exit(1)
 
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     root = find_workspace_root()
     proj_type = _get_project_type(attic_project)

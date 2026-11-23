@@ -8,9 +8,7 @@ import json
 import typer
 from rich.console import Console
 from rich.table import Table
-
-from ..config import ProjectType, find_workspace_root
-from ..discovery import discover_projects, filter_projects
+from xuan_project import ProjectType, discover_projects, filter_projects, find_workspace_root
 
 console = Console()
 

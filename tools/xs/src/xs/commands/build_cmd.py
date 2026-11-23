@@ -10,9 +10,14 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from xuan_build import dispatch
-
-from ..config import ProjectType, find_workspace_root, load_pyproject
-from ..discovery import ProjectInfo, discover_projects, find_project_by_name
+from xuan_project import (
+    ProjectInfo,
+    ProjectType,
+    discover_projects,
+    find_project_by_name,
+    find_workspace_root,
+    load_pyproject,
+)
 
 console = Console()
 

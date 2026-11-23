@@ -1,0 +1,76 @@
+[build-system]
+requires = ["scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "xuan-project"
+version = "0.1.0"
+description = "工作区项目发现与 pyproject 解析工具库（从 xs CLI 萃取）"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.14.6"
+authors = [
+    {name = "Xuanspace Team"}
+]
+keywords = [
+    "xuanspace",
+    "monorepo",
+    "project-discovery",
+    "pyproject",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+# 纯 Python 包：wheel.cmake=false 显式禁用 CMake（本库不提供 CMakeLists.txt），
+# scikit-build-core 按 wheel.packages 直接打包，产出 py3-none-any 通用 wheel。
+[tool.scikit-build]
+minimum-version = "0.11"
+build-dir = "build/{wheel_tag}"
+
+[tool.scikit-build.wheel]
+cmake = false
+packages = ["src/xuan_project"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+pretty = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/xuan_project"]

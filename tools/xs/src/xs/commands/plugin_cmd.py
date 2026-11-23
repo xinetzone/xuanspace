@@ -24,9 +24,8 @@ from xuan_plugin.manifest import (
 )
 from xuan_plugin.plugin import Plugin
 from xuan_plugin.solver import Solution, SolveError, solve
+from xuan_project import discover_projects, find_workspace_root, load_pyproject
 
-from ..config import find_workspace_root, load_pyproject
-from ..discovery import discover_projects
 from ..plugins.commands import PLUGIN as COMMANDS_PLUGIN
 from ..plugins.registry import CommandRegistry
 

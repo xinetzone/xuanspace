@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 from xs.commands import build_cmd
-from xs.config import ProjectType
 from xuan_build.backends import BuildBackend, Reporter
+from xuan_project import ProjectType
 
 
 def _capture_build(project_path: Path, project_type: ProjectType) -> str:

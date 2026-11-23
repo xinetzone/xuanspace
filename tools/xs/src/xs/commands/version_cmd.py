@@ -11,9 +11,13 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-
-from ..config import find_workspace_root, load_pyproject
-from ..discovery import discover_projects, find_project_by_name, resolve_dynamic_version
+from xuan_project import (
+    discover_projects,
+    find_project_by_name,
+    find_workspace_root,
+    load_pyproject,
+    resolve_dynamic_version,
+)
 
 console = Console()
 

@@ -3,9 +3,7 @@
 import subprocess
 
 from rich.console import Console
-
-from ..config import find_workspace_root
-from ..discovery import find_affected_projects
+from xuan_project import find_affected_projects, find_workspace_root
 
 console = Console()
 

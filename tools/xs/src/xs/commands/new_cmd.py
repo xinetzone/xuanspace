@@ -10,9 +10,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.panel import Panel
-
-from ..config import ProjectType, find_workspace_root
-from ..discovery import discover_projects, find_project_by_name
+from xuan_project import ProjectType, discover_projects, find_project_by_name, find_workspace_root
 
 console = Console()
 

@@ -52,8 +52,7 @@ def _check_python_requires(requires_python: str | None, target: Version = TARGET
 def _collect_dependencies() -> list[str]:
     import re as _re
 
-    from ..config import find_workspace_root, load_pyproject
-    from ..discovery import discover_projects
+    from xuan_project import discover_projects, find_workspace_root, load_pyproject
 
     workspace_root = find_workspace_root()
     dep_set: set[str] = set()

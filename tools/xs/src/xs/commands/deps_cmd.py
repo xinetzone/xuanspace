@@ -15,9 +15,13 @@ from packaging.version import Version
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-
-from ..config import find_workspace_root, load_pyproject
-from ..discovery import build_dependency_graph, discover_projects, find_project_by_name
+from xuan_project import (
+    build_dependency_graph,
+    discover_projects,
+    find_project_by_name,
+    find_workspace_root,
+    load_pyproject,
+)
 
 console = Console()
 
@@ -38,7 +42,7 @@ def deps_check(
     project_name: str | None = typer.Option(None, "--project", "-p", help="检查指定项目"),
 ) -> None:
     """检查依赖一致性，检测版本冲突"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     projects = discover_projects(workspace_root)
@@ -104,7 +108,7 @@ def deps_tree(
     depth: int = typer.Option(3, "--depth", "-d", help="依赖树最大深度"),
 ) -> None:
     """显示项目依赖树"""
-    from ..config import find_workspace_root
+    from xuan_project import find_workspace_root
 
     workspace_root = find_workspace_root()
     projects = discover_projects(workspace_root)

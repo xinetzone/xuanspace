@@ -115,6 +115,7 @@ x-toml-ref: ".meta/toml/README.toml"
 | xuan-fea | OpenType Feature（.fea）AST 构建原语（Maple Mono 构建系统萃取） | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-fea/README.md) |
 | xuan-ffi | FFI 能力键与子进程隔离代理：切换后端不改调用方代码 | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-ffi/README.md) |
 | xuan-plugin | 插件内核：可逆装配、能力注册与生命周期管理 | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-plugin/README.md) |
+| xuan-project | 工作区项目发现与 pyproject 解析工具库（xs CLI 萃取） | Python | lib | 孵化中 | 0.1.0 | [README](libs/xuan-project/README.md) |
 | tvm-ffi | Apache TVM C++ FFI 跨语言绑定库（子模块） | C++ | vendor(submodule) | 上游 | v0.1.12 | [上游仓库](https://github.com/apache/tvm-ffi) |
 | caffe | Caffe 深度学习框架（子模块） | C++ | vendor(submodule) | 上游 | - | [上游仓库](https://github.com/daoflows/caffe) |
 

@@ -12,8 +12,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-
-from ..config import find_workspace_root
+from xuan_project import find_workspace_root
 
 console = Console()
 
